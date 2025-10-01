@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=207
+HSHQ_LIB_SCRIPT_VERSION=208
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -29085,6 +29085,7 @@ function loadPinnedDockerImages()
   IMG_FRAPPE_BENCH=mirror.gcr.io/frappe/bench:v5.25.9
 
   # Stack specific images
+  IMG_ACTIVEPIECES_APP=ghcr.io/activepieces/activepieces:0.70.1
   IMG_ADGUARD=mirror.gcr.io/adguard/adguardhome:v0.107.64
   IMG_ADMINER=mirror.gcr.io/adminer:5.3.0
   IMG_AISTACK_MINDSDB_APP=mirror.gcr.io/mindsdb/mindsdb:v25.7.4.0
@@ -29095,6 +29096,7 @@ function loadPinnedDockerImages()
   IMG_AISTACK_OPENWEBUI=ghcr.io/open-webui/open-webui:0.6.22
   IMG_AUDIOBOOKSHELF=ghcr.io/advplyr/audiobookshelf:2.28.0
   IMG_AUTHELIA=mirror.gcr.io/authelia/authelia:4.39.6
+  IMG_AUTOMATISCH_APP=mirror.gcr.io/automatischio/automatisch:0.15.0
   IMG_BARASSISTANT_APP=mirror.gcr.io/barassistant/server:5.6.1
   IMG_BARASSISTANT_SALTRIM=mirror.gcr.io/barassistant/salt-rim:4.6.0
   IMG_BUDIBASE_APP=mirror.gcr.io/budibase/apps:3.15.0
@@ -29193,6 +29195,7 @@ function loadPinnedDockerImages()
   IMG_METABASE=metabase/metabase:v0.56.2.4
   IMG_MINTHCM_WEB=mirror.gcr.io/minthcm/minthcm:latest
   IMG_MINTHCM_ELASTICSEARCH=docker.elastic.co/elasticsearch/elasticsearch:7.9.3
+  IMG_N8N_APP=mirror.gcr.io/n8nio/n8n:1.114.0
   IMG_NAVIDROME=deluan/navidrome:0.58.0
   IMG_NETDATA=mirror.gcr.io/netdata/netdata:v2.6.1
   IMG_NEXTCLOUD_APP=mirror.gcr.io/nextcloud:31.0.7-fpm-alpine
@@ -29475,6 +29478,12 @@ function getScriptStackVersion()
       echo "v1" ;;
     dolibarr)
       echo "v1" ;;
+    n8n)
+      echo "v1" ;;
+    automatisch)
+      echo "v1" ;;
+    activepieces)
+      echo "v1" ;;
     dbgate)
       echo "v1" ;;
     sqlpad)
@@ -29673,6 +29682,9 @@ function pullDockerImages()
   pullImage $IMG_INVOICESHELF_APP
   pullImage $IMG_INVOICENINJA_APP
   pullImage $IMG_DOLIBARR_APP
+  pullImage $IMG_N8N_APP
+  pullImage $IMG_AUTOMATISCH_APP
+  pullImage $IMG_ACTIVEPIECES_APP
 }
 
 function pullImagesUpdatePB()
@@ -30816,6 +30828,46 @@ DOLIBARR_DATABASE_USER_PASSWORD=
 DOLIBARR_REDIS_PASSWORD=
 DOLIBARR_CRON_SECRET=
 # Dolibarr (Service Details) END
+
+# n8n (Service Details) BEGIN
+N8N_INIT_ENV=true
+N8N_ADMIN_USERNAME=
+N8N_ADMIN_EMAIL_ADDRESS=
+N8N_ADMIN_PASSWORD=
+N8N_DATABASE_NAME=
+N8N_DATABASE_USER=
+N8N_DATABASE_USER_PASSWORD=
+N8N_REDIS_PASSWORD=
+N8N_ENCRYPTION_KEY=
+# n8n (Service Details) END
+
+# Automatisch (Service Details) BEGIN
+AUTOMATISCH_INIT_ENV=true
+AUTOMATISCH_ADMIN_USERNAME=
+AUTOMATISCH_ADMIN_EMAIL_ADDRESS=
+AUTOMATISCH_ADMIN_PASSWORD=
+AUTOMATISCH_DATABASE_NAME=
+AUTOMATISCH_DATABASE_USER=
+AUTOMATISCH_DATABASE_USER_PASSWORD=
+AUTOMATISCH_REDIS_PASSWORD=
+AUTOMATISCH_ENCRYPTION_KEY=
+AUTOMATISCH_WEBHOOK_SECRET_KEY=
+AUTOMATISCH_APP_SECRET_KEY=
+# Automatisch (Service Details) END
+
+# ActivePieces (Service Details) BEGIN
+ACTIVEPIECES_INIT_ENV=true
+ACTIVEPIECES_ADMIN_USERNAME=
+ACTIVEPIECES_ADMIN_EMAIL_ADDRESS=
+ACTIVEPIECES_ADMIN_PASSWORD=
+ACTIVEPIECES_DATABASE_NAME=
+ACTIVEPIECES_DATABASE_USER=
+ACTIVEPIECES_DATABASE_USER_PASSWORD=
+ACTIVEPIECES_REDIS_PASSWORD=
+ACTIVEPIECES_ENCRYPTION_KEY=
+ACTIVEPIECES_API_KEY=
+ACTIVEPIECES_JWT_SECRET=
+# ActivePieces (Service Details) END
 
 # Service Details END
 EOFCF
@@ -32919,6 +32971,119 @@ function initServicesCredentials()
     DOLIBARR_CRON_SECRET=$(pwgen -c -n 32 1)
     updateConfigVar DOLIBARR_CRON_SECRET $DOLIBARR_CRON_SECRET
   fi
+  if [ -z "$N8N_ADMIN_USERNAME" ]; then
+    N8N_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_n8n"
+    updateConfigVar N8N_ADMIN_USERNAME $N8N_ADMIN_USERNAME
+  fi
+  if [ -z "$N8N_ADMIN_EMAIL_ADDRESS" ]; then
+    N8N_ADMIN_EMAIL_ADDRESS=$N8N_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar N8N_ADMIN_EMAIL_ADDRESS $N8N_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$N8N_ADMIN_PASSWORD" ]; then
+    N8N_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar N8N_ADMIN_PASSWORD $N8N_ADMIN_PASSWORD
+  fi
+  if [ -z "$N8N_DATABASE_NAME" ]; then
+    N8N_DATABASE_NAME=n8ndb
+    updateConfigVar N8N_DATABASE_NAME $N8N_DATABASE_NAME
+  fi
+  if [ -z "$N8N_DATABASE_USER" ]; then
+    N8N_DATABASE_USER=n8n-user
+    updateConfigVar N8N_DATABASE_USER $N8N_DATABASE_USER
+  fi
+  if [ -z "$N8N_DATABASE_USER_PASSWORD" ]; then
+    N8N_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar N8N_DATABASE_USER_PASSWORD $N8N_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$N8N_REDIS_PASSWORD" ]; then
+    N8N_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar N8N_REDIS_PASSWORD $N8N_REDIS_PASSWORD
+  fi
+  if [ -z "$N8N_ENCRYPTION_KEY" ]; then
+    N8N_ENCRYPTION_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar N8N_ENCRYPTION_KEY $N8N_ENCRYPTION_KEY
+  fi
+  if [ -z "$AUTOMATISCH_ADMIN_USERNAME" ]; then
+    AUTOMATISCH_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_automatisch"
+    updateConfigVar AUTOMATISCH_ADMIN_USERNAME $AUTOMATISCH_ADMIN_USERNAME
+  fi
+  if [ -z "$AUTOMATISCH_ADMIN_EMAIL_ADDRESS" ]; then
+    AUTOMATISCH_ADMIN_EMAIL_ADDRESS=$AUTOMATISCH_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar AUTOMATISCH_ADMIN_EMAIL_ADDRESS $AUTOMATISCH_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$AUTOMATISCH_ADMIN_PASSWORD" ]; then
+    AUTOMATISCH_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AUTOMATISCH_ADMIN_PASSWORD $AUTOMATISCH_ADMIN_PASSWORD
+  fi
+  if [ -z "$AUTOMATISCH_DATABASE_NAME" ]; then
+    AUTOMATISCH_DATABASE_NAME=automatischdb
+    updateConfigVar AUTOMATISCH_DATABASE_NAME $AUTOMATISCH_DATABASE_NAME
+  fi
+  if [ -z "$AUTOMATISCH_DATABASE_USER" ]; then
+    AUTOMATISCH_DATABASE_USER=automatisch-user
+    updateConfigVar AUTOMATISCH_DATABASE_USER $AUTOMATISCH_DATABASE_USER
+  fi
+  if [ -z "$AUTOMATISCH_DATABASE_USER_PASSWORD" ]; then
+    AUTOMATISCH_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AUTOMATISCH_DATABASE_USER_PASSWORD $AUTOMATISCH_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$AUTOMATISCH_REDIS_PASSWORD" ]; then
+    AUTOMATISCH_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AUTOMATISCH_REDIS_PASSWORD $AUTOMATISCH_REDIS_PASSWORD
+  fi
+  if [ -z "$AUTOMATISCH_ENCRYPTION_KEY" ]; then
+    AUTOMATISCH_ENCRYPTION_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar AUTOMATISCH_ENCRYPTION_KEY $AUTOMATISCH_ENCRYPTION_KEY
+  fi
+  if [ -z "$AUTOMATISCH_WEBHOOK_SECRET_KEY" ]; then
+    AUTOMATISCH_WEBHOOK_SECRET_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar AUTOMATISCH_WEBHOOK_SECRET_KEY $AUTOMATISCH_WEBHOOK_SECRET_KEY
+  fi
+  if [ -z "$AUTOMATISCH_APP_SECRET_KEY" ]; then
+    AUTOMATISCH_APP_SECRET_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar AUTOMATISCH_APP_SECRET_KEY $AUTOMATISCH_APP_SECRET_KEY
+  fi
+  if [ -z "$ACTIVEPIECES_ADMIN_USERNAME" ]; then
+    ACTIVEPIECES_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_activepieces"
+    updateConfigVar ACTIVEPIECES_ADMIN_USERNAME $ACTIVEPIECES_ADMIN_USERNAME
+  fi
+  if [ -z "$ACTIVEPIECES_ADMIN_EMAIL_ADDRESS" ]; then
+    ACTIVEPIECES_ADMIN_EMAIL_ADDRESS=$ACTIVEPIECES_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar ACTIVEPIECES_ADMIN_EMAIL_ADDRESS $ACTIVEPIECES_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$ACTIVEPIECES_ADMIN_PASSWORD" ]; then
+    ACTIVEPIECES_ADMIN_PASSWORD=$(getPasswordWithSymbol 32)
+    updateConfigVar ACTIVEPIECES_ADMIN_PASSWORD $ACTIVEPIECES_ADMIN_PASSWORD
+  fi
+  if [ -z "$ACTIVEPIECES_DATABASE_NAME" ]; then
+    ACTIVEPIECES_DATABASE_NAME=activepiecesdb
+    updateConfigVar ACTIVEPIECES_DATABASE_NAME $ACTIVEPIECES_DATABASE_NAME
+  fi
+  if [ -z "$ACTIVEPIECES_DATABASE_USER" ]; then
+    ACTIVEPIECES_DATABASE_USER=activepieces-user
+    updateConfigVar ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_USER
+  fi
+  if [ -z "$ACTIVEPIECES_DATABASE_USER_PASSWORD" ]; then
+    ACTIVEPIECES_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ACTIVEPIECES_DATABASE_USER_PASSWORD $ACTIVEPIECES_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$ACTIVEPIECES_REDIS_PASSWORD" ]; then
+    ACTIVEPIECES_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ACTIVEPIECES_REDIS_PASSWORD $ACTIVEPIECES_REDIS_PASSWORD
+  fi
+  if [ -z "$ACTIVEPIECES_ENCRYPTION_KEY" ]; then
+    ACTIVEPIECES_ENCRYPTION_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar ACTIVEPIECES_ENCRYPTION_KEY $ACTIVEPIECES_ENCRYPTION_KEY
+  fi
+  if [ -z "$ACTIVEPIECES_API_KEY" ]; then
+    ACTIVEPIECES_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar ACTIVEPIECES_API_KEY $ACTIVEPIECES_API_KEY
+  fi
+  if [ -z "$ACTIVEPIECES_JWT_SECRET" ]; then
+    ACTIVEPIECES_JWT_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar ACTIVEPIECES_JWT_SECRET $ACTIVEPIECES_JWT_SECRET
+  fi
+
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
     RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
@@ -33103,6 +33268,15 @@ function checkCreateNonbackupDirByStack()
     "dolibarr")
       mkdir -p $HSHQ_NONBACKUP_DIR/dolibarr/redis
       ;;
+    "n8n")
+      mkdir -p $HSHQ_NONBACKUP_DIR/n8n/redis
+      ;;
+    "automatisch")
+      mkdir -p $HSHQ_NONBACKUP_DIR/n8n/automatisch
+      ;;
+    "activepieces")
+      mkdir -p $HSHQ_NONBACKUP_DIR/n8n/activepieces
+      ;;
     *)
       ;;
   esac
@@ -33140,6 +33314,7 @@ function installBaseStacks()
 function initServiceVars()
 {
   set +e
+  checkAddSvc "SVCD_ACTIVEPIECES_APP=activepieces,activepieces,primary,admin,ActivePieces,activepieces,hshq"
   checkAddSvc "SVCD_ADGUARD=adguard,adguard,primary,admin,AdguardHome,adguard,hshq"
   checkAddSvc "SVCD_ADMINER=adminer,adminer,primary,admin,Adminer,adminer,hshq"
   checkAddSvc "SVCD_AISTACK_MINDSDB_APP=aistack,mindsdb,primary,admin,MindsDB,mindsdb,hshq"
@@ -33147,6 +33322,7 @@ function initServiceVars()
   checkAddSvc "SVCD_AISTACK_OPENWEBUI=aistack,openwebui,primary,user,OpenWebUI,openwebui,hshq"
   checkAddSvc "SVCD_AUDIOBOOKSHELF=audiobookshelf,audiobookshelf,other,user,Audiobookshelf,audiobookshelf,le"
   checkAddSvc "SVCD_AUTHELIA=authelia,authelia,other,user,Authelia,authelia,hshq"
+  checkAddSvc "SVCD_AUTOMATISCH_APP=automatisch,automatisch,primary,admin,Automatisch,automatisch,hshq"
   checkAddSvc "SVCD_BARASSISTANT=bar-assistant,bar-assistant,primary,user,Bar Assistant,bar-assistant,hshq"
   checkAddSvc "SVCD_BIND_IP=bind-ip,bind-ip,other,user,BindIP,bind-ip,hshq"
   checkAddSvc "SVCD_BUDIBASE=budibase,budibase,other,user,Budibase,budibase,hshq"
@@ -33224,6 +33400,7 @@ function initServiceVars()
   checkAddSvc "SVCD_MESHCENTRAL=meshcentral,meshcentral,primary,admin,MeshCentral,meshcentral,hshq"
   checkAddSvc "SVCD_METABASE=metabase,metabase,primary,user,Metabase,metabase,hshq"
   checkAddSvc "SVCD_MINTHCM=minthcm,minthcm,primary,user,MintHCM,minthcm,hshq"
+  checkAddSvc "SVCD_N8N_APP=n8n,n8n,primary,admin,n8n,n8n,hshq"
   checkAddSvc "SVCD_NAVIDROME=navidrome,navidrome,other,user,Navidrome,navidrome,hshq"
   checkAddSvc "SVCD_NETDATA=netdata,netdata,primary,admin,Netdata,netdata,hshq"
   checkAddSvc "SVCD_NEXTCLOUD=nextcloud,nextcloud,other,user,Nextcloud,nextcloud,hshq"
@@ -33488,6 +33665,12 @@ function installStackByName()
       installInvoiceNinja $is_integrate ;;
     dolibarr)
       installDolibarr $is_integrate ;;
+    n8n)
+      installn8n $is_integrate ;;
+    automatisch)
+      installAutomatisch $is_integrate ;;
+    activepieces)
+      installActivePieces $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -33709,6 +33892,12 @@ function performUpdateStackByName()
       performUpdateInvoiceNinja ;;
     dolibarr)
       performUpdateDolibarr ;;
+    n8n)
+      performUpdaten8n ;;
+    automatisch)
+      performUpdateAutomatisch ;;
+    activepieces)
+      performUpdateActivePieces ;;
     heimdall)
       performUpdateHeimdall ;;
     ofelia)
@@ -33738,7 +33927,9 @@ function getAutheliaBlock()
   retval="${retval}  rules:\n"
   retval="${retval}    - domain:\n"
   retval="${retval}# Authelia bypass BEGIN\n"
+  retval="${retval}        - $SUB_ACTIVEPIECES.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_AUTOMATISCH.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN\n"
@@ -33782,6 +33973,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MEALIE.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_N8N_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NAVIDROME.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NEXTCLOUD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NCTALKHPB.$HOMESERVER_DOMAIN\n"
@@ -33999,6 +34191,9 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_INVOICESHELF_APP}-Admin" https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $INVOICESHELF_ADMIN_EMAIL_ADDRESS $INVOICESHELF_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_INVOICENINJA_WEB}-Admin" https://$SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $INVOICENINJA_ADMIN_EMAIL_ADDRESS $INVOICENINJA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DOLIBARR_APP}-Admin" https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DOLIBARR_ADMIN_USERNAME $DOLIBARR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_N8N_APP}-Admin" https://$SUB_N8N_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $N8N_ADMIN_EMAIL_ADDRESS $N8N_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUTOMATISCH_APP}-Admin" https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOMATISCH_AUTOMATISCH_EMAIL_ADDRESS $AUTOMATISCH_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ACTIVEPIECES_APP}-Admin" https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN/sign-in $HOMESERVER_ABBREV $ACTIVEPIECES_ADMIN_EMAIL_ADDRESS $ACTIVEPIECES_ADMIN_PASSWORD)"\n"
 
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -34138,6 +34333,9 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_INVOICESHELF_APP}-Admin" https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $INVOICESHELF_ADMIN_EMAIL_ADDRESS $INVOICESHELF_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_INVOICENINJA_WEB}-Admin" https://$SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $INVOICENINJA_ADMIN_EMAIL_ADDRESS $INVOICENINJA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DOLIBARR_APP}-Admin" https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DOLIBARR_ADMIN_USERNAME $DOLIBARR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_N8N_APP}-Admin" https://$SUB_N8N_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $N8N_ADMIN_EMAIL_ADDRESS $N8N_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUTOMATISCH_APP}-Admin" https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOMATISCH_AUTOMATISCH_EMAIL_ADDRESS $AUTOMATISCH_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ACTIVEPIECES_APP}-Admin" https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN/sign-in $HOMESERVER_ABBREV $ACTIVEPIECES_ADMIN_EMAIL_ADDRESS $ACTIVEPIECES_ADMIN_PASSWORD)"\n"
 
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -34561,6 +34759,15 @@ function getHeimdallOrderFromSub()
     "$SUB_DOLIBARR_APP")
       order_num=119
       ;;
+    "$SUB_N8N_APP")
+      order_num=120
+      ;;
+    "$SUB_AUTOMATISCH_APP")
+      order_num=121
+      ;;
+    "$SUB_ACTIVEPIECES_APP")
+      order_num=122
+      ;;
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=400
       ;;
@@ -34608,16 +34815,16 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,dbgate,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,espocrm,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,espocrm,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces
   DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
-  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja
-  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces
+  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces
+  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces
   BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill
   BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill
 }
@@ -35573,6 +35780,39 @@ function getScriptImageByContainerName()
     "dolibarr-redis")
       container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
+    "n8n-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "n8n-app")
+      container_image=$IMG_N8N_APP
+      ;;
+    "n8n-worker")
+      container_image=$IMG_N8N_APP
+      ;;
+    "n8n-redis")
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
+      ;;
+    "automatisch-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "automatisch-app")
+      container_image=$IMG_AUTOMATISCH_APP
+      ;;
+    "automatisch-worker")
+      container_image=$IMG_AUTOMATISCH_APP
+      ;;
+    "automatisch-redis")
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
+      ;;
+    "activepieces-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "activepieces-app")
+      container_image=$IMG_ACTIVEPIECES_APP
+      ;;
+    "activepieces-redis")
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
+      ;;
     *)
       ;;
   esac
@@ -35651,6 +35891,9 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "InvoiceShelf" "INVOICESHELF_INIT_ENV=false,INVOICESHELF_ADMIN_USERNAME=,INVOICESHELF_ADMIN_EMAIL_ADDRESS=,INVOICESHELF_ADMIN_PASSWORD=,INVOICESHELF_DATABASE_NAME=,INVOICESHELF_DATABASE_USER=,INVOICESHELF_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "InvoiceNinja" "INVOICENINJA_INIT_ENV=false,INVOICENINJA_ADMIN_USERNAME=,INVOICENINJA_ADMIN_EMAIL_ADDRESS=,INVOICENINJA_ADMIN_PASSWORD=,INVOICENINJA_DATABASE_NAME=,INVOICENINJA_DATABASE_ROOT_PASSWORD=,INVOICENINJA_DATABASE_USER=,INVOICENINJA_DATABASE_USER_PASSWORD=,INVOICENINJA_REDIS_PASSWORD=,INVOICENINJA_MINIO_KEY=,INVOICENINJA_MINIO_SECRET=,INVOICENINJA_API_SECRET=,INVOICENINJA_UPDATE_SECRET=,INVOICENINJA_WEBCRON_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "Dolibarr" "DOLIBARR_INIT_ENV=false,DOLIBARR_ADMIN_USERNAME=,DOLIBARR_ADMIN_EMAIL_ADDRESS=,DOLIBARR_ADMIN_PASSWORD=,DOLIBARR_DATABASE_NAME=,DOLIBARR_DATABASE_ROOT_PASSWORD=,DOLIBARR_DATABASE_USER=,DOLIBARR_DATABASE_USER_PASSWORD=,DOLIBARR_REDIS_PASSWORD=,DOLIBARR_CRON_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "n8n" "N8N_INIT_ENV=false,N8N_ADMIN_USERNAME=,N8N_ADMIN_EMAIL_ADDRESS=,N8N_ADMIN_PASSWORD=,N8N_DATABASE_NAME=,N8N_DATABASE_USER=,N8N_DATABASE_USER_PASSWORD=,N8N_REDIS_PASSWORD=,N8N_ENCRYPTION_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "Automatisch" "AUTOMATISCH_INIT_ENV=false,AUTOMATISCH_ADMIN_USERNAME=,AUTOMATISCH_ADMIN_EMAIL_ADDRESS=,AUTOMATISCH_ADMIN_PASSWORD=,AUTOMATISCH_DATABASE_NAME=,AUTOMATISCH_DATABASE_USER=,AUTOMATISCH_DATABASE_USER_PASSWORD=,AUTOMATISCH_REDIS_PASSWORD=,AUTOMATISCH_ENCRYPTION_KEY=,AUTOMATISCH_WEBHOOK_SECRET_KEY=,AUTOMATISCH_APP_SECRET_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "ActivePieces" "ACTIVEPIECES_INIT_ENV=false,ACTIVEPIECES_ADMIN_USERNAME=,ACTIVEPIECES_ADMIN_EMAIL_ADDRESS=,ACTIVEPIECES_ADMIN_PASSWORD=,ACTIVEPIECES_DATABASE_NAME=,ACTIVEPIECES_DATABASE_USER=,ACTIVEPIECES_DATABASE_USER_PASSWORD=,ACTIVEPIECES_REDIS_PASSWORD=,ACTIVEPIECES_ENCRYPTION_KEY=,ACTIVEPIECES_API_KEY=,ACTIVEPIECES_JWT_SECRET=" $CONFIG_FILE false
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -61475,9 +61718,11 @@ service:
       exporters: [debug]
 EOFOT
   cat <<EOFAS > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME
+"ActivePieces" postgres activepieces-db $ACTIVEPIECES_DATABASE_NAME $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_USER_PASSWORD
 "Adminer" mysql adminer-db $ADMINER_DATABASE_NAME $ADMINER_DATABASE_USER $ADMINER_DATABASE_USER_PASSWORD
 "MindsDB" postgres aistack-mindsdb-db $AISTACK_MINDSDB_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
 "Langfuse" postgres aistack-mindsdb-db $AISTACK_LANGFUSE_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
+"Automatisch" postgres automatisch-db $AUTOMATISCH_DATABASE_NAME $AUTOMATISCH_DATABASE_USER $AUTOMATISCH_DATABASE_USER_PASSWORD
 "Calcom" postgres calcom-db $CALCOM_DATABASE_NAME $CALCOM_DATABASE_USER $CALCOM_DATABASE_USER_PASSWORD
 "Discourse" postgres discourse-db $DISCOURSE_DATABASE_NAME $DISCOURSE_DATABASE_USER $DISCOURSE_DATABASE_USER_PASSWORD
 "Dolibarr" mysql dolibarr-db $DOLIBARR_DATABASE_NAME $DOLIBARR_DATABASE_USER $DOLIBARR_DATABASE_USER_PASSWORD
@@ -61508,6 +61753,7 @@ EOFOT
 "MeshCentral" mysql meshcentral-db $MESHCENTRAL_DATABASE_NAME $MESHCENTRAL_DATABASE_USER $MESHCENTRAL_DATABASE_USER_PASSWORD
 "Metabase" postgres metabase-db $METABASE_DATABASE_NAME $METABASE_DATABASE_USER $METABASE_DATABASE_USER_PASSWORD
 "MintHCM" mysql minthcm-db $MINTHCM_DATABASE_NAME $MINTHCM_DATABASE_USER $MINTHCM_DATABASE_USER_PASSWORD
+"n8n" postgres n8n-db $N8N_DATABASE_NAME $N8N_DATABASE_USER $N8N_DATABASE_USER_PASSWORD
 "Nextcloud" postgres nextcloud-db $NEXTCLOUD_DATABASE_NAME $NEXTCLOUD_DATABASE_USER $NEXTCLOUD_DATABASE_USER_PASSWORD
 "Odoo" postgres odoo-db $ODOO_DATABASE_NAME $ODOO_DATABASE_USER $ODOO_DATABASE_USER_PASSWORD
 "Ombi" mysql ombi-db $OMBI_DATABASE_NAME $OMBI_DATABASE_USER $OMBI_DATABASE_USER_PASSWORD
@@ -74402,6 +74648,897 @@ function performUpdateDolibarr()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# n8n
+function installn8n()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory n8n "n8n"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName n8n-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName n8n-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName n8n-worker)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName n8n-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/n8n
+  mkdir $HSHQ_STACKS_DIR/n8n/data
+  mkdir $HSHQ_STACKS_DIR/n8n/files
+  mkdir $HSHQ_STACKS_DIR/n8n/db
+  mkdir $HSHQ_STACKS_DIR/n8n/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/n8n
+  mkdir $HSHQ_NONBACKUP_DIR/n8n/redis
+  chmod 777 $HSHQ_STACKS_DIR/n8n/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $N8N_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  N8N_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $N8N_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2a/' | sed 's/\$/\\\$/g')
+  outputConfign8n
+  installStack n8n n8n-app "Editor is now accessible via" $HOME/n8n.env 5
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$N8N_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_N8N_APP Admin Login Info" -b "$FMLNAME_N8N_APP Admin Username: $N8N_ADMIN_EMAIL_ADDRESS\n$FMLNAME_N8N_APP Admin Password: $N8N_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    N8N_INIT_ENV=true
+    updateConfigVar N8N_INIT_ENV $N8N_INIT_ENV
+  fi
+  sleep 3
+  docker exec n8n-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/n8n/dbexport/setupDBSettings.sh
+  docker container restart n8n-app
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_N8N_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://n8n-app:5678 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>>>flush_interval -1\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_N8N_APP $MANAGETLS_N8N_APP "$is_integrate_hshq" $NETDEFAULT_N8N_APP "$inner_block"
+  insertSubAuthelia $SUB_N8N_APP.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll n8n "$FMLNAME_N8N_APP" $USERTYPE_N8N_APP "https://$SUB_N8N_APP.$HOMESERVER_DOMAIN" "n8n.png" "$(getHeimdallOrderFromSub $SUB_N8N_APP $USERTYPE_N8N_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true n8n "$FMLNAME_N8N_APP" postgres n8n-db $N8N_DATABASE_NAME $N8N_DATABASE_USER $N8N_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfign8n()
+{
+  cat <<EOFMT > $HOME/n8n-compose.yml
+$STACK_VERSION_PREFIX n8n $(getScriptStackVersion n8n)
+
+services:
+  n8n-db:
+    image: $(getScriptImageByContainerName n8n-db)
+    container_name: n8n-db
+    hostname: n8n-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-n8n-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/n8n/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/n8n/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.n8n-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.n8n-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.n8n-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.n8n-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.n8n-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.n8n-hourly-db.email-from=n8n Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.n8n-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.n8n-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.n8n-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.n8n-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.n8n-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.n8n-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.n8n-monthly-db.email-from=n8n Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.n8n-monthly-db.mail-only-on-error=false"
+
+  n8n-app:
+    image: $(getScriptImageByContainerName n8n-app)
+    container_name: n8n-app
+    hostname: n8n-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - n8n-db
+    networks:
+      - int-n8n-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-n8n-data:/home/node/.n8n
+      - \${PORTAINER_HSHQ_STACKS_DIR}/n8n/files:/files
+
+  n8n-worker:
+    image: $(getScriptImageByContainerName n8n-worker)
+    container_name: n8n-worker
+    hostname: n8n-worker
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - n8n-db
+      - n8n-app
+    command: worker
+    networks:
+      - int-n8n-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-n8n-data:/home/node/.n8n
+      - \${PORTAINER_HSHQ_STACKS_DIR}/n8n/files:/files
+
+  n8n-redis:
+    image: $(getScriptImageByContainerName n8n-redis)
+    container_name: n8n-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $N8N_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-n8n-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-n8n-redis:/data
+
+volumes:
+  v-n8n-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/n8n/data
+  v-n8n-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/n8n/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  int-n8n-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/n8n.env
+TZ=\${PORTAINER_TZ}
+GENERIC_TIMEZONE=\${PORTAINER_TZ}
+POSTGRES_DB=$N8N_DATABASE_NAME
+POSTGRES_USER=$N8N_DATABASE_USER
+POSTGRES_PASSWORD=$N8N_DATABASE_USER_PASSWORD
+N8N_BASIC_AUTH_ACTIVE=true
+N8N_BASIC_AUTH_USER=$N8N_ADMIN_USERNAME
+N8N_BASIC_AUTH_PASSWORD=$N8N_ADMIN_PASSWORD
+DB_TYPE=postgresdb
+DB_POSTGRESDB_HOST=n8n-db
+DB_POSTGRESDB_PORT=5432
+DB_POSTGRESDB_DATABASE=$N8N_DATABASE_NAME
+DB_POSTGRESDB_USER=$N8N_DATABASE_USER
+DB_POSTGRESDB_PASSWORD=$N8N_DATABASE_USER_PASSWORD
+N8N_PROTOCOL=http
+N8N_HOST=$SUB_N8N_APP.$HOMESERVER_DOMAIN
+VUE_APP_URL_BASE_API=https://$SUB_N8N_APP.$HOMESERVER_DOMAIN
+WEBHOOK_TUNNEL_URL=https://$SUB_N8N_APP.$HOMESERVER_DOMAIN
+WEBHOOK_URL=https://$SUB_N8N_APP.$HOMESERVER_DOMAIN
+N8N_EMAIL_MODE=smtp
+N8N_SMTP_HOST=$SMTP_HOSTNAME
+N8N_SMTP_PORT=$SMTP_HOSTPORT
+N8N_SMTP_USER=
+N8N_SMTP_PASS=
+N8N_SMTP_SENDER=n8n HSHQ Admin<$EMAIL_ADMIN_EMAIL_ADDRESS>
+N8N_SMTP_SSL=false
+N8N_SMTP_STARTTLS=true
+NODE_ENV=production
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+QUEUE_BULL=true
+QUEUE_BULL_REDIS_HOST=n8n-redis
+QUEUE_BULL_REDIS_PASSWORD=$N8N_REDIS_PASSWORD
+N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY
+EXECUTIONS_MODE=queue
+EXECUTIONS_DATA_MAX_AGE=72
+EXECUTIONS_DATA_PRUNE=true
+N8N_RUNNERS_ENABLED=true
+OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS=true
+N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+N8N_GIT_NODE_DISABLE_BARE_REPOS=true
+N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+N8N_PROXY_HOPS=1
+EOFMT
+  dtnow=$(date -u '+%Y-%m-%dT%H:%M:%S.%3NZ')
+  cat <<EOFDS > $HSHQ_STACKS_DIR/n8n/dbexport/setupDBSettings.sh
+#!/bin/bash
+
+PGPASSWORD=$N8N_DATABASE_USER_PASSWORD
+curSeconds=0
+maxSeconds=300
+while [ \$curSeconds -lt \$maxSeconds ]
+do
+  admUser=\$(echo "select slug from role where \"displayName\"='Admin';" | psql -t -A -U $N8N_DATABASE_USER $N8N_DATABASE_NAME 2> /dev/null)
+  if ! [ -z "\$admUser" ] && [ "\$admUser" = "global:admin" ]; then
+    break
+  fi
+  echo "Database not ready, sleeping 3 seconds, total wait=\$curSeconds seconds..."
+  sleep 3
+  curSeconds=\$((curSeconds+3))
+done
+echo "update project set name='n8n $(getAdminEmailName) <$N8N_ADMIN_EMAIL_ADDRESS>' where \"type\"='personal';"  | psql -U $N8N_DATABASE_USER $N8N_DATABASE_NAME
+echo "update \"user\" set email='$N8N_ADMIN_EMAIL_ADDRESS', \"firstName\"='n8n', \"lastName\"='$(getAdminEmailName)', password='$N8N_ADMIN_PASSWORD_HASH', \"personalizationAnswers\"='{\"version\":\"v4\",\"personalization_survey_submitted_at\":\"$dtnow\",\"personalization_survey_n8n_version\":\"1.114.0\",\"companyType\":\"personal\",\"reportedSource\":\"other\",\"reportedSourceOther\":\"na\"}' where \"roleSlug\"='global:owner';" | psql -U $N8N_DATABASE_USER $N8N_DATABASE_NAME
+echo "update settings set value='true' where key='userManagement.isInstanceOwnerSetUp';" | psql -U $N8N_DATABASE_USER $N8N_DATABASE_NAME
+EOFDS
+  chmod +x $HSHQ_STACKS_DIR/n8n/dbexport/setupDBSettings.sh
+}
+
+function performUpdaten8n()
+{
+  perform_stack_name=n8n
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/n8nio/n8n:1.114.0,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/n8nio/n8n:1.114.0,mirror.gcr.io/n8nio/n8n:1.114.0"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Automatisch
+function installAutomatisch()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory automatisch "Automatisch"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName automatisch-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName automatisch-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName automatisch-worker)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName automatisch-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/automatisch
+  mkdir $HSHQ_STACKS_DIR/automatisch/db
+  mkdir $HSHQ_STACKS_DIR/automatisch/dbexport
+  mkdir $HSHQ_STACKS_DIR/automatisch/storage
+  mkdir $HSHQ_NONBACKUP_DIR/automatisch
+  mkdir $HSHQ_NONBACKUP_DIR/automatisch/redis
+  chmod 777 $HSHQ_STACKS_DIR/automatisch/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $AUTOMATISCH_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  AUTOMATISCH_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $AUTOMATISCH_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/' | sed 's/\$/\\\$/g')
+  outputConfigAutomatisch
+  installStack automatisch automatisch-app "" $HOME/automatisch.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$AUTOMATISCH_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_AUTOMATISCH_APP Admin Login Info" -b "$FMLNAME_AUTOMATISCH_APP Admin Username: $AUTOMATISCH_ADMIN_EMAIL_ADDRESS\n$FMLNAME_AUTOMATISCH_APP Admin Password: $AUTOMATISCH_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    AUTOMATISCH_INIT_ENV=true
+    updateConfigVar AUTOMATISCH_INIT_ENV $AUTOMATISCH_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_AUTOMATISCH_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  docker exec automatisch-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/automatisch/dbexport/setupDBSettings.sh
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://automatisch-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_AUTOMATISCH_APP $MANAGETLS_AUTOMATISCH_APP "$is_integrate_hshq" $NETDEFAULT_AUTOMATISCH_APP "$inner_block"
+  insertSubAuthelia $SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll automatisch "$FMLNAME_AUTOMATISCH_APP" $USERTYPE_AUTOMATISCH_APP "https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN" "automatisch.png" "$(getHeimdallOrderFromSub $SUB_AUTOMATISCH_APP $USERTYPE_AUTOMATISCH_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true automatisch "$FMLNAME_AUTOMATISCH_APP" postgres automatisch-db $AUTOMATISCH_DATABASE_NAME $AUTOMATISCH_DATABASE_USER $AUTOMATISCH_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigAutomatisch()
+{
+  cat <<EOFMT > $HOME/automatisch-compose.yml
+$STACK_VERSION_PREFIX automatisch $(getScriptStackVersion automatisch)
+
+services:
+  automatisch-db:
+    image: $(getScriptImageByContainerName automatisch-db)
+    container_name: automatisch-db
+    hostname: automatisch-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-automatisch-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/automatisch/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/automatisch/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.automatisch-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.automatisch-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.automatisch-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.automatisch-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.automatisch-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.automatisch-hourly-db.email-from=Automatisch Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.automatisch-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.automatisch-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.automatisch-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.automatisch-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.automatisch-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.automatisch-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.automatisch-monthly-db.email-from=Automatisch Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.automatisch-monthly-db.mail-only-on-error=false"
+
+  automatisch-app:
+    image: $(getScriptImageByContainerName automatisch-app)
+    container_name: automatisch-app
+    hostname: automatisch-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - automatisch-db
+      - automatisch-redis
+    networks:
+      - int-automatisch-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-automatisch-storage:/automatisch/storage
+
+  automatisch-worker:
+    image: $(getScriptImageByContainerName automatisch-worker)
+    container_name: automatisch-worker
+    hostname: automatisch-worker
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - automatisch-db
+      - automatisch-redis
+      - automatisch-app
+    networks:
+      - int-automatisch-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-automatisch-storage:/automatisch/storage
+    environment:
+      - WORKER=true
+
+  automatisch-redis:
+    image: $(getScriptImageByContainerName automatisch-redis)
+    container_name: automatisch-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $AUTOMATISCH_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-automatisch-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-automatisch-redis:/data
+
+volumes:
+  v-automatisch-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/automatisch/storage
+  v-automatisch-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/automatisch/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  int-automatisch-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/automatisch.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$AUTOMATISCH_DATABASE_NAME
+POSTGRES_USER=$AUTOMATISCH_DATABASE_USER
+POSTGRES_PASSWORD=$AUTOMATISCH_DATABASE_USER_PASSWORD
+APP_ENV=production
+REDIS_HOST=automatisch-redis
+REDIS_PASSWORD=$AUTOMATISCH_REDIS_PASSWORD
+POSTGRES_HOST=automatisch-db
+POSTGRES_DATABASE=$AUTOMATISCH_DATABASE_NAME
+POSTGRES_USERNAME=$AUTOMATISCH_DATABASE_USER
+WEB_APP_URL=https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN
+WEBHOOK_URL=https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN
+ENCRYPTION_KEY=$AUTOMATISCH_ENCRYPTION_KEY
+WEBHOOK_SECRET_KEY=$AUTOMATISCH_WEBHOOK_SECRET_KEY
+APP_SECRET_KEY=$AUTOMATISCH_APP_SECRET_KEY
+TELEMETRY_ENABLED=false
+SMTP_HOST=$SMTP_HOSTNAME
+SMTP_PORT=$SMTP_HOSTPORT
+SMTP_SECURE=true
+FROM_EMAIL=Automatisch $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>
+EOFMT
+  dtnow=$(date -u '+%Y-%m-%dT%H:%M:%S.%3NZ')
+  cat <<EOFDS > $HSHQ_STACKS_DIR/automatisch/dbexport/setupDBSettings.sh
+#!/bin/bash
+
+PGPASSWORD=$AUTOMATISCH_DATABASE_USER_PASSWORD
+curSeconds=0
+maxSeconds=300
+while [ \$curSeconds -lt \$maxSeconds ]
+do
+  admUser=\$(echo "select email from users;" | psql -t -A -U $AUTOMATISCH_DATABASE_USER $AUTOMATISCH_DATABASE_NAME 2> /dev/null)
+  if ! [ -z "\$admUser" ]; then
+    break
+  fi
+  echo "Database not ready, sleeping 3 seconds, total wait=\$curSeconds seconds..."
+  sleep 3
+  curSeconds=\$((curSeconds+3))
+done
+echo "update users set email='$AUTOMATISCH_ADMIN_EMAIL_ADDRESS', password='$AUTOMATISCH_ADMIN_PASSWORD_HASH', full_name='Automatisch $(getAdminEmailName)';"  | psql -U $AUTOMATISCH_DATABASE_USER $AUTOMATISCH_DATABASE_NAME
+
+EOFDS
+  chmod +x $HSHQ_STACKS_DIR/automatisch/dbexport/setupDBSettings.sh
+}
+
+function performUpdateAutomatisch()
+{
+  perform_stack_name=automatisch
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/automatischio/automatisch:0.15.0,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/automatischio/automatisch:0.15.0,mirror.gcr.io/automatischio/automatisch:0.15.0"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# ActivePieces
+function installActivePieces()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory activepieces "ActivePieces"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName activepieces-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName activepieces-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName activepieces-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/activepieces
+  mkdir $HSHQ_STACKS_DIR/activepieces/db
+  mkdir $HSHQ_STACKS_DIR/activepieces/dbexport
+  mkdir $HSHQ_STACKS_DIR/activepieces/cache
+  mkdir $HSHQ_NONBACKUP_DIR/activepieces
+  mkdir $HSHQ_NONBACKUP_DIR/activepieces/redis
+  chmod 777 $HSHQ_STACKS_DIR/activepieces/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $ACTIVEPIECES_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  ACTIVEPIECES_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $ACTIVEPIECES_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/' | sed 's/\$/\\\$/g')
+  outputConfigActivePieces
+  installStack activepieces activepieces-app "The application started on" $HOME/activepieces.env 20 900
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$ACTIVEPIECES_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_ACTIVEPIECES_APP Admin Login Info" -b "$FMLNAME_ACTIVEPIECES_APP Admin Username: $ACTIVEPIECES_ADMIN_EMAIL_ADDRESS\n$FMLNAME_ACTIVEPIECES_APP Admin Password: $ACTIVEPIECES_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    ACTIVEPIECES_INIT_ENV=true
+    updateConfigVar ACTIVEPIECES_INIT_ENV $ACTIVEPIECES_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_ACTIVEPIECES_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  docker exec activepieces-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/activepieces/dbexport/setupDBSettings.sh
+  docker container restart activepieces-app > /dev/null 2>&1
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://activepieces-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_ACTIVEPIECES_APP $MANAGETLS_ACTIVEPIECES_APP "$is_integrate_hshq" $NETDEFAULT_ACTIVEPIECES_APP "$inner_block"
+  insertSubAuthelia $SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll activepieces "$FMLNAME_ACTIVEPIECES_APP" $USERTYPE_ACTIVEPIECES_APP "https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN" "activepieces.png" "$(getHeimdallOrderFromSub $SUB_ACTIVEPIECES_APP $USERTYPE_ACTIVEPIECES_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true activepieces "$FMLNAME_ACTIVEPIECES_APP" postgres activepieces-db $ACTIVEPIECES_DATABASE_NAME $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigActivePieces()
+{
+  cat <<EOFMT > $HOME/activepieces-compose.yml
+$STACK_VERSION_PREFIX activepieces $(getScriptStackVersion activepieces)
+
+services:
+  activepieces-db:
+    image: $(getScriptImageByContainerName activepieces-db)
+    container_name: activepieces-db
+    hostname: activepieces-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-activepieces-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/activepieces/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/activepieces/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.activepieces-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.activepieces-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.activepieces-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.activepieces-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.activepieces-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.activepieces-hourly-db.email-from=ActivePieces Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.activepieces-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.activepieces-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.activepieces-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.activepieces-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.activepieces-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.activepieces-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.activepieces-monthly-db.email-from=ActivePieces Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.activepieces-monthly-db.mail-only-on-error=false"
+
+  activepieces-app:
+    image: $(getScriptImageByContainerName activepieces-app)
+    container_name: activepieces-app
+    hostname: activepieces-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - activepieces-db
+      - activepieces-redis
+    networks:
+      - int-activepieces-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/activepieces/cache:/usr/src/app/cache
+
+  activepieces-redis:
+    image: $(getScriptImageByContainerName activepieces-redis)
+    container_name: activepieces-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $ACTIVEPIECES_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-activepieces-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-activepieces-redis:/data
+
+volumes:
+  v-activepieces-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/activepieces/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  int-activepieces-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/activepieces.env
+TZ=\${PORTAINER_TZ}
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+POSTGRES_DB=$ACTIVEPIECES_DATABASE_NAME
+POSTGRES_USER=$ACTIVEPIECES_DATABASE_USER
+POSTGRES_PASSWORD=$ACTIVEPIECES_DATABASE_USER_PASSWORD
+AP_ENGINE_EXECUTABLE_PATH=dist/packages/engine/main.js
+AP_ENCRYPTION_KEY=$ACTIVEPIECES_ENCRYPTION_KEY
+AP_API_KEY=$ACTIVEPIECES_API_KEY
+AP_JWT_SECRET=$ACTIVEPIECES_JWT_SECRET
+AP_ENVIRONMENT=prod
+AP_FRONTEND_URL=https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN
+AP_WEBHOOK_TIMEOUT_SECONDS=30
+AP_TRIGGER_DEFAULT_POLL_INTERVAL=5
+AP_DB_TYPE=POSTGRES
+AP_POSTGRES_DATABASE=$ACTIVEPIECES_DATABASE_NAME
+AP_POSTGRES_HOST=activepieces-db
+AP_POSTGRES_PORT=5432
+AP_POSTGRES_USERNAME=$ACTIVEPIECES_DATABASE_USER
+AP_POSTGRES_PASSWORD=$ACTIVEPIECES_DATABASE_USER_PASSWORD
+AP_EXECUTION_MODE=UNSANDBOXED
+AP_REDIS_TYPE=STANDALONE
+AP_REDIS_HOST=activepieces-redis
+AP_REDIS_PORT=6379
+AP_REDIS_PASSWORD=$ACTIVEPIECES_REDIS_PASSWORD
+AP_FLOW_TIMEOUT_SECONDS=600
+AP_TELEMETRY_ENABLED=false
+AP_TEMPLATES_SOURCE_URL="https://cloud.activepieces.com/api/v1/flow-templates"
+AP_SMTP_HOST=$SMTP_HOSTNAME
+AP_SMTP_PORT=465
+AP_SMTP_USERNAME=$EMAIL_SMTP_EMAIL_ADDRESS
+AP_SMTP_PASSWORD=$EMAIL_SMTP_PASSWORD
+AP_SMTP_SENDER_EMAIL=$EMAIL_SMTP_EMAIL_ADDRESS
+AP_SMTP_SENDER_NAME=ActivePieces $(getAdminEmailName)
+EOFMT
+  dtnow=$(date -u '+%Y-%m-%d %H:%M:%S.%3N')
+  ident_id=$(pwgen -c -n 21 1)
+  tok_ver=$(pwgen -c -n 21 1)
+  user_id=$(pwgen -c -n 21 1)
+  plat_id=$(pwgen -c -n 21 1)
+  proj_id=$(pwgen -c -n 21 1)
+  cat <<EOFDS > $HSHQ_STACKS_DIR/activepieces/dbexport/setupDBSettings.sh
+#!/bin/bash
+
+PGPASSWORD=$ACTIVEPIECES_DATABASE_USER_PASSWORD
+curSeconds=0
+maxSeconds=300
+while [ \$curSeconds -lt \$maxSeconds ]
+do
+  admUser=\$(echo "select id from worker_machine limit 1;" | psql -t -A -U $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_NAME 2> /dev/null)
+  if ! [ -z "\$admUser" ]; then
+    break
+  fi
+  echo "Database not ready, sleeping 3 seconds, total wait=\$curSeconds seconds..."
+  sleep 3
+  curSeconds=\$((curSeconds+3))
+done
+echo "insert into user_identity(id,created,updated,email,password,\"trackEvents\",\"newsLetter\",verified,\"firstName\",\"lastName\",\"tokenVersion\",provider) values('$ident_id','$dtnow','$dtnow','$ACTIVEPIECES_ADMIN_EMAIL_ADDRESS','$ACTIVEPIECES_ADMIN_PASSWORD_HASH',true,false,true,'ActivePieces','$(getAdminEmailName)','$tok_ver','EMAIL');"  | psql -U $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_NAME
+echo "insert into \"user\"(id,created,updated,status,\"platformId\",\"platformRole\",\"identityId\") values('$user_id','$dtnow','$dtnow','ACTIVE','$plat_id','ADMIN','$ident_id');"  | psql -U $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_NAME
+echo "insert into platform(id,created,updated,\"ownerId\",name,\"primaryColor\",\"logoIconUrl\",\"fullLogoUrl\",\"favIconUrl\",\"cloudAuthEnabled\",\"filteredPieceNames\",\"filteredPieceBehavior\",\"allowedAuthDomains\",\"enforceAllowedAuthDomains\",\"emailAuthEnabled\",\"federatedAuthProviders\",\"pinnedPieces\") values('$plat_id','$dtnow','$dtnow','$user_id','ActivePieces Platform','#6e41e2','https://cdn.activepieces.com/brand/logo.svg','https://cdn.activepieces.com/brand/full-logo.png','https://cdn.activepieces.com/brand/favicon.ico',true,'{}','BLOCKED','{}',false,true,'{}','{}');"  | psql -U $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_NAME
+echo "insert into project(id,created,updated,\"ownerId\",\"displayName\",\"notifyStatus\",\"platformId\",\"releasesEnabled\") values('$proj_id','$dtnow','$dtnow','$user_id','ActivePieces Project','ALWAYS','$plat_id',false);"  | psql -U $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_NAME
+echo "insert into flag(id,created,updated,value) values('USER_CREATED','$dtnow','$dtnow','true');"  | psql -U $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_NAME
+
+EOFDS
+  chmod +x $HSHQ_STACKS_DIR/activepieces/dbexport/setupDBSettings.sh
+}
+
+function performUpdateActivePieces()
+{
+  perform_stack_name=activepieces
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/activepieces/activepieces:0.70.1,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="ghcr.io/activepieces/activepieces:0.70.1,ghcr.io/activepieces/activepieces:0.70.1"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # ExampleService
 function installExampleService()
 {
@@ -74443,6 +75580,11 @@ function installExampleService()
     updateConfigVar EXAMPLESERVICE_INIT_ENV $EXAMPLESERVICE_INIT_ENV
   fi
   sleep 3
+  if [ -z "$FMLNAME_EXAMPLESERVICE_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_EXAMPLESERVICE_APP.$HOMESERVER_DOMAIN {\n"
@@ -82875,6 +84017,13 @@ TZ=\${PORTAINER_TZ}
 LOGIN=$DBGATE_ADMIN_USERNAME
 PASSWORD=$DBGATE_ADMIN_PASSWORD
 CONNECTIONS=Adminer,MindsDB,Langfuse,Budibase,Discourse,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,Kanboard,Keila,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MintHCM,Nextcloud,Ombi,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Vaultwarden,Wallabag,Wikijs,WordPress,Yamtrack
+LABEL_ActivePieces=ActivePieces
+ENGINE_ActivePieces=postgres@dbgate-plugin-postgres
+SERVER_ActivePieces=activepieces-db
+DATABASE_ActivePieces=$ACTIVEPIECES_DATABASE_NAME
+USER_ActivePieces=$ACTIVEPIECES_DATABASE_USER
+PASSWORD_ActivePieces=$ACTIVEPIECES_DATABASE_USER_PASSWORD
+PORT_ActivePieces=5432
 LABEL_Adminer=Adminer
 ENGINE_Adminer=mysql@dbgate-plugin-mysql
 SERVER_Adminer=adminer-db
@@ -82896,6 +84045,13 @@ DATABASE_Langfuse=$AISTACK_LANGFUSE_DATABASE_NAME
 USER_Langfuse=$AISTACK_MINDSDB_DATABASE_USER
 PASSWORD_Langfuse=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
 PORT_Langfuse=5432
+LABEL_Automatisch=Automatisch
+ENGINE_Automatisch=postgres@dbgate-plugin-postgres
+SERVER_Automatisch=automatisch-db
+DATABASE_Automatisch=$AUTOMATISCH_DATABASE_NAME
+USER_Automatisch=$AUTOMATISCH_DATABASE_USER
+PASSWORD_Automatisch=$AUTOMATISCH_DATABASE_USER_PASSWORD
+PORT_Automatisch=5432
 LABEL_Budibase=Budibase
 ENGINE_Budibase=mysql@dbgate-plugin-mysql
 SERVER_Budibase=budibase-db
@@ -83113,6 +84269,13 @@ DATABASE_MintHCM=$MINTHCM_DATABASE_NAME
 USER_MintHCM=$MINTHCM_DATABASE_USER
 PASSWORD_MintHCM=$MINTHCM_DATABASE_USER_PASSWORD
 PORT_MintHCM=3306
+LABEL_n8n=n8n
+ENGINE_n8n=postgres@dbgate-plugin-postgres
+SERVER_n8n=n8n-db
+DATABASE_n8n=$N8N_DATABASE_NAME
+USER_n8n=$N8N_DATABASE_USER
+PASSWORD_n8n=$N8N_DATABASE_USER_PASSWORD
+PORT_n8n=5432
 LABEL_Nextcloud=Nextcloud
 ENGINE_Nextcloud=postgres@dbgate-plugin-postgres
 SERVER_Nextcloud=nextcloud-db
@@ -83432,6 +84595,14 @@ SQLPAD_EDITOR_WORD_WRAP=false
 SQLPAD_HTTPS_CERT_PATH=/certs/sqlpad.crt
 SQLPAD_HTTPS_KEY_PATH=/certs/sqlpad.key
 SQLPAD_PASSPHRASE=$SQLPAD_PASSPHRASE
+SQLPAD_CONNECTIONS__activepieces__name=ActivePieces
+SQLPAD_CONNECTIONS__activepieces__driver=postgres
+SQLPAD_CONNECTIONS__activepieces__host=activepieces-db
+SQLPAD_CONNECTIONS__activepieces__database=$ACTIVEPIECES_DATABASE_NAME
+SQLPAD_CONNECTIONS__activepieces__username=$ACTIVEPIECES_DATABASE_USER
+SQLPAD_CONNECTIONS__activepieces__password=$ACTIVEPIECES_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__activepieces__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__activepieces__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__adminer__name=Adminer
 SQLPAD_CONNECTIONS__adminer__driver=mysql
 SQLPAD_CONNECTIONS__adminer__host=adminer-db
@@ -83456,6 +84627,14 @@ SQLPAD_CONNECTIONS__aistack-langfuse__username=$AISTACK_MINDSDB_DATABASE_USER
 SQLPAD_CONNECTIONS__aistack-langfuse__password=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__aistack-langfuse__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__aistack-langfuse__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__automatisch__name=Automatisch
+SQLPAD_CONNECTIONS__automatisch__driver=postgres
+SQLPAD_CONNECTIONS__automatisch__host=automatisch-db
+SQLPAD_CONNECTIONS__automatisch__database=$AUTOMATISCH_DATABASE_NAME
+SQLPAD_CONNECTIONS__automatisch__username=$AUTOMATISCH_DATABASE_USER
+SQLPAD_CONNECTIONS__automatisch__password=$AUTOMATISCH_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__automatisch__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__automatisch__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__budibase__name=Budibase
 SQLPAD_CONNECTIONS__budibase__driver=mysql
 SQLPAD_CONNECTIONS__budibase__host=budibase-db
@@ -83704,6 +84883,14 @@ SQLPAD_CONNECTIONS__minthcm__username=$MINTHCM_DATABASE_USER
 SQLPAD_CONNECTIONS__minthcm__password=$MINTHCM_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__minthcm__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__minthcm__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__n8n__name=n8n
+SQLPAD_CONNECTIONS__n8n__driver=postgres
+SQLPAD_CONNECTIONS__n8n__host=n8n-db
+SQLPAD_CONNECTIONS__n8n__database=$N8N_DATABASE_NAME
+SQLPAD_CONNECTIONS__n8n__username=$N8N_DATABASE_USER
+SQLPAD_CONNECTIONS__n8n__password=$N8N_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__n8n__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__n8n__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__nextcloud__name=Nextcloud
 SQLPAD_CONNECTIONS__nextcloud__driver=postgres
 SQLPAD_CONNECTIONS__nextcloud__host=nextcloud-db
@@ -84581,7 +85768,10 @@ function checkInsertServiceHeimdall()
   is_restart="$6"
   svc_is_active="$7"
   svc_order="$8"
-
+  if [ -z "$svc_proper_name" ]; then
+    echo "Proper name is empty, cannot insert into Heimdall..."
+    return
+  fi
   user_id=$(getHeimdallUserIDFromType $user_type)
   docker container stop heimdall > /dev/null 2>&1
   insert_id=$(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select id from items where user_id='$user_id' and url='$svc_url';")
@@ -85815,8 +87005,11 @@ function checkInsertServiceUptimeKuma()
   svc_url=$4
   is_restart=$5
   svc_is_active=$6
-
   set +e
+  if [ -z "$svc_proper_name" ]; then
+    echo "Proper name is empty, cannot insert into UptimeKuma..."
+    return
+  fi
   docker container stop uptimekuma > /dev/null 2>&1
   set -e
   svc_id=$(sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Select id from monitor where url='$svc_url';")
