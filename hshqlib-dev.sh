@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=208
+HSHQ_LIB_SCRIPT_VERSION=209
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -11701,8 +11701,7 @@ function performMyNetworkRemoveClientDNS()
   cdns_stack_name="$2"
   is_remove_network_conn="$3"
   is_manage_heimdall="$4"
-  removeCaddySnippetImport home sn-sub-${cdns_stack_name}
-  removeCaddySnippetImport primary sn-sub-${cdns_stack_name}
+  removeCaddySnippetAllImports sn-sub-${cdns_stack_name}
   removeCaddySnippet "# sn-sub-${cdns_stack_name} BEGIN" "# sn-sub-${cdns_stack_name} END"
   removeServiceFromConfig "${cdns_stack_name}"
   checkDeleteStackAndDirectory $cdns_stack_name "$cdns_stack_name" true true
@@ -29147,8 +29146,8 @@ function loadPinnedDockerImages()
   IMG_HOMEASSISTANT_TASMOADMIN=ghcr.io/tasmoadmin/tasmoadmin:v4.3.1
   IMG_HUGINN_APP=ghcr.io/huginn/huginn:1e0c359a46b1e84eb8c658404212eaf693b30e61
   IMG_IMMICH_DB=tensorchord/pgvecto-rs:pg14-v0.3.0
-  IMG_IMMICH_APP=ghcr.io/immich-app/immich-server:v1.137.3
-  IMG_IMMICH_ML=ghcr.io/immich-app/immich-machine-learning:v1.137.3
+  IMG_IMMICH_APP=ghcr.io/immich-app/immich-server:v2.0.1
+  IMG_IMMICH_ML=ghcr.io/immich-app/immich-machine-learning:v2.0.1
   IMG_INFLUXDB=mirror.gcr.io/influxdb:2.7.12-alpine
   IMG_INVIDIOUS_WEB=quay.io/invidious/invidious:master
   IMG_INVIDIOUS_COMPANION=quay.io/invidious/invidious-companion:latest
@@ -29405,7 +29404,7 @@ function getScriptStackVersion()
     espocrm)
       echo "v3" ;;
     immich)
-      echo "v4" ;;
+      echo "v5" ;;
     homarr)
       echo "v4" ;;
     matomo)
@@ -60154,11 +60153,19 @@ function performUpdateImmich()
       image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/immich-server:v1.137.3,ghcr.io/immich-app/immich-machine-learning:v1.137.3,mirror.gcr.io/redis:8.2.0-bookworm
       image_update_map[0]="mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0"
-      image_update_map[1]="ghcr.io/immich-app/immich-server:v1.137.3,ghcr.io/immich-app/immich-server:v1.137.3"
-      image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.137.3,ghcr.io/immich-app/immich-machine-learning:v1.137.3"
+      image_update_map[1]="ghcr.io/immich-app/immich-server:v1.137.3,ghcr.io/immich-app/immich-server:v2.0.1"
+      image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.137.3,ghcr.io/immich-app/immich-machine-learning:v2.0.1"
+      image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+    ;;
+    5)
+      newVer=v5
+      curImageList=mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/immich-server:v2.0.1,ghcr.io/immich-app/immich-machine-learning:v2.0.1,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0"
+      image_update_map[1]="ghcr.io/immich-app/immich-server:v2.0.1,ghcr.io/immich-app/immich-server:v2.0.1"
+      image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v2.0.1,ghcr.io/immich-app/immich-machine-learning:v2.0.1"
       image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
@@ -77842,6 +77849,194 @@ EOFSC
 
 EOFSC
 
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/addSubdomainReverseProxy.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts
+
+set +e
+rpsubdomain=\$(getArgumentValue rpsubdomain "\$@")
+rpdest=\$(getArgumentValue rpdest "\$@")
+addRPSubdomain "\$rpsubdomain" "\$rpdest"
+
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/addSubdomainReverseProxy.json
+{
+  "name": "08 Add Subdomain RP Block",
+  "script_path": "conf/scripts/addSubdomainReverseProxy.sh",
+  "description": "Adds a subdomain to the reverse-proxy. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add a reverse-proxy block for the specified subdomain to the snippets file ($HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip). It will also add corresponding import statements to the Home ($HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home) and Primary ($HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Primary) networks. The main purpose of this function is to make the common case fast.<br/>\nFor the subdomain field below, specify just the subdomain portion that you want to add, i.e. mynewservice would result in https://mynewservice.$HOMESERVER_DOMAIN. If the subdomain already exists, then this function will do nothing, i.e. you will have to remove the subdomain first, via 02 Services -> 09 Remove Subdomain RP Block<br/>\nFor the reverse-proxy destination, this is the backend service where the requests will be sent. Ensure to include protocol and port, i.e. http://mynewservice:3000. If referencing a docker-based service, this is often the name of the container. Ensure the container is added to the dock-proxy docker network in order for Caddy (the reverse-proxy) to reach it.<br/>\nIf you need to perform any additional adjustments, then see the above files, which can be accessed via a web-browser with CodeServer. They are already mounted into the container, just go to HSHQ -> caddy -> caddyfiles/snippets in the left explorer pane in the CodeServer web UI.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "group": "$group_id_services",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
+    },
+    {
+      "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
+    },
+    {
+      "name": "Enter subdomain to add",
+      "required": true,
+      "param": "-rpsubdomain=",
+      "same_arg_param": true,
+      "type": "text",
+      "secure": false,
+      "max_length": "512",
+      "regex": {
+        "pattern": "^[a-z0-9][a-z0-9-]+\$",
+        "description": "Only lowercase letters, numbers, and/or hyphens"
+      },
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter the reverse-proxy destination",
+      "required": true,
+      "param": "-rpdest=",
+      "same_arg_param": true,
+      "type": "text",
+      "secure": false,
+      "max_length": "64",
+      "regex": {
+        "pattern": "^(http|https)://[a-z0-9][a-z0-9.-]+:[0-9]+\$",
+        "description": "Must be of the format http(s)://myservice:port"
+      },
+      "ui": {
+        "width_weight": 2
+      },
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/removeSubdomainReverseProxy.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts
+
+set +e
+rpremsubdomain=\$(getArgumentValue rpremsubdomain "\$@")
+removeRPSubdomain "\$rpremsubdomain"
+
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/removeSubdomainReverseProxy.json
+{
+  "name": "09 Remove Subdomain RP Block",
+  "script_path": "conf/scripts/removeSubdomainReverseProxy.sh",
+  "description": "Removes a subdomain from the reverse-proxy. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will remove the reverse proxy block as specified by the subdomain. Be VERY careful with this function as removing a subdomain will disable access to that service.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "group": "$group_id_services",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
+    },
+    {
+      "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
+    },
+    {
+      "name": "Enter subdomain to remove",
+      "required": true,
+      "param": "-rpremsubdomain=",
+      "same_arg_param": true,
+      "type": "text",
+      "secure": false,
+      "max_length": "512",
+      "regex": {
+        "pattern": "^[a-z0-9][a-z0-9-]+\$",
+        "description": "Only lowercase letters, numbers, and/or hyphens"
+      },
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
   # 03 Script-server Utils
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/clearScriptServerProcessLogs.sh
 #!/bin/bash
@@ -86615,12 +86810,23 @@ function removeCaddySnippetImport()
   svc_name=$2
   case "$net_type" in
     home)
-      sed -i "/import $svc_name/d" $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home ;;
+      sed -i "/import ${svc_name}$/d" $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home
+      ;;
     primary)
-      sed -i "/import $svc_name/d" $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Primary ;;
+      sed -i "/import ${svc_name}$/d" $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Primary ;;
     other)
-      sed -i "/import $svc_name/d" $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Other ;;
+      sed -i "/import ${svc_name}$/d" $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Other ;;
   esac
+}
+
+function removeCaddySnippetAllImports()
+{
+  svc_name=$1
+  for caddyf in $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-*
+  do
+    if ! test -f "$caddyf"; then continue; fi
+    sed -i "/import ${svc_name}$/d" $caddyf
+  done
 }
 
 function restartAllCaddyContainers()
@@ -86638,6 +86844,53 @@ function installHostInterfaceCaddy()
   interface_name="$1"
   interface_ip="$2"
   installCaddy home-$interface_name home $(getHSHostIPVarName $interface_name) "$interface_ip" home na na na $(getHSHostSubnetVarName $interface_name) "$(getNonPrivateConnectingIP)"
+}
+
+function addRPSubdomain()
+{
+  set +e
+  rpsubdomain="$1"
+  rpdest="$2"
+  inner_block=""
+  inner_block=$inner_block">>https://$rpsubdomain.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_TLS_HSHQ\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy $rpdest {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  block_match_begin="# sn-sub-${rpsubdomain} BEGIN"
+  block_match_end="# sn-sub-${rpsubdomain} END"
+  replace_text="(sn-sub-${rpsubdomain}) {\n${inner_block}\n}"
+  r_filename=$HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip
+  space_delim=">"
+  match=$(grep "$block_match_begin" $r_filename)
+  if [ -z "$match" ]; then
+    #Append
+    replace_text=$(echo $replace_text | sed "s|$space_delim| |g")
+    echo -e "\n${block_match_begin}\n${replace_text}\n${block_match_end}" >> $r_filename
+  else
+    echo "ERROR: Snippet already exists, returning..."
+    return
+  fi
+  addCaddySnippetImport home sn-sub-${rpsubdomain} home
+  addCaddySnippetImport primary sn-sub-${rpsubdomain} primary
+  echo "Restarting caddy containers..."
+  restartAllCaddyContainers
+}
+
+function removeRPSubdomain()
+{
+  rpremsubdomain="$1"
+  removeCaddySnippet "# sn-sub-${rpremsubdomain} BEGIN" "# sn-sub-${rpremsubdomain} END"
+  removeCaddySnippetAllImports sn-sub-${rpremsubdomain}
+  echo "Restarting caddy containers..."
+  restartAllCaddyContainers
 }
 
 # ClientDNS
