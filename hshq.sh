@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=23
+HSHQ_WRAPPER_SCRIPT_VERSION=24
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -351,6 +351,8 @@ EOF
             exit 6
           fi
           isGotAllLocks=true
+        else
+          exit 1
         fi
       else
         isGotAllLocks=true
