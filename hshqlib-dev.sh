@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=209
+HSHQ_LIB_SCRIPT_VERSION=210
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -29145,7 +29145,7 @@ function loadPinnedDockerImages()
   IMG_HOMEASSISTANT_NODERED=mirror.gcr.io/nodered/node-red:4.1.0-22
   IMG_HOMEASSISTANT_TASMOADMIN=ghcr.io/tasmoadmin/tasmoadmin:v4.3.1
   IMG_HUGINN_APP=ghcr.io/huginn/huginn:1e0c359a46b1e84eb8c658404212eaf693b30e61
-  IMG_IMMICH_DB=tensorchord/pgvecto-rs:pg14-v0.3.0
+  IMG_IMMICH_DB=ghcr.io/immich-app/postgres:14-vectorchord0.3.0-pgvectors0.3.0
   IMG_IMMICH_APP=ghcr.io/immich-app/immich-server:v2.0.1
   IMG_IMMICH_ML=ghcr.io/immich-app/immich-machine-learning:v2.0.1
   IMG_INFLUXDB=mirror.gcr.io/influxdb:2.7.12-alpine
@@ -29404,7 +29404,7 @@ function getScriptStackVersion()
     espocrm)
       echo "v3" ;;
     immich)
-      echo "v5" ;;
+      echo "v6" ;;
     homarr)
       echo "v4" ;;
     matomo)
@@ -34820,12 +34820,12 @@ function initServiceDefaults()
   DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces
   DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces
   DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,espocrm,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces
-  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja
+  DS_MEM_HIGH=discourse,netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja
   BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces
   BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces
-  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill
+  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill
 }
 
 function getScriptImageByContainerName()
@@ -59733,7 +59733,6 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    command: ['postgres','-c','shared_preload_libraries=vectors.so','-c','search_path="$$user", public, vectors','-c','logging_collector=on','-c','max_wal_size=2GB','-c','shared_buffers=512MB','-c','wal_compression=on',]
     networks:
       - int-immich-net
       - dock-dbs-net
@@ -59878,6 +59877,17 @@ REDIS_PASSWORD=$IMMICH_REDIS_PASSWORD
 NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 EOFPI
 
+  outputImmichJSONConfig
+  outputImmichAutheliaOIDC
+  curdt=$(date '+%Y-%m-%d %H:%M:%S.%3N')
+  cat <<EOFIM > $HSHQ_STACKS_DIR/immich/dbexport/addadmin.sql
+insert into "user"(id,email,password,"createdAt","profileImagePath","isAdmin","shouldChangePassword","deletedAt","oauthId","updatedAt","storageLabel",name,"quotaSizeInBytes","quotaUsageInBytes",status,"profileChangedAt") values(gen_random_uuid(),'$IMMICH_ADMIN_EMAIL_ADDRESS','$IMMICH_ADMIN_PASSWORD_HASH','$curdt','',true,true,NULL,'','$curdt','admin','$(getAdminEmailName) Immich',NULL,0,'active','$curdt');
+EOFIM
+}
+
+function outputImmichJSONConfig()
+{
+  rm -f $HSHQ_STACKS_DIR/immich/config/immich.json
   cat <<EOFIM > $HSHQ_STACKS_DIR/immich/config/immich.json
 {
   "ffmpeg": {
@@ -59905,7 +59915,7 @@ EOFPI
   },
   "backup": {
     "database": {
-      "enabled": true,
+      "enabled": false,
       "cronExpression": "0 02 * * *",
       "keepLastAmount": 14
     }
@@ -59951,7 +59961,7 @@ EOFPI
   },
   "machineLearning": {
     "enabled": true,
-    "url": "http://immich-ml:3003",
+    "urls": ["http://immich-ml:3003"],
     "clip": {
       "enabled": true,
       "modelName": "ViT-B-32__openai"
@@ -60062,11 +60072,6 @@ EOFPI
   }
 }
 EOFIM
-  outputImmichAutheliaOIDC
-  curdt=$(date '+%Y-%m-%d %H:%M:%S.%3N')
-  cat <<EOFIM > $HSHQ_STACKS_DIR/immich/dbexport/addadmin.sql
-insert into "user"(id,email,password,"createdAt","profileImagePath","isAdmin","shouldChangePassword","deletedAt","oauthId","updatedAt","storageLabel",name,"quotaSizeInBytes","quotaUsageInBytes",status,"profileChangedAt") values(gen_random_uuid(),'$IMMICH_ADMIN_EMAIL_ADDRESS','$IMMICH_ADMIN_PASSWORD_HASH','$curdt','',true,true,NULL,'','$curdt','admin','$(getAdminEmailName) Immich',NULL,0,'active','$curdt');
-EOFIM
 }
 
 function outputImmichAutheliaOIDC()
@@ -60146,24 +60151,38 @@ function performUpdateImmich()
     ;;
     3)
       newVer=v4
-      curImageList=mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/immich-server:v1.132.0,ghcr.io/immich-app/immich-machine-learning:v1.132.0,mirror.gcr.io/redis:8.2.0-bookworm
-      image_update_map[0]="mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0"
+      curImageList=tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/immich-server:v1.132.0,ghcr.io/immich-app/immich-machine-learning:v1.132.0,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="tensorchord/pgvecto-rs:pg14-v0.3.0,mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0"
       image_update_map[1]="ghcr.io/immich-app/immich-server:v1.132.0,ghcr.io/immich-app/immich-server:v1.137.3"
       image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.132.0,ghcr.io/immich-app/immich-machine-learning:v1.137.3"
       image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     4)
-      newVer=v5
-      curImageList=mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/immich-server:v1.137.3,ghcr.io/immich-app/immich-machine-learning:v1.137.3,mirror.gcr.io/redis:8.2.0-bookworm
-      image_update_map[0]="mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0"
+      newVer=v6
+      curImageList=tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/immich-server:v1.137.3,ghcr.io/immich-app/immich-machine-learning:v1.137.3,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/postgres:14-vectorchord0.3.0-pgvectors0.3.0"
       image_update_map[1]="ghcr.io/immich-app/immich-server:v1.137.3,ghcr.io/immich-app/immich-server:v2.0.1"
       image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.137.3,ghcr.io/immich-app/immich-machine-learning:v2.0.1"
       image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfImmichV6Update
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     5)
-      newVer=v5
-      curImageList=mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/immich-server:v2.0.1,ghcr.io/immich-app/immich-machine-learning:v2.0.1,mirror.gcr.io/redis:8.2.0-bookworm
-      image_update_map[0]="mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0"
+      newVer=v6
+      curImageList=tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/immich-server:v2.0.1,ghcr.io/immich-app/immich-machine-learning:v2.0.1,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/postgres:14-vectorchord0.3.0-pgvectors0.3.0"
+      image_update_map[1]="ghcr.io/immich-app/immich-server:v2.0.1,ghcr.io/immich-app/immich-server:v2.0.1"
+      image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v2.0.1,ghcr.io/immich-app/immich-machine-learning:v2.0.1"
+      image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfImmichV6Update
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    6)
+      newVer=v6
+      curImageList=ghcr.io/immich-app/postgres:14-vectorchord0.3.0-pgvectors0.3.0,ghcr.io/immich-app/immich-server:v2.0.1,ghcr.io/immich-app/immich-machine-learning:v2.0.1,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="ghcr.io/immich-app/postgres:14-vectorchord0.3.0-pgvectors0.3.0,ghcr.io/immich-app/postgres:14-vectorchord0.3.0-pgvectors0.3.0"
       image_update_map[1]="ghcr.io/immich-app/immich-server:v2.0.1,ghcr.io/immich-app/immich-server:v2.0.1"
       image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v2.0.1,ghcr.io/immich-app/immich-machine-learning:v2.0.1"
       image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
@@ -60186,6 +60205,13 @@ function mfImmichFixRedisCompose()
   oidcBlock=$(cat $HOME/immich.oidc)
   rm -f $HOME/immich.oidc
   insertOIDCClientAuthelia immich "$oidcBlock"
+}
+
+function mfImmichV6Update()
+{
+  outputImmichJSONConfig
+  sed -i "/command: \['postgres'.*/d" $HOME/immich-compose.yml
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/immich/redis/*
 }
 
 # Homarr
