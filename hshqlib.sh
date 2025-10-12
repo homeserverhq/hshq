@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=210
+HSHQ_LIB_SCRIPT_VERSION=211
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -5170,10 +5170,10 @@ function updateListOfStacks()
   setSudoTimeoutInstall
   report_start_time=$(date)
   full_update_report=""
-  full_update_report="${full_update_report}                    Successful                    \n"
+  full_update_report="${full_update_report}        Services that updated successfully:       \n"
   full_update_report="${full_update_report}--------------------------------------------------"
   upgrade_error_report="\n\n"
-  upgrade_error_report="${upgrade_error_report}                      Errors                      \n"
+  upgrade_error_report="${upgrade_error_report}        Services that encountered errors:         \n"
   upgrade_error_report="${upgrade_error_report}--------------------------------------------------"
   set +e
   for cur_svc in "${stackListArr[@]}"
@@ -60166,6 +60166,7 @@ function performUpdateImmich()
       image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfImmichV6Update
       perform_update_report="${perform_update_report}$stack_upgrade_report"
+      immichUpdateRestartStack
       return
     ;;
     5)
@@ -60177,6 +60178,7 @@ function performUpdateImmich()
       image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfImmichV6Update
       perform_update_report="${perform_update_report}$stack_upgrade_report"
+      immichUpdateRestartStack
       return
     ;;
     6)
@@ -60195,6 +60197,7 @@ function performUpdateImmich()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+  immichUpdateRestartStack
 }
 
 function mfImmichFixRedisCompose()
@@ -60212,6 +60215,20 @@ function mfImmichV6Update()
   outputImmichJSONConfig
   sed -i "/command: \['postgres'.*/d" $HOME/immich-compose.yml
   sudo rm -fr $HSHQ_NONBACKUP_DIR/immich/redis/*
+}
+
+function immichUpdateRestartStack()
+{
+  echo "Update complete, restarting stack..."
+  waitForStack "Immich Server is listening" immich-app
+  if [ "$isStackReady" = "true" ]; then
+    startStopStack immich stop
+    sleep 1
+    startStopStack immich start
+    echo "Stack restarted!"
+  else
+    echo "ERROR: There was a problem with the Immich update. You might need to restart the immich stack."
+  fi
 }
 
 # Homarr
