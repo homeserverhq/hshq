@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=211
+HSHQ_LIB_SCRIPT_VERSION=212
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -16153,6 +16153,18 @@ function insertSubAuthelia()
   fi
 }
 
+function removeSubAuthelia()
+{
+  remSub="$1"
+  ac_block=$(sed -n "/#AC_BEGIN/,/#AC_END/p" $HSHQ_STACKS_DIR/authelia/config/configuration.yml | sed "/$remSub/d")
+  replaceTextBlockInFile "#AC_BEGIN" "#AC_END" "$ac_block" $HSHQ_STACKS_DIR/authelia/config/configuration.yml true
+  docker container restart authelia > /dev/null 2>&1
+  docker ps | grep codeserver > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    docker container restart codeserver > /dev/null 2>&1
+  fi
+}
+
 function insertOIDCClientAuthelia()
 {
   oidcName="$1"
@@ -29275,6 +29287,7 @@ function loadPinnedDockerImages()
   IMG_ZAMMAD=ghcr.io/zammad/zammad:6.5.2-2
   IMG_ZULIP_APP=mirror.gcr.io/zulip/docker-zulip:11.2-0
   IMG_ZULIP_DB=mirror.gcr.io/zulip/zulip-postgresql:14
+#ADD_NEW_IMAGES_HERE
 }
 
 function getScriptStackVersion()
@@ -29499,6 +29512,7 @@ function getScriptStackVersion()
       echo "v2" ;;
     wgportal)
       echo "v2" ;;
+#ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
 }
 
@@ -29684,6 +29698,7 @@ function pullDockerImages()
   pullImage $IMG_N8N_APP
   pullImage $IMG_AUTOMATISCH_APP
   pullImage $IMG_ACTIVEPIECES_APP
+#ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
 function pullImagesUpdatePB()
@@ -33082,7 +33097,7 @@ function initServicesCredentials()
     ACTIVEPIECES_JWT_SECRET=$(pwgen -c -n 32 1)
     updateConfigVar ACTIVEPIECES_JWT_SECRET $ACTIVEPIECES_JWT_SECRET
   fi
-
+#ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
     RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
@@ -33271,11 +33286,12 @@ function checkCreateNonbackupDirByStack()
       mkdir -p $HSHQ_NONBACKUP_DIR/n8n/redis
       ;;
     "automatisch")
-      mkdir -p $HSHQ_NONBACKUP_DIR/n8n/automatisch
+      mkdir -p $HSHQ_NONBACKUP_DIR/automatisch/redis
       ;;
     "activepieces")
-      mkdir -p $HSHQ_NONBACKUP_DIR/n8n/activepieces
+      mkdir -p $HSHQ_NONBACKUP_DIR/activepieces/redis
       ;;
+#ADD_NEW_NONBACKUP_DIRS_HERE
     *)
       ;;
   esac
@@ -33461,6 +33477,7 @@ function initServiceVars()
   checkAddSvc "SVCD_YAMTRACK=yamtrack,yamtrack,other,user,Yamtrack,yamtrack,hshq"
   checkAddSvc "SVCD_ZAMMAD_APP=zammad,zammad,primary,user,Zammad,zammad,hshq"
   checkAddSvc "SVCD_ZULIP_APP=zulip,zulip,primary,user,Zulip,zulip,hshq"
+#ADD_NEW_SVC_VARS_HERE
   set -e
 }
 
@@ -33684,6 +33701,7 @@ function installStackByName()
       installSQLPad $is_integrate ;;
     uptimekuma)
       installUptimeKuma $is_integrate ;;
+#ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
   if [ $stack_install_retval -ne 0 ]; then
@@ -33915,6 +33933,7 @@ function performUpdateStackByName()
       performUpdateCaddy "$stack_name" ;;
     clientdns-*)
       performUpdateClientDNS "$stack_name" ;;
+#ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
 
@@ -33999,6 +34018,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_YAMTRACK.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ZULIP_APP.$HOMESERVER_DOMAIN\n"
+#ADD_NEW_AUTHELIA_BYPASS_HERE
   retval="${retval}# Authelia bypass END\n"
   retval="${retval}      policy: bypass\n"
   retval="${retval}    - domain:\n"
@@ -34031,6 +34051,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SEARXNG.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_TWENTY.$HOMESERVER_DOMAIN\n"
+#ADD_NEW_AUTHELIA_PRIMARY_HERE
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
   retval="${retval}      subject:\n"
@@ -34080,6 +34101,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_WAZUH.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WIKIJS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WORDPRESS.$HOMESERVER_DOMAIN\n"
+#ADD_NEW_AUTHELIA_ADMIN_HERE
   retval="${retval}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
   retval="${retval}      subject:\n"
@@ -34193,6 +34215,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_N8N_APP}-Admin" https://$SUB_N8N_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $N8N_ADMIN_EMAIL_ADDRESS $N8N_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUTOMATISCH_APP}-Admin" https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOMATISCH_EMAIL_ADDRESS $AUTOMATISCH_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ACTIVEPIECES_APP}-Admin" https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN/sign-in $HOMESERVER_ABBREV $ACTIVEPIECES_ADMIN_EMAIL_ADDRESS $ACTIVEPIECES_ADMIN_PASSWORD)"\n"
+#ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -34335,6 +34358,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_N8N_APP}-Admin" https://$SUB_N8N_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $N8N_ADMIN_EMAIL_ADDRESS $N8N_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUTOMATISCH_APP}-Admin" https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOMATISCH_EMAIL_ADDRESS $AUTOMATISCH_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ACTIVEPIECES_APP}-Admin" https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN/sign-in $HOMESERVER_ABBREV $ACTIVEPIECES_ADMIN_EMAIL_ADDRESS $ACTIVEPIECES_ADMIN_PASSWORD)"\n"
+#ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -34767,29 +34791,30 @@ function getHeimdallOrderFromSub()
     "$SUB_ACTIVEPIECES_APP")
       order_num=122
       ;;
+#ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
-      order_num=400
+      order_num=900
       ;;
     "$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX")
-      order_num=401
+      order_num=901
       ;;
     "$SUB_PORTAINER.$INT_DOMAIN_PREFIX")
-      order_num=402
+      order_num=902
       ;;
     "$SUB_RSPAMD.$INT_DOMAIN_PREFIX")
-      order_num=403
+      order_num=903
       ;;
     "$SUB_SYNCTHING.$INT_DOMAIN_PREFIX")
-      order_num=404
+      order_num=904
       ;;
     "$SUB_CADDYDNS.$INT_DOMAIN_PREFIX")
-      order_num=405
+      order_num=905
       ;;
     "$SUB_WGPORTAL.$INT_DOMAIN_PREFIX")
-      order_num=406
+      order_num=906
       ;;
     "$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX")
-      order_num=407
+      order_num=907
       ;;
     "$SUB_EXAMPLESERVICE")
       order_num=999
@@ -34813,6 +34838,7 @@ function getLetsEncryptCertsDefault()
 
 function initServiceDefaults()
 {
+#INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
   HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad"
   DS_MEM_LOW=minimal
@@ -34826,6 +34852,7 @@ function initServiceDefaults()
   BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces
   BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill
   BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill
+#INIT_SERVICE_DEFAULTS_END
 }
 
 function getScriptImageByContainerName()
@@ -35812,6 +35839,7 @@ function getScriptImageByContainerName()
     "activepieces-redis")
       container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
+#ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
   esac
@@ -35893,6 +35921,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "n8n" "N8N_INIT_ENV=false,N8N_ADMIN_USERNAME=,N8N_ADMIN_EMAIL_ADDRESS=,N8N_ADMIN_PASSWORD=,N8N_DATABASE_NAME=,N8N_DATABASE_USER=,N8N_DATABASE_USER_PASSWORD=,N8N_REDIS_PASSWORD=,N8N_ENCRYPTION_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "Automatisch" "AUTOMATISCH_INIT_ENV=false,AUTOMATISCH_ADMIN_USERNAME=,AUTOMATISCH_ADMIN_EMAIL_ADDRESS=,AUTOMATISCH_ADMIN_PASSWORD=,AUTOMATISCH_DATABASE_NAME=,AUTOMATISCH_DATABASE_USER=,AUTOMATISCH_DATABASE_USER_PASSWORD=,AUTOMATISCH_REDIS_PASSWORD=,AUTOMATISCH_ENCRYPTION_KEY=,AUTOMATISCH_WEBHOOK_SECRET_KEY=,AUTOMATISCH_APP_SECRET_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "ActivePieces" "ACTIVEPIECES_INIT_ENV=false,ACTIVEPIECES_ADMIN_USERNAME=,ACTIVEPIECES_ADMIN_EMAIL_ADDRESS=,ACTIVEPIECES_ADMIN_PASSWORD=,ACTIVEPIECES_DATABASE_NAME=,ACTIVEPIECES_DATABASE_USER=,ACTIVEPIECES_DATABASE_USER_PASSWORD=,ACTIVEPIECES_REDIS_PASSWORD=,ACTIVEPIECES_ENCRYPTION_KEY=,ACTIVEPIECES_API_KEY=,ACTIVEPIECES_JWT_SECRET=" $CONFIG_FILE false
+#ADD_NEW_ADD_SVC_CONFIG_HERE
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -61828,6 +61857,7 @@ EOFOT
 "Yamtrack" postgres yamtrack-db $YAMTRACK_DATABASE_NAME $YAMTRACK_DATABASE_USER $YAMTRACK_DATABASE_USER_PASSWORD
 "Zammad" postgres zammad-db $ZAMMAD_DATABASE_NAME $ZAMMAD_DATABASE_USER $ZAMMAD_DATABASE_USER_PASSWORD
 "Zulip" postgres zulip-db $ZULIP_DATABASE_NAME $ZULIP_DATABASE_USER $ZULIP_DATABASE_USER_PASSWORD
+#ADD_NEW_AISTACK_DB_IMPORT_HERE
 EOFAS
   cat <<EOFIM > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/importConnections.sh
 #!/bin/bash
@@ -61843,7 +61873,7 @@ function main()
     return
   fi
   while read curLine; do
-    if [ -z "\$curLine" ]; then
+    if [ -z "\$curLine" ] || [ "\${curLine:0:1}" = "#" ]; then
       continue
     fi
     connName=\$(echo "\$curLine" | cut -d" " -f1 | sed 's/"//g')
@@ -75589,6 +75619,8 @@ function performUpdateActivePieces()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+#ADD_NEW_SERVICE_FUNCTIONS_HERE
+
 # ExampleService
 function installExampleService()
 {
@@ -84249,7 +84281,7 @@ networks:
     external: true
 
 EOFMT
-
+#DBGATE_OUTPUT_CONFIG_ENV_BEGIN
   cat <<EOFMT > $HOME/dbgate.env
 TZ=\${PORTAINER_TZ}
 LOGIN=$DBGATE_ADMIN_USERNAME
@@ -84683,7 +84715,7 @@ USER_Zulip=$ZULIP_DATABASE_USER
 PASSWORD_Zulip=$ZULIP_DATABASE_USER_PASSWORD
 PORT_Zulip=5432
 EOFMT
-
+#DBGATE_OUTPUT_CONFIG_ENV_END
 }
 
 function performUpdateDbGate()
@@ -84823,6 +84855,7 @@ networks:
     external: true
 EOFSP
 
+#SQLPAD_OUTPUT_CONFIG_ENV_BEGIN
   cat <<EOFSP > $HOME/sqlpad.env
 SQLPAD_ADMIN=$SQLPAD_ADMIN_USERNAME
 SQLPAD_ADMIN_PASSWORD=$SQLPAD_ADMIN_PASSWORD
@@ -85322,7 +85355,7 @@ SQLPAD_CONNECTIONS__zulip__password=$ZULIP_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__zulip__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__zulip__idleTimeoutSeconds=900
 EOFSP
-
+#SQLPAD_OUTPUT_CONFIG_ENV_END
 }
 
 function performUpdateSQLPad()
@@ -86925,6 +86958,7 @@ function addRPSubdomain()
   addCaddySnippetImport primary sn-sub-${rpsubdomain} primary
   echo "Restarting caddy containers..."
   restartAllCaddyContainers
+  insertSubAuthelia "$rpsubdomain.$HOMESERVER_DOMAIN" bypass
 }
 
 function removeRPSubdomain()
@@ -86934,6 +86968,7 @@ function removeRPSubdomain()
   removeCaddySnippetAllImports sn-sub-${rpremsubdomain}
   echo "Restarting caddy containers..."
   restartAllCaddyContainers
+  removeSubAuthelia "$rpremsubdomain.$HOMESERVER_DOMAIN"
 }
 
 # ClientDNS
