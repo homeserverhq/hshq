@@ -34421,7 +34421,7 @@ function getHeimdallOrderFromSub()
 {
   ord_subdom="$1"
   ord_usertype="$2"
-  order_num=999
+  order_num=0
   order_uid=$(getHeimdallUserIDFromType $ord_usertype)
   case "$ord_subdom" in
     "$SUB_SCRIPTSERVER")
@@ -34826,6 +34826,7 @@ function getHeimdallOrderFromSub()
       order_num=1001
       ;;
     *)
+      order_num=999
       ;;
   esac
   echo "$order_num"
@@ -75642,9 +75643,9 @@ function installExampleService()
   set -e
   mkdir $HSHQ_STACKS_DIR/exampleservice
   mkdir $HSHQ_STACKS_DIR/exampleservice/config
+  mkdir $HSHQ_STACKS_DIR/exampleservice/data
   mkdir $HSHQ_STACKS_DIR/exampleservice/db
   mkdir $HSHQ_STACKS_DIR/exampleservice/dbexport
-  mkdir $HSHQ_STACKS_DIR/exampleservice/web
   chmod 777 $HSHQ_STACKS_DIR/exampleservice/dbexport
   initServicesCredentials
   set +e
@@ -75753,21 +75754,15 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-exampleservice-web:/var/www/html:z
+      - v-exampleservice-data:/var/www/html:z
 
 volumes:
-  v-exampleservice-db:
+  v-exampleservice-data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/exampleservice/db
-  v-exampleservice-web:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/exampleservice/web
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/exampleservice/data
 
 networks:
   dock-proxy-net:
