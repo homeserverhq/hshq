@@ -77934,9 +77934,10 @@ decryptConfigFileAndLoadEnvNoPrompts
 set +e
 rpbasedom=\$(getArgumentValue rpbasedom "\$@")
 rpsubdomain=\$(getArgumentValue rpsubdomain "\$@")
+rpformalname=\$(getArgumentValue rpformalname "\$@")
 rpdest=\$(getArgumentValue rpdest "\$@")
 
-addRPSubdomain "\$rpbasedom" "\$rpsubdomain" "\$rpdest"
+addRPSubdomain "\$rpbasedom" "\$rpsubdomain" "\$rpformalname" "\$rpdest"
 
 set -e
 performExitFunctions false
@@ -77947,7 +77948,7 @@ EOFSC
 {
   "name": "08 Add Subdomain RP Block",
   "script_path": "conf/scripts/addSubdomainReverseProxy.sh",
-  "description": "Adds a subdomain to the reverse-proxy. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add a reverse-proxy block for the specified subdomain to the snippets file ($HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip). It will also add corresponding import statements to the Home ($HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home) and Primary ($HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Primary) networks. The main purpose of this function is to make the common case fast.<br/>\nFor the subdomain field below, specify just the subdomain portion that you want to add, i.e. mynewservice would result in https://mynewservice.$HOMESERVER_DOMAIN. If the subdomain already exists, then this function will do nothing, i.e. you will have to remove the subdomain first, via 02 Services -> 09 Remove Subdomain RP Block<br/>\nFor the reverse-proxy destination, this is the backend service where the requests will be sent. Ensure to include protocol and port, i.e. http://mynewservice:3000. If referencing a docker-based service, this is often the name of the container. Ensure the container is added to the dock-proxy docker network in order for Caddy (the reverse-proxy) to reach it.<br/>\nIf you need to perform any additional adjustments, then see the above files, which can be accessed via a web-browser with CodeServer. They are already mounted into the container, just go to HSHQ -> caddy -> caddyfiles/snippets in the left explorer pane in the CodeServer web UI.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Adds a subdomain to the reverse-proxy. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add a reverse-proxy block for the specified subdomain to the snippets file ($HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip). It will also add corresponding import statements to the Home ($HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home) and Primary ($HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Primary) networks. The main purpose of this function is to make the common case fast. If you need to perform any additional adjustments, then see these files, which can be accessed via a web-browser with CodeServer. They are already mounted into the container, just go to HSHQ -> caddy -> caddyfiles/snippets in the left explorer pane in the CodeServer web UI.<br/>\nFor the base domain, select the desired domain from the available list. For more details on additional secondary domains, see 08 RelayServer Utils -> 01 Add Secondary Domain. If you select a secondary domain, then ensure to add the requisite DNS rewrite records in Adguard in order to access the service locally.<br/>\nFor the subdomain field below, specify just the subdomain portion that you want to add, i.e. mynewservice would result in https://mynewservice.$HOMESERVER_DOMAIN (if the primary base domain is selected). If the subdomain already exists, then this function will do nothing, i.e. you will have to remove the subdomain first, via 02 Services -> 09 Remove Subdomain RP Block<br/>\nFor the reverse-proxy destination, this is the backend service where the requests will be sent. Ensure to include protocol and port, i.e. http://mynewservice:3000. If referencing a docker-based service, this is often the name of the container. Ensure the container is added to the dock-proxy docker network in order for Caddy (the reverse-proxy) to reach it.<br/>\nA shortcut for this subdomain will also be added to the home page (Heimdall) and labeled according to the formal name that you provide below.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -78022,6 +78023,26 @@ EOFSC
       "pass_as": "argument"
     },
     {
+      "name": "Enter formal name",
+      "required": true,
+      "param": "-rpformalname=",
+      "same_arg_param": true,
+      "type": "text",
+      "secure": false,
+      "max_length": "512",
+      "regex": {
+        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9- ]+\$",
+        "description": "Only letters, numbers, hyphens and/or spaces"
+      },
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "pass_as": "argument"
+    },
+    {
       "name": "Enter the reverse-proxy destination",
       "required": true,
       "param": "-rpdest=",
@@ -78034,10 +78055,7 @@ EOFSC
         "description": "Must be of the format http(s)://myservice:port"
       },
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "pass_as": "argument"
     }
@@ -86090,7 +86108,8 @@ function checkInsertServiceHeimdall()
     sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set deleted_at=NULL where user_id='$user_id' and url='$svc_url';"
   fi
   if [ "$is_restart" = "true" ]; then
-    docker container start heimdall > /dev/null 2>&1
+    echo "Restarting Heimdall..."
+    docker container start heimdall
   fi
 }
 
@@ -86111,7 +86130,8 @@ function deleteSvcHeimdall()
     fi
     sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "PRAGMA foreign_keys=ON;delete from items where url like '${svc_url}%';"
     if [ "$is_manage_container" = "true" ]; then
-      docker container start heimdall >/dev/null
+      echo "Restarting Heimdall..."
+      docker container start heimdall
     fi
   fi
 }
@@ -86970,7 +86990,8 @@ function addRPSubdomain()
   set +e
   rpbasedom="$1"
   rpsubdomain="$2"
-  rpdest="$3"
+  rpformalname="$3"
+  rpdest="$4"
   add_sub="$rpsubdomain"
   if ! [ "$rpbasedom" = "$HOMESERVER_DOMAIN" ]; then
     add_sub="${rpsubdomain}-$(convertDomainStringForCaddySnippet $rpbasedom)"
@@ -87009,6 +87030,7 @@ function addRPSubdomain()
   echo "Restarting caddy containers..."
   restartAllCaddyContainers
   insertSubAuthelia "$rpsubdomain.$rpbasedom" bypass
+  insertEnableSvcHeimdall custom "$rpformalname" user "https://$rpsubdomain.$rpbasedom" "heimdall.png" true "800"
   echo "========================================================================"
   echo "        Your subdomain has been added. To access it go to:"
   echo "        https://$rpsubdomain.$rpbasedom"
@@ -87028,6 +87050,7 @@ function removeRPSubdomain()
   echo "Restarting caddy containers..."
   restartAllCaddyContainers
   removeSubAuthelia "$rpremsubdomain.$rprembasedom"
+  deleteSvcHeimdall user "https://$rpremsubdomain.$rprembasedom" true
 }
 
 # ClientDNS
@@ -87410,7 +87433,8 @@ function checkInsertServiceUptimeKuma()
   fi
   set +e
   if [ "$is_restart" = "true" ]; then
-    docker container start uptimekuma > /dev/null 2>&1
+    echo "Restarting UptimeKuma..."
+    docker container start uptimekuma
   fi
   set -e
 }
@@ -87430,7 +87454,8 @@ function deleteSvcUptimeKuma()
     fi
     sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "PRAGMA foreign_keys=ON;delete from monitor where url like '${svc_url}%';"
     if [ "$is_manage_container" = "true" ]; then
-      docker container start uptimekuma >/dev/null
+      echo "Restarting UptimeKuma..."
+      docker container start uptimekuma
     fi
   fi
 }
