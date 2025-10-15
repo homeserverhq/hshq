@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=211
+HSHQ_LIB_SCRIPT_VERSION=212
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -16146,7 +16146,22 @@ function insertSubAuthelia()
     return
   fi
   sed -i "/# Authelia $selBlock END/i\        - $insSub" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
-  docker container restart authelia > /dev/null 2>&1
+  echo "Restarting authelia..."
+  docker container restart authelia
+  docker ps | grep codeserver > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    docker container restart codeserver > /dev/null 2>&1
+  fi
+}
+
+function removeSubAuthelia()
+{
+  set +e
+  remSub="$1"
+  ac_block=$(sed -n "/#AC_BEGIN/,/#AC_END/p" $HSHQ_STACKS_DIR/authelia/config/configuration.yml | sed "/$remSub/d")
+  replaceTextBlockInFile "#AC_BEGIN" "#AC_END" "$ac_block" $HSHQ_STACKS_DIR/authelia/config/configuration.yml true
+  echo "Restarting authelia..."
+  docker container restart authelia
   docker ps | grep codeserver > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     docker container restart codeserver > /dev/null 2>&1
@@ -29275,6 +29290,7 @@ function loadPinnedDockerImages()
   IMG_ZAMMAD=ghcr.io/zammad/zammad:6.5.2-2
   IMG_ZULIP_APP=mirror.gcr.io/zulip/docker-zulip:11.2-0
   IMG_ZULIP_DB=mirror.gcr.io/zulip/zulip-postgresql:14
+#ADD_NEW_IMAGES_HERE
 }
 
 function getScriptStackVersion()
@@ -29499,6 +29515,7 @@ function getScriptStackVersion()
       echo "v2" ;;
     wgportal)
       echo "v2" ;;
+#ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
 }
 
@@ -29684,6 +29701,7 @@ function pullDockerImages()
   pullImage $IMG_N8N_APP
   pullImage $IMG_AUTOMATISCH_APP
   pullImage $IMG_ACTIVEPIECES_APP
+#ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
 function pullImagesUpdatePB()
@@ -33082,7 +33100,7 @@ function initServicesCredentials()
     ACTIVEPIECES_JWT_SECRET=$(pwgen -c -n 32 1)
     updateConfigVar ACTIVEPIECES_JWT_SECRET $ACTIVEPIECES_JWT_SECRET
   fi
-
+#ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
     RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
@@ -33271,11 +33289,12 @@ function checkCreateNonbackupDirByStack()
       mkdir -p $HSHQ_NONBACKUP_DIR/n8n/redis
       ;;
     "automatisch")
-      mkdir -p $HSHQ_NONBACKUP_DIR/n8n/automatisch
+      mkdir -p $HSHQ_NONBACKUP_DIR/automatisch/redis
       ;;
     "activepieces")
-      mkdir -p $HSHQ_NONBACKUP_DIR/n8n/activepieces
+      mkdir -p $HSHQ_NONBACKUP_DIR/activepieces/redis
       ;;
+#ADD_NEW_NONBACKUP_DIRS_HERE
     *)
       ;;
   esac
@@ -33461,6 +33480,7 @@ function initServiceVars()
   checkAddSvc "SVCD_YAMTRACK=yamtrack,yamtrack,other,user,Yamtrack,yamtrack,hshq"
   checkAddSvc "SVCD_ZAMMAD_APP=zammad,zammad,primary,user,Zammad,zammad,hshq"
   checkAddSvc "SVCD_ZULIP_APP=zulip,zulip,primary,user,Zulip,zulip,hshq"
+#ADD_NEW_SVC_VARS_HERE
   set -e
 }
 
@@ -33684,6 +33704,7 @@ function installStackByName()
       installSQLPad $is_integrate ;;
     uptimekuma)
       installUptimeKuma $is_integrate ;;
+#ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
   if [ $stack_install_retval -ne 0 ]; then
@@ -33915,6 +33936,7 @@ function performUpdateStackByName()
       performUpdateCaddy "$stack_name" ;;
     clientdns-*)
       performUpdateClientDNS "$stack_name" ;;
+#ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
 
@@ -33999,6 +34021,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_YAMTRACK.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ZULIP_APP.$HOMESERVER_DOMAIN\n"
+#ADD_NEW_AUTHELIA_BYPASS_HERE
   retval="${retval}# Authelia bypass END\n"
   retval="${retval}      policy: bypass\n"
   retval="${retval}    - domain:\n"
@@ -34031,6 +34054,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SEARXNG.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_TWENTY.$HOMESERVER_DOMAIN\n"
+#ADD_NEW_AUTHELIA_PRIMARY_HERE
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
   retval="${retval}      subject:\n"
@@ -34080,6 +34104,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_WAZUH.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WIKIJS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WORDPRESS.$HOMESERVER_DOMAIN\n"
+#ADD_NEW_AUTHELIA_ADMIN_HERE
   retval="${retval}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
   retval="${retval}      subject:\n"
@@ -34193,6 +34218,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_N8N_APP}-Admin" https://$SUB_N8N_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $N8N_ADMIN_EMAIL_ADDRESS $N8N_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUTOMATISCH_APP}-Admin" https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOMATISCH_EMAIL_ADDRESS $AUTOMATISCH_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ACTIVEPIECES_APP}-Admin" https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN/sign-in $HOMESERVER_ABBREV $ACTIVEPIECES_ADMIN_EMAIL_ADDRESS $ACTIVEPIECES_ADMIN_PASSWORD)"\n"
+#ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -34335,6 +34361,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_N8N_APP}-Admin" https://$SUB_N8N_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $N8N_ADMIN_EMAIL_ADDRESS $N8N_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUTOMATISCH_APP}-Admin" https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOMATISCH_EMAIL_ADDRESS $AUTOMATISCH_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ACTIVEPIECES_APP}-Admin" https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN/sign-in $HOMESERVER_ABBREV $ACTIVEPIECES_ADMIN_EMAIL_ADDRESS $ACTIVEPIECES_ADMIN_PASSWORD)"\n"
+#ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -34397,7 +34424,7 @@ function getHeimdallOrderFromSub()
 {
   ord_subdom="$1"
   ord_usertype="$2"
-  order_num=999
+  order_num=0
   order_uid=$(getHeimdallUserIDFromType $ord_usertype)
   case "$ord_subdom" in
     "$SUB_SCRIPTSERVER")
@@ -34767,29 +34794,30 @@ function getHeimdallOrderFromSub()
     "$SUB_ACTIVEPIECES_APP")
       order_num=122
       ;;
+#ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
-      order_num=400
+      order_num=900
       ;;
     "$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX")
-      order_num=401
+      order_num=901
       ;;
     "$SUB_PORTAINER.$INT_DOMAIN_PREFIX")
-      order_num=402
+      order_num=902
       ;;
     "$SUB_RSPAMD.$INT_DOMAIN_PREFIX")
-      order_num=403
+      order_num=903
       ;;
     "$SUB_SYNCTHING.$INT_DOMAIN_PREFIX")
-      order_num=404
+      order_num=904
       ;;
     "$SUB_CADDYDNS.$INT_DOMAIN_PREFIX")
-      order_num=405
+      order_num=905
       ;;
     "$SUB_WGPORTAL.$INT_DOMAIN_PREFIX")
-      order_num=406
+      order_num=906
       ;;
     "$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX")
-      order_num=407
+      order_num=907
       ;;
     "$SUB_EXAMPLESERVICE")
       order_num=999
@@ -34801,6 +34829,7 @@ function getHeimdallOrderFromSub()
       order_num=1001
       ;;
     *)
+      order_num=999
       ;;
   esac
   echo "$order_num"
@@ -34813,8 +34842,9 @@ function getLetsEncryptCertsDefault()
 
 function initServiceDefaults()
 {
-  HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad"
+#INIT_SERVICE_DEFAULTS_BEGIN
+  HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad
   DS_MEM_LOW=minimal
   DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces
   DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces
@@ -34826,6 +34856,7 @@ function initServiceDefaults()
   BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces
   BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill
   BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill
+#INIT_SERVICE_DEFAULTS_END
 }
 
 function getScriptImageByContainerName()
@@ -35812,6 +35843,7 @@ function getScriptImageByContainerName()
     "activepieces-redis")
       container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
+#ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
   esac
@@ -35893,6 +35925,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "n8n" "N8N_INIT_ENV=false,N8N_ADMIN_USERNAME=,N8N_ADMIN_EMAIL_ADDRESS=,N8N_ADMIN_PASSWORD=,N8N_DATABASE_NAME=,N8N_DATABASE_USER=,N8N_DATABASE_USER_PASSWORD=,N8N_REDIS_PASSWORD=,N8N_ENCRYPTION_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "Automatisch" "AUTOMATISCH_INIT_ENV=false,AUTOMATISCH_ADMIN_USERNAME=,AUTOMATISCH_ADMIN_EMAIL_ADDRESS=,AUTOMATISCH_ADMIN_PASSWORD=,AUTOMATISCH_DATABASE_NAME=,AUTOMATISCH_DATABASE_USER=,AUTOMATISCH_DATABASE_USER_PASSWORD=,AUTOMATISCH_REDIS_PASSWORD=,AUTOMATISCH_ENCRYPTION_KEY=,AUTOMATISCH_WEBHOOK_SECRET_KEY=,AUTOMATISCH_APP_SECRET_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "ActivePieces" "ACTIVEPIECES_INIT_ENV=false,ACTIVEPIECES_ADMIN_USERNAME=,ACTIVEPIECES_ADMIN_EMAIL_ADDRESS=,ACTIVEPIECES_ADMIN_PASSWORD=,ACTIVEPIECES_DATABASE_NAME=,ACTIVEPIECES_DATABASE_USER=,ACTIVEPIECES_DATABASE_USER_PASSWORD=,ACTIVEPIECES_REDIS_PASSWORD=,ACTIVEPIECES_ENCRYPTION_KEY=,ACTIVEPIECES_API_KEY=,ACTIVEPIECES_JWT_SECRET=" $CONFIG_FILE false
+#ADD_NEW_ADD_SVC_CONFIG_HERE
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -61828,6 +61861,7 @@ EOFOT
 "Yamtrack" postgres yamtrack-db $YAMTRACK_DATABASE_NAME $YAMTRACK_DATABASE_USER $YAMTRACK_DATABASE_USER_PASSWORD
 "Zammad" postgres zammad-db $ZAMMAD_DATABASE_NAME $ZAMMAD_DATABASE_USER $ZAMMAD_DATABASE_USER_PASSWORD
 "Zulip" postgres zulip-db $ZULIP_DATABASE_NAME $ZULIP_DATABASE_USER $ZULIP_DATABASE_USER_PASSWORD
+#ADD_NEW_AISTACK_DB_IMPORT_HERE
 EOFAS
   cat <<EOFIM > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/importConnections.sh
 #!/bin/bash
@@ -61843,7 +61877,7 @@ function main()
     return
   fi
   while read curLine; do
-    if [ -z "\$curLine" ]; then
+    if [ -z "\$curLine" ] || [ "\${curLine:0:1}" = "#" ]; then
       continue
     fi
     connName=\$(echo "\$curLine" | cut -d" " -f1 | sed 's/"//g')
@@ -75589,6 +75623,8 @@ function performUpdateActivePieces()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+#ADD_NEW_SERVICE_FUNCTIONS_HERE
+
 # ExampleService
 function installExampleService()
 {
@@ -75610,9 +75646,9 @@ function installExampleService()
   set -e
   mkdir $HSHQ_STACKS_DIR/exampleservice
   mkdir $HSHQ_STACKS_DIR/exampleservice/config
+  mkdir $HSHQ_STACKS_DIR/exampleservice/data
   mkdir $HSHQ_STACKS_DIR/exampleservice/db
   mkdir $HSHQ_STACKS_DIR/exampleservice/dbexport
-  mkdir $HSHQ_STACKS_DIR/exampleservice/web
   chmod 777 $HSHQ_STACKS_DIR/exampleservice/dbexport
   initServicesCredentials
   set +e
@@ -75721,21 +75757,15 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-exampleservice-web:/var/www/html:z
+      - v-exampleservice-data:/var/www/html:z
 
 volumes:
-  v-exampleservice-db:
+  v-exampleservice-data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/exampleservice/db
-  v-exampleservice-web:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/exampleservice/web
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/exampleservice/data
 
 networks:
   dock-proxy-net:
@@ -77902,9 +77932,12 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
+rpbasedom=\$(getArgumentValue rpbasedom "\$@")
 rpsubdomain=\$(getArgumentValue rpsubdomain "\$@")
+rpformalname=\$(getArgumentValue rpformalname "\$@")
 rpdest=\$(getArgumentValue rpdest "\$@")
-addRPSubdomain "\$rpsubdomain" "\$rpdest"
+
+addRPSubdomain "\$rpbasedom" "\$rpsubdomain" "\$rpformalname" "\$rpdest"
 
 set -e
 performExitFunctions false
@@ -77915,7 +77948,7 @@ EOFSC
 {
   "name": "08 Add Subdomain RP Block",
   "script_path": "conf/scripts/addSubdomainReverseProxy.sh",
-  "description": "Adds a subdomain to the reverse-proxy. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add a reverse-proxy block for the specified subdomain to the snippets file ($HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip). It will also add corresponding import statements to the Home ($HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home) and Primary ($HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Primary) networks. The main purpose of this function is to make the common case fast.<br/>\nFor the subdomain field below, specify just the subdomain portion that you want to add, i.e. mynewservice would result in https://mynewservice.$HOMESERVER_DOMAIN. If the subdomain already exists, then this function will do nothing, i.e. you will have to remove the subdomain first, via 02 Services -> 09 Remove Subdomain RP Block<br/>\nFor the reverse-proxy destination, this is the backend service where the requests will be sent. Ensure to include protocol and port, i.e. http://mynewservice:3000. If referencing a docker-based service, this is often the name of the container. Ensure the container is added to the dock-proxy docker network in order for Caddy (the reverse-proxy) to reach it.<br/>\nIf you need to perform any additional adjustments, then see the above files, which can be accessed via a web-browser with CodeServer. They are already mounted into the container, just go to HSHQ -> caddy -> caddyfiles/snippets in the left explorer pane in the CodeServer web UI.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Adds a subdomain to the reverse-proxy. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add a reverse-proxy block for the specified subdomain to the snippets file ($HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip). It will also add corresponding import statements to the Home ($HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home) and Primary ($HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Primary) networks. The main purpose of this function is to make the common case fast. If you need to perform any additional adjustments, then see these files, which can be accessed via a web-browser with CodeServer. They are already mounted into the container, just go to HSHQ -> caddy -> caddyfiles/snippets in the left explorer pane in the CodeServer web UI.<br/>\nFor the base domain, select the desired domain from the available list. For more details on additional secondary domains, see 08 RelayServer Utils -> 01 Add Secondary Domain. If you select a secondary domain, then ensure to add the requisite DNS rewrite records in Adguard in order to access the service locally.<br/>\nFor the subdomain field below, specify just the subdomain portion that you want to add, i.e. mynewservice would result in https://mynewservice.$HOMESERVER_DOMAIN (if the primary base domain is selected). If the subdomain already exists, then this function will do nothing, i.e. you will have to remove the subdomain first, via 02 Services -> 09 Remove Subdomain RP Block<br/>\nFor the reverse-proxy destination, this is the backend service where the requests will be sent. Ensure to include protocol and port, i.e. http://mynewservice:3000. If referencing a docker-based service, this is often the name of the container. Ensure the container is added to the dock-proxy docker network in order for Caddy (the reverse-proxy) to reach it.<br/>\nA shortcut for this subdomain will also be added to the home page (Heimdall) and labeled according to the formal name that you provide below.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -77954,6 +77987,25 @@ EOFSC
       "stdin_expected_text": "$config_stdin_prompt"
     },
     {
+      "name": "Select the base domain",
+      "required": true,
+      "param": "-rpbasedom=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "sqlite3 $HSHQ_DB \"select Domain from (select Domain,MailHostID,IsFirstDomain from mailhostmap union select '$HOMESERVER_DOMAIN' as Domain, 1 as MailHostID, true as IsFirstDomain group by Domain,MailHostId,IsFirstDomain order by MailHostID asc, IsFirstDomain desc);\"",
+        "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
       "name": "Enter subdomain to add",
       "required": true,
       "param": "-rpsubdomain=",
@@ -77964,6 +78016,23 @@ EOFSC
       "regex": {
         "pattern": "^[a-z0-9][a-z0-9-]+\$",
         "description": "Only lowercase letters, numbers, and/or hyphens"
+      },
+      "ui": {
+        "width_weight": 2
+      },
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter formal name",
+      "required": true,
+      "param": "-rpformalname=",
+      "same_arg_param": true,
+      "type": "text",
+      "secure": false,
+      "max_length": "512",
+      "regex": {
+        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9- ]+\$",
+        "description": "Only letters, numbers, hyphens and/or spaces"
       },
       "ui": {
         "width_weight": 2,
@@ -78005,8 +78074,10 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
+rprembasedom=\$(getArgumentValue rprembasedom "\$@")
 rpremsubdomain=\$(getArgumentValue rpremsubdomain "\$@")
-removeRPSubdomain "\$rpremsubdomain"
+
+removeRPSubdomain "\$rprembasedom" "\$rpremsubdomain"
 
 set -e
 performExitFunctions false
@@ -78056,6 +78127,25 @@ EOFSC
       "stdin_expected_text": "$config_stdin_prompt"
     },
     {
+      "name": "Select the base domain",
+      "required": true,
+      "param": "-rprembasedom=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "sqlite3 $HSHQ_DB \"select Domain from (select Domain,MailHostID,IsFirstDomain from mailhostmap union select '$HOMESERVER_DOMAIN' as Domain, 1 as MailHostID, true as IsFirstDomain group by Domain,MailHostId,IsFirstDomain order by MailHostID asc, IsFirstDomain desc);\"",
+        "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
       "name": "Enter subdomain to remove",
       "required": true,
       "param": "-rpremsubdomain=",
@@ -78068,10 +78158,7 @@ EOFSC
         "description": "Only lowercase letters, numbers, and/or hyphens"
       },
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "pass_as": "argument"
     }
@@ -84249,7 +84336,7 @@ networks:
     external: true
 
 EOFMT
-
+#DBGATE_OUTPUT_CONFIG_ENV_BEGIN
   cat <<EOFMT > $HOME/dbgate.env
 TZ=\${PORTAINER_TZ}
 LOGIN=$DBGATE_ADMIN_USERNAME
@@ -84683,7 +84770,7 @@ USER_Zulip=$ZULIP_DATABASE_USER
 PASSWORD_Zulip=$ZULIP_DATABASE_USER_PASSWORD
 PORT_Zulip=5432
 EOFMT
-
+#DBGATE_OUTPUT_CONFIG_ENV_END
 }
 
 function performUpdateDbGate()
@@ -84823,6 +84910,7 @@ networks:
     external: true
 EOFSP
 
+#SQLPAD_OUTPUT_CONFIG_ENV_BEGIN
   cat <<EOFSP > $HOME/sqlpad.env
 SQLPAD_ADMIN=$SQLPAD_ADMIN_USERNAME
 SQLPAD_ADMIN_PASSWORD=$SQLPAD_ADMIN_PASSWORD
@@ -85322,7 +85410,7 @@ SQLPAD_CONNECTIONS__zulip__password=$ZULIP_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__zulip__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__zulip__idleTimeoutSeconds=900
 EOFSP
-
+#SQLPAD_OUTPUT_CONFIG_ENV_END
 }
 
 function performUpdateSQLPad()
@@ -86020,7 +86108,8 @@ function checkInsertServiceHeimdall()
     sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set deleted_at=NULL where user_id='$user_id' and url='$svc_url';"
   fi
   if [ "$is_restart" = "true" ]; then
-    docker container start heimdall > /dev/null 2>&1
+    echo "Restarting Heimdall..."
+    docker container start heimdall
   fi
 }
 
@@ -86041,7 +86130,8 @@ function deleteSvcHeimdall()
     fi
     sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "PRAGMA foreign_keys=ON;delete from items where url like '${svc_url}%';"
     if [ "$is_manage_container" = "true" ]; then
-      docker container start heimdall >/dev/null
+      echo "Restarting Heimdall..."
+      docker container start heimdall
     fi
   fi
 }
@@ -86889,16 +86979,30 @@ function installHostInterfaceCaddy()
   installCaddy home-$interface_name home $(getHSHostIPVarName $interface_name) "$interface_ip" home na na na $(getHSHostSubnetVarName $interface_name) "$(getNonPrivateConnectingIP)"
 }
 
+function convertDomainStringForCaddySnippet()
+{
+  convDom="$1"
+  echo "$convDom" | sed "s/\./-/g"
+}
+
 function addRPSubdomain()
 {
   set +e
-  rpsubdomain="$1"
-  rpdest="$2"
+  rpbasedom="$1"
+  rpsubdomain="$2"
+  rpformalname="$3"
+  rpdest="$4"
+  add_sub="$rpsubdomain"
+  if ! [ "$rpbasedom" = "$HOMESERVER_DOMAIN" ]; then
+    add_sub="${rpsubdomain}-$(convertDomainStringForCaddySnippet $rpbasedom)"
+  fi
   inner_block=""
-  inner_block=$inner_block">>https://$rpsubdomain.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>https://$rpsubdomain.$rpbasedom {\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_TLS_HSHQ\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  if [ "$rpbasedom" = "$HOMESERVER_DOMAIN" ]; then
+    inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  fi
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>reverse_proxy $rpdest {\n"
@@ -86907,9 +87011,9 @@ function addRPSubdomain()
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
-  block_match_begin="# sn-sub-${rpsubdomain} BEGIN"
-  block_match_end="# sn-sub-${rpsubdomain} END"
-  replace_text="(sn-sub-${rpsubdomain}) {\n${inner_block}\n}"
+  block_match_begin="# sn-sub-${add_sub} BEGIN"
+  block_match_end="# sn-sub-${add_sub} END"
+  replace_text="(sn-sub-${add_sub}) {\n${inner_block}\n}"
   r_filename=$HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip
   space_delim=">"
   match=$(grep "$block_match_begin" $r_filename)
@@ -86921,19 +87025,32 @@ function addRPSubdomain()
     echo "ERROR: Snippet already exists, returning..."
     return
   fi
-  addCaddySnippetImport home sn-sub-${rpsubdomain} home
-  addCaddySnippetImport primary sn-sub-${rpsubdomain} primary
+  addCaddySnippetImport home sn-sub-${add_sub} home
+  addCaddySnippetImport primary sn-sub-${add_sub} primary
   echo "Restarting caddy containers..."
   restartAllCaddyContainers
+  insertSubAuthelia "$rpsubdomain.$rpbasedom" bypass
+  insertEnableSvcHeimdall custom "$rpformalname" user "https://$rpsubdomain.$rpbasedom" "heimdall.png" true "800"
+  echo "========================================================================"
+  echo "        Your subdomain has been added. To access it go to:"
+  echo "        https://$rpsubdomain.$rpbasedom"
+  echo "========================================================================"
 }
 
 function removeRPSubdomain()
 {
-  rpremsubdomain="$1"
-  removeCaddySnippet "# sn-sub-${rpremsubdomain} BEGIN" "# sn-sub-${rpremsubdomain} END"
-  removeCaddySnippetAllImports sn-sub-${rpremsubdomain}
+  rprembasedom="$1"
+  rpremsubdomain="$2"
+  rem_sub="$rpremsubdomain"
+  if ! [ "$rprembasedom" = "$HOMESERVER_DOMAIN" ]; then
+    rem_sub="${rpremsubdomain}-$(convertDomainStringForCaddySnippet $rprembasedom)"
+  fi
+  removeCaddySnippet "# sn-sub-${rem_sub} BEGIN" "# sn-sub-${rem_sub} END"
+  removeCaddySnippetAllImports sn-sub-${rem_sub}
   echo "Restarting caddy containers..."
   restartAllCaddyContainers
+  removeSubAuthelia "$rpremsubdomain.$rprembasedom"
+  deleteSvcHeimdall user "https://$rpremsubdomain.$rprembasedom" true
 }
 
 # ClientDNS
@@ -87316,7 +87433,8 @@ function checkInsertServiceUptimeKuma()
   fi
   set +e
   if [ "$is_restart" = "true" ]; then
-    docker container start uptimekuma > /dev/null 2>&1
+    echo "Restarting UptimeKuma..."
+    docker container start uptimekuma
   fi
   set -e
 }
@@ -87336,7 +87454,8 @@ function deleteSvcUptimeKuma()
     fi
     sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "PRAGMA foreign_keys=ON;delete from monitor where url like '${svc_url}%';"
     if [ "$is_manage_container" = "true" ]; then
-      docker container start uptimekuma >/dev/null
+      echo "Restarting UptimeKuma..."
+      docker container start uptimekuma
     fi
   fi
 }
