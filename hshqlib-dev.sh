@@ -16146,7 +16146,8 @@ function insertSubAuthelia()
     return
   fi
   sed -i "/# Authelia $selBlock END/i\        - $insSub" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
-  docker container restart authelia > /dev/null 2>&1
+  echo "Restarting authelia..."
+  docker container restart authelia
   docker ps | grep codeserver > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     docker container restart codeserver > /dev/null 2>&1
@@ -16155,10 +16156,12 @@ function insertSubAuthelia()
 
 function removeSubAuthelia()
 {
+  set +e
   remSub="$1"
   ac_block=$(sed -n "/#AC_BEGIN/,/#AC_END/p" $HSHQ_STACKS_DIR/authelia/config/configuration.yml | sed "/$remSub/d")
   replaceTextBlockInFile "#AC_BEGIN" "#AC_END" "$ac_block" $HSHQ_STACKS_DIR/authelia/config/configuration.yml true
-  docker container restart authelia > /dev/null 2>&1
+  echo "Restarting authelia..."
+  docker container restart authelia
   docker ps | grep codeserver > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     docker container restart codeserver > /dev/null 2>&1
@@ -77929,9 +77932,11 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
+rpbasedom=\$(getArgumentValue rpbasedom "\$@")
 rpsubdomain=\$(getArgumentValue rpsubdomain "\$@")
 rpdest=\$(getArgumentValue rpdest "\$@")
-addRPSubdomain "\$rpsubdomain" "\$rpdest"
+
+addRPSubdomain "\$rpbasedom" "\$rpsubdomain" "\$rpdest"
 
 set -e
 performExitFunctions false
@@ -77981,6 +77986,25 @@ EOFSC
       "stdin_expected_text": "$config_stdin_prompt"
     },
     {
+      "name": "Select the base domain",
+      "required": true,
+      "param": "-rpbasedom=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "sqlite3 $HSHQ_DB \"select Domain from (select Domain,MailHostID,IsFirstDomain from mailhostmap union select '$HOMESERVER_DOMAIN' as Domain, 1 as MailHostID, true as IsFirstDomain group by Domain,MailHostId,IsFirstDomain order by MailHostID asc, IsFirstDomain desc);\"",
+        "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
       "name": "Enter subdomain to add",
       "required": true,
       "param": "-rpsubdomain=",
@@ -77993,10 +78017,7 @@ EOFSC
         "description": "Only lowercase letters, numbers, and/or hyphens"
       },
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "pass_as": "argument"
     },
@@ -78013,7 +78034,10 @@ EOFSC
         "description": "Must be of the format http(s)://myservice:port"
       },
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "pass_as": "argument"
     }
@@ -78032,8 +78056,10 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
+rprembasedom=\$(getArgumentValue rprembasedom "\$@")
 rpremsubdomain=\$(getArgumentValue rpremsubdomain "\$@")
-removeRPSubdomain "\$rpremsubdomain"
+
+removeRPSubdomain "\$rprembasedom" "\$rpremsubdomain"
 
 set -e
 performExitFunctions false
@@ -78083,6 +78109,25 @@ EOFSC
       "stdin_expected_text": "$config_stdin_prompt"
     },
     {
+      "name": "Select the base domain",
+      "required": true,
+      "param": "-rprembasedom=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "sqlite3 $HSHQ_DB \"select Domain from (select Domain,MailHostID,IsFirstDomain from mailhostmap union select '$HOMESERVER_DOMAIN' as Domain, 1 as MailHostID, true as IsFirstDomain group by Domain,MailHostId,IsFirstDomain order by MailHostID asc, IsFirstDomain desc);\"",
+        "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
       "name": "Enter subdomain to remove",
       "required": true,
       "param": "-rpremsubdomain=",
@@ -78095,10 +78140,7 @@ EOFSC
         "description": "Only lowercase letters, numbers, and/or hyphens"
       },
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "pass_as": "argument"
     }
@@ -86920,10 +86962,11 @@ function installHostInterfaceCaddy()
 function addRPSubdomain()
 {
   set +e
-  rpsubdomain="$1"
-  rpdest="$2"
+  rpbasedom="$1"
+  rpsubdomain="$2"
+  rpdest="$3"
   inner_block=""
-  inner_block=$inner_block">>https://$rpsubdomain.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>https://$rpsubdomain.$rpbasedom {\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_TLS_HSHQ\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
@@ -86953,17 +86996,18 @@ function addRPSubdomain()
   addCaddySnippetImport primary sn-sub-${rpsubdomain} primary
   echo "Restarting caddy containers..."
   restartAllCaddyContainers
-  insertSubAuthelia "$rpsubdomain.$HOMESERVER_DOMAIN" bypass
+  insertSubAuthelia "$rpsubdomain.$rpbasedom" bypass
 }
 
 function removeRPSubdomain()
 {
-  rpremsubdomain="$1"
+  rprembasedom="$1"
+  rpremsubdomain="$2"
   removeCaddySnippet "# sn-sub-${rpremsubdomain} BEGIN" "# sn-sub-${rpremsubdomain} END"
   removeCaddySnippetAllImports sn-sub-${rpremsubdomain}
   echo "Restarting caddy containers..."
   restartAllCaddyContainers
-  removeSubAuthelia "$rpremsubdomain.$HOMESERVER_DOMAIN"
+  removeSubAuthelia "$rpremsubdomain.$rprembasedom"
 }
 
 # ClientDNS
