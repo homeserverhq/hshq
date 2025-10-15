@@ -86959,12 +86959,22 @@ function installHostInterfaceCaddy()
   installCaddy home-$interface_name home $(getHSHostIPVarName $interface_name) "$interface_ip" home na na na $(getHSHostSubnetVarName $interface_name) "$(getNonPrivateConnectingIP)"
 }
 
+function convertDomainStringForCaddySnippet()
+{
+  convDom="$1"
+  echo "$convDom" | sed "s/\./-/g"
+}
+
 function addRPSubdomain()
 {
   set +e
   rpbasedom="$1"
   rpsubdomain="$2"
   rpdest="$3"
+  add_sub="$rpsubdomain"
+  if ! [ "$rpbasedom" = "$HOMESERVER_DOMAIN" ]; then
+    add_sub="${rpsubdomain}-$(convertDomainStringForCaddySnippet $rpbasedom)"
+  fi
   inner_block=""
   inner_block=$inner_block">>https://$rpsubdomain.$rpbasedom {\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_TLS_HSHQ\n"
@@ -86978,9 +86988,9 @@ function addRPSubdomain()
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
-  block_match_begin="# sn-sub-${rpsubdomain} BEGIN"
-  block_match_end="# sn-sub-${rpsubdomain} END"
-  replace_text="(sn-sub-${rpsubdomain}) {\n${inner_block}\n}"
+  block_match_begin="# sn-sub-${add_sub} BEGIN"
+  block_match_end="# sn-sub-${add_sub} END"
+  replace_text="(sn-sub-${add_sub}) {\n${inner_block}\n}"
   r_filename=$HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip
   space_delim=">"
   match=$(grep "$block_match_begin" $r_filename)
@@ -86992,8 +87002,8 @@ function addRPSubdomain()
     echo "ERROR: Snippet already exists, returning..."
     return
   fi
-  addCaddySnippetImport home sn-sub-${rpsubdomain} home
-  addCaddySnippetImport primary sn-sub-${rpsubdomain} primary
+  addCaddySnippetImport home sn-sub-${add_sub} home
+  addCaddySnippetImport primary sn-sub-${add_sub} primary
   echo "Restarting caddy containers..."
   restartAllCaddyContainers
   insertSubAuthelia "$rpsubdomain.$rpbasedom" bypass
@@ -87003,8 +87013,12 @@ function removeRPSubdomain()
 {
   rprembasedom="$1"
   rpremsubdomain="$2"
-  removeCaddySnippet "# sn-sub-${rpremsubdomain} BEGIN" "# sn-sub-${rpremsubdomain} END"
-  removeCaddySnippetAllImports sn-sub-${rpremsubdomain}
+  rem_sub="$rpremsubdomain"
+  if ! [ "$rprembasedom" = "$HOMESERVER_DOMAIN" ]; then
+    rem_sub="${rpremsubdomain}-$(convertDomainStringForCaddySnippet $rprembasedom)"
+  fi
+  removeCaddySnippet "# sn-sub-${rem_sub} BEGIN" "# sn-sub-${rem_sub} END"
+  removeCaddySnippetAllImports sn-sub-${rem_sub}
   echo "Restarting caddy containers..."
   restartAllCaddyContainers
   removeSubAuthelia "$rpremsubdomain.$rprembasedom"
