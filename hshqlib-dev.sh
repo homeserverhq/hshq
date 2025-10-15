@@ -86979,7 +86979,9 @@ function addRPSubdomain()
   inner_block=$inner_block">>https://$rpsubdomain.$rpbasedom {\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_TLS_HSHQ\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  if [ "$rpbasedom" = "$HOMESERVER_DOMAIN" ]; then
+    inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  fi
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>reverse_proxy $rpdest {\n"
@@ -87007,6 +87009,10 @@ function addRPSubdomain()
   echo "Restarting caddy containers..."
   restartAllCaddyContainers
   insertSubAuthelia "$rpsubdomain.$rpbasedom" bypass
+  echo "========================================================================"
+  echo "        Your subdomain has been added. To access it go to:"
+  echo "        https://$rpsubdomain.$rpbasedom"
+  echo "========================================================================"
 }
 
 function removeRPSubdomain()
