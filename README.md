@@ -212,7 +212,7 @@ All of these processes take place seamlessly in the background, the user is typi
   1. Version - Each new version respects the changes made in the prior one, and the entire file is self-consistent.
   2. Audit - It is much easier to view and monitor the changes in ***ONE*** file as opposed to many files, especially across numerous deltas.
   3. Sign Code - As each new version is generated and posted, it is signed with a detached signature. Before a new version is accepted and applied, it is first checked for a valid signature. See <a href="https://wiki.homeserverhq.com/en/tutorials/source-code-verification" target="_blank">this link</a> for more details.
-  4. Transfer - At around 86k lines (currently), the file is still only about 3 MB in size, which makes it very lightweight for downloading newly updated versions. Even though this is rather large for a bash script, it is a function-based approach - there are around 1,400 functions.
+  4. Transfer - At around 90k lines (currently), the file is still only about 3.3 MB in size, which makes it very lightweight for downloading newly updated versions. Even though this is rather large for a bash script, it is a function-based approach - there are around 1,400 functions.
 
   <ins>***Q: Does this cost money?***</ins>
 
