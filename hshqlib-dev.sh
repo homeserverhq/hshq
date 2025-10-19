@@ -12510,7 +12510,7 @@ function performNetworkInvite()
       mail_body=""
       mail_body=${mail_body}"User Invitation from $HOMESERVER_NAME\n"
       mail_body=${mail_body}"================================================================\n\n"
-      mail_body=$mail_body"The public root certificate is attached to this email or can be downloaded via the following links (must be connected to network first). There is also an attached QR code with the URL:\n"
+      mail_body=$mail_body"The public root certificate is attached to this email or can be downloaded via the following links (must be connected to network first). There is also an attached QR code with the URL (CertificateURL-qr.png).\n\n"
       mail_body=$mail_body"Root CA (PEM): http://$SUB_FILES.$HOMESERVER_DOMAIN/ca.crt\n"
       mail_body=$mail_body"Root CA (DER): http://$SUB_FILES.$HOMESERVER_DOMAIN/ca.der\n"
       mail_body=$mail_body"VPN Owner Home Page: https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN\n\n"
