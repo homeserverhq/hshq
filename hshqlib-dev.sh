@@ -12517,7 +12517,7 @@ function performNetworkInvite()
       if [ "$is_ip_provided" = "false" ]; then
         mail_body=$mail_body"The configuration can be loaded using one of the three following ways: \n"
         mail_body=$mail_body"     1. Copy and paste the configuration INSIDE the ### borders below, or\n"
-        mail_body=$mail_body"     2. Scan the attached QR image (${config_name}-qr.png) from within the WireGuard client, or\n"
+        mail_body=$mail_body"     2. Scan the attached QR image (${config_name}-WireGuard-qr.png) from within the WireGuard client, or\n"
         mail_body=$mail_body"     3. Load the attached config file (${config_name}.conf).\n\n"
         if [ -z "$priv_key" ]; then
           mail_body=$mail_body"Ensure to replace your private key in the config before activating.\n"
@@ -12559,7 +12559,7 @@ function performNetworkInvite()
       qrencode -o $HOME/CertificateURL-qr.png "http://$SUB_FILES.$HOMESERVER_DOMAIN/ca.crt"
       if [ "$is_ip_provided" = "false" ]; then
         echo -e "$wg_config" > $HOME/${config_name}.conf
-        qrencode -t png -o $HOME/${config_name}-qr.png -r $HOME/${config_name}.conf
+        qrencode -t png -o $HOME/${config_name}-WireGuard-qr.png -r $HOME/${config_name}.conf
         mail_attachments="-a $HOME/${config_name}.conf -a $HOME/${config_name}-qr.png -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der -a $HOME/CertificateURL-qr.png"
       else
         mail_attachments="-a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der -a $HOME/CertificateURL-qr.png"
@@ -12568,7 +12568,7 @@ function performNetworkInvite()
       # Send ourself a copy
       sendEmail -s "(MGR COPY)$mail_subj" -b "$mail_body" $mail_attachments -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" 
       rm -f $HOME/${config_name}.conf
-      rm -f $HOME/${config_name}-qr.png
+      rm -f $HOME/${config_name}-WireGuard-qr.png
       rm -f $HOME/CertificateURL-qr.png
     ;;
   esac
