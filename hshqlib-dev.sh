@@ -12560,7 +12560,7 @@ function performNetworkInvite()
       if [ "$is_ip_provided" = "false" ]; then
         echo -e "$wg_config" > $HOME/${config_name}.conf
         qrencode -t png -o $HOME/${config_name}-WireGuard-qr.png -r $HOME/${config_name}.conf
-        mail_attachments="-a $HOME/${config_name}.conf -a $HOME/${config_name}-qr.png -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der -a $HOME/CertificateURL-qr.png"
+        mail_attachments="-a $HOME/${config_name}.conf -a $HOME/${config_name}-WireGuard-qr.png -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der -a $HOME/CertificateURL-qr.png"
       else
         mail_attachments="-a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der -a $HOME/CertificateURL-qr.png"
       fi
