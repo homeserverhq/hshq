@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=212
+HSHQ_LIB_SCRIPT_VERSION=213
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -12510,14 +12510,14 @@ function performNetworkInvite()
       mail_body=""
       mail_body=${mail_body}"User Invitation from $HOMESERVER_NAME\n"
       mail_body=${mail_body}"================================================================\n\n"
-      mail_body=$mail_body"The public root certificate is attached to this email or downloaded via the following links (must be connected to network first):\n"
+      mail_body=$mail_body"The public root certificate is attached to this email or can be downloaded via the following links (must be connected to network first). There is also an attached QR code with the URL (CertificateURL-qr.png).\n\n"
       mail_body=$mail_body"Root CA (PEM): http://$SUB_FILES.$HOMESERVER_DOMAIN/ca.crt\n"
       mail_body=$mail_body"Root CA (DER): http://$SUB_FILES.$HOMESERVER_DOMAIN/ca.der\n"
       mail_body=$mail_body"VPN Owner Home Page: https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN\n\n"
       if [ "$is_ip_provided" = "false" ]; then
         mail_body=$mail_body"The configuration can be loaded using one of the three following ways: \n"
         mail_body=$mail_body"     1. Copy and paste the configuration INSIDE the ### borders below, or\n"
-        mail_body=$mail_body"     2. Scan the attached QR image (${config_name}-qr.png) from within the WireGuard client, or\n"
+        mail_body=$mail_body"     2. Scan the attached QR image (${config_name}-WireGuard-qr.png) from within the WireGuard client, or\n"
         mail_body=$mail_body"     3. Load the attached config file (${config_name}.conf).\n\n"
         if [ -z "$priv_key" ]; then
           mail_body=$mail_body"Ensure to replace your private key in the config before activating.\n"
@@ -12556,18 +12556,20 @@ function performNetworkInvite()
       mail_body=$mail_body"\n#################### HomeServers DNS Begin #####################\n\n"
       mail_body=$mail_body"$(getMyNetworkHomeServerDNSListForClientDNS)"
       mail_body=$mail_body"##################### HomeServers DNS End ######################\n"
+      qrencode -o $HOME/CertificateURL-qr.png "http://$SUB_FILES.$HOMESERVER_DOMAIN/ca.crt"
       if [ "$is_ip_provided" = "false" ]; then
         echo -e "$wg_config" > $HOME/${config_name}.conf
-        qrencode -t png -o $HOME/${config_name}-qr.png -r $HOME/${config_name}.conf
-        mail_attachments="-a $HOME/${config_name}.conf -a $HOME/${config_name}-qr.png -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der"
+        qrencode -t png -o $HOME/${config_name}-WireGuard-qr.png -r $HOME/${config_name}.conf
+        mail_attachments="-a $HOME/${config_name}.conf -a $HOME/${config_name}-WireGuard-qr.png -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der -a $HOME/CertificateURL-qr.png"
       else
-        mail_attachments="-a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der"
+        mail_attachments="-a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der -a $HOME/CertificateURL-qr.png"
       fi
       sendEmail -s "$mail_subj" -b "$mail_body" $mail_attachments -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t "$email_address"
       # Send ourself a copy
       sendEmail -s "(MGR COPY)$mail_subj" -b "$mail_body" $mail_attachments -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" 
       rm -f $HOME/${config_name}.conf
-      rm -f $HOME/${config_name}-qr.png
+      rm -f $HOME/${config_name}-WireGuard-qr.png
+      rm -f $HOME/CertificateURL-qr.png
     ;;
   esac
   echo "Invite complete."
@@ -29290,6 +29292,8 @@ function loadPinnedDockerImages()
   IMG_ZAMMAD=ghcr.io/zammad/zammad:6.5.2-2
   IMG_ZULIP_APP=mirror.gcr.io/zulip/docker-zulip:11.2-0
   IMG_ZULIP_DB=mirror.gcr.io/zulip/zulip-postgresql:14
+  IMG_BESZEL_APP=mirror.gcr.io/henrygd/beszel:0.13.2
+  IMG_BESZEL_AGENT=mirror.gcr.io/henrygd/beszel-agent:0.13.2
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -29515,6 +29519,8 @@ function getScriptStackVersion()
       echo "v2" ;;
     wgportal)
       echo "v2" ;;
+    beszel)
+      echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
 }
@@ -29701,6 +29707,8 @@ function pullDockerImages()
   pullImage $IMG_N8N_APP
   pullImage $IMG_AUTOMATISCH_APP
   pullImage $IMG_ACTIVEPIECES_APP
+  pullImage $IMG_BESZEL_APP
+  pullImage $IMG_BESZEL_AGENT
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -30885,6 +30893,13 @@ ACTIVEPIECES_ENCRYPTION_KEY=
 ACTIVEPIECES_API_KEY=
 ACTIVEPIECES_JWT_SECRET=
 # ActivePieces (Service Details) END
+
+# Beszel (Service Details) BEGIN
+BESZEL_INIT_ENV=true
+BESZEL_ADMIN_USERNAME=
+BESZEL_ADMIN_EMAIL_ADDRESS=
+BESZEL_ADMIN_PASSWORD=
+# Beszel (Service Details) END
 
 # Service Details END
 EOFCF
@@ -33100,6 +33115,18 @@ function initServicesCredentials()
     ACTIVEPIECES_JWT_SECRET=$(pwgen -c -n 32 1)
     updateConfigVar ACTIVEPIECES_JWT_SECRET $ACTIVEPIECES_JWT_SECRET
   fi
+  if [ -z "$BESZEL_ADMIN_USERNAME" ]; then
+    BESZEL_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_beszel"
+    updateConfigVar BESZEL_ADMIN_USERNAME $BESZEL_ADMIN_USERNAME
+  fi
+  if [ -z "$BESZEL_ADMIN_EMAIL_ADDRESS" ]; then
+    BESZEL_ADMIN_EMAIL_ADDRESS=$BESZEL_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar BESZEL_ADMIN_EMAIL_ADDRESS $BESZEL_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$BESZEL_ADMIN_PASSWORD" ]; then
+    BESZEL_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar BESZEL_ADMIN_PASSWORD $BESZEL_ADMIN_PASSWORD
+  fi
 #ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
@@ -33480,6 +33507,7 @@ function initServiceVars()
   checkAddSvc "SVCD_YAMTRACK=yamtrack,yamtrack,other,user,Yamtrack,yamtrack,hshq"
   checkAddSvc "SVCD_ZAMMAD_APP=zammad,zammad,primary,user,Zammad,zammad,hshq"
   checkAddSvc "SVCD_ZULIP_APP=zulip,zulip,primary,user,Zulip,zulip,hshq"
+  checkAddSvc "SVCD_BESZEL_APP=beszel,beszel,home,admin,Beszel,beszel,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -33704,6 +33732,8 @@ function installStackByName()
       installSQLPad $is_integrate ;;
     uptimekuma)
       installUptimeKuma $is_integrate ;;
+    beszel)
+      installBeszel $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -33936,6 +33966,8 @@ function performUpdateStackByName()
       performUpdateCaddy "$stack_name" ;;
     clientdns-*)
       performUpdateClientDNS "$stack_name" ;;
+    beszel)
+      performUpdateBeszel ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -34104,6 +34136,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_WAZUH.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WIKIJS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WORDPRESS.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_BESZEL_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_ADMIN_HERE
   retval="${retval}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -34218,6 +34251,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_N8N_APP}-Admin" https://$SUB_N8N_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $N8N_ADMIN_EMAIL_ADDRESS $N8N_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUTOMATISCH_APP}-Admin" https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOMATISCH_EMAIL_ADDRESS $AUTOMATISCH_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ACTIVEPIECES_APP}-Admin" https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN/sign-in $HOMESERVER_ABBREV $ACTIVEPIECES_ADMIN_EMAIL_ADDRESS $ACTIVEPIECES_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_BESZEL_APP}-Admin" https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $BESZEL_ADMIN_USERNAME $BESZEL_ADMIN_PASSWORD)"\n"
 #ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
@@ -34361,6 +34395,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_N8N_APP}-Admin" https://$SUB_N8N_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $N8N_ADMIN_EMAIL_ADDRESS $N8N_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUTOMATISCH_APP}-Admin" https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOMATISCH_EMAIL_ADDRESS $AUTOMATISCH_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ACTIVEPIECES_APP}-Admin" https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN/sign-in $HOMESERVER_ABBREV $ACTIVEPIECES_ADMIN_EMAIL_ADDRESS $ACTIVEPIECES_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_BESZEL_APP}-Admin" https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $BESZEL_ADMIN_USERNAME $BESZEL_ADMIN_PASSWORD)"\n"
 #ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
@@ -34794,6 +34829,9 @@ function getHeimdallOrderFromSub()
     "$SUB_ACTIVEPIECES_APP")
       order_num=122
       ;;
+    "$SUB_BESZEL_APP")
+      order_num=123
+      ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=900
@@ -34844,18 +34882,18 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,beszel
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,espocrm,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces
-  DS_MEM_HIGH=discourse,netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces
-  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces
-  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,espocrm,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel
+  DS_MEM_HIGH=discourse,netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,beszel
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel
+  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,beszel
+  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,beszel
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,beszel
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,beszel
 #INIT_SERVICE_DEFAULTS_END
 }
 
@@ -35843,6 +35881,12 @@ function getScriptImageByContainerName()
     "activepieces-redis")
       container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
+    "beszel-app")
+      container_image=$IMG_BESZEL_APP
+      ;;
+    "beszel-agent")
+      container_image=$IMG_BESZEL_AGENT
+      ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
@@ -35925,6 +35969,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "n8n" "N8N_INIT_ENV=false,N8N_ADMIN_USERNAME=,N8N_ADMIN_EMAIL_ADDRESS=,N8N_ADMIN_PASSWORD=,N8N_DATABASE_NAME=,N8N_DATABASE_USER=,N8N_DATABASE_USER_PASSWORD=,N8N_REDIS_PASSWORD=,N8N_ENCRYPTION_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "Automatisch" "AUTOMATISCH_INIT_ENV=false,AUTOMATISCH_ADMIN_USERNAME=,AUTOMATISCH_ADMIN_EMAIL_ADDRESS=,AUTOMATISCH_ADMIN_PASSWORD=,AUTOMATISCH_DATABASE_NAME=,AUTOMATISCH_DATABASE_USER=,AUTOMATISCH_DATABASE_USER_PASSWORD=,AUTOMATISCH_REDIS_PASSWORD=,AUTOMATISCH_ENCRYPTION_KEY=,AUTOMATISCH_WEBHOOK_SECRET_KEY=,AUTOMATISCH_APP_SECRET_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "ActivePieces" "ACTIVEPIECES_INIT_ENV=false,ACTIVEPIECES_ADMIN_USERNAME=,ACTIVEPIECES_ADMIN_EMAIL_ADDRESS=,ACTIVEPIECES_ADMIN_PASSWORD=,ACTIVEPIECES_DATABASE_NAME=,ACTIVEPIECES_DATABASE_USER=,ACTIVEPIECES_DATABASE_USER_PASSWORD=,ACTIVEPIECES_REDIS_PASSWORD=,ACTIVEPIECES_ENCRYPTION_KEY=,ACTIVEPIECES_API_KEY=,ACTIVEPIECES_JWT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Beszel" "BESZEL_INIT_ENV=false,BESZEL_ADMIN_USERNAME=,BESZEL_ADMIN_EMAIL_ADDRESS=,BESZEL_ADMIN_PASSWORD=" $CONFIG_FILE false
 #ADD_NEW_ADD_SVC_CONFIG_HERE
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
@@ -75612,6 +75657,196 @@ function performUpdateActivePieces()
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="ghcr.io/activepieces/activepieces:0.70.1,ghcr.io/activepieces/activepieces:0.70.1"
       image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Beszel
+function installBeszel()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory beszel "Beszel"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName beszel-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName beszel-agent)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/beszel
+  mkdir $HSHQ_STACKS_DIR/beszel/hubdata
+  mkdir $HSHQ_STACKS_DIR/beszel/socket
+  mkdir $HSHQ_STACKS_DIR/beszel/agentdata
+  initServicesCredentials
+  set +e
+  addUserMailu alias $BESZEL_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  BESZEL_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $BESZEL_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigBeszel
+  installStack beszel beszel-app "Server started at http" $HOME/beszel.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$BESZEL_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_BESZEL_APP Admin Login Info" -b "$FMLNAME_BESZEL_APP Admin Username: $BESZEL_ADMIN_EMAIL_ADDRESS\n$FMLNAME_BESZEL_APP Admin Password: $BESZEL_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    BESZEL_INIT_ENV=true
+    updateConfigVar BESZEL_INIT_ENV $BESZEL_INIT_ENV
+  fi
+  sendEmail -s "$FMLNAME_BESZEL_APP Install Instructions" -b "There is one extra action that you must perform manually to enable the Beszel agent on your local system. Here are the steps:\n\n\t1. Log in to the Beszel web UI using the admin credentials (https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN).\n\t2. Go to Settings (press the gear button on top right of window), then to Tokens & Fingerprints.\n\t3. Under the Universal token section, move the toggle button to the right. You should see a UUID for the token, i.e. something like 9df4ceb0-af96-413a-ab2b-7246cca7422c, etc.\n\t4. Select this generated value and copy it to the clipboard.\n\t5. Go to Portainer (https://$SUB_PORTAINER.$HOMESERVER_DOMAIN), and open up the beszel stack.\n\t6. Select the Editor tab, then in the docker-compose area scoll halfway down to the beszel-agent container.\n\t7. At the end of that block is an environment section with a single variable, TOKEN. It should be assigned to nothing, i.e. - TOKEN=. Paste the generated token from the clipboard on the RHS, i.e. it should then look like this: - TOKEN=9df4ceb0-af96-413a-ab2b-7246cca7422c\n\t8. After pasting the value, scroll down and press the Update the stack button. Your local system should not be connected to the hub. Go back to Beszel and refresh the page (click the word Beszel on top left corner of window to go to the home landing page)." -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  sleep 3
+  beszel_app_key=$(sudo ssh-keygen -y -f $HSHQ_STACKS_DIR/beszel/hubdata/id_ed25519)
+  #beszel_app_token=$(sqlite3 $HSHQ_STACKS_DIR/beszel/hubdata/data.db "select token from fingerprints limit 1;")
+  updateStackEnv beszel modFunBeszelUpdateKeyToken > /dev/null 2>&1
+  if [ -z "$FMLNAME_BESZEL_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://beszel-app:8090 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_BESZEL_APP $MANAGETLS_BESZEL_APP "$is_integrate_hshq" $NETDEFAULT_BESZEL_APP "$inner_block"
+  insertSubAuthelia $SUB_BESZEL_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll beszel "$FMLNAME_BESZEL_APP" $USERTYPE_BESZEL_APP "https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN" "beszel.png" "$(getHeimdallOrderFromSub $SUB_BESZEL_APP $USERTYPE_BESZEL_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigBeszel()
+{
+  cat <<EOFMT > $HOME/beszel-compose.yml
+$STACK_VERSION_PREFIX beszel $(getScriptStackVersion beszel)
+
+services:
+  beszel-app:
+    image: $(getScriptImageByContainerName beszel-app)
+    container_name: beszel-app
+    hostname: beszel-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    ports:
+      - 127.0.0.1:8090:8090
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-beszel-hubdata:/beszel_data
+      - v-beszel-socket:/beszel_socket
+
+  beszel-agent:
+    image: $(getScriptImageByContainerName beszel-agent)
+    container_name: beszel-agent
+    hostname: beszel-agent
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    network_mode: host
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-beszel-agentdata:/var/lib/beszel-agent
+      - v-beszel-socket:/beszel_socket
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - TOKEN=
+
+volumes:
+  v-beszel-hubdata:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/beszel/hubdata
+  v-beszel-socket:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/beszel/socket
+  v-beszel-agentdata:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/beszel/agentdata
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+EOFMT
+  cat <<EOFMT > $HOME/beszel.env
+TZ=\${PORTAINER_TZ}
+APP_URL=https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN
+LISTEN=/beszel_socket/beszel.sock
+HUB_URL=http://127.0.0.1:8090
+USER_EMAIL=$BESZEL_ADMIN_EMAIL_ADDRESS
+USER_PASSWORD=$BESZEL_ADMIN_PASSWORD
+KEY=
+EOFMT
+}
+
+function modFunBeszelUpdateKeyToken()
+{
+  sed -i "s|^KEY=.*|KEY=${beszel_app_key}|g" $HOME/beszel.env
+}
+
+function performUpdateBeszel()
+{
+  perform_stack_name=beszel
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/henrygd/beszel:0.13.2,mirror.gcr.io/henrygd/beszel-agent:0.13.2
+      image_update_map[0]="mirror.gcr.io/henrygd/beszel:0.13.2,mirror.gcr.io/henrygd/beszel:0.13.2"
+      image_update_map[1]="mirror.gcr.io/henrygd/beszel-agent:0.13.2,mirror.gcr.io/henrygd/beszel-agent:0.13.2"
     ;;
     *)
       is_upgrade_error=true
