@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=213
+HSHQ_LIB_SCRIPT_VERSION=214
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -16081,7 +16081,7 @@ function replaceTextBlockInFile()
   if ! [ -z "$match" ]; then
     all_text=$(cat $r_filename)
     if ! [ -z "$space_delim" ]; then
-      replace_text=$(echo $replace_text | sed "s|$space_delim| |g")
+      replace_text=$(echo "$replace_text" | sed "s|$space_delim| |g")
     fi
     if [ "$is_keep_block_headers" = "true" ]; then
       echo -e "${all_text%%$block_match_begin*}${block_match_begin}\n${replace_text}\n${block_match_end}${all_text##*$block_match_end}" > $r_filename
@@ -16104,7 +16104,7 @@ function replaceOrAppendTextBlockInFile()
   if [ -z "$match" ]; then
     #Append
     if ! [ -z "$space_delim" ]; then
-      replace_text=$(echo $replace_text | sed "s|$space_delim| |g")
+      replace_text=$(echo "$replace_text" | sed "s|$space_delim| |g")
     fi
     echo -e "\n${block_match_begin}\n${replace_text}\n${block_match_end}" >> $r_filename
   else
@@ -21483,7 +21483,7 @@ EOFCF
       ;;
       jitsi)
         sed -i "s|^DOCKER_HOST_ADDRESS=.*|DOCKER_HOST_ADDRESS=\${HOMESERVER_HOST_IP}|g" $HOME/${rstackIDs[$curID]}.env
-        JITSI_ADVERTISE_IPS=$(echo $JITSI_ADVERTISE_IPS | sed "s|$HOMESERVER_HOST_IP||g")
+        JITSI_ADVERTISE_IPS=$(echo "$JITSI_ADVERTISE_IPS" | sed "s|$HOMESERVER_HOST_IP||g")
         updateConfigVar JITSI_ADVERTISE_IPS $JITSI_ADVERTISE_IPS
         sed -i "s|^JVB_ADVERTISE_IPS=.*|JVB_ADVERTISE_IPS=\${HOMESERVER_HOST_IP}$JITSI_ADVERTISE_IPS|g" $HOME/${rstackIDs[$curID]}.env
         sed -i '/^CONFIG=/d' $HOME/${rstackIDs[$curID]}.env
@@ -27523,8 +27523,8 @@ function addHSInterface()
 function removeHSInterface()
 {
   iface_name="$1"
-  HOMESERVER_HOST_NETWORK_INTERFACES=$(echo $HOMESERVER_HOST_NETWORK_INTERFACES | sed "s|${iface_name},||g")
-  HOMESERVER_HOST_NETWORK_INTERFACES=$(echo $HOMESERVER_HOST_NETWORK_INTERFACES | sed "s|,${iface_name}||g")
+  HOMESERVER_HOST_NETWORK_INTERFACES=$(echo "$HOMESERVER_HOST_NETWORK_INTERFACES" | sed "s|${iface_name},||g")
+  HOMESERVER_HOST_NETWORK_INTERFACES=$(echo "$HOMESERVER_HOST_NETWORK_INTERFACES" | sed "s|,${iface_name}||g")
   updatePlaintextRootConfigVar HOMESERVER_HOST_NETWORK_INTERFACES $HOMESERVER_HOST_NETWORK_INTERFACES
   checkDeleteStackAndDirectory caddy-home-$iface_name "Caddy" true true > /dev/null 2>&1
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where InterfaceName='$iface_name';" > /dev/null 2>&1
@@ -28472,7 +28472,7 @@ function generateCert()
   IPS="$3"
   FT_START_DATE="$4"
   FT_END_DATE="$5"
-  COMMON_NAME=$(echo $DNS | sed 's|,|\n|g' | sed -n '1p')
+  COMMON_NAME=$(echo "$DNS" | sed 's|,|\n|g' | sed -n '1p')
 
   if ! [ -f $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.key ]; then
     echo "Certificate Authority key does not exist. Please generate a CA key and certificate first, exiting..."
@@ -29294,6 +29294,14 @@ function loadPinnedDockerImages()
   IMG_ZULIP_DB=mirror.gcr.io/zulip/zulip-postgresql:14
   IMG_BESZEL_APP=mirror.gcr.io/henrygd/beszel:0.13.2
   IMG_BESZEL_AGENT=mirror.gcr.io/henrygd/beszel-agent:0.13.2
+  IMG_TAIGA_BACK=mirror.gcr.io/taigaio/taiga-back:6.9.0
+  IMG_TAIGA_BACK=mirror.gcr.io/taigaio/taiga-back:6.9.0
+  IMG_TAIGA_FRONT=mirror.gcr.io/taigaio/taiga-front:6.9.0
+  IMG_TAIGA_EVENTS=mirror.gcr.io/taigaio/taiga-events:6.9.0
+  IMG_TAIGA_PROTECTED=mirror.gcr.io/taigaio/taiga-protected:6.9.0
+  IMG_OPENSIGN_SERVER=mirror.gcr.io/opensign/opensignserver:main
+  IMG_OPENSIGN_CLIENT=mirror.gcr.io/opensign/opensign:main
+  IMG_DOCUSEAL_APP=mirror.gcr.io/docuseal/docuseal:2.1.8
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -29521,6 +29529,12 @@ function getScriptStackVersion()
       echo "v2" ;;
     beszel)
       echo "v1" ;;
+    taiga)
+      echo "v1" ;;
+    opensign)
+      echo "v1" ;;
+    docuseal)
+      echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
 }
@@ -29709,6 +29723,14 @@ function pullDockerImages()
   pullImage $IMG_ACTIVEPIECES_APP
   pullImage $IMG_BESZEL_APP
   pullImage $IMG_BESZEL_AGENT
+  pullImage $IMG_TAIGA_BACK
+  pullImage $IMG_TAIGA_BACK
+  pullImage $IMG_TAIGA_FRONT
+  pullImage $IMG_TAIGA_EVENTS
+  pullImage $IMG_TAIGA_PROTECTED
+  pullImage $IMG_OPENSIGN_SERVER
+  pullImage $IMG_OPENSIGN_CLIENT
+  pullImage $IMG_DOCUSEAL_APP
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -30900,6 +30922,42 @@ BESZEL_ADMIN_USERNAME=
 BESZEL_ADMIN_EMAIL_ADDRESS=
 BESZEL_ADMIN_PASSWORD=
 # Beszel (Service Details) END
+
+# Taiga (Service Details) BEGIN
+TAIGA_INIT_ENV=true
+TAIGA_ADMIN_USERNAME=
+TAIGA_ADMIN_EMAIL_ADDRESS=
+TAIGA_ADMIN_PASSWORD=
+TAIGA_DATABASE_NAME=
+TAIGA_DATABASE_USER=
+TAIGA_DATABASE_USER_PASSWORD=
+TAIGA_SECRET_KEY=
+TAIGA_RABBITMQ_USERNAME=
+TAIGA_RABBITMQ_PASSWORD=
+TAIGA_RABBITMQ_ERLANG_COOKIE=
+# Taiga (Service Details) END
+
+# OpenSign (Service Details) BEGIN
+OPENSIGN_INIT_ENV=true
+OPENSIGN_ADMIN_USERNAME=
+OPENSIGN_ADMIN_EMAIL_ADDRESS=
+OPENSIGN_ADMIN_PASSWORD=
+OPENSIGN_DATABASE_NAME=
+OPENSIGN_DATABASE_USER=
+OPENSIGN_DATABASE_USER_PASSWORD=
+OPENSIGN_MASTER_KEY=
+OPENSIGN_CERTIFICATE_PASS_PHRASE=
+# OpenSign (Service Details) END
+
+# DocuSeal (Service Details) BEGIN
+DOCUSEAL_INIT_ENV=true
+DOCUSEAL_ADMIN_USERNAME=
+DOCUSEAL_ADMIN_EMAIL_ADDRESS=
+DOCUSEAL_ADMIN_PASSWORD=
+DOCUSEAL_DATABASE_NAME=
+DOCUSEAL_DATABASE_USER=
+DOCUSEAL_DATABASE_USER_PASSWORD=
+# DocuSeal (Service Details) END
 
 # Service Details END
 EOFCF
@@ -33127,6 +33185,102 @@ function initServicesCredentials()
     BESZEL_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar BESZEL_ADMIN_PASSWORD $BESZEL_ADMIN_PASSWORD
   fi
+  if [ -z "$TAIGA_ADMIN_USERNAME" ]; then
+    TAIGA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_taiga"
+    updateConfigVar TAIGA_ADMIN_USERNAME $TAIGA_ADMIN_USERNAME
+  fi
+  if [ -z "$TAIGA_ADMIN_EMAIL_ADDRESS" ]; then
+    TAIGA_ADMIN_EMAIL_ADDRESS=$TAIGA_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar TAIGA_ADMIN_EMAIL_ADDRESS $TAIGA_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$TAIGA_ADMIN_PASSWORD" ]; then
+    TAIGA_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar TAIGA_ADMIN_PASSWORD $TAIGA_ADMIN_PASSWORD
+  fi
+  if [ -z "$TAIGA_DATABASE_NAME" ]; then
+    TAIGA_DATABASE_NAME=taigadb
+    updateConfigVar TAIGA_DATABASE_NAME $TAIGA_DATABASE_NAME
+  fi
+  if [ -z "$TAIGA_DATABASE_USER" ]; then
+    TAIGA_DATABASE_USER=taiga-user
+    updateConfigVar TAIGA_DATABASE_USER $TAIGA_DATABASE_USER
+  fi
+  if [ -z "$TAIGA_DATABASE_USER_PASSWORD" ]; then
+    TAIGA_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar TAIGA_DATABASE_USER_PASSWORD $TAIGA_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$TAIGA_SECRET_KEY" ]; then
+    TAIGA_SECRET_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar TAIGA_SECRET_KEY $TAIGA_SECRET_KEY
+  fi
+  if [ -z "$TAIGA_RABBITMQ_USERNAME" ]; then
+    TAIGA_RABBITMQ_USERNAME=taiga
+    updateConfigVar TAIGA_RABBITMQ_USERNAME $TAIGA_RABBITMQ_USERNAME
+  fi
+  if [ -z "$TAIGA_RABBITMQ_PASSWORD" ]; then
+    TAIGA_RABBITMQ_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar TAIGA_RABBITMQ_PASSWORD $TAIGA_RABBITMQ_PASSWORD
+  fi
+  if [ -z "$TAIGA_RABBITMQ_ERLANG_COOKIE" ]; then
+    TAIGA_RABBITMQ_ERLANG_COOKIE=$(pwgen -c -n 32 1)
+    updateConfigVar TAIGA_RABBITMQ_ERLANG_COOKIE $TAIGA_RABBITMQ_ERLANG_COOKIE
+  fi
+  if [ -z "$OPENSIGN_ADMIN_USERNAME" ]; then
+    OPENSIGN_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_opensign"
+    updateConfigVar OPENSIGN_ADMIN_USERNAME $OPENSIGN_ADMIN_USERNAME
+  fi
+  if [ -z "$OPENSIGN_ADMIN_EMAIL_ADDRESS" ]; then
+    OPENSIGN_ADMIN_EMAIL_ADDRESS=$OPENSIGN_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar OPENSIGN_ADMIN_EMAIL_ADDRESS $OPENSIGN_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$OPENSIGN_ADMIN_PASSWORD" ]; then
+    OPENSIGN_ADMIN_PASSWORD=$(getPasswordWithSymbol 32)
+    updateConfigVar OPENSIGN_ADMIN_PASSWORD $OPENSIGN_ADMIN_PASSWORD
+  fi
+  if [ -z "$OPENSIGN_DATABASE_NAME" ]; then
+    OPENSIGN_DATABASE_NAME=opensigndb
+    updateConfigVar OPENSIGN_DATABASE_NAME $OPENSIGN_DATABASE_NAME
+  fi
+  if [ -z "$OPENSIGN_DATABASE_USER" ]; then
+    OPENSIGN_DATABASE_USER=opensign-user
+    updateConfigVar OPENSIGN_DATABASE_USER $OPENSIGN_DATABASE_USER
+  fi
+  if [ -z "$OPENSIGN_DATABASE_USER_PASSWORD" ]; then
+    OPENSIGN_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OPENSIGN_DATABASE_USER_PASSWORD $OPENSIGN_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$OPENSIGN_MASTER_KEY" ]; then
+    OPENSIGN_MASTER_KEY=$(pwgen -c -0 16 1)
+    updateConfigVar OPENSIGN_MASTER_KEY $OPENSIGN_MASTER_KEY
+  fi
+  if [ -z "$OPENSIGN_CERTIFICATE_PASS_PHRASE" ]; then
+    OPENSIGN_CERTIFICATE_PASS_PHRASE=$(pwgen -c -n 32 1)
+    updateConfigVar OPENSIGN_CERTIFICATE_PASS_PHRASE $OPENSIGN_CERTIFICATE_PASS_PHRASE
+  fi
+  if [ -z "$DOCUSEAL_ADMIN_USERNAME" ]; then
+    DOCUSEAL_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_docuseal"
+    updateConfigVar DOCUSEAL_ADMIN_USERNAME $DOCUSEAL_ADMIN_USERNAME
+  fi
+  if [ -z "$DOCUSEAL_ADMIN_EMAIL_ADDRESS" ]; then
+    DOCUSEAL_ADMIN_EMAIL_ADDRESS=$DOCUSEAL_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar DOCUSEAL_ADMIN_EMAIL_ADDRESS $DOCUSEAL_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$DOCUSEAL_ADMIN_PASSWORD" ]; then
+    DOCUSEAL_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar DOCUSEAL_ADMIN_PASSWORD $DOCUSEAL_ADMIN_PASSWORD
+  fi
+  if [ -z "$DOCUSEAL_DATABASE_NAME" ]; then
+    DOCUSEAL_DATABASE_NAME=docusealdb
+    updateConfigVar DOCUSEAL_DATABASE_NAME $DOCUSEAL_DATABASE_NAME
+  fi
+  if [ -z "$DOCUSEAL_DATABASE_USER" ]; then
+    DOCUSEAL_DATABASE_USER=docuseal-user
+    updateConfigVar DOCUSEAL_DATABASE_USER $DOCUSEAL_DATABASE_USER
+  fi
+  if [ -z "$DOCUSEAL_DATABASE_USER_PASSWORD" ]; then
+    DOCUSEAL_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar DOCUSEAL_DATABASE_USER_PASSWORD $DOCUSEAL_DATABASE_USER_PASSWORD
+  fi
 #ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
@@ -33508,6 +33662,9 @@ function initServiceVars()
   checkAddSvc "SVCD_ZAMMAD_APP=zammad,zammad,primary,user,Zammad,zammad,hshq"
   checkAddSvc "SVCD_ZULIP_APP=zulip,zulip,primary,user,Zulip,zulip,hshq"
   checkAddSvc "SVCD_BESZEL_APP=beszel,beszel,home,admin,Beszel,beszel,hshq"
+  checkAddSvc "SVCD_TAIGA_APP=taiga,taiga,primary,user,Taiga,taiga,hshq"
+  checkAddSvc "SVCD_OPENSIGN_APP=opensign,opensign,primary,user,OpenSign,opensign,hshq"
+  checkAddSvc "SVCD_DOCUSEAL_APP=docuseal,docuseal,primary,user,DocuSeal,docuseal,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -33734,6 +33891,12 @@ function installStackByName()
       installUptimeKuma $is_integrate ;;
     beszel)
       installBeszel $is_integrate ;;
+    taiga)
+      installTaiga $is_integrate ;;
+    opensign)
+      installOpenSign $is_integrate ;;
+    docuseal)
+      installDocuSeal $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -33968,6 +34131,12 @@ function performUpdateStackByName()
       performUpdateClientDNS "$stack_name" ;;
     beszel)
       performUpdateBeszel ;;
+    taiga)
+      performUpdateTaiga ;;
+    opensign)
+      performUpdateOpenSign ;;
+    docuseal)
+      performUpdateDocuSeal ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -34053,6 +34222,8 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_YAMTRACK.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ZULIP_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_BYPASS_HERE
   retval="${retval}# Authelia bypass END\n"
   retval="${retval}      policy: bypass\n"
@@ -34086,6 +34257,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SEARXNG.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_TWENTY.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_TAIGA_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_PRIMARY_HERE
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -34252,6 +34424,9 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUTOMATISCH_APP}-Admin" https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOMATISCH_EMAIL_ADDRESS $AUTOMATISCH_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ACTIVEPIECES_APP}-Admin" https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN/sign-in $HOMESERVER_ABBREV $ACTIVEPIECES_ADMIN_EMAIL_ADDRESS $ACTIVEPIECES_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_BESZEL_APP}-Admin" https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $BESZEL_ADMIN_USERNAME $BESZEL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TAIGA_APP}-Admin" https://$SUB_TAIGA_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $TAIGA_ADMIN_USERNAME $TAIGA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENSIGN_APP}-Admin" https://$SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $OPENSIGN_ADMIN_USERNAME $OPENSIGN_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DOCUSEAL_APP}-Admin" https://$SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN/sign_in $HOMESERVER_ABBREV $DOCUSEAL_ADMIN_USERNAME $DOCUSEAL_ADMIN_PASSWORD)"\n"
 #ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
@@ -34396,6 +34571,9 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUTOMATISCH_APP}-Admin" https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOMATISCH_EMAIL_ADDRESS $AUTOMATISCH_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ACTIVEPIECES_APP}-Admin" https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN/sign-in $HOMESERVER_ABBREV $ACTIVEPIECES_ADMIN_EMAIL_ADDRESS $ACTIVEPIECES_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_BESZEL_APP}-Admin" https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $BESZEL_ADMIN_USERNAME $BESZEL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TAIGA_APP}-Admin" https://$SUB_TAIGA_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $TAIGA_ADMIN_USERNAME $TAIGA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENSIGN_APP}-Admin" https://$SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $OPENSIGN_ADMIN_USERNAME $OPENSIGN_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DOCUSEAL_APP}-Admin" https://$SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN/sign_in $HOMESERVER_ABBREV $DOCUSEAL_ADMIN_USERNAME $DOCUSEAL_ADMIN_PASSWORD)"\n"
 #ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
@@ -34832,6 +35010,15 @@ function getHeimdallOrderFromSub()
     "$SUB_BESZEL_APP")
       order_num=123
       ;;
+    "$SUB_TAIGA_APP")
+      order_num=124
+      ;;
+    "$SUB_OPENSIGN_APP")
+      order_num=125
+      ;;
+    "$SUB_DOCUSEAL_APP")
+      order_num=126
+      ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=900
@@ -34882,18 +35069,18 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,beszel
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,beszel,taiga,opensign,docuseal
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,espocrm,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel
-  DS_MEM_HIGH=discourse,netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,beszel
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel
-  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,beszel
-  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,beszel
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,beszel
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,beszel
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel,taiga,opensign,docuseal
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel,taiga,opensign,docuseal
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel,taiga,opensign,docuseal
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,espocrm,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel,taiga,opensign,docuseal
+  DS_MEM_HIGH=discourse,netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,beszel,taiga,opensign,docuseal
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel,taiga,opensign,docuseal
+  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,beszel,taiga,opensign,docuseal
+  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,beszel,taiga,opensign,docuseal
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,beszel,taiga,opensign,docuseal
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,beszel,taiga,opensign,docuseal
 #INIT_SERVICE_DEFAULTS_END
 }
 
@@ -35887,6 +36074,48 @@ function getScriptImageByContainerName()
     "beszel-agent")
       container_image=$IMG_BESZEL_AGENT
       ;;
+    "taiga-db")
+      container_image=mirror.gcr.io/postgres:17.6
+      ;;
+    "taiga-back")
+      container_image=$IMG_TAIGA_BACK
+      ;;
+    "taiga-async")
+      container_image=$IMG_TAIGA_BACK
+      ;;
+    "taiga-async-rabbitmq")
+      container_image=mirror.gcr.io/rabbitmq:4.1.4-management-alpine
+      ;;
+    "taiga-front")
+      container_image=$IMG_TAIGA_FRONT
+      ;;
+    "taiga-events")
+      container_image=$IMG_TAIGA_EVENTS
+      ;;
+    "taiga-events-rabbitmq")
+      container_image=mirror.gcr.io/rabbitmq:4.1.4-management-alpine
+      ;;
+    "taiga-protected")
+      container_image=$IMG_TAIGA_PROTECTED
+      ;;
+    "taiga-gateway")
+      container_image=mirror.gcr.io/nginx:1.28.0-alpine
+      ;;
+    "opensign-db")
+      container_image=mirror.gcr.io/mongo:8.0.13
+      ;;
+    "opensign-server")
+      container_image=$IMG_OPENSIGN_SERVER
+      ;;
+    "opensign-client")
+      container_image=$IMG_OPENSIGN_CLIENT
+      ;;
+    "docuseal-db")
+      container_image=mirror.gcr.io/postgres:17.6
+      ;;
+    "docuseal-app")
+      container_image=$IMG_DOCUSEAL_APP
+      ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
@@ -35970,6 +36199,9 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Automatisch" "AUTOMATISCH_INIT_ENV=false,AUTOMATISCH_ADMIN_USERNAME=,AUTOMATISCH_ADMIN_EMAIL_ADDRESS=,AUTOMATISCH_ADMIN_PASSWORD=,AUTOMATISCH_DATABASE_NAME=,AUTOMATISCH_DATABASE_USER=,AUTOMATISCH_DATABASE_USER_PASSWORD=,AUTOMATISCH_REDIS_PASSWORD=,AUTOMATISCH_ENCRYPTION_KEY=,AUTOMATISCH_WEBHOOK_SECRET_KEY=,AUTOMATISCH_APP_SECRET_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "ActivePieces" "ACTIVEPIECES_INIT_ENV=false,ACTIVEPIECES_ADMIN_USERNAME=,ACTIVEPIECES_ADMIN_EMAIL_ADDRESS=,ACTIVEPIECES_ADMIN_PASSWORD=,ACTIVEPIECES_DATABASE_NAME=,ACTIVEPIECES_DATABASE_USER=,ACTIVEPIECES_DATABASE_USER_PASSWORD=,ACTIVEPIECES_REDIS_PASSWORD=,ACTIVEPIECES_ENCRYPTION_KEY=,ACTIVEPIECES_API_KEY=,ACTIVEPIECES_JWT_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "Beszel" "BESZEL_INIT_ENV=false,BESZEL_ADMIN_USERNAME=,BESZEL_ADMIN_EMAIL_ADDRESS=,BESZEL_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Taiga" "TAIGA_INIT_ENV=false,TAIGA_ADMIN_USERNAME=,TAIGA_ADMIN_EMAIL_ADDRESS=,TAIGA_ADMIN_PASSWORD=,TAIGA_DATABASE_NAME=,TAIGA_DATABASE_USER=,TAIGA_DATABASE_USER_PASSWORD=,TAIGA_SECRET_KEY=,TAIGA_RABBITMQ_USERNAME=,TAIGA_RABBITMQ_PASSWORD=,TAIGA_RABBITMQ_ERLANG_COOKIE=" $CONFIG_FILE false
+  checkAddServiceToConfig "OpenSign" "OPENSIGN_INIT_ENV=false,OPENSIGN_ADMIN_USERNAME=,OPENSIGN_ADMIN_EMAIL_ADDRESS=,OPENSIGN_ADMIN_PASSWORD=,OPENSIGN_DATABASE_NAME=,OPENSIGN_DATABASE_USER=,OPENSIGN_DATABASE_USER_PASSWORD=,OPENSIGN_MASTER_KEY=,OPENSIGN_CERTIFICATE_PASS_PHRASE=" $CONFIG_FILE false
+  checkAddServiceToConfig "DocuSeal" "DOCUSEAL_INIT_ENV=false,DOCUSEAL_ADMIN_USERNAME=,DOCUSEAL_ADMIN_EMAIL_ADDRESS=,DOCUSEAL_ADMIN_PASSWORD=,DOCUSEAL_DATABASE_NAME=,DOCUSEAL_DATABASE_USER=,DOCUSEAL_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
 #ADD_NEW_ADD_SVC_CONFIG_HERE
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
@@ -61906,6 +62138,8 @@ EOFOT
 "Yamtrack" postgres yamtrack-db $YAMTRACK_DATABASE_NAME $YAMTRACK_DATABASE_USER $YAMTRACK_DATABASE_USER_PASSWORD
 "Zammad" postgres zammad-db $ZAMMAD_DATABASE_NAME $ZAMMAD_DATABASE_USER $ZAMMAD_DATABASE_USER_PASSWORD
 "Zulip" postgres zulip-db $ZULIP_DATABASE_NAME $ZULIP_DATABASE_USER $ZULIP_DATABASE_USER_PASSWORD
+"Taiga" postgres taiga-db $TAIGA_DATABASE_NAME $TAIGA_DATABASE_USER $TAIGA_DATABASE_USER_PASSWORD
+"DocuSeal" postgres docuseal-db $DOCUSEAL_DATABASE_NAME $DOCUSEAL_DATABASE_USER $DOCUSEAL_DATABASE_USER_PASSWORD
 #ADD_NEW_AISTACK_DB_IMPORT_HERE
 EOFAS
   cat <<EOFIM > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/importConnections.sh
@@ -67376,7 +67610,7 @@ function installWekan()
   set -e
   mkdir $HSHQ_STACKS_DIR/wekan
   mkdir $HSHQ_STACKS_DIR/wekan/db
-  mkdir $HSHQ_STACKS_DIR/wekan/dump
+  mkdir $HSHQ_STACKS_DIR/wekan/dbexport
   mkdir $HSHQ_STACKS_DIR/wekan/files
   initServicesCredentials
   set +e
@@ -67411,7 +67645,7 @@ function installWekan()
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll wekan "$FMLNAME_WEKAN" $USERTYPE_WEKAN "https://$SUB_WEKAN.$HOMESERVER_DOMAIN" "wekan.png" "$(getHeimdallOrderFromSub $SUB_WEKAN $USERTYPE_WEKAN)"
-    checkAddDBConnection true wekan "$FMLNAME_WEKAN" mongodb wekan-db $WEKAN_DATABASE_NAME $WEKAN_DATABASE_USER $WEKAN_DATABASE_USER_PASSWORD
+    checkAddDBConnection true wekan "$FMLNAME_WEKAN" mongo wekan-db $WEKAN_DATABASE_NAME $WEKAN_DATABASE_USER $WEKAN_DATABASE_USER_PASSWORD
     restartAllCaddyContainers
   fi
 }
@@ -67438,7 +67672,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - v-wekan-db:/data/db
-      - v-wekan-dump:/dump
+      - v-wekan-export:/dump
 
   wekan-app:
     image: $(getScriptImageByContainerName wekan-app)
@@ -67471,12 +67705,12 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/wekan/db
-  v-wekan-dump:
+  v-wekan-dbexport:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/wekan/dump
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/wekan/dbexport
   v-wekan-files:
     driver: local
     driver_opts:
@@ -67648,10 +67882,10 @@ function installRevolt()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/revolt
   mkdir $HSHQ_STACKS_DIR/revolt/config
   mkdir $HSHQ_STACKS_DIR/revolt/db
+  mkdir $HSHQ_STACKS_DIR/revolt/dbexport
   mkdir $HSHQ_STACKS_DIR/revolt/rabbitmq
   mkdir $HSHQ_STACKS_DIR/revolt/minio
   mkdir $HSHQ_STACKS_DIR/revolt/caddy
@@ -67659,7 +67893,6 @@ function installRevolt()
   mkdir $HSHQ_STACKS_DIR/revolt/caddy/config
   mkdir $HSHQ_NONBACKUP_DIR/revolt
   mkdir $HSHQ_NONBACKUP_DIR/revolt/redis
-
   initServicesCredentials
   set +e
   outputConfigRevolt
@@ -67687,7 +67920,7 @@ function installRevolt()
   insertSubAuthelia $SUB_REVOLT.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll revolt "$FMLNAME_REVOLT" $USERTYPE_REVOLT "https://$SUB_REVOLT.$HOMESERVER_DOMAIN" "revolt.png" "$(getHeimdallOrderFromSub $SUB_REVOLT $USERTYPE_REVOLT)"
-    checkAddDBConnection true revolt "$FMLNAME_REVOLT" mongodb revolt-db $REVOLT_DATABASE_NAME $REVOLT_DATABASE_USER $REVOLT_DATABASE_USER_PASSWORD
+    checkAddDBConnection true revolt "$FMLNAME_REVOLT" mongo revolt-db $REVOLT_DATABASE_NAME $REVOLT_DATABASE_USER $REVOLT_DATABASE_USER_PASSWORD
     restartAllCaddyContainers
   fi
 }
@@ -67713,7 +67946,8 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/db:/data/db
+      - v-revolt-db:/data/db
+      - v-revolt-dbexport:/dump
 
   revolt-redis:
     image: $(getScriptImageByContainerName revolt-redis)
@@ -67989,6 +68223,18 @@ services:
       "
 
 volumes:
+  v-revolt-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/revolt/db
+  v-revolt-dbexport:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/revolt/dbexport
   v-revolt-redis:
     driver: local
     driver_opts:
@@ -69086,7 +69332,7 @@ function installTwenty()
   if [ $retVal -ne 0 ]; then
     return $retVal
   fi
-  sendEmail -s "$FMLNAME_TWENTY Admin Login Info" -b "Below are some generated credentials that you can use to configure $FMLNAME_TWENTY. You will still need to go through the initial onboarding wizard the first time you access the site, and enter the information manually. \n\n$FMLNAME_TWENTY Admin Username: $TWENTY_ADMIN_USERNAME\n$FMLNAME_TWENTY Admin Email: $TWENTY_ADMIN_EMAIL_ADDRESS\n$FMLNAME_TWENTY Admin Password: $TWENTY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  sendEmail -s "$FMLNAME_TWENTY Admin Login Info" -b "Below are some generated credentials that you can use to configure $FMLNAME_TWENTY. You will still need to go through the initial onboarding wizard the first time you access the site, and enter the information manually.\n\n$FMLNAME_TWENTY Admin Username: $TWENTY_ADMIN_USERNAME\n$FMLNAME_TWENTY Admin Email: $TWENTY_ADMIN_EMAIL_ADDRESS\n$FMLNAME_TWENTY Admin Password: $TWENTY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
   TWENTY_INIT_ENV=true
   updateConfigVar TWENTY_INIT_ENV $TWENTY_INIT_ENV
   sleep 3
@@ -75847,6 +76093,931 @@ function performUpdateBeszel()
       curImageList=mirror.gcr.io/henrygd/beszel:0.13.2,mirror.gcr.io/henrygd/beszel-agent:0.13.2
       image_update_map[0]="mirror.gcr.io/henrygd/beszel:0.13.2,mirror.gcr.io/henrygd/beszel:0.13.2"
       image_update_map[1]="mirror.gcr.io/henrygd/beszel-agent:0.13.2,mirror.gcr.io/henrygd/beszel-agent:0.13.2"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Taiga
+function installTaiga()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory taiga "Taiga"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName taiga-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName taiga-back)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName taiga-async)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName taiga-async-rabbitmq)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName taiga-front)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName taiga-events)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName taiga-events-rabbitmq)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName taiga-protected)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName taiga-gateway)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/taiga
+  mkdir $HSHQ_STACKS_DIR/taiga/config
+  mkdir $HSHQ_STACKS_DIR/taiga/static
+  mkdir $HSHQ_STACKS_DIR/taiga/media
+  mkdir $HSHQ_STACKS_DIR/taiga/async_rmq
+  mkdir $HSHQ_STACKS_DIR/taiga/events_rmq
+  mkdir $HSHQ_STACKS_DIR/taiga/web
+  mkdir $HSHQ_STACKS_DIR/taiga/db
+  mkdir $HSHQ_STACKS_DIR/taiga/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/taiga/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $TAIGA_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  TAIGA_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $TAIGA_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigTaiga
+  installStack taiga taiga-back "Listening at: http://0.0.0.0:8000" $HOME/taiga.env 5
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$TAIGA_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_TAIGA_APP Admin Login Info" -b "$FMLNAME_TAIGA_APP Admin Username: $TAIGA_ADMIN_USERNAME\n$FMLNAME_TAIGA_APP Admin Password: $TAIGA_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    TAIGA_INIT_ENV=true
+    updateConfigVar TAIGA_INIT_ENV $TAIGA_INIT_ENV
+  fi
+  sleep 3
+  set +e
+  docker exec -it taiga-back bash -c "export DJANGO_SUPERUSER_PASSWORD=$TAIGA_ADMIN_PASSWORD;python manage.py createsuperuser --username=$TAIGA_ADMIN_USERNAME --email $TAIGA_ADMIN_EMAIL_ADDRESS --noinput" > /dev/null 2>&1
+  if [ -z "$FMLNAME_TAIGA_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_TAIGA_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://taiga-gateway {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_TAIGA_APP $MANAGETLS_TAIGA_APP "$is_integrate_hshq" $NETDEFAULT_TAIGA_APP "$inner_block"
+  insertSubAuthelia $SUB_TAIGA_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll taiga "$FMLNAME_TAIGA_APP" $USERTYPE_TAIGA_APP "https://$SUB_TAIGA_APP.$HOMESERVER_DOMAIN" "taiga.png" "$(getHeimdallOrderFromSub $SUB_TAIGA_APP $USERTYPE_TAIGA_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true taiga "$FMLNAME_TAIGA_APP" postgres taiga-db $TAIGA_DATABASE_NAME $TAIGA_DATABASE_USER $TAIGA_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigTaiga()
+{
+  cat <<EOFMT > $HOME/taiga-compose.yml
+$STACK_VERSION_PREFIX taiga $(getScriptStackVersion taiga)
+
+services:
+  taiga-db:
+    image: $(getScriptImageByContainerName taiga-db)
+    container_name: taiga-db
+    hostname: taiga-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-taiga-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/taiga/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/taiga/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.taiga-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.taiga-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.taiga-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.taiga-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.taiga-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.taiga-hourly-db.email-from=Taiga Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.taiga-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.taiga-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.taiga-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.taiga-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.taiga-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.taiga-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.taiga-monthly-db.email-from=Taiga Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.taiga-monthly-db.mail-only-on-error=false"
+
+  taiga-back:
+    image: $(getScriptImageByContainerName taiga-back)
+    container_name: taiga-back
+    hostname: taiga-back
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - taiga-db
+      - taiga-events-rabbitmq
+      - taiga-async-rabbitmq
+    networks:
+      - int-taiga-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-taiga-static:/taiga-back/static
+      - v-taiga-media:/taiga-back/media
+
+  taiga-async:
+    image: $(getScriptImageByContainerName taiga-async)
+    container_name: taiga-async
+    hostname: taiga-async
+    restart: unless-stopped
+    env_file: stack.env
+    entrypoint: ["/taiga-back/docker/async_entrypoint.sh"]
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - taiga-db
+      - taiga-events-rabbitmq
+      - taiga-async-rabbitmq
+    networks:
+      - int-taiga-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-taiga-static:/taiga-back/static
+      - v-taiga-media:/taiga-back/media
+
+  taiga-async-rabbitmq:
+    image: $(getScriptImageByContainerName taiga-async-rabbitmq)
+    container_name: taiga-async-rabbitmq
+    hostname: taiga-async-rabbitmq
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-taiga-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-taiga-async-rabbitmq:/var/lib/rabbitmq
+
+  taiga-front:
+    image: $(getScriptImageByContainerName taiga-front)
+    container_name: taiga-front
+    hostname: taiga-front
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-taiga-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  taiga-events:
+    image: $(getScriptImageByContainerName taiga-events)
+    container_name: taiga-events
+    hostname: taiga-events
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - taiga-events-rabbitmq
+    networks:
+      - int-taiga-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  taiga-events-rabbitmq:
+    image: $(getScriptImageByContainerName taiga-events-rabbitmq)
+    container_name: taiga-events-rabbitmq
+    hostname: taiga-events-rabbitmq
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-taiga-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-taiga-events-rabbitmq:/var/lib/rabbitmq
+
+  taiga-protected:
+    image: $(getScriptImageByContainerName taiga-protected)
+    container_name: taiga-protected
+    hostname: taiga-protected
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-taiga-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  taiga-gateway:
+    image: $(getScriptImageByContainerName taiga-gateway)
+    container_name: taiga-gateway
+    hostname: taiga-gateway
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - taiga-front
+      - taiga-back
+      - taiga-events
+    networks:
+      - int-taiga-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/taiga/web/taiga.conf:/etc/nginx/conf.d/default.conf
+      - v-taiga-static:/taiga-back/static
+      - v-taiga-media:/taiga-back/media
+
+volumes:
+  v-taiga-static:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/taiga/static
+  v-taiga-media:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/taiga/media
+  v-taiga-async-rabbitmq:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/taiga/async_rmq
+  v-taiga-events-rabbitmq:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/taiga/events_rmq
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-taiga-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/taiga.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_HOST=taiga-db
+POSTGRES_DB=$TAIGA_DATABASE_NAME
+POSTGRES_USER=$TAIGA_DATABASE_USER
+POSTGRES_PASSWORD=$TAIGA_DATABASE_USER_PASSWORD
+TAIGA_SITES_SCHEME=https
+TAIGA_SITES_DOMAIN=$SUB_TAIGA_APP.$HOMESERVER_DOMAIN
+TAIGA_URL=https://$SUB_TAIGA_APP.$HOMESERVER_DOMAIN
+TAIGA_SUBPATH=
+WEBSOCKETS_SCHEME=wss
+TAIGA_WEBSOCKETS_URL=wss://$SUB_TAIGA_APP.$HOMESERVER_DOMAIN
+TAIGA_SECRET_KEY=$TAIGA_SECRET_KEY
+SECRET_KEY=$TAIGA_SECRET_KEY
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+DEFAULT_FROM_EMAIL=Taiga $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>
+EMAIL_USE_TLS=True
+EMAIL_USE_SSL=False
+EMAIL_HOST=$SMTP_HOSTNAME
+EMAIL_PORT=$SMTP_HOSTPORT
+EMAIL_HOST_USER=
+EMAIL_HOST_PASSWORD=
+RABBITMQ_USER=$TAIGA_RABBITMQ_USERNAME
+RABBITMQ_PASS=$TAIGA_RABBITMQ_PASSWORD
+RABBITMQ_ERLANG_COOKIE=$TAIGA_RABBITMQ_ERLANG_COOKIE
+RABBITMQ_DEFAULT_USER=$TAIGA_RABBITMQ_USERNAME
+RABBITMQ_DEFAULT_PASS=$TAIGA_RABBITMQ_PASSWORD
+RABBITMQ_DEFAULT_VHOST=taiga
+ATTACHMENTS_MAX_AGE=360
+MAX_AGE=360
+ENABLE_TELEMETRY=False
+EOFMT
+  cat <<EOFNC > $HSHQ_STACKS_DIR/taiga/web/taiga.conf
+server {
+    listen 80 default_server;
+
+    client_max_body_size 100M;
+    charset utf-8;
+
+    # Frontend
+    location / {
+        proxy_pass http://taiga-front/;
+        proxy_pass_header Server;
+        proxy_set_header Host \$http_host;
+        proxy_redirect off;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Scheme \$scheme;
+    }
+
+    # API
+    location /api/ {
+        proxy_pass http://taiga-back:8000/api/;
+        proxy_pass_header Server;
+        proxy_set_header Host \$http_host;
+        proxy_redirect off;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Scheme \$scheme;
+    }
+
+    # Admin
+    location /admin/ {
+        proxy_pass http://taiga-back:8000/admin/;
+        proxy_pass_header Server;
+        proxy_set_header Host \$http_host;
+        proxy_redirect off;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Scheme \$scheme;
+    }
+
+    # Static
+    location /static/ {
+        alias /taiga/static/;
+    }
+
+    # Media
+    location /_protected/ {
+        internal;
+        alias /taiga/media/;
+        add_header Content-disposition "attachment";
+    }
+
+    # Unprotected section
+    location /media/exports/ {
+        alias /taiga/media/exports/;
+        add_header Content-disposition "attachment";
+    }
+
+    location /media/ {
+        proxy_set_header Host \$http_host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Scheme \$scheme;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_pass http://taiga-protected:8003/;
+        proxy_redirect off;
+    }
+
+    # Events
+    location /events {
+        proxy_pass http://taiga-events:8888/events;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_connect_timeout 7d;
+        proxy_send_timeout 7d;
+        proxy_read_timeout 7d;
+    }
+}
+EOFNC
+}
+
+function performUpdateTaiga()
+{
+  perform_stack_name=taiga
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/taigaio/taiga-back:6.9.0,mirror.gcr.io/taigaio/taiga-back:6.9.0,mirror.gcr.io/rabbitmq:4.1.4-management-alpine,mirror.gcr.io/taigaio/taiga-front:6.9.0,mirror.gcr.io/taigaio/taiga-events:6.9.0,mirror.gcr.io/rabbitmq:4.1.4-management-alpine,mirror.gcr.io/taigaio/taiga-protected:6.9.0,mirror.gcr.io/nginx:1.28.0-alpine
+      image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
+      image_update_map[1]="mirror.gcr.io/taigaio/taiga-back:6.9.0,mirror.gcr.io/taigaio/taiga-back:6.9.0"
+      image_update_map[2]="mirror.gcr.io/taigaio/taiga-back:6.9.0,mirror.gcr.io/taigaio/taiga-back:6.9.0"
+      image_update_map[3]="mirror.gcr.io/rabbitmq:4.1.4-management-alpine,mirror.gcr.io/rabbitmq:4.1.4-management-alpine"
+      image_update_map[4]="mirror.gcr.io/taigaio/taiga-front:6.9.0,mirror.gcr.io/taigaio/taiga-front:6.9.0"
+      image_update_map[5]="mirror.gcr.io/taigaio/taiga-events:6.9.0,mirror.gcr.io/taigaio/taiga-events:6.9.0"
+      image_update_map[6]="mirror.gcr.io/rabbitmq:4.1.4-management-alpine,mirror.gcr.io/rabbitmq:4.1.4-management-alpine"
+      image_update_map[7]="mirror.gcr.io/taigaio/taiga-protected:6.9.0,mirror.gcr.io/taigaio/taiga-protected:6.9.0"
+      image_update_map[8]="mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# OpenSign
+function installOpenSign()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory opensign "OpenSign"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName opensign-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName opensign-server)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName opensign-client)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/opensign
+  mkdir $HSHQ_STACKS_DIR/opensign/files
+  mkdir $HSHQ_STACKS_DIR/opensign/db
+  mkdir $HSHQ_STACKS_DIR/opensign/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $OPENSIGN_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  OPENSIGN_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $OPENSIGN_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigOpenSign
+  installStack opensign opensign-app "" $HOME/opensign.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$OPENSIGN_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_OPENSIGN_APP Admin Login Info" -b "Below are some generated credentials that you can use to configure $FMLNAME_OPENSIGN_APP. You will still need to go through the initial onboarding wizard the first time you access the site, and enter the information manually.\n\n$FMLNAME_OPENSIGN_APP Admin Email: $OPENSIGN_ADMIN_EMAIL_ADDRESS\n$FMLNAME_OPENSIGN_APP Admin Password: $OPENSIGN_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    OPENSIGN_INIT_ENV=true
+    updateConfigVar OPENSIGN_INIT_ENV $OPENSIGN_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_OPENSIGN_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>handle_path /api/* {\n"
+  inner_block=$inner_block">>>>>>>>rewrite * {uri}\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://opensign-server:8080 {\n"
+  inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>>>}\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://opensign-client:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_OPENSIGN_APP $MANAGETLS_OPENSIGN_APP "$is_integrate_hshq" $NETDEFAULT_OPENSIGN_APP "$inner_block"
+  insertSubAuthelia $SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll opensign "$FMLNAME_OPENSIGN_APP" $USERTYPE_OPENSIGN_APP "https://$SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN" "opensign.png" "$(getHeimdallOrderFromSub $SUB_OPENSIGN_APP $USERTYPE_OPENSIGN_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true opensign "$FMLNAME_OPENSIGN_APP" mongo opensign-db $OPENSIGN_DATABASE_NAME $OPENSIGN_DATABASE_USER $OPENSIGN_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigOpenSign()
+{
+  cat <<EOFMT > $HOME/opensign-compose.yml
+$STACK_VERSION_PREFIX opensign $(getScriptStackVersion opensign)
+
+services:
+  opensign-db:
+    image: $(getScriptImageByContainerName opensign-db)
+    container_name: opensign-db
+    hostname: opensign-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mongod --logpath /dev/null --oplogSize 128 --quiet --auth
+    networks:
+      - int-opensign-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-opensign-db:/data/db
+      - v-opensign-dbexport:/dump
+
+  opensign-server:
+    image: $(getScriptImageByContainerName opensign-server)
+    container_name: opensign-server
+    hostname: opensign-server
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - opensign-db
+    networks:
+      - int-opensign-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-opensign-files:/usr/src/app/files
+
+  opensign-client:
+    image: $(getScriptImageByContainerName opensign-client)
+    container_name: opensign-client
+    hostname: opensign-client
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - opensign-db
+    networks:
+      - int-opensign-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+volumes:
+  v-opensign-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/opensign/db
+  v-opensign-dbexport:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/opensign/dbexport
+  v-opensign-files:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/opensign/files
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-opensign-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  openssl genrsa -des3 -passout pass:$OPENSIGN_CERTIFICATE_PASS_PHRASE -out $HOME/opensign.key 2048
+  openssl req -key $HOME/opensign.key -passin pass:$OPENSIGN_CERTIFICATE_PASS_PHRASE -new -x509 -days 365 -out $HOME/opensign.crt -subj "/C=$CERTS_INTERNAL_COUNTRY/ST=$CERTS_INTERNAL_STATE/L=$CERTS_INTERNAL_LOCALITY/O=$CERTS_INTERNAL_ORG_NAME/OU=$CERTS_INTERNAL_OU_NAME/CN=$HOMESERVER_DOMAIN"
+  openssl pkcs12 -inkey $HOME/opensign.key -passin pass:$OPENSIGN_CERTIFICATE_PASS_PHRASE -passout pass:$OPENSIGN_CERTIFICATE_PASS_PHRASE -in $HOME/opensign.crt -export -out $HOME/opensign.pfx
+  openssl base64 -in $HOME/opensign.pfx -out $HOME/os_pfx_file
+  rm -f $HOME/opensign.key
+  rm -f $HOME/opensign.crt
+  rm -f $HOME/opensign.pfx
+  cat <<EOFMT > $HOME/opensign.env
+TZ=\${PORTAINER_TZ}
+NODE_ENV=production
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+MONGO_INITDB_DATABASE=$OPENSIGN_DATABASE_NAME
+MONGO_INITDB_ROOT_USERNAME=$OPENSIGN_DATABASE_USER
+MONGO_INITDB_ROOT_PASSWORD=$OPENSIGN_DATABASE_USER_PASSWORD
+SERVER_URL=https://$SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN/api/app
+PUBLIC_URL=https://$SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN
+GENERATE_SOURCEMAP=false
+REACT_APP_SERVERURL=https://$SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN/api/app
+appName=OpenSign
+MASTER_KEY=$OPENSIGN_MASTER_KEY
+MONGODB_URI=mongodb://$OPENSIGN_DATABASE_USER:$OPENSIGN_DATABASE_USER_PASSWORD@opensign-db:27017/${OPENSIGN_DATABASE_NAME}?authSource=admin
+USE_LOCAL=true
+SMTP_ENABLE=true
+SMTP_HOST=$SMTP_HOSTNAME
+SMTP_PORT=$SMTP_HOSTPORT
+SMTP_USER_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
+PASS_PHRASE=$OPENSIGN_CERTIFICATE_PASS_PHRASE
+PFX_BASE64='$(cat $HOME/os_pfx_file | tr -d "\r\n")'
+EOFMT
+  rm -f $HOME/os_pfx_file
+}
+
+function performUpdateOpenSign()
+{
+  perform_stack_name=opensign
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/mongo:8.0.13,mirror.gcr.io/opensign/opensignserver:main,mirror.gcr.io/opensign/opensign:main
+      image_update_map[0]="mirror.gcr.io/mongo:8.0.13,mirror.gcr.io/mongo:8.0.13"
+      image_update_map[1]="mirror.gcr.io/opensign/opensignserver:main,mirror.gcr.io/opensign/opensignserver:main"
+      image_update_map[2]="mirror.gcr.io/opensign/opensign:main,mirror.gcr.io/opensign/opensign:main"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# DocuSeal
+function installDocuSeal()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory docuseal "DocuSeal"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName docuseal-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName docuseal-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/docuseal
+  mkdir $HSHQ_STACKS_DIR/docuseal/config
+  mkdir $HSHQ_STACKS_DIR/docuseal/data
+  mkdir $HSHQ_STACKS_DIR/docuseal/db
+  mkdir $HSHQ_STACKS_DIR/docuseal/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/docuseal/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $DOCUSEAL_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  DOCUSEAL_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $DOCUSEAL_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigDocuSeal
+  installStack docuseal docuseal-app "" $HOME/docuseal.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$DOCUSEAL_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_DOCUSEAL_APP Admin Login Info" -b "Below are some generated credentials that you can use to configure $FMLNAME_DOCUSEAL_APP. You will still need to go through the initial onboarding wizard the first time you access the site, and enter the information manually.\n\n$FMLNAME_DOCUSEAL_APP Admin Email: $DOCUSEAL_ADMIN_EMAIL_ADDRESS\n$FMLNAME_DOCUSEAL_APP Admin Password: $DOCUSEAL_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    DOCUSEAL_INIT_ENV=true
+    updateConfigVar DOCUSEAL_INIT_ENV $DOCUSEAL_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_DOCUSEAL_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://docuseal-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_DOCUSEAL_APP $MANAGETLS_DOCUSEAL_APP "$is_integrate_hshq" $NETDEFAULT_DOCUSEAL_APP "$inner_block"
+  insertSubAuthelia $SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll docuseal "$FMLNAME_DOCUSEAL_APP" $USERTYPE_DOCUSEAL_APP "https://$SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN" "docuseal.png" "$(getHeimdallOrderFromSub $SUB_DOCUSEAL_APP $USERTYPE_DOCUSEAL_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true docuseal "$FMLNAME_DOCUSEAL_APP" postgres docuseal-db $DOCUSEAL_DATABASE_NAME $DOCUSEAL_DATABASE_USER $DOCUSEAL_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigDocuSeal()
+{
+  cat <<EOFMT > $HOME/docuseal-compose.yml
+$STACK_VERSION_PREFIX docuseal $(getScriptStackVersion docuseal)
+
+services:
+  docuseal-db:
+    image: $(getScriptImageByContainerName docuseal-db)
+    container_name: docuseal-db
+    hostname: docuseal-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-docuseal-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/docuseal/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/docuseal/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.docuseal-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.docuseal-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.docuseal-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.docuseal-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.docuseal-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.docuseal-hourly-db.email-from=DocuSeal Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.docuseal-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.docuseal-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.docuseal-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.docuseal-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.docuseal-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.docuseal-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.docuseal-monthly-db.email-from=DocuSeal Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.docuseal-monthly-db.mail-only-on-error=false"
+
+  docuseal-app:
+    image: $(getScriptImageByContainerName docuseal-app)
+    container_name: docuseal-app
+    hostname: docuseal-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - docuseal-db
+    networks:
+      - int-docuseal-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/docuseal/data:/data/docuseal
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-docuseal-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/docuseal.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$DOCUSEAL_DATABASE_NAME
+POSTGRES_USER=$DOCUSEAL_DATABASE_USER
+POSTGRES_PASSWORD=$DOCUSEAL_DATABASE_USER_PASSWORD
+FORCE_SSL=$SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN
+DATABASE_URL=postgresql://$DOCUSEAL_DATABASE_USER:$DOCUSEAL_DATABASE_USER_PASSWORD@docuseal-db:5432/$DOCUSEAL_DATABASE_NAME
+EOFMT
+}
+
+function performUpdateDocuSeal()
+{
+  perform_stack_name=docuseal
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/docuseal/docuseal:2.1.8
+      image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
+      image_update_map[1]="mirror.gcr.io/docuseal/docuseal:2.1.8,mirror.gcr.io/docuseal/docuseal:2.1.8"
     ;;
     *)
       is_upgrade_error=true
@@ -84459,11 +85630,11 @@ function cleanupScriptServerLogs()
 
 function outputStackListsScriptServer()
 {
-  echo ${HSHQ_REQUIRED_STACKS},${HSHQ_OPTIONAL_STACKS} | sed "s|,|\n|g" > $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_FULL_STACKLIST_FILENAME
+  echo "${HSHQ_REQUIRED_STACKS},${HSHQ_OPTIONAL_STACKS}" | sed "s|,|\n|g" > $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_FULL_STACKLIST_FILENAME
   sort -o $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_FULL_STACKLIST_FILENAME $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_FULL_STACKLIST_FILENAME
-  echo ${HSHQ_OPTIONAL_STACKS} | sed "s|,|\n|g" > $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME
+  echo "${HSHQ_OPTIONAL_STACKS}" | sed "s|,|\n|g" > $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME
   sort -o $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME
-  echo $(getStacksToUpdate) | sed "s|,|\n|g" > $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME
+  echo "$(getStacksToUpdate)" | sed "s|,|\n|g" > $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME
   sort -o $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME
 
   redislist=($(find $HSHQ_NONBACKUP_DIR/ -maxdepth 2 -type d -name redis | sort))
@@ -84913,13 +86084,20 @@ DATABASE_Pixelfed=$PIXELFED_DATABASE_NAME
 USER_Pixelfed=$PIXELFED_DATABASE_USER
 PASSWORD_Pixelfed=$PIXELFED_DATABASE_USER_PASSWORD
 PORT_Pixelfed=3306
-LABEL_Gitlab=Rallly
+LABEL_Rallly=Rallly
 ENGINE_Rallly=postgres@dbgate-plugin-postgres
 SERVER_Rallly=rallly-db
 DATABASE_Rallly=$RALLLY_DATABASE_NAME
 USER_Rallly=$RALLLY_DATABASE_USER
 PASSWORD_Rallly=$RALLLY_DATABASE_USER_PASSWORD
 PORT_Rallly=5432
+LABEL_Revolt=Revolt
+ENGINE_Revolt=mongo@dbgate-plugin-mongo
+SERVER_Revolt=revolt-db
+DATABASE_Revolt=$REVOLT_DATABASE_NAME
+USER_Revolt=$REVOLT_DATABASE_USER
+PASSWORD_Revolt=$REVOLT_DATABASE_USER_PASSWORD
+PORT_Revolt=27017
 LABEL_Shlink=Shlink
 ENGINE_Shlink=postgres@dbgate-plugin-postgres
 SERVER_Shlink=shlink-db
@@ -84969,6 +86147,13 @@ DATABASE_Wallabag=$WALLABAG_DATABASE_NAME
 USER_Wallabag=$WALLABAG_DATABASE_USER
 PASSWORD_Wallabag=$WALLABAG_DATABASE_USER_PASSWORD
 PORT_Wallabag=5432
+LABEL_Wekan=Wekan
+ENGINE_Wekan=mongo@dbgate-plugin-mongo
+SERVER_Wekan=wekan-db
+DATABASE_Wekan=$WEKAN_DATABASE_NAME
+USER_Wekan=$WEKAN_DATABASE_USER
+PASSWORD_Wekan=$WEKAN_DATABASE_USER_PASSWORD
+PORT_Wekan=27017
 LABEL_Wikijs=Wikijs
 ENGINE_Wikijs=postgres@dbgate-plugin-postgres
 SERVER_Wikijs=wikijs-db
@@ -85004,6 +86189,27 @@ DATABASE_Zulip=$ZULIP_DATABASE_NAME
 USER_Zulip=$ZULIP_DATABASE_USER
 PASSWORD_Zulip=$ZULIP_DATABASE_USER_PASSWORD
 PORT_Zulip=5432
+LABEL_Taiga=Taiga
+ENGINE_Taiga=postgres@dbgate-plugin-postgres
+SERVER_Taiga=taiga-db
+DATABASE_Taiga=TAIGA_DATABASE_NAME
+USER_Taiga=TAIGA_DATABASE_USER
+PASSWORD_Taiga=TAIGA_DATABASE_USER_PASSWORD
+PORT_Taiga=5432
+LABEL_OpenSign=OpenSign
+ENGINE_OpenSign=mongo@dbgate-plugin-mongo
+SERVER_OpenSign=opensign-db
+DATABASE_OpenSign=$OPENSIGN_DATABASE_NAME
+USER_OpenSign=$OPENSIGN_DATABASE_USER
+PASSWORD_OpenSign=$OPENSIGN_DATABASE_USER_PASSWORD
+PORT_OpenSign=27017
+LABEL_DocuSeal=DocuSeal
+ENGINE_DocuSeal=postgres@dbgate-plugin-postgres
+SERVER_DocuSeal=docuseal-db
+DATABASE_DocuSeal=DOCUSEAL_DATABASE_NAME
+USER_DocuSeal=DOCUSEAL_DATABASE_USER
+PASSWORD_DocuSeal=DOCUSEAL_DATABASE_USER_PASSWORD
+PORT_DocuSeal=5432
 EOFMT
 #DBGATE_OUTPUT_CONFIG_ENV_END
 }
@@ -85046,7 +86252,7 @@ function modFunAddUpdateConnectionDbGate()
       echo "ENGINE_${sdb_formal}=postgres@dbgate-plugin-postgres" >> $HOME/${updateStackName}.env
       echo "PORT_${sdb_formal}=5432" >> $HOME/${updateStackName}.env
       ;;
-    mongodb)
+    mongo)
       echo "ENGINE_${sdb_formal}=mongo@dbgate-plugin-mongo" >> $HOME/${updateStackName}.env
       echo "PORT_${sdb_formal}=27017" >> $HOME/${updateStackName}.env
       ;;
@@ -85644,6 +86850,22 @@ SQLPAD_CONNECTIONS__zulip__username=$ZULIP_DATABASE_USER
 SQLPAD_CONNECTIONS__zulip__password=$ZULIP_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__zulip__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__zulip__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__taiga__name=Taiga
+SQLPAD_CONNECTIONS__taiga__driver=postgres
+SQLPAD_CONNECTIONS__taiga__host=taiga-db
+SQLPAD_CONNECTIONS__taiga__database=$TAIGA_DATABASE_NAME
+SQLPAD_CONNECTIONS__taiga__username=$TAIGA_DATABASE_USER
+SQLPAD_CONNECTIONS__taiga__password=$TAIGA_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__taiga__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__taiga__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__docuseal__name=DocuSeal
+SQLPAD_CONNECTIONS__docuseal__driver=postgres
+SQLPAD_CONNECTIONS__docuseal__host=docuseal-db
+SQLPAD_CONNECTIONS__docuseal__database=$DOCUSEAL_DATABASE_NAME
+SQLPAD_CONNECTIONS__docuseal__username=$DOCUSEAL_DATABASE_USER
+SQLPAD_CONNECTIONS__docuseal__password=$DOCUSEAL_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__docuseal__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__docuseal__idleTimeoutSeconds=900
 EOFSP
 #SQLPAD_OUTPUT_CONFIG_ENV_END
 }
@@ -85708,7 +86930,7 @@ function performUpdateSQLPad()
 function modFunAddUpdateConnectionSQLPad()
 {
   case "$sdb_driver" in
-    mongodb|sqlite)
+    mongo|sqlite)
       return 0;;
   esac
   grep -q "SQLPAD_CONNECTIONS__${sdb_name}__name" $HOME/${updateStackName}.env > /dev/null 2>&1
@@ -87083,7 +88305,7 @@ function updateCaddyBlocks()
       tls_block="import $CADDY_SNIPPET_TLS_HSHQ" ;;
     le)
       tls_block="tls /lecerts/$subdom.${HOMESERVER_DOMAIN}.crt /lecerts/$subdom.${HOMESERVER_DOMAIN}.key"
-      primary_block="$(echo $inner_block | sed 's|REPLACE-TLS-BLOCK||g' | sed 's|>| |g')"
+      primary_block=$(echo "$inner_block" | sed 's|REPLACE-TLS-BLOCK||g' | sed 's|>| |g')
       if ! [ -f $HSHQ_STACKS_DIR/caddy-common/lecerts/$subdom.${HOMESERVER_DOMAIN}.crt ]; then
         generateCert $subdom.${HOMESERVER_DOMAIN} $subdom.${HOMESERVER_DOMAIN} "" "2023-01-01 00:00:00 GMT"
         sudo mv -f $HSHQ_SSL_DIR/$subdom.${HOMESERVER_DOMAIN}.crt $HSHQ_STACKS_DIR/caddy-common/lecerts/
@@ -87098,7 +88320,7 @@ function updateCaddyBlocks()
   esac
   snippet_block_begin="# sn-sub-${subdom} BEGIN"
   snippet_block_end="# sn-sub-${subdom} END"
-  inner_block_repl=$(echo $inner_block | sed "s|REPLACE-TLS-BLOCK|$tls_block|g")
+  inner_block_repl=$(echo "$inner_block" | sed "s|REPLACE-TLS-BLOCK|$tls_block|g")
   snippet_block="(sn-sub-${subdom}) {\n${inner_block_repl}\n}"
   addReplaceCaddySnippet "$snippet_block_begin" "$snippet_block_end" "$snippet_block"
   addCaddySnippetImport home sn-sub-${subdom} $svc_nettype
@@ -87254,7 +88476,7 @@ function addRPSubdomain()
   match=$(grep "$block_match_begin" $r_filename)
   if [ -z "$match" ]; then
     #Append
-    replace_text=$(echo $replace_text | sed "s|$space_delim| |g")
+    replace_text=$(echo "$replace_text" | sed "s|$space_delim| |g")
     echo -e "\n${block_match_begin}\n${replace_text}\n${block_match_end}" >> $r_filename
   else
     echo "ERROR: Snippet already exists, returning..."
