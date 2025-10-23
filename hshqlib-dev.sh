@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=214
+HSHQ_LIB_SCRIPT_VERSION=215
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -2704,7 +2704,7 @@ EOF
       sudo -k
       USER_SUDO_PW=""
       refreshSudo
-      releaseAllLocks
+      releaseAllLocks true
       return 1 ;;
     6)
       checkLoadConfig
@@ -29302,6 +29302,8 @@ function loadPinnedDockerImages()
   IMG_OPENSIGN_SERVER=mirror.gcr.io/opensign/opensignserver:main
   IMG_OPENSIGN_CLIENT=mirror.gcr.io/opensign/opensign:main
   IMG_DOCUSEAL_APP=mirror.gcr.io/docuseal/docuseal:2.1.8
+  IMG_CONTROLR_APP=mirror.gcr.io/translucency/controlr:0.14.88.0
+  IMG_CONTROLR_ASPIRE=mcr.microsoft.com/dotnet/aspire-dashboard:9.2
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -29535,6 +29537,8 @@ function getScriptStackVersion()
       echo "v1" ;;
     docuseal)
       echo "v1" ;;
+    controlr)
+      echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
 }
@@ -29731,6 +29735,8 @@ function pullDockerImages()
   pullImage $IMG_OPENSIGN_SERVER
   pullImage $IMG_OPENSIGN_CLIENT
   pullImage $IMG_DOCUSEAL_APP
+  pullImage $IMG_CONTROLR_APP
+  pullImage $IMG_CONTROLR_ASPIRE
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -30958,6 +30964,18 @@ DOCUSEAL_DATABASE_NAME=
 DOCUSEAL_DATABASE_USER=
 DOCUSEAL_DATABASE_USER_PASSWORD=
 # DocuSeal (Service Details) END
+
+# ControlR (Service Details) BEGIN
+CONTROLR_INIT_ENV=true
+CONTROLR_ADMIN_USERNAME=
+CONTROLR_ADMIN_EMAIL_ADDRESS=
+CONTROLR_ADMIN_PASSWORD=
+CONTROLR_DATABASE_NAME=
+CONTROLR_DATABASE_USER=
+CONTROLR_DATABASE_USER_PASSWORD=
+CONTROLR_ASPIRE_TOKEN=
+CONTROLR_ASPIRE_APIKEY=
+# ControlR (Service Details) END
 
 # Service Details END
 EOFCF
@@ -33281,6 +33299,38 @@ function initServicesCredentials()
     DOCUSEAL_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar DOCUSEAL_DATABASE_USER_PASSWORD $DOCUSEAL_DATABASE_USER_PASSWORD
   fi
+  if [ -z "$CONTROLR_ADMIN_USERNAME" ]; then
+    CONTROLR_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_controlr"
+    updateConfigVar CONTROLR_ADMIN_USERNAME $CONTROLR_ADMIN_USERNAME
+  fi
+  if [ -z "$CONTROLR_ADMIN_EMAIL_ADDRESS" ]; then
+    CONTROLR_ADMIN_EMAIL_ADDRESS=$CONTROLR_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar CONTROLR_ADMIN_EMAIL_ADDRESS $CONTROLR_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$CONTROLR_ADMIN_PASSWORD" ]; then
+    CONTROLR_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar CONTROLR_ADMIN_PASSWORD $CONTROLR_ADMIN_PASSWORD
+  fi
+  if [ -z "$CONTROLR_DATABASE_NAME" ]; then
+    CONTROLR_DATABASE_NAME=controlrdb
+    updateConfigVar CONTROLR_DATABASE_NAME $CONTROLR_DATABASE_NAME
+  fi
+  if [ -z "$CONTROLR_DATABASE_USER" ]; then
+    CONTROLR_DATABASE_USER=controlr-user
+    updateConfigVar CONTROLR_DATABASE_USER $CONTROLR_DATABASE_USER
+  fi
+  if [ -z "$CONTROLR_DATABASE_USER_PASSWORD" ]; then
+    CONTROLR_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar CONTROLR_DATABASE_USER_PASSWORD $CONTROLR_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$CONTROLR_ASPIRE_TOKEN" ]; then
+    CONTROLR_ASPIRE_TOKEN=$(pwgen -c -n 32 1)
+    updateConfigVar CONTROLR_ASPIRE_TOKEN $CONTROLR_ASPIRE_TOKEN
+  fi
+  if [ -z "$CONTROLR_ASPIRE_APIKEY" ]; then
+    CONTROLR_ASPIRE_APIKEY=$(pwgen -c -n 32 1)
+    updateConfigVar CONTROLR_ASPIRE_APIKEY $CONTROLR_ASPIRE_APIKEY
+  fi
 #ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
@@ -33665,6 +33715,8 @@ function initServiceVars()
   checkAddSvc "SVCD_TAIGA_APP=taiga,taiga,primary,user,Taiga,taiga,hshq"
   checkAddSvc "SVCD_OPENSIGN_APP=opensign,opensign,primary,user,OpenSign,opensign,hshq"
   checkAddSvc "SVCD_DOCUSEAL_APP=docuseal,docuseal,primary,user,DocuSeal,docuseal,hshq"
+  checkAddSvc "SVCD_CONTROLR_APP=controlr,controlr,primary,admin,ControlR,controlr,hshq"
+  checkAddSvc "SVCD_CONTROLR_ASPIRE=controlr,controlr-aspire,primary,admin,ControlR-Aspire,controlr-aspire,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -33897,6 +33949,8 @@ function installStackByName()
       installOpenSign $is_integrate ;;
     docuseal)
       installDocuSeal $is_integrate ;;
+    controlr)
+      installControlR $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -34137,6 +34191,8 @@ function performUpdateStackByName()
       performUpdateOpenSign ;;
     docuseal)
       performUpdateDocuSeal ;;
+    controlr)
+      performUpdateControlR ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -34224,6 +34280,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_ZULIP_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_CONTROLR_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_BYPASS_HERE
   retval="${retval}# Authelia bypass END\n"
   retval="${retval}      policy: bypass\n"
@@ -34309,6 +34366,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_WIKIJS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WORDPRESS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_BESZEL_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_ADMIN_HERE
   retval="${retval}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -34423,10 +34481,12 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_N8N_APP}-Admin" https://$SUB_N8N_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $N8N_ADMIN_EMAIL_ADDRESS $N8N_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUTOMATISCH_APP}-Admin" https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOMATISCH_EMAIL_ADDRESS $AUTOMATISCH_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ACTIVEPIECES_APP}-Admin" https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN/sign-in $HOMESERVER_ABBREV $ACTIVEPIECES_ADMIN_EMAIL_ADDRESS $ACTIVEPIECES_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_BESZEL_APP}-Admin" https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $BESZEL_ADMIN_USERNAME $BESZEL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_BESZEL_APP}-Admin" https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $BESZEL_ADMIN_EMAIL_ADDRESS $BESZEL_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TAIGA_APP}-Admin" https://$SUB_TAIGA_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $TAIGA_ADMIN_USERNAME $TAIGA_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENSIGN_APP}-Admin" https://$SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $OPENSIGN_ADMIN_USERNAME $OPENSIGN_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DOCUSEAL_APP}-Admin" https://$SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN/sign_in $HOMESERVER_ABBREV $DOCUSEAL_ADMIN_USERNAME $DOCUSEAL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENSIGN_APP}-Admin" https://$SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $OPENSIGN_ADMIN_EMAIL_ADDRESS $OPENSIGN_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DOCUSEAL_APP}-Admin" https://$SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN/sign_in $HOMESERVER_ABBREV $DOCUSEAL_ADMIN_EMAIL_ADDRESS $DOCUSEAL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CONTROLR_APP}-Admin" \"https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN/Account/Login https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN/Account/Register\" $HOMESERVER_ABBREV $CONTROLR_ADMIN_EMAIL_ADDRESS $CONTROLR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CONTROLR_ASPIRE}-Admin" https://$SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CONTROLR_ADMIN_EMAIL_ADDRESS $CONTROLR_ASPIRE_TOKEN)"\n"
 #ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
@@ -34570,10 +34630,12 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_N8N_APP}-Admin" https://$SUB_N8N_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $N8N_ADMIN_EMAIL_ADDRESS $N8N_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUTOMATISCH_APP}-Admin" https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOMATISCH_EMAIL_ADDRESS $AUTOMATISCH_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ACTIVEPIECES_APP}-Admin" https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN/sign-in $HOMESERVER_ABBREV $ACTIVEPIECES_ADMIN_EMAIL_ADDRESS $ACTIVEPIECES_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_BESZEL_APP}-Admin" https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $BESZEL_ADMIN_USERNAME $BESZEL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_BESZEL_APP}-Admin" https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $BESZEL_ADMIN_EMAIL_ADDRESS $BESZEL_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TAIGA_APP}-Admin" https://$SUB_TAIGA_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $TAIGA_ADMIN_USERNAME $TAIGA_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENSIGN_APP}-Admin" https://$SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $OPENSIGN_ADMIN_USERNAME $OPENSIGN_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DOCUSEAL_APP}-Admin" https://$SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN/sign_in $HOMESERVER_ABBREV $DOCUSEAL_ADMIN_USERNAME $DOCUSEAL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENSIGN_APP}-Admin" https://$SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $OPENSIGN_ADMIN_EMAIL_ADDRESS $OPENSIGN_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DOCUSEAL_APP}-Admin" https://$SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN/sign_in $HOMESERVER_ABBREV $DOCUSEAL_ADMIN_EMAIL_ADDRESS $DOCUSEAL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CONTROLR_APP}-Admin" \"https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN/Account/Login https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN/Account/Register\" $HOMESERVER_ABBREV $CONTROLR_ADMIN_EMAIL_ADDRESS $CONTROLR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CONTROLR_ASPIRE}-Admin" https://$SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CONTROLR_ADMIN_EMAIL_ADDRESS $CONTROLR_ASPIRE_TOKEN)"\n"
 #ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
@@ -35019,6 +35081,12 @@ function getHeimdallOrderFromSub()
     "$SUB_DOCUSEAL_APP")
       order_num=126
       ;;
+    "$SUB_CONTROLR_APP")
+      order_num=127
+      ;;
+    "$SUB_CONTROLR_ASPIRE")
+      order_num=128
+      ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=900
@@ -35069,18 +35137,18 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,beszel,taiga,opensign,docuseal
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel,taiga,opensign,docuseal
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel,taiga,opensign,docuseal
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel,taiga,opensign,docuseal
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,espocrm,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel,taiga,opensign,docuseal
-  DS_MEM_HIGH=discourse,netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,beszel,taiga,opensign,docuseal
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,beszel,taiga,opensign,docuseal
-  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,beszel,taiga,opensign,docuseal
-  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,beszel,taiga,opensign,docuseal
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,beszel,taiga,opensign,docuseal
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,beszel,taiga,opensign,docuseal
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr
+  DS_MEM_HIGH=discourse,netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr
+  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr
+  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,taiga,opensign,docuseal,controlr
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr
 #INIT_SERVICE_DEFAULTS_END
 }
 
@@ -36116,6 +36184,15 @@ function getScriptImageByContainerName()
     "docuseal-app")
       container_image=$IMG_DOCUSEAL_APP
       ;;
+    "controlr-db")
+      container_image=mirror.gcr.io/postgres:18.0-bookworm
+      ;;
+    "controlr-app")
+      container_image=$IMG_CONTROLR_APP
+      ;;
+    "controlr-aspire")
+      container_image=$IMG_CONTROLR_ASPIRE
+      ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
@@ -36202,6 +36279,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Taiga" "TAIGA_INIT_ENV=false,TAIGA_ADMIN_USERNAME=,TAIGA_ADMIN_EMAIL_ADDRESS=,TAIGA_ADMIN_PASSWORD=,TAIGA_DATABASE_NAME=,TAIGA_DATABASE_USER=,TAIGA_DATABASE_USER_PASSWORD=,TAIGA_SECRET_KEY=,TAIGA_RABBITMQ_USERNAME=,TAIGA_RABBITMQ_PASSWORD=,TAIGA_RABBITMQ_ERLANG_COOKIE=" $CONFIG_FILE false
   checkAddServiceToConfig "OpenSign" "OPENSIGN_INIT_ENV=false,OPENSIGN_ADMIN_USERNAME=,OPENSIGN_ADMIN_EMAIL_ADDRESS=,OPENSIGN_ADMIN_PASSWORD=,OPENSIGN_DATABASE_NAME=,OPENSIGN_DATABASE_USER=,OPENSIGN_DATABASE_USER_PASSWORD=,OPENSIGN_MASTER_KEY=,OPENSIGN_CERTIFICATE_PASS_PHRASE=" $CONFIG_FILE false
   checkAddServiceToConfig "DocuSeal" "DOCUSEAL_INIT_ENV=false,DOCUSEAL_ADMIN_USERNAME=,DOCUSEAL_ADMIN_EMAIL_ADDRESS=,DOCUSEAL_ADMIN_PASSWORD=,DOCUSEAL_DATABASE_NAME=,DOCUSEAL_DATABASE_USER=,DOCUSEAL_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "ControlR" "CONTROLR_INIT_ENV=false,CONTROLR_ADMIN_USERNAME=,CONTROLR_ADMIN_EMAIL_ADDRESS=,CONTROLR_ADMIN_PASSWORD=,CONTROLR_DATABASE_NAME=,CONTROLR_DATABASE_USER=,CONTROLR_DATABASE_USER_PASSWORD=,CONTROLR_ASPIRE_TOKEN=,CONTROLR_ASPIRE_APIKEY=" $CONFIG_FILE false
 #ADD_NEW_ADD_SVC_CONFIG_HERE
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
@@ -41912,7 +41990,7 @@ SSL_CERTIFICATE=/etc/ssl/filebeat.pem
 SSL_KEY=/etc/ssl/filebeat.key
 API_USERNAME=$WAZUH_API_USERNAME
 API_PASSWORD=$WAZUH_API_PASSWORD
-OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g
+OPENSEARCH_JAVA_OPTS=-Xms4g -Xmx4g
 WAZUH_API_URL=https://wazuh.manager
 DASHBOARD_USERNAME=$WAZUH_USERS_DASHBOARD_USERNAME
 DASHBOARD_PASSWORD=$WAZUH_USERS_DASHBOARD_PASSWORD
@@ -62140,6 +62218,7 @@ EOFOT
 "Zulip" postgres zulip-db $ZULIP_DATABASE_NAME $ZULIP_DATABASE_USER $ZULIP_DATABASE_USER_PASSWORD
 "Taiga" postgres taiga-db $TAIGA_DATABASE_NAME $TAIGA_DATABASE_USER $TAIGA_DATABASE_USER_PASSWORD
 "DocuSeal" postgres docuseal-db $DOCUSEAL_DATABASE_NAME $DOCUSEAL_DATABASE_USER $DOCUSEAL_DATABASE_USER_PASSWORD
+"ControlR" postgres controlr-db $CONTROLR_DATABASE_NAME $CONTROLR_DATABASE_USER $CONTROLR_DATABASE_USER_PASSWORD
 #ADD_NEW_AISTACK_DB_IMPORT_HERE
 EOFAS
   cat <<EOFIM > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/importConnections.sh
@@ -77029,6 +77108,262 @@ function performUpdateDocuSeal()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# ControlR
+function installControlR()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory controlr "ControlR"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName controlr-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName controlr-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName controlr-aspire)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/controlr
+  mkdir $HSHQ_STACKS_DIR/controlr/db
+  mkdir $HSHQ_STACKS_DIR/controlr/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/controlr/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $CONTROLR_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  CONTROLR_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $CONTROLR_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigControlR
+  installStack controlr controlr-app "" $HOME/controlr.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$CONTROLR_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_CONTROLR_APP Admin Login Info" -b "Below are some generated credentials that you can use to configure $FMLNAME_CONTROLR_APP. You will still need to go through the initial onboarding wizard the first time you access the site, and enter the information manually.\n\n$FMLNAME_CONTROLR_APP Admin Email: $CONTROLR_ADMIN_EMAIL_ADDRESS\n$FMLNAME_CONTROLR_APP Admin Password: $CONTROLR_ADMIN_PASSWORD\n\n$FMLNAME_CONTROLR_ASPIRE Token: $CONTROLR_ASPIRE_TOKEN" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    CONTROLR_INIT_ENV=true
+    updateConfigVar CONTROLR_INIT_ENV $CONTROLR_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_CONTROLR_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://controlr-app:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_CONTROLR_APP $MANAGETLS_CONTROLR_APP "$is_integrate_hshq" $NETDEFAULT_CONTROLR_APP "$inner_block"
+  insertSubAuthelia $SUB_CONTROLR_APP.$HOMESERVER_DOMAIN bypass
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://controlr-aspire:18888 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_CONTROLR_ASPIRE $MANAGETLS_CONTROLR_ASPIRE "$is_integrate_hshq" $NETDEFAULT_CONTROLR_ASPIRE "$inner_block"
+  insertSubAuthelia $SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll controlr "$FMLNAME_CONTROLR_APP" $USERTYPE_CONTROLR_APP "https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN" "controlr.png" "$(getHeimdallOrderFromSub $SUB_CONTROLR_APP $USERTYPE_CONTROLR_APP)"
+    insertEnableSvcAll controlr "$FMLNAME_CONTROLR_ASPIRE" $USERTYPE_CONTROLR_ASPIRE "https://$SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN" "controlr.png" "$(getHeimdallOrderFromSub $SUB_CONTROLR_ASPIRE $USERTYPE_CONTROLR_ASPIRE)"
+    restartAllCaddyContainers
+    checkAddDBConnection true controlr "$FMLNAME_CONTROLR_APP" postgres controlr-db $CONTROLR_DATABASE_NAME $CONTROLR_DATABASE_USER $CONTROLR_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigControlR()
+{
+  cat <<EOFMT > $HOME/controlr-compose.yml
+$STACK_VERSION_PREFIX controlr $(getScriptStackVersion controlr)
+
+services:
+  controlr-db:
+    image: $(getScriptImageByContainerName controlr-db)
+    container_name: controlr-db
+    hostname: controlr-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-controlr-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/controlr/db:/var/lib/postgresql
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/controlr/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.controlr-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.controlr-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.controlr-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.controlr-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.controlr-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.controlr-hourly-db.email-from=ControlR Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.controlr-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.controlr-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.controlr-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.controlr-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.controlr-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.controlr-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.controlr-monthly-db.email-from=ControlR Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.controlr-monthly-db.mail-only-on-error=false"
+
+  controlr-app:
+    image: $(getScriptImageByContainerName controlr-app)
+    container_name: controlr-app
+    hostname: controlr-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - controlr-db
+      - controlr-aspire
+    networks:
+      - int-controlr-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  controlr-aspire:
+    image: $(getScriptImageByContainerName controlr-aspire)
+    container_name: controlr-aspire
+    hostname: controlr-aspire
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - controlr-db
+    networks:
+      - int-controlr-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-controlr-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/controlr.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$CONTROLR_DATABASE_NAME
+POSTGRES_USER=$CONTROLR_DATABASE_USER
+POSTGRES_PASSWORD=$CONTROLR_DATABASE_USER_PASSWORD
+ASPNETCORE_ENVIRONMENT=Production
+ASPNETCORE_HTTP_PORTS=8080
+ControlR_POSTGRES_USER=$CONTROLR_DATABASE_USER
+ControlR_POSTGRES_PASSWORD=$CONTROLR_DATABASE_USER_PASSWORD
+ControlR_POSTGRES_HOST=controlr-db
+ControlR_AppOptions__EnablePublicRegistration=false
+ControlR_AppOptions__AllowAgentsToSelfBootstrap=false
+ControlR_AppOptions__EnableCloudflareProxySupport=false
+ControlR_OTLP_ENDPOINT_URL=http://controlr-aspire:18889
+ControlR_Logging__LogLevel__Default=Information
+ControlR_AppOptions__UseHttpLogging=false
+ControlR_AppOptions__DockerGatewayIp=$NET_WEBPROXY_SUBNET_PREFIX.1
+ControlR_AppOptions__MaxFileTransferSize=104857600
+ControlR_AppOptions__RequireUserEmailConfirmation=true
+ControlR_AppOptions__SmtpDisplayName=ControlR $(getAdminEmailName)
+ControlR_AppOptions__SmtpEmail=$EMAIL_ADMIN_EMAIL_ADDRESS
+ControlR_AppOptions__SmtpHost=$SMTP_HOSTNAME
+ControlR_AppOptions__SmtpPort=$SMTP_HOSTPORT
+ControlR_AppOptions__SmtpLocalDomain=
+ControlR_AppOptions__SmtpCheckCertificateRevocation=false
+ControlR_AppOptions__SmtpUserName=
+ControlR_AppOptions__SmtpPassword=
+ControlR_AppOptions__KnownNetworks__0=172.16.0.0/15
+ControlR_AppOptions__KnownNetworks__1=10.0.0.0/8
+ControlR_AppOptions__KnownNetworks__2=192.168.0.0/16
+ControlR_AppOptions__UseExternalWebSocketRelay=false
+DOTNET_DASHBOARD_OTLP_ENDPOINT_URL=http://controlr-aspire:18889
+Dashboard__Frontend__BrowserToken=$CONTROLR_ASPIRE_TOKEN
+DASHBOARD__OTLP__AUTHMODE=ApiKey
+DASHBOARD__OTLP__PRIMARYAPIKEY=$CONTROLR_ASPIRE_APIKEY
+EOFMT
+}
+
+function performUpdateControlR()
+{
+  perform_stack_name=controlr
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:18.0-bookworm,mirror.gcr.io/translucency/controlr:0.14.88.0,mcr.microsoft.com/dotnet/aspire-dashboard:9.2
+      image_update_map[0]="mirror.gcr.io/postgres:18.0-bookworm,mirror.gcr.io/postgres:18.0-bookworm"
+      image_update_map[1]="mirror.gcr.io/translucency/controlr:0.14.88.0,mirror.gcr.io/translucency/controlr:0.14.88.0"
+      image_update_map[2]="mcr.microsoft.com/dotnet/aspire-dashboard:9.2,mcr.microsoft.com/dotnet/aspire-dashboard:9.2"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 #ADD_NEW_SERVICE_FUNCTIONS_HERE
 
 # ExampleService
@@ -86028,7 +86363,7 @@ DATABASE_Ombi=$OMBI_DATABASE_NAME
 USER_Ombi=$OMBI_DATABASE_USER
 PASSWORD_Ombi=$OMBI_DATABASE_USER_PASSWORD
 PORT_Ombi=3306
-LABEL_Paperless=OpenProject
+LABEL_OpenProject=OpenProject
 ENGINE_OpenProject=postgres@dbgate-plugin-postgres
 SERVER_OpenProject=openproject-db
 DATABASE_OpenProject=$OPENPROJECT_DATABASE_NAME
@@ -86175,7 +86510,7 @@ DATABASE_Yamtrack=$YAMTRACK_DATABASE_NAME
 USER_Yamtrack=$YAMTRACK_DATABASE_USER
 PASSWORD_Yamtrack=$YAMTRACK_DATABASE_USER_PASSWORD
 PORT_Yamtrack=5432
-LABEL_Zulip=Zammad
+LABEL_Zammad=Zammad
 ENGINE_Zammad=postgres@dbgate-plugin-postgres
 SERVER_Zammad=zammad-db
 DATABASE_Zammad=$ZAMMAD_DATABASE_NAME
@@ -86210,6 +86545,13 @@ DATABASE_DocuSeal=DOCUSEAL_DATABASE_NAME
 USER_DocuSeal=DOCUSEAL_DATABASE_USER
 PASSWORD_DocuSeal=DOCUSEAL_DATABASE_USER_PASSWORD
 PORT_DocuSeal=5432
+LABEL_ControlR=ControlR
+ENGINE_ControlR=postgres@dbgate-plugin-postgres
+SERVER_ControlR=controlr-db
+DATABASE_ControlR=CONTROLR_DATABASE_NAME
+USER_ControlR=CONTROLR_DATABASE_USER
+PASSWORD_ControlR=CONTROLR_DATABASE_USER_PASSWORD
+PORT_ControlR=5432
 EOFMT
 #DBGATE_OUTPUT_CONFIG_ENV_END
 }
@@ -86866,6 +87208,14 @@ SQLPAD_CONNECTIONS__docuseal__username=$DOCUSEAL_DATABASE_USER
 SQLPAD_CONNECTIONS__docuseal__password=$DOCUSEAL_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__docuseal__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__docuseal__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__controlr__name=ControlR
+SQLPAD_CONNECTIONS__controlr__driver=postgres
+SQLPAD_CONNECTIONS__controlr__host=controlr-db
+SQLPAD_CONNECTIONS__controlr__database=$CONTROLR_DATABASE_NAME
+SQLPAD_CONNECTIONS__controlr__username=$CONTROLR_DATABASE_USER
+SQLPAD_CONNECTIONS__controlr__password=$CONTROLR_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__controlr__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__controlr__idleTimeoutSeconds=900
 EOFSP
 #SQLPAD_OUTPUT_CONFIG_ENV_END
 }
