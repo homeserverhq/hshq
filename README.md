@@ -54,7 +54,7 @@ bash hshq.sh
 
 Server builds are lightweight with command-line only (experienced users)
 
-Desktop builds provide an easy-to-use graphical user interface (See animation above).
+Desktop builds provide an easy-to-use graphical user interface and implement the latest updates from [XLibre](https://github.com/X11Libre/xserver) (See animation above).
 
 They contain the following environments:
  - [Budgie](https://wiki.homeserverhq.com/foss-projects/budgie)
