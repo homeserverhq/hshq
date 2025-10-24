@@ -77189,7 +77189,7 @@ function installControlR()
   insertSubAuthelia $SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll controlr "$FMLNAME_CONTROLR_APP" $USERTYPE_CONTROLR_APP "https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN" "controlr.png" "$(getHeimdallOrderFromSub $SUB_CONTROLR_APP $USERTYPE_CONTROLR_APP)"
-    insertEnableSvcAll controlr "$FMLNAME_CONTROLR_ASPIRE" $USERTYPE_CONTROLR_ASPIRE "https://$SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN" "controlr.png" "$(getHeimdallOrderFromSub $SUB_CONTROLR_ASPIRE $USERTYPE_CONTROLR_ASPIRE)"
+    insertEnableSvcHeimdall controlr "$FMLNAME_CONTROLR_ASPIRE" $USERTYPE_CONTROLR_ASPIRE "https://$SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN" "controlr.png" true "$(getHeimdallOrderFromSub $SUB_CONTROLR_ASPIRE $USERTYPE_CONTROLR_ASPIRE)"
     restartAllCaddyContainers
     checkAddDBConnection true controlr "$FMLNAME_CONTROLR_APP" postgres controlr-db $CONTROLR_DATABASE_NAME $CONTROLR_DATABASE_USER $CONTROLR_DATABASE_USER_PASSWORD
   fi
