@@ -67,9 +67,9 @@ They contain the following environments:
 Description | Underlying Distro | Custom ISO |
 :------ | :------: | :------:
 Debian 12 Desktop | [Debian 12.9](https://wiki.homeserverhq.com/foss-projects/debian) | <a href="https://links.homeserverhq.com/debian-12-oliver-hshq.iso" target="_blank">Download (4.5 GB)</a> [ <a href="https://links.homeserverhq.com/debian-12-oliver-hshq.sha256" target="_blank">sha256</a> ]
-Ubuntu 24 Desktop | [Ubuntu 24.04](https://wiki.homeserverhq.com/foss-projects/ubuntu) | <a href="https://links.homeserverhq.com/ubuntu-24-oliver-hshq.iso" target="_blank">Download (5.4 GB)</a> [ <a href="https://links.homeserverhq.com/ubuntu-24-oliver-hshq.sha256" target="_blank">sha256</a> ]
+Ubuntu 24 Desktop | [Ubuntu 24.04](https://wiki.homeserverhq.com/foss-projects/ubuntu) | <a href="https://links.homeserverhq.com/ubuntu-24-oliver-hshq.iso" target="_blank">Download (5.5 GB)</a> [ <a href="https://links.homeserverhq.com/ubuntu-24-oliver-hshq.sha256" target="_blank">sha256</a> ]
 Debian 12 Server | [Debian 12.9](https://wiki.homeserverhq.com/foss-projects/debian) | <a href="https://links.homeserverhq.com/debian-12-server-hshq.iso" target="_blank">Download (2.0 GB)</a> [ <a href="https://links.homeserverhq.com/debian-12-server-hshq.sha256" target="_blank">sha256</a> ]
-Ubuntu 24 Server | [Ubuntu 24.04](https://wiki.homeserverhq.com/foss-projects/ubuntu) | <a href="https://links.homeserverhq.com/ubuntu-24-server-hshq.iso" target="_blank">Download (3.0 GB)</a> [ <a href="https://links.homeserverhq.com/ubuntu-24-server-hshq.sha256" target="_blank">sha256</a> ]
+Ubuntu 24 Server | [Ubuntu 24.04](https://wiki.homeserverhq.com/foss-projects/ubuntu) | <a href="https://links.homeserverhq.com/ubuntu-24-server-hshq.iso" target="_blank">Download (3.2 GB)</a> [ <a href="https://links.homeserverhq.com/ubuntu-24-server-hshq.sha256" target="_blank">sha256</a> ]
 
 Each of the above custom ISOs provide an Easy Installation method that requires around 5 simple questions and results in a very quick (and painless) 5-10 minute Linux OS installation - start to finish. See [this](https://wiki.homeserverhq.com/en/tutorials/install-linux) link for more detailed instructions.
 
