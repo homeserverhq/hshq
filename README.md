@@ -7,7 +7,7 @@
 ### For full instructions, see <a href="https://wiki.homeserverhq.com/getting-started" target="_blank">https://wiki.homeserverhq.com/getting-started</a>
 ### To verify source code, see <a href="https://wiki.homeserverhq.com/tutorials/source-code-verification" target="_blank">https://wiki.homeserverhq.com/tutorials/source-code-verification</a> 
 ##
-
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/homeserverhq/hshq)
 ## Table of Contents
 - [Quick Start](#quick-start)
 - [Supported Distributions](#supported-distributions)
