@@ -2307,16 +2307,16 @@ EOF
   echo -e "  HomeServer Restore Process Complete! \n"
   echo -e "  The Duplicati and Syncthing stacks have been intentionally"
   echo -e "  skipped from the stack restart process, as you may still"
-  echo -e "  need to re-configure your backup drives, etc. You may"
-  echo -e "  also have to manually restart some stacks due to some bugs"
-  echo -e "  in the docker startup process. Double check everything is"
+  echo -e "  need to re-configure your backup drives, etc. You may also"
+  echo -e "  have to manually restart some stacks due to any issues in"
+  echo -e "  the docker startup process. Double check everything is"
   echo -e "  working correctly in Portainer."
   echo -e "                  ---------------------                  "
   echo -e "  If the ip address of the primary network interface is"
   echo -e "  different, then the caddy-home-xxx stack likely had"
   echo -e "  issues when restarting the stack. However, the networking"
   echo -e "  checks background process will automatically resolve that"
-  echo -e "  issue within a minute or two."
+  echo -e "  issue within a minute or two.\n"
   echo -e "                  ***** IMPORTANT *****                  "
   echo -e "  If you use Duplicati as your primary backup method, then"
   echo -e "  the first thing you need to do after starting the Duplicati"
@@ -2366,7 +2366,7 @@ function restoreRemainingNonBackupDirectories()
   dirList=($(sudo find $HSHQ_STACKS_DIR/portainer/compose -name docker-compose.yml -print0 | xargs -0 sudo grep -hr "\${PORTAINER_HSHQ_NONBACKUP_DIR}" | cut -d"}" -f2 | cut -d":" -f1 | cut -d" " -f1))
   for curDir in "${dirList[@]}"
   do
-    mkdir -p ${PORTAINER_HSHQ_NONBACKUP_DIR}$curDir
+    mkdir -p ${HSHQ_NONBACKUP_DIR}$curDir
   done
   IFS=$OLDIFS
 }
@@ -18935,7 +18935,7 @@ function tryDeleteRootCAFirefox()
 {
   OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
-  for certDB in $(find ~ -name "cert9.db" 2> /dev/null)
+  for certDB in $(find ~ -path $HSHQ_BASE_DIR -prune -o -name "cert9.db" -print 2> /dev/null)
   do
     certDir=$(dirname $certDB)
     certList=($(certutil -L -d sql:${certDir} | grep -o ".*Root CA"))
@@ -60470,6 +60470,7 @@ services:
   immich-redis:
     image: $(getScriptImageByContainerName immich-redis)
     container_name: immich-redis
+    hostname: immich-redis
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
