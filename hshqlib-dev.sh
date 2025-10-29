@@ -2079,6 +2079,7 @@ EOF
 
 function showRestoreMenu()
 {
+  set +e
   precheckRestoreResult="$(performRestorePrecheck)" 
   if ! [ -z "$precheckRestoreResult" ]; then
     showMessageBox "ERROR" "$precheckRestoreResult"
@@ -2340,7 +2341,7 @@ function restorePullDockerImages()
   for curImg in "${uniqs_arr[@]}"
   do
     echo "Pulling $curImg..."
-    buildOrPullImage $curImg > /dev/null 2>&1
+    buildOrPullImage "$curImg" 5 > /dev/null 2>&1
   done
   # Create nonbackup directories
   stackList=($(sudo find $HSHQ_STACKS_DIR/portainer/compose -name docker-compose.yml -print0 | xargs -0 sudo grep -hr "^#HSHQManaged" | cut -d" " -f2))
@@ -2348,6 +2349,20 @@ function restorePullDockerImages()
   do
     checkCreateNonbackupDirByStack "$curStackItem"
   done
+  restoreRemainingNonBackupDirectories
+}
+
+function restoreRemainingNonBackupDirectories()
+{
+  set +e
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  dirList=($(sudo find $HSHQ_STACKS_DIR/portainer/compose -name docker-compose.yml -print0 | xargs -0 sudo grep -hr "\${PORTAINER_HSHQ_NONBACKUP_DIR}" | cut -d"}" -f2 | cut -d":" -f1 | cut -d" " -f1))
+  for curDir in "${dirList[@]}"
+  do
+    mkdir -p ${PORTAINER_HSHQ_NONBACKUP_DIR}$curDir
+  done
+  IFS=$OLDIFS
 }
 
 function showRestoreMountDriveMenu()
@@ -2457,6 +2472,7 @@ function showRestoreSelectEncryptedDirectoryMenu()
 
 function showRestoreDuplicatiRestoreMenu()
 {
+  set +e
   backupDirTL="$1"
   umountDisk="$2"
   curListNum=0
@@ -2498,7 +2514,7 @@ EOF
   if [ -d "$HSHQ_RESTORE_DIR" ]; then
     if ! [ -z "$(ls -A $HSHQ_RESTORE_DIR)" ]; then
       showMessageBox "ERROR" "The restore directory ($HSHQ_RESTORE_DIR) is not empty, returning..."
-      return
+      return 1
     fi
   else
     mkdir -p $HSHQ_RESTORE_DIR
@@ -2517,6 +2533,18 @@ EOF
   echo "Recreating duplicati database..."
   #docker exec -it duplicati-restore bash -c "mono /app/duplicati/Duplicati.CommandLine.exe repair /backup --dbpath=/config/hshqrestore.sqlite --passphrase=$dup_pw"
   docker exec -it duplicati-restore bash -c "/app/duplicati/duplicati-cli repair /backup --dbpath=/config/hshqrestore.sqlite --passphrase=$dup_pw"
+  is_repair_dup_error=$?
+  if [ $is_repair_dup_error -ne 0 ]; then
+    docker container stop duplicati-restore > /dev/null 2>&1
+    docker container rm duplicati-restore > /dev/null 2>&1
+    sudo rm -fr /tmp/dupconfig
+    if ! [ -z "$umountDisk" ]; then
+      echo "Unmounting disk ($umountDisk)..."
+      sudo umount $umountDisk
+    fi
+    showMessageBox "ERROR" "There was a problem recreating the database, the password may be incorrect. Returning..."
+    return 2
+  fi
   echo "Database recreated, restoring files..."
   #docker exec -it duplicati-restore bash -c "mono /app/duplicati/Duplicati.CommandLine.exe restore /backup --dbpath=/config/hshqrestore.sqlite --restore-path=/restore --overwrite=true --restore-permissions --passphrase=$dup_pw"
   docker exec -it duplicati-restore bash -c "/app/duplicati/duplicati-cli restore /backup --dbpath=/config/hshqrestore.sqlite --restore-path=/restore --overwrite=true --restore-permissions --passphrase=$dup_pw"
@@ -4193,9 +4221,6 @@ function performBaseInstallation()
   fi
   sudo mkdir -p /usr/share/icons/HSHQ
   sudo cp -f $HSHQ_ASSETS_DIR/icons/* /usr/share/icons/HSHQ/
-  if ! [ -f /usr/share/icons/HSHQ/Homepage.png ]; then
-    sudo cp /usr/share/icons/HSHQ/HomepageHSHQ.png /usr/share/icons/HSHQ/Homepage.png
-  fi
   draw_progress_bar 55
   logHSHQEvent info "performBaseInstallation - Starting Stack Installs"
   installBaseStacks
@@ -4278,6 +4303,9 @@ function postInstallation()
   if [ "$IS_DESKTOP_ENV" = "true" ]; then
     echo "Configuring Desktop environment..."
     set +e
+    if ! [ -f /usr/share/icons/HSHQ/Homepage.png ]; then
+      sudo cp /usr/share/icons/HSHQ/HomepageHSHQ.png /usr/share/icons/HSHQ/Homepage.png
+    fi
     rm -f ~/Desktop/InstallHSHQ.desktop
     rm -f ~/Desktop/HomePage.desktop
     cat <<EOFHP > ~/Desktop/HomePage.desktop
@@ -4359,6 +4387,7 @@ EOFHP
       # Just because
       gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' > /dev/null 2>&1
     fi
+    replaceHomePageDesktopIcon $(pwgen -c -n 8 1)
     draw_progress_bar 97
     addRootCertificateToApps
     draw_progress_bar 98
@@ -26876,7 +26905,14 @@ function uploadHomeServerLogo()
   echo "Restarting Heimdall..."
   docker container restart heimdall > /dev/null 2>&1
   # Update desktop icon (if exists)
-  if [ -f /usr/share/icons/HSHQ/Homepage.png ]; then
+  replaceHomePageDesktopIcon "$rand_string"
+  echo "HomeServer logo updated succesfully!"
+}
+
+function replaceHomePageDesktopIcon()
+{
+  rand_string="$1"
+  if [ -f /usr/share/icons/HSHQ/Homepage.png ] && [ -f $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png ]; then
     sudo rm -f /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-*
     sudo cp -f $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-${rand_string}.png
     if [ -f $HOME/Desktop/HomePage.desktop ]; then
@@ -26887,7 +26923,6 @@ function uploadHomeServerLogo()
       sudo sed -i "s|^Icon=.*|Icon=/usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-${rand_string}.png|" /usr/share/applications/HomePage.desktop
     fi
   fi
-  echo "HomeServer logo updated succesfully!"
 }
 
 function checkAllHSHQNetworking()
@@ -28735,8 +28770,8 @@ function pullImage()
     fi
     ((num_tries++))
     if [ $is_success -ne 0 ]; then
-      echo "There was an error pulling the image, retrying in 10 seconds..."
-      sleep 10
+      echo "There was an error pulling the image, retrying in 5 seconds..."
+      sleep 5
     fi
   done
   if [ $is_success -ne 0 ]; then
@@ -36549,6 +36584,11 @@ function getHomeServerPortsList()
 function buildOrPullImage()
 {
   curImg="$1"
+  maxTries="$2"
+  curMax=$MAX_DOCKER_PULL_TRIES
+  if ! [ -z "$maxTries" ] && [ $maxTries -gt 0 ]; then
+    MAX_DOCKER_PULL_TRIES=$maxTries
+  fi
   case "$curImg" in
     "filedrop/filedrop:1")
       buildImageFileDropV1
@@ -36566,6 +36606,7 @@ function buildOrPullImage()
       pullImage "$curImg"
       ;;
   esac
+  MAX_DOCKER_PULL_TRIES=$curMax
 }
 
 function checkIsCustomImage()
@@ -45626,7 +45667,6 @@ function installDuplicati()
   mkdir $HSHQ_STACKS_DIR/duplicati/config
   mkdir $HSHQ_NONBACKUP_DIR/duplicati
   mkdir $HSHQ_NONBACKUP_DIR/duplicati/restore
-
   initServicesCredentials
   echo "Installing Duplicati..."
   outputConfigDuplicati
@@ -45653,6 +45693,7 @@ EOFDP
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-to','$EMAIL_ADMIN_EMAIL_ADDRESS');"
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-url','smtp://$SMTP_HOSTNAME:$SMTP_HOSTPORT');"
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-level','all');"
+  sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-2,'','startup-delay','45s');"
   set +e
   updateStackEnv duplicati outputEnvDuplicati
   set -e
