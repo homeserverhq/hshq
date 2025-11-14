@@ -29288,6 +29288,7 @@ function loadPinnedDockerImages()
   IMG_NAVIDROME=deluan/navidrome:0.58.0
   IMG_NETDATA=mirror.gcr.io/netdata/netdata:v2.6.1
   IMG_NEXTCLOUD_APP=mirror.gcr.io/nextcloud:32.0.1-fpm-alpine
+  IMG_NEXTCLOUD_HARP=ghcr.io/nextcloud/nextcloud-appapi-harp:v0.3.0
   IMG_NEXTCLOUD_IMAGINARY=mirror.gcr.io/nextcloud/aio-imaginary:20251031_122139
   IMG_NEXTCLOUD_TALKHPB=ghcr.io/nextcloud-releases/aio-talk:20251031_122139
   IMG_NEXTCLOUD_TALKRECORD=ghcr.io/nextcloud-releases/aio-talk-recording:20251031_122139
@@ -30173,6 +30174,8 @@ NEXTCLOUD_PUSH_PORT=7867
 NEXTCLOUD_TALKHPB_SIGNALING_SECRET=
 NEXTCLOUD_TALKHPB_INTERNAL_SECRET=
 NEXTCLOUD_TALKHPB_RECORDING_SECRET=
+NEXTCLOUD_HARP_PORT=8780
+NEXTCLOUD_HARP_SHARED_KEY=
 # Nextcloud (Service Details) END
 
 # Matrix (Service Details) BEGIN
@@ -31420,6 +31423,10 @@ function initServicesCredentials()
   if [ -z "$NEXTCLOUD_TALKHPB_RECORDING_SECRET" ]; then
     NEXTCLOUD_TALKHPB_RECORDING_SECRET=$(openssl rand --hex 32)
     updateConfigVar NEXTCLOUD_TALKHPB_RECORDING_SECRET $NEXTCLOUD_TALKHPB_RECORDING_SECRET
+  fi
+  if [ -z "$NEXTCLOUD_HARP_SHARED_KEY" ]; then
+    NEXTCLOUD_HARP_SHARED_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar NEXTCLOUD_HARP_SHARED_KEY $NEXTCLOUD_HARP_SHARED_KEY
   fi
   if [ -z "$MATRIX_DATABASE_NAME" ]; then
     MATRIX_DATABASE_NAME="matrixdb"
@@ -35532,6 +35539,9 @@ function getScriptImageByContainerName()
     "nextcloud-web")
       container_image=mirror.gcr.io/nginx:1.29.3-alpine
       ;;
+    "nextcloud-harp")
+      container_image=$IMG_NEXTCLOUD_HARP
+      ;;
     "nextcloud-talkhpb")
       container_image=$IMG_NEXTCLOUD_TALKHPB
       ;;
@@ -36608,6 +36618,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Homarr" "HOMARR_ADMIN_EMAIL_ADDRESS=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_TALKHPB_SIGNALING_SECRET=,NEXTCLOUD_TALKHPB_INTERNAL_SECRET=,NEXTCLOUD_TALKHPB_RECORDING_SECRET=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Portainer" "PORTAINER_ENDPOINT_ID=1" $HSHQ_PLAINTEXT_ROOT_CONFIG true
+  checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_HARP_PORT=8780,NEXTCLOUD_HARP_SHARED_KEY=" $CONFIG_FILE false
 }
 
 function importDBs()
@@ -43178,6 +43189,10 @@ function installNextcloud()
   if [ $? -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName nextcloud-harp)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   if ! [ -d $HSHQ_STACKS_DIR/coturn ]; then
     echo "Missing coturn, installing..."
     installCoturn
@@ -43382,6 +43397,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ config:system:set enabledPreviewProviders 0 --value="OC\\Preview\\Imaginary"
   docker exec -u www-data nextcloud-app php occ config:system:set preview_imaginary_url --value="http://nextcloud-imaginary:$NEXTCLOUD_IMAGINARY_PORT"
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install notify_push
+  docker exec -u www-data nextcloud-app php occ app_api:daemon:register --net int-nextcloud-net --compute_device cpu --set-default --harp --harp_frp_address nextcloud-harp:8782 --harp_shared_key $NEXTCLOUD_HARP_SHARED_KEY harp_proxy_docker "HaRP Proxy (Docker)" docker-install http nextcloud-harp:8780 https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
   docker exec -u www-data nextcloud-app php occ config:system:set maintenance_window_start --type=integer --value=1
   if ! [ "$(isServiceDisabled clamav)" = "true" ]; then
     docker exec -u www-data nextcloud-app php occ --no-warnings app:install files_antivirus
@@ -43444,6 +43460,9 @@ function installNextcloud()
   inner_block=$inner_block">>>>>>route /push/* {\n"
   inner_block=$inner_block">>>>>>>>uri strip_prefix /push\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-push:$NEXTCLOUD_PUSH_PORT\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>route /exapps/* {\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-harp:$NEXTCLOUD_HARP_PORT\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://nextcloud-web {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -43525,7 +43544,6 @@ pm.min_spare_servers = 50
 pm.max_spare_servers = 150
 
 EOFNC
-
   cat <<EOFLD > $HSHQ_STACKS_DIR/nextcloud/ldap-app.conf
 TLS_CERT /opt/ssl/nextcloud-app.crt
 TLS_KEY /opt/ssl/nextcloud-app.key
@@ -43533,7 +43551,6 @@ TLS_CACERT /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
 TLS_REQCERT demand
 TLS_REQSAN demand
 EOFLD
-
   cat <<EOFLC > $HSHQ_STACKS_DIR/nextcloud/ldap-cron.conf
 TLS_CERT /opt/ssl/nextcloud-cron.crt
 TLS_KEY /opt/ssl/nextcloud-cron.key
@@ -43541,7 +43558,6 @@ TLS_CACERT /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
 TLS_REQCERT demand
 TLS_REQSAN demand
 EOFLC
-
   cat <<EOFLC > $HSHQ_STACKS_DIR/nextcloud/ldap-push.conf
 TLS_CERT /opt/ssl/nextcloud-push.crt
 TLS_KEY /opt/ssl/nextcloud-push.key
@@ -43549,7 +43565,6 @@ TLS_CACERT /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
 TLS_REQCERT demand
 TLS_REQSAN demand
 EOFLC
-
   cat <<EOFNC > $HOME/nextcloud-compose-tmp.yml
 services:
   nextcloud-db:
@@ -43794,6 +43809,29 @@ services:
     environment:
       - TZ=$TZ
 
+  nextcloud-harp:
+    image: $(getScriptImageByContainerName nextcloud-harp)
+    container_name: nextcloud-harp
+    hostname: nextcloud-harp
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - int-nextcloud-net
+    depends_on:
+      - nextcloud-app
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - HP_SHARED_KEY=$NEXTCLOUD_HARP_SHARED_KEY
+      - NC_INSTANCE_URL=https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+
 volumes:
   v-nextcloud:
     driver: local
@@ -43828,9 +43866,7 @@ networks:
       driver: default
 
 EOFNC
-
   outputComposeNextcloud
-
   cat <<EOFNC > $HOME/nextcloud.env
 TZ=\${PORTAINER_TZ}
 UID=$USERID
@@ -44103,6 +44139,30 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/nextcloud/web/nginx.conf:/etc/nginx/nginx.conf
       - \${PORTAINER_HSHQ_SSL_DIR}/nextcloud-web.crt:/etc/nginx/certs/cert.crt
       - \${PORTAINER_HSHQ_SSL_DIR}/nextcloud-web.key:/etc/nginx/certs/cert.key
+
+  nextcloud-harp:
+    image: $(getScriptImageByContainerName nextcloud-harp)
+    container_name: nextcloud-harp
+    hostname: nextcloud-harp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - int-nextcloud-net
+    depends_on:
+      - nextcloud-app
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - HP_SHARED_KEY=$NEXTCLOUD_HARP_SHARED_KEY
+      - NC_INSTANCE_URL=https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
 
 volumes:
   v-nextcloud:
@@ -44487,6 +44547,11 @@ function performUpdateNextcloud()
       image_update_map[4]="mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
       image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20250811_115851,ghcr.io/nextcloud-releases/aio-talk:20251031_122139"
       image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851,ghcr.io/nextcloud-releases/aio-talk-recording:20251031_122139"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfNextcloudAddHaRP
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      performMaintenanceNextcloud
+      docker exec -u www-data nextcloud-app php occ app_api:daemon:register --net int-nextcloud-net --compute_device cpu --set-default --harp --harp_frp_address nextcloud-harp:8782 --harp_shared_key $NEXTCLOUD_HARP_SHARED_KEY harp_proxy_docker "HaRP Proxy (Docker)" docker-install http nextcloud-harp:8780 https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      return
     ;;
     11)
       newVer=v11
@@ -44588,6 +44653,41 @@ function mfNextcloudAddTalkHPB()
 function mfNextcloudFixRedisCompose()
 {
   replaceRedisBlock nextcloud nextcloud-redis mirror.gcr.io/redis:8.2.0-bookworm false
+}
+
+function mfNextcloudAddHaRP()
+{
+  set +e
+  initServicesCredentials
+  pullImage $(getScriptImageByContainerName nextcloud-harp)
+  set +e
+  outputComposeNextcloud
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>rewrite /.well-known/carddav /remote.php/dav\n"
+  inner_block=$inner_block">>>>rewrite /.well-known/caldav /remote.php/dav\n"
+  inner_block=$inner_block">>>>rewrite /.well-known/webfinger /index.php/.well-known/webfinger\n"
+  inner_block=$inner_block">>>>rewrite /.well-known/nodeinfo /index.php/.well-known/nodeinfo\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>route /push/* {\n"
+  inner_block=$inner_block">>>>>>>>uri strip_prefix /push\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-push:$NEXTCLOUD_PUSH_PORT\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>route /exapps/* {\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-harp:$NEXTCLOUD_HARP_PORT\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>reverse_proxy https://nextcloud-web {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_NEXTCLOUD $MANAGETLS_NEXTCLOUD "$is_integrate_hshq" $NETDEFAULT_NEXTCLOUD "$inner_block"
+  set +e
 }
 
 # Jitsi
