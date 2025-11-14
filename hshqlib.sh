@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=215
+HSHQ_LIB_SCRIPT_VERSION=216
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -200,6 +200,7 @@ function init()
   SS_UPDATING=updating
   SS_REMOVING=removing
   SS_RUNNING=running
+  RESTORE_SCREEN_NAME=hshqRestore
   UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential gio|libglib2.0-bin ffmpeg|ffmpeg php|php-cli"
   DESKTOP_APT_LIST=""
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd needrestart bsd-mailx"
@@ -2078,6 +2079,7 @@ EOF
 
 function showRestoreMenu()
 {
+  set +e
   precheckRestoreResult="$(performRestorePrecheck)" 
   if ! [ -z "$precheckRestoreResult" ]; then
     showMessageBox "ERROR" "$precheckRestoreResult"
@@ -2149,7 +2151,6 @@ function showRestoreUnencryptedMenu()
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
   fi
-
   cp $HSHQ_LIB_SCRIPT $HOME/$HSHQ_LIB_FILENAME
   rm -fr $HSHQ_DATA_DIR/*
   mv $HSHQ_RESTORE_DIR/* $HSHQ_DATA_DIR/
@@ -2161,7 +2162,7 @@ function showRestoreUnencryptedMenu()
   else
     rm -f $HOME/$HSHQ_LIB_FILENAME
   fi
-  scName=hshqRestore
+  scName=$RESTORE_SCREEN_NAME
   initScreen $scName "bash $HSHQ_LIB_SCRIPT restore $CONNECTING_IP"
   if [ $? -ne 0 ]; then
     showMessageBox "ERROR" "There was a problem starting the restore process, exiting..."
@@ -2175,7 +2176,7 @@ function performFullRestore()
 {
   refreshSudo
   createHSHQLog
-  checkLoadConfig
+  loadConfigConsole
   forceGetLock networkchecks performFullRestore
   setSystemState $SS_RESTORING
   IS_INSTALLED=false
@@ -2286,7 +2287,7 @@ EOF
   docker volume create --driver local -o device=$HSHQ_STACKS_DIR/caddy-common/primary-certs -o o=bind -o type=none caddy-primary-certs
   createClientDNSNetworksOnRestore
   prepAdguardInstallation
-  restartAllStacks "duplicati,syncthing" true doNothing true
+  restartAllStacks "duplicati,syncthing" true doNothing false
   sudo docker container prune -f
   addDomainAndWildcardAdguardHS $HOMESERVER_DOMAIN $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
   # Add RelayServer fingerprint
@@ -2298,6 +2299,7 @@ EOF
   setSystemState $SS_RUNNING
   performExitFunctions
   releaseLock networkchecks performFullRestore false
+  set +e
   sudo systemctl daemon-reload
   sudo systemctl restart ssh
   sudo systemctl restart sshd
@@ -2306,10 +2308,16 @@ EOF
   echo -e "  HomeServer Restore Process Complete! \n"
   echo -e "  The Duplicati and Syncthing stacks have been intentionally"
   echo -e "  skipped from the stack restart process, as you may still"
-  echo -e "  need to re-configure your backup drives, etc. You may"
-  echo -e "  also have to manually restart some stacks due to some bugs"
-  echo -e "  in the docker startup process. Double check everything is"
+  echo -e "  need to re-configure your backup drives, etc. You may also"
+  echo -e "  have to manually restart some stacks due to any issues in"
+  echo -e "  the docker startup process. Double check everything is"
   echo -e "  working correctly in Portainer."
+  echo -e "                  ---------------------                  "
+  echo -e "  If the ip address of the primary network interface is"
+  echo -e "  different, then the caddy-home-xxx stack likely had"
+  echo -e "  issues when restarting the stack. However, the networking"
+  echo -e "  checks background process will automatically resolve that"
+  echo -e "  issue within a minute or two.\n"
   echo -e "                  ***** IMPORTANT *****                  "
   echo -e "  If you use Duplicati as your primary backup method, then"
   echo -e "  the first thing you need to do after starting the Duplicati"
@@ -2321,6 +2329,7 @@ EOF
   echo -e "  missing files or start a fresh new backup profile." 
   echo -e "\n################################################################\n\n"
   read -r -p "  Press enter to continue."
+  screen -S $RESTORE_SCREEN_NAME -X quit
 }
 
 function restorePullDockerImages()
@@ -2338,7 +2347,8 @@ function restorePullDockerImages()
   uniqs_arr=($(for tmpImg in "${imgOnlyList[@]}"; do echo "${tmpImg}"; done | sort -u))
   for curImg in "${uniqs_arr[@]}"
   do
-    buildOrPullImage $curImg
+    echo "Pulling $curImg..."
+    buildOrPullImage "$curImg" 5 > /dev/null 2>&1
   done
   # Create nonbackup directories
   stackList=($(sudo find $HSHQ_STACKS_DIR/portainer/compose -name docker-compose.yml -print0 | xargs -0 sudo grep -hr "^#HSHQManaged" | cut -d" " -f2))
@@ -2346,6 +2356,20 @@ function restorePullDockerImages()
   do
     checkCreateNonbackupDirByStack "$curStackItem"
   done
+  restoreRemainingNonBackupDirectories
+}
+
+function restoreRemainingNonBackupDirectories()
+{
+  set +e
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  dirList=($(sudo find $HSHQ_STACKS_DIR/portainer/compose -name docker-compose.yml -print0 | xargs -0 sudo grep -hr "\${PORTAINER_HSHQ_NONBACKUP_DIR}" | cut -d"}" -f2 | cut -d":" -f1 | cut -d" " -f1))
+  for curDir in "${dirList[@]}"
+  do
+    mkdir -p ${HSHQ_NONBACKUP_DIR}$curDir
+  done
+  IFS=$OLDIFS
 }
 
 function showRestoreMountDriveMenu()
@@ -2455,6 +2479,7 @@ function showRestoreSelectEncryptedDirectoryMenu()
 
 function showRestoreDuplicatiRestoreMenu()
 {
+  set +e
   backupDirTL="$1"
   umountDisk="$2"
   curListNum=0
@@ -2496,7 +2521,7 @@ EOF
   if [ -d "$HSHQ_RESTORE_DIR" ]; then
     if ! [ -z "$(ls -A $HSHQ_RESTORE_DIR)" ]; then
       showMessageBox "ERROR" "The restore directory ($HSHQ_RESTORE_DIR) is not empty, returning..."
-      return
+      return 1
     fi
   else
     mkdir -p $HSHQ_RESTORE_DIR
@@ -2515,6 +2540,18 @@ EOF
   echo "Recreating duplicati database..."
   #docker exec -it duplicati-restore bash -c "mono /app/duplicati/Duplicati.CommandLine.exe repair /backup --dbpath=/config/hshqrestore.sqlite --passphrase=$dup_pw"
   docker exec -it duplicati-restore bash -c "/app/duplicati/duplicati-cli repair /backup --dbpath=/config/hshqrestore.sqlite --passphrase=$dup_pw"
+  is_repair_dup_error=$?
+  if [ $is_repair_dup_error -ne 0 ]; then
+    docker container stop duplicati-restore > /dev/null 2>&1
+    docker container rm duplicati-restore > /dev/null 2>&1
+    sudo rm -fr /tmp/dupconfig
+    if ! [ -z "$umountDisk" ]; then
+      echo "Unmounting disk ($umountDisk)..."
+      sudo umount $umountDisk
+    fi
+    showMessageBox "ERROR" "There was a problem recreating the database, the password may be incorrect. Returning..."
+    return 2
+  fi
   echo "Database recreated, restoring files..."
   #docker exec -it duplicati-restore bash -c "mono /app/duplicati/Duplicati.CommandLine.exe restore /backup --dbpath=/config/hshqrestore.sqlite --restore-path=/restore --overwrite=true --restore-permissions --passphrase=$dup_pw"
   docker exec -it duplicati-restore bash -c "/app/duplicati/duplicati-cli restore /backup --dbpath=/config/hshqrestore.sqlite --restore-path=/restore --overwrite=true --restore-permissions --passphrase=$dup_pw"
@@ -3380,6 +3417,35 @@ function checkLoadConfig()
   fi
 }
 
+function loadConfigConsole()
+{
+  ENC_CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
+  if ! [ -f $ENC_CONFIG_FILE ]; then
+    echo "Config file does not exist, exiting..."
+    exit 1
+  fi
+  if ! [ -z "$USER_CONFIG_PW" ]; then
+    checkDecryptConfigFile > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      USER_CONFIG_PW=""
+    fi
+  fi
+  while [ -z "$USER_CONFIG_PW" ]
+  do
+    read -r -s -p "Enter your config decrypt password: " USER_CONFIG_PW
+    retVal=$?
+    if [ $retVal -ne 0 ]; then
+      return 3
+    fi
+    checkDecryptConfigFile > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      echo "The password is incorrect, please re-enter it."
+      USER_CONFIG_PW=""
+    fi
+  done
+  decryptAndLoad false
+}
+
 function confirmUnlockCreds()
 {
   set +e
@@ -4162,9 +4228,6 @@ function performBaseInstallation()
   fi
   sudo mkdir -p /usr/share/icons/HSHQ
   sudo cp -f $HSHQ_ASSETS_DIR/icons/* /usr/share/icons/HSHQ/
-  if ! [ -f /usr/share/icons/HSHQ/Homepage.png ]; then
-    sudo cp /usr/share/icons/HSHQ/HomepageHSHQ.png /usr/share/icons/HSHQ/Homepage.png
-  fi
   draw_progress_bar 55
   logHSHQEvent info "performBaseInstallation - Starting Stack Installs"
   installBaseStacks
@@ -4247,6 +4310,9 @@ function postInstallation()
   if [ "$IS_DESKTOP_ENV" = "true" ]; then
     echo "Configuring Desktop environment..."
     set +e
+    if ! [ -f /usr/share/icons/HSHQ/Homepage.png ]; then
+      sudo cp /usr/share/icons/HSHQ/HomepageHSHQ.png /usr/share/icons/HSHQ/Homepage.png
+    fi
     rm -f ~/Desktop/InstallHSHQ.desktop
     rm -f ~/Desktop/HomePage.desktop
     cat <<EOFHP > ~/Desktop/HomePage.desktop
@@ -4328,6 +4394,7 @@ EOFHP
       # Just because
       gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' > /dev/null 2>&1
     fi
+    replaceHomePageDesktopIcon $(pwgen -c -n 8 1)
     draw_progress_bar 97
     addRootCertificateToApps
     draw_progress_bar 98
@@ -18869,7 +18936,7 @@ function tryDeleteRootCAFirefox()
 {
   OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
-  for certDB in $(find ~ -name "cert9.db" 2> /dev/null)
+  for certDB in $(find ~ -path $HSHQ_BASE_DIR -prune -o -name "cert9.db" -print 2> /dev/null)
   do
     certDir=$(dirname $certDB)
     certList=($(certutil -L -d sql:${certDir} | grep -o ".*Root CA"))
@@ -26845,7 +26912,14 @@ function uploadHomeServerLogo()
   echo "Restarting Heimdall..."
   docker container restart heimdall > /dev/null 2>&1
   # Update desktop icon (if exists)
-  if [ -f /usr/share/icons/HSHQ/Homepage.png ]; then
+  replaceHomePageDesktopIcon "$rand_string"
+  echo "HomeServer logo updated succesfully!"
+}
+
+function replaceHomePageDesktopIcon()
+{
+  rand_string="$1"
+  if [ -f /usr/share/icons/HSHQ/Homepage.png ] && [ -f $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png ]; then
     sudo rm -f /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-*
     sudo cp -f $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-${rand_string}.png
     if [ -f $HOME/Desktop/HomePage.desktop ]; then
@@ -26856,7 +26930,6 @@ function uploadHomeServerLogo()
       sudo sed -i "s|^Icon=.*|Icon=/usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-${rand_string}.png|" /usr/share/applications/HomePage.desktop
     fi
   fi
-  echo "HomeServer logo updated succesfully!"
 }
 
 function checkAllHSHQNetworking()
@@ -28704,8 +28777,8 @@ function pullImage()
     fi
     ((num_tries++))
     if [ $is_success -ne 0 ]; then
-      echo "There was an error pulling the image, retrying in 10 seconds..."
-      sleep 10
+      echo "There was an error pulling the image, retrying in 5 seconds..."
+      sleep 5
     fi
   done
   if [ $is_success -ne 0 ]; then
@@ -29304,6 +29377,10 @@ function loadPinnedDockerImages()
   IMG_DOCUSEAL_APP=mirror.gcr.io/docuseal/docuseal:2.1.8
   IMG_CONTROLR_APP=mirror.gcr.io/translucency/controlr:0.14.88.0
   IMG_CONTROLR_ASPIRE=mcr.microsoft.com/dotnet/aspire-dashboard:9.2
+  IMG_AKAUNTING_APP=mirror.gcr.io/akaunting/akaunting:3.1.19
+  IMG_AXELOR_APP=mirror.gcr.io/axelor/aos-ce:8.4
+  IMG_AXELOR_GOOVEE=mirror.gcr.io/axelor/goovee-ce:v1.1.0
+  IMG_CONVERTX_APP=ghcr.io/c4illin/convertx:v0.15.1
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -29539,6 +29616,12 @@ function getScriptStackVersion()
       echo "v1" ;;
     controlr)
       echo "v1" ;;
+    akaunting)
+      echo "v1" ;;
+    axelor)
+      echo "v1" ;;
+    convertx)
+      echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
 }
@@ -29737,6 +29820,10 @@ function pullDockerImages()
   pullImage $IMG_DOCUSEAL_APP
   pullImage $IMG_CONTROLR_APP
   pullImage $IMG_CONTROLR_ASPIRE
+  pullImage $IMG_AKAUNTING_APP
+  pullImage $IMG_AXELOR_APP
+  pullImage $IMG_AXELOR_GOOVEE
+  pullImage $IMG_CONVERTX_APP
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -30976,6 +31063,38 @@ CONTROLR_DATABASE_USER_PASSWORD=
 CONTROLR_ASPIRE_TOKEN=
 CONTROLR_ASPIRE_APIKEY=
 # ControlR (Service Details) END
+
+# Akaunting (Service Details) BEGIN
+AKAUNTING_INIT_ENV=true
+AKAUNTING_ADMIN_USERNAME=
+AKAUNTING_ADMIN_EMAIL_ADDRESS=
+AKAUNTING_ADMIN_PASSWORD=
+AKAUNTING_DATABASE_NAME=
+AKAUNTING_DATABASE_ROOT_PASSWORD=
+AKAUNTING_DATABASE_USER=
+AKAUNTING_DATABASE_USER_PASSWORD=
+# Akaunting (Service Details) END
+
+# Axelor (Service Details) BEGIN
+AXELOR_INIT_ENV=true
+AXELOR_ADMIN_USERNAME=
+AXELOR_ADMIN_EMAIL_ADDRESS=
+AXELOR_ADMIN_PASSWORD=
+AXELOR_DATABASE_NAME=
+AXELOR_DATABASE_USER=
+AXELOR_DATABASE_USER_PASSWORD=
+AXELOR_NEXTAUTH_SECRET=
+AXELOR_GOOVEE_ADMIN_USERNAME=
+AXELOR_GOOVEE_ADMIN_PASSWORD=
+# Axelor (Service Details) END
+
+# ConvertX (Service Details) BEGIN
+CONVERTX_INIT_ENV=true
+CONVERTX_ADMIN_USERNAME=
+CONVERTX_ADMIN_EMAIL_ADDRESS=
+CONVERTX_ADMIN_PASSWORD=
+CONVERTX_JWT_SECRET=
+# ConvertX (Service Details) END
 
 # Service Details END
 EOFCF
@@ -33331,6 +33450,90 @@ function initServicesCredentials()
     CONTROLR_ASPIRE_APIKEY=$(pwgen -c -n 32 1)
     updateConfigVar CONTROLR_ASPIRE_APIKEY $CONTROLR_ASPIRE_APIKEY
   fi
+  if [ -z "$AKAUNTING_ADMIN_USERNAME" ]; then
+    AKAUNTING_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_akaunting"
+    updateConfigVar AKAUNTING_ADMIN_USERNAME $AKAUNTING_ADMIN_USERNAME
+  fi
+  if [ -z "$AKAUNTING_ADMIN_EMAIL_ADDRESS" ]; then
+    AKAUNTING_ADMIN_EMAIL_ADDRESS=$AKAUNTING_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar AKAUNTING_ADMIN_EMAIL_ADDRESS $AKAUNTING_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$AKAUNTING_ADMIN_PASSWORD" ]; then
+    AKAUNTING_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AKAUNTING_ADMIN_PASSWORD $AKAUNTING_ADMIN_PASSWORD
+  fi
+  if [ -z "$AKAUNTING_DATABASE_NAME" ]; then
+    AKAUNTING_DATABASE_NAME=akauntingdb
+    updateConfigVar AKAUNTING_DATABASE_NAME $AKAUNTING_DATABASE_NAME
+  fi
+  if [ -z "$AKAUNTING_DATABASE_ROOT_PASSWORD" ]; then
+    AKAUNTING_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AKAUNTING_DATABASE_ROOT_PASSWORD $AKAUNTING_DATABASE_ROOT_PASSWORD
+  fi
+  if [ -z "$AKAUNTING_DATABASE_USER" ]; then
+    AKAUNTING_DATABASE_USER=akaunting-user
+    updateConfigVar AKAUNTING_DATABASE_USER $AKAUNTING_DATABASE_USER
+  fi
+  if [ -z "$AKAUNTING_DATABASE_USER_PASSWORD" ]; then
+    AKAUNTING_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AKAUNTING_DATABASE_USER_PASSWORD $AKAUNTING_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$AXELOR_ADMIN_USERNAME" ]; then
+    AXELOR_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_axelor"
+    updateConfigVar AXELOR_ADMIN_USERNAME $AXELOR_ADMIN_USERNAME
+  fi
+  if [ -z "$AXELOR_ADMIN_EMAIL_ADDRESS" ]; then
+    AXELOR_ADMIN_EMAIL_ADDRESS=$AXELOR_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar AXELOR_ADMIN_EMAIL_ADDRESS $AXELOR_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$AXELOR_ADMIN_PASSWORD" ]; then
+    AXELOR_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AXELOR_ADMIN_PASSWORD $AXELOR_ADMIN_PASSWORD
+  fi
+  if [ -z "$AXELOR_DATABASE_NAME" ]; then
+    AXELOR_DATABASE_NAME=axelordb
+    updateConfigVar AXELOR_DATABASE_NAME $AXELOR_DATABASE_NAME
+  fi
+  if [ -z "$AXELOR_DATABASE_USER" ]; then
+    AXELOR_DATABASE_USER=axelor-user
+    updateConfigVar AXELOR_DATABASE_USER $AXELOR_DATABASE_USER
+  fi
+  if [ -z "$AXELOR_DATABASE_USER_PASSWORD" ]; then
+    AXELOR_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AXELOR_DATABASE_USER_PASSWORD $AXELOR_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$AXELOR_NEXTAUTH_SECRET" ]; then
+    AXELOR_NEXTAUTH_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar AXELOR_NEXTAUTH_SECRET $AXELOR_NEXTAUTH_SECRET
+  fi
+  if [ -z "$AXELOR_ADMIN_USERNAME" ]; then
+    AXELOR_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_axelor"
+    updateConfigVar AXELOR_ADMIN_USERNAME $AXELOR_ADMIN_USERNAME
+  fi
+  if [ -z "$AXELOR_GOOVEE_ADMIN_USERNAME" ]; then
+    AXELOR_GOOVEE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_goovee"
+    updateConfigVar AXELOR_GOOVEE_ADMIN_USERNAME $AXELOR_GOOVEE_ADMIN_USERNAME
+  fi
+  if [ -z "$AXELOR_GOOVEE_ADMIN_PASSWORD" ]; then
+    AXELOR_GOOVEE_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AXELOR_GOOVEE_ADMIN_PASSWORD $AXELOR_GOOVEE_ADMIN_PASSWORD
+  fi
+  if [ -z "$CONVERTX_ADMIN_USERNAME" ]; then
+    CONVERTX_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_convertx"
+    updateConfigVar CONVERTX_ADMIN_USERNAME $CONVERTX_ADMIN_USERNAME
+  fi
+  if [ -z "$CONVERTX_ADMIN_EMAIL_ADDRESS" ]; then
+    CONVERTX_ADMIN_EMAIL_ADDRESS=$CONVERTX_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar CONVERTX_ADMIN_EMAIL_ADDRESS $CONVERTX_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$CONVERTX_ADMIN_PASSWORD" ]; then
+    CONVERTX_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar CONVERTX_ADMIN_PASSWORD $CONVERTX_ADMIN_PASSWORD
+  fi
+  if [ -z "$CONVERTX_JWT_SECRET" ]; then
+    CONVERTX_JWT_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar CONVERTX_JWT_SECRET $CONVERTX_JWT_SECRET
+  fi
 #ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
@@ -33525,6 +33728,9 @@ function checkCreateNonbackupDirByStack()
     "activepieces")
       mkdir -p $HSHQ_NONBACKUP_DIR/activepieces/redis
       ;;
+    "akaunting")
+      mkdir -p $HSHQ_NONBACKUP_DIR/akaunting/redis
+      ;;
 #ADD_NEW_NONBACKUP_DIRS_HERE
     *)
       ;;
@@ -33717,6 +33923,10 @@ function initServiceVars()
   checkAddSvc "SVCD_DOCUSEAL_APP=docuseal,docuseal,primary,user,DocuSeal,docuseal,hshq"
   checkAddSvc "SVCD_CONTROLR_APP=controlr,controlr,primary,admin,ControlR,controlr,hshq"
   checkAddSvc "SVCD_CONTROLR_ASPIRE=controlr,controlr-aspire,primary,admin,ControlR-Aspire,controlr-aspire,hshq"
+  checkAddSvc "SVCD_AKAUNTING_APP=akaunting,akaunting,primary,user,Akaunting,akaunting,hshq"
+  checkAddSvc "SVCD_AXELOR_APP=axelor,axelor,primary,user,Axelor,axelor,hshq"
+  checkAddSvc "SVCD_AXELOR_GOOVEE=axelor,goovee,primary,user,Axelor Goovee,goovee,hshq"
+  checkAddSvc "SVCD_CONVERTX_APP=convertx,convertx,primary,user,ConvertX,convertx,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -33951,6 +34161,12 @@ function installStackByName()
       installDocuSeal $is_integrate ;;
     controlr)
       installControlR $is_integrate ;;
+    akaunting)
+      installAkaunting $is_integrate ;;
+    axelor)
+      installAxelor $is_integrate ;;
+    convertx)
+      installConvertX $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -34193,6 +34409,12 @@ function performUpdateStackByName()
       performUpdateDocuSeal ;;
     controlr)
       performUpdateControlR ;;
+    akaunting)
+      performUpdateAkaunting ;;
+    axelor)
+      performUpdateAxelor ;;
+    convertx)
+      performUpdateConvertX ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -34281,6 +34503,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CONTROLR_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_AKAUNTING_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_BYPASS_HERE
   retval="${retval}# Authelia bypass END\n"
   retval="${retval}      policy: bypass\n"
@@ -34315,6 +34538,9 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_SEARXNG.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_TWENTY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_TAIGA_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_AXELOR_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_AXELOR_GOOVEE.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_CONVERTX_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_PRIMARY_HERE
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -34487,6 +34713,10 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DOCUSEAL_APP}-Admin" https://$SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN/sign_in $HOMESERVER_ABBREV $DOCUSEAL_ADMIN_EMAIL_ADDRESS $DOCUSEAL_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CONTROLR_APP}-Admin" \"https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN/Account/Login https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN/Account/Register\" $HOMESERVER_ABBREV $CONTROLR_ADMIN_EMAIL_ADDRESS $CONTROLR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CONTROLR_ASPIRE}-Admin" https://$SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CONTROLR_ADMIN_EMAIL_ADDRESS $CONTROLR_ASPIRE_TOKEN)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AKAUNTING_APP}-Admin" https://$SUB_AKAUNTING_APP.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $AKAUNTING_ADMIN_EMAIL_ADDRESS $AKAUNTING_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AXELOR_APP}-Admin" https://$SUB_AXELOR_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $AXELOR_ADMIN_USERNAME $AXELOR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AXELOR_GOOVEE}-Admin" https://$SUB_AXELOR_GOOVEE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $AXELOR_GOOVEE_ADMIN_USERNAME $AXELOR_GOOVEE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CONVERTX_APP}-Admin" https://$SUB_CONVERTX_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CONVERTX_ADMIN_EMAIL_ADDRESS $CONVERTX_ADMIN_PASSWORD)"\n"
 #ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
@@ -34636,6 +34866,10 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DOCUSEAL_APP}-Admin" https://$SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN/sign_in $HOMESERVER_ABBREV $DOCUSEAL_ADMIN_EMAIL_ADDRESS $DOCUSEAL_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CONTROLR_APP}-Admin" \"https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN/Account/Login https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN/Account/Register\" $HOMESERVER_ABBREV $CONTROLR_ADMIN_EMAIL_ADDRESS $CONTROLR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CONTROLR_ASPIRE}-Admin" https://$SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CONTROLR_ADMIN_EMAIL_ADDRESS $CONTROLR_ASPIRE_TOKEN)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AKAUNTING_APP}-Admin" https://$SUB_AKAUNTING_APP.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $AKAUNTING_ADMIN_EMAIL_ADDRESS $AKAUNTING_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AXELOR_APP}-Admin" https://$SUB_AXELOR_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $AXELOR_ADMIN_USERNAME $AXELOR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AXELOR_GOOVEE}-Admin" https://$SUB_AXELOR_GOOVEE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $AXELOR_GOOVEE_ADMIN_USERNAME $AXELOR_GOOVEE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CONVERTX_APP}-Admin" https://$SUB_CONVERTX_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CONVERTX_ADMIN_EMAIL_ADDRESS $CONVERTX_ADMIN_PASSWORD)"\n"
 #ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
@@ -35087,6 +35321,18 @@ function getHeimdallOrderFromSub()
     "$SUB_CONTROLR_ASPIRE")
       order_num=128
       ;;
+    "$SUB_AKAUNTING_APP")
+      order_num=129
+      ;;
+    "$SUB_AXELOR_APP")
+      order_num=130
+      ;;
+    "$SUB_AXELOR_GOOVEE")
+      order_num=131
+      ;;
+    "$SUB_CONVERTX_APP")
+      order_num=132
+      ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=900
@@ -35137,18 +35383,18 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr
-  DS_MEM_HIGH=discourse,netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr
-  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr
-  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,taiga,opensign,docuseal,controlr
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
+  DS_MEM_HIGH=discourse,netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
+  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
+  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
 #INIT_SERVICE_DEFAULTS_END
 }
 
@@ -36193,6 +36439,24 @@ function getScriptImageByContainerName()
     "controlr-aspire")
       container_image=$IMG_CONTROLR_ASPIRE
       ;;
+    "akaunting-db")
+      container_image=mirror.gcr.io/mariadb:12.0.2-ubi10
+      ;;
+    "akaunting-app")
+      container_image=$IMG_AKAUNTING_APP
+      ;;
+    "axelor-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "axelor-app")
+      container_image=$IMG_AXELOR_APP
+      ;;
+    "axelor-goovee")
+      container_image=$IMG_AXELOR_GOOVEE
+      ;;
+    "convertx-app")
+      container_image=$IMG_CONVERTX_APP
+      ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
@@ -36280,6 +36544,9 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "OpenSign" "OPENSIGN_INIT_ENV=false,OPENSIGN_ADMIN_USERNAME=,OPENSIGN_ADMIN_EMAIL_ADDRESS=,OPENSIGN_ADMIN_PASSWORD=,OPENSIGN_DATABASE_NAME=,OPENSIGN_DATABASE_USER=,OPENSIGN_DATABASE_USER_PASSWORD=,OPENSIGN_MASTER_KEY=,OPENSIGN_CERTIFICATE_PASS_PHRASE=" $CONFIG_FILE false
   checkAddServiceToConfig "DocuSeal" "DOCUSEAL_INIT_ENV=false,DOCUSEAL_ADMIN_USERNAME=,DOCUSEAL_ADMIN_EMAIL_ADDRESS=,DOCUSEAL_ADMIN_PASSWORD=,DOCUSEAL_DATABASE_NAME=,DOCUSEAL_DATABASE_USER=,DOCUSEAL_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "ControlR" "CONTROLR_INIT_ENV=false,CONTROLR_ADMIN_USERNAME=,CONTROLR_ADMIN_EMAIL_ADDRESS=,CONTROLR_ADMIN_PASSWORD=,CONTROLR_DATABASE_NAME=,CONTROLR_DATABASE_USER=,CONTROLR_DATABASE_USER_PASSWORD=,CONTROLR_ASPIRE_TOKEN=,CONTROLR_ASPIRE_APIKEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "Akaunting" "AKAUNTING_INIT_ENV=false,AKAUNTING_ADMIN_USERNAME=,AKAUNTING_ADMIN_EMAIL_ADDRESS=,AKAUNTING_ADMIN_PASSWORD=,AKAUNTING_DATABASE_NAME=,AKAUNTING_DATABASE_ROOT_PASSWORD=,AKAUNTING_DATABASE_USER=,AKAUNTING_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Axelor" "AXELOR_INIT_ENV=false,AXELOR_ADMIN_USERNAME=,AXELOR_ADMIN_EMAIL_ADDRESS=,AXELOR_ADMIN_PASSWORD=,AXELOR_DATABASE_NAME=,AXELOR_DATABASE_USER=,AXELOR_DATABASE_USER_PASSWORD=,AXELOR_NEXTAUTH_SECRET=,AXELOR_GOOVEE_ADMIN_USERNAME=,AXELOR_GOOVEE_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "ConvertX" "CONVERTX_INIT_ENV=false,CONVERTX_ADMIN_USERNAME=,CONVERTX_ADMIN_EMAIL_ADDRESS=,CONVERTX_ADMIN_PASSWORD=,CONVERTX_JWT_SECRET=" $CONFIG_FILE false
 #ADD_NEW_ADD_SVC_CONFIG_HERE
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
@@ -36324,6 +36591,11 @@ function getHomeServerPortsList()
 function buildOrPullImage()
 {
   curImg="$1"
+  maxTries="$2"
+  curMax=$MAX_DOCKER_PULL_TRIES
+  if ! [ -z "$maxTries" ] && [ $maxTries -gt 0 ]; then
+    MAX_DOCKER_PULL_TRIES=$maxTries
+  fi
   case "$curImg" in
     "filedrop/filedrop:1")
       buildImageFileDropV1
@@ -36341,6 +36613,7 @@ function buildOrPullImage()
       pullImage "$curImg"
       ;;
   esac
+  MAX_DOCKER_PULL_TRIES=$curMax
 }
 
 function checkIsCustomImage()
@@ -45401,7 +45674,6 @@ function installDuplicati()
   mkdir $HSHQ_STACKS_DIR/duplicati/config
   mkdir $HSHQ_NONBACKUP_DIR/duplicati
   mkdir $HSHQ_NONBACKUP_DIR/duplicati/restore
-
   initServicesCredentials
   echo "Installing Duplicati..."
   outputConfigDuplicati
@@ -45428,6 +45700,7 @@ EOFDP
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-to','$EMAIL_ADMIN_EMAIL_ADDRESS');"
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-url','smtp://$SMTP_HOSTNAME:$SMTP_HOSTPORT');"
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-level','all');"
+  sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-2,'','startup-delay','45s');"
   set +e
   updateStackEnv duplicati outputEnvDuplicati
   set -e
@@ -60198,6 +60471,7 @@ services:
   immich-redis:
     image: $(getScriptImageByContainerName immich-redis)
     container_name: immich-redis
+    hostname: immich-redis
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -62219,6 +62493,8 @@ EOFOT
 "Taiga" postgres taiga-db $TAIGA_DATABASE_NAME $TAIGA_DATABASE_USER $TAIGA_DATABASE_USER_PASSWORD
 "DocuSeal" postgres docuseal-db $DOCUSEAL_DATABASE_NAME $DOCUSEAL_DATABASE_USER $DOCUSEAL_DATABASE_USER_PASSWORD
 "ControlR" postgres controlr-db $CONTROLR_DATABASE_NAME $CONTROLR_DATABASE_USER $CONTROLR_DATABASE_USER_PASSWORD
+"Akaunting" mysql akaunting-db $AKAUNTING_DATABASE_NAME $AKAUNTING_DATABASE_USER $AKAUNTING_DATABASE_USER_PASSWORD
+"Axelor" postgres axelor-db $AXELOR_DATABASE_NAME $AXELOR_DATABASE_USER $AXELOR_DATABASE_USER_PASSWORD
 #ADD_NEW_AISTACK_DB_IMPORT_HERE
 EOFAS
   cat <<EOFIM > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/importConnections.sh
@@ -77364,6 +77640,602 @@ function performUpdateControlR()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# Akaunting
+function installAkaunting()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory akaunting "Akaunting"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName akaunting-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName akaunting-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/akaunting
+  mkdir $HSHQ_STACKS_DIR/akaunting/data
+  mkdir $HSHQ_STACKS_DIR/akaunting/db
+  mkdir $HSHQ_STACKS_DIR/akaunting/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/akaunting/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $AKAUNTING_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigAkaunting
+  installStack akaunting akaunting-app "" $HOME/akaunting.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$AKAUNTING_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_AKAUNTING_APP Admin Login Info" -b "Below are some generated credentials that you can use to configure $FMLNAME_AKAUNTING_APP. You will still need to go through the initial onboarding wizard the first time you access the site, and enter the information manually.\n\n$FMLNAME_AKAUNTING_APP Admin Email: $AKAUNTING_ADMIN_EMAIL_ADDRESS\n$FMLNAME_AKAUNTING_APP Admin Password: $AKAUNTING_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    AKAUNTING_INIT_ENV=true
+    updateConfigVar AKAUNTING_INIT_ENV $AKAUNTING_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_AKAUNTING_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_AKAUNTING_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://akaunting-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_AKAUNTING_APP $MANAGETLS_AKAUNTING_APP "$is_integrate_hshq" $NETDEFAULT_AKAUNTING_APP "$inner_block"
+  insertSubAuthelia $SUB_AKAUNTING_APP.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll akaunting "$FMLNAME_AKAUNTING_APP" $USERTYPE_AKAUNTING_APP "https://$SUB_AKAUNTING_APP.$HOMESERVER_DOMAIN" "akaunting.png" "$(getHeimdallOrderFromSub $SUB_AKAUNTING_APP $USERTYPE_AKAUNTING_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true akaunting "$FMLNAME_AKAUNTING_APP" mysql akaunting-db $AKAUNTING_DATABASE_NAME $AKAUNTING_DATABASE_USER $AKAUNTING_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigAkaunting()
+{
+  cat <<EOFMT > $HOME/akaunting-compose.yml
+$STACK_VERSION_PREFIX akaunting $(getScriptStackVersion akaunting)
+
+services:
+  akaunting-db:
+    image: $(getScriptImageByContainerName akaunting-db)
+    container_name: akaunting-db
+    hostname: akaunting-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    networks:
+      - int-akaunting-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-akaunting-db:/var/lib/mysql
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/akaunting/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.akaunting-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.akaunting-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.akaunting-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.akaunting-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.akaunting-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.akaunting-hourly-db.email-from=Akaunting Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.akaunting-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.akaunting-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.akaunting-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.akaunting-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.akaunting-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.akaunting-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.akaunting-monthly-db.email-from=Akaunting Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.akaunting-monthly-db.mail-only-on-error=false"
+
+  akaunting-app:
+    image: $(getScriptImageByContainerName akaunting-app)
+    container_name: akaunting-app
+    hostname: akaunting-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - akaunting-db
+    networks:
+      - int-akaunting-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-akaunting-data:/var/www/html:z
+
+volumes:
+  v-akaunting-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/akaunting/db
+  v-akaunting-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/akaunting/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-akaunting-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/akaunting.env
+TZ=\${PORTAINER_TZ}
+MYSQL_DATABASE=$AKAUNTING_DATABASE_NAME
+MYSQL_ROOT_PASSWORD=$AKAUNTING_DATABASE_ROOT_PASSWORD
+MYSQL_USER=$AKAUNTING_DATABASE_USER
+MYSQL_PASSWORD=$AKAUNTING_DATABASE_USER_PASSWORD
+APP_URL=https://$SUB_AKAUNTING_APP.$HOMESERVER_DOMAIN
+LOCALE=en-US
+DB_HOST=akaunting-db
+DB_PORT=3306
+DB_NAME=$AKAUNTING_DATABASE_NAME
+DB_USERNAME=$AKAUNTING_DATABASE_USER
+DB_PASSWORD=$AKAUNTING_DATABASE_USER_PASSWORD
+DB_PREFIX=akt_
+COMPANY_NAME=$HOMESERVER_NAME
+COMPANY_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
+ADMIN_EMAIL=$AKAUNTING_ADMIN_EMAIL_ADDRESS
+ADMIN_PASSWORD=$AKAUNTING_ADMIN_PASSWORD
+AKAUNTING_SETUP=true
+EOFMT
+}
+
+function performUpdateAkaunting()
+{
+  perform_stack_name=akaunting
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/mariadb:12.0.2-ubi10,mirror.gcr.io/akaunting/akaunting:3.1.19
+      image_update_map[0]="mirror.gcr.io/mariadb:12.0.2-ubi10,mirror.gcr.io/mariadb:12.0.2-ubi10"
+      image_update_map[1]="mirror.gcr.io/akaunting/akaunting:3.1.19,mirror.gcr.io/akaunting/akaunting:3.1.19"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Axelor
+function installAxelor()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory axelor "Axelor"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName axelor-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName axelor-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName axelor-goovee)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/axelor
+  mkdir $HSHQ_STACKS_DIR/axelor/data
+  mkdir $HSHQ_STACKS_DIR/axelor/db
+  mkdir $HSHQ_STACKS_DIR/axelor/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/axelor/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $AXELOR_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigAxelor
+  installStack axelor axelor-app "" $HOME/axelor.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$AXELOR_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_AXELOR_APP Admin Login Info" -b "$FMLNAME_AXELOR_APP Admin Username: $AXELOR_ADMIN_USERNAME\n$FMLNAME_AXELOR_APP Admin Password: $AXELOR_ADMIN_PASSWORD\n\n$FMLNAME_AXELOR_GOOVEE Admin Username: $AXELOR_GOOVEE_ADMIN_USERNAME\n$FMLNAME_AXELOR_GOOVEE Admin Password: $AXELOR_GOOVEE_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    AXELOR_INIT_ENV=true
+    updateConfigVar AXELOR_INIT_ENV $AXELOR_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_AXELOR_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_AXELOR_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://axelor-app:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_AXELOR_APP $MANAGETLS_AXELOR_APP "$is_integrate_hshq" $NETDEFAULT_AXELOR_APP "$inner_block"
+  insertSubAuthelia $SUB_AXELOR_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_AXELOR_GOOVEE.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://axelor-goovee:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_AXELOR_GOOVEE $MANAGETLS_AXELOR_GOOVEE "$is_integrate_hshq" $NETDEFAULT_AXELOR_GOOVEE "$inner_block"
+  insertSubAuthelia $SUB_AXELOR_GOOVEE.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll axelor "$FMLNAME_AXELOR_APP" $USERTYPE_AXELOR_APP "https://$SUB_AXELOR_APP.$HOMESERVER_DOMAIN" "axelor.png" "$(getHeimdallOrderFromSub $SUB_AXELOR_APP $USERTYPE_AXELOR_APP)"
+    insertEnableSvcAll axelor "$FMLNAME_AXELOR_GOOVEE" $USERTYPE_AXELOR_GOOVEE "https://$SUB_AXELOR_GOOVEE.$HOMESERVER_DOMAIN" "goovee.png" "$(getHeimdallOrderFromSub $SUB_AXELOR_GOOVEE $USERTYPE_AXELOR_GOOVEE)"
+    restartAllCaddyContainers
+    checkAddDBConnection true axelor "$FMLNAME_AXELOR_APP" postgres axelor-db $AXELOR_DATABASE_NAME $AXELOR_DATABASE_USER $AXELOR_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigAxelor()
+{
+  cat <<EOFMT > $HOME/axelor-compose.yml
+$STACK_VERSION_PREFIX axelor $(getScriptStackVersion axelor)
+
+services:
+  axelor-db:
+    image: $(getScriptImageByContainerName axelor-db)
+    container_name: axelor-db
+    hostname: axelor-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-axelor-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/axelor/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/axelor/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.axelor-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.axelor-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.axelor-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.axelor-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.axelor-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.axelor-hourly-db.email-from=Axelor Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.axelor-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.axelor-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.axelor-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.axelor-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.axelor-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.axelor-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.axelor-monthly-db.email-from=Axelor Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.axelor-monthly-db.mail-only-on-error=false"
+
+  axelor-app:
+    image: $(getScriptImageByContainerName axelor-app)
+    container_name: axelor-app
+    hostname: axelor-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - axelor-db
+    networks:
+      - int-axelor-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-axelor-data:/data:z
+
+  axelor-goovee:
+    image: $(getScriptImageByContainerName axelor-goovee)
+    container_name: axelor-goovee
+    hostname: axelor-goovee
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - axelor-app
+    networks:
+      - int-axelor-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-axelor-data:/data:z
+
+volumes:
+  v-axelor-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/axelor/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-axelor-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/axelor.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$AXELOR_DATABASE_NAME
+POSTGRES_USER=$AXELOR_DATABASE_USER
+POSTGRES_PASSWORD=$AXELOR_DATABASE_USER_PASSWORD
+APP_USER=$AXELOR_ADMIN_USERNAME
+APP_PASS=$AXELOR_ADMIN_PASSWORD
+APP_DEMO_DATA=$(if [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then echo "true"; else echo "false"; fi)
+APP_LOAD_APPS=
+APP_MODE=prod
+LOG_LEVEL=debug
+ENABLE_QUARTZ=false
+PGHOST=axelor-db
+PGPORT=5432
+PGUSER=$AXELOR_DATABASE_USER
+PGPASSWORD=$AXELOR_DATABASE_USER_PASSWORD
+PGDATABASE=$AXELOR_DATABASE_NAME
+DATA_STORAGE=/data/attachments
+MULTI_TENANCY=false
+INCLUDE_LANGUAGE=true
+GOOVEE_PUBLIC_HOST=https://$SUB_AXELOR_GOOVEE.$HOMESERVER_DOMAIN
+GOOVEE_PUBLIC_AOS_URL=http://axelor-app:8080
+NEXTAUTH_URL=https://$SUB_AXELOR_GOOVEE.$HOMESERVER_DOMAIN
+NEXTAUTH_SECRET=$AXELOR_NEXTAUTH_SECRET
+BASIC_AUTH_USERNAME=$AXELOR_GOOVEE_ADMIN_USERNAME
+BASIC_AUTH_PASSWORD=$AXELOR_GOOVEE_ADMIN_PASSWORD
+MAIL_HOST=$SMTP_HOSTNAME
+MAIL_PORT=$SMTP_HOSTPORT
+MAIL_SECURE=true
+MAIL_USER=
+MAIL_PASSWORD=
+MAIL_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
+JAVA_XMX=4096m
+EOFMT
+}
+
+function performUpdateAxelor()
+{
+  perform_stack_name=axelor
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/axelor/aos-ce:8.4,mirror.gcr.io/axelor/goovee-ce:v1.1.0
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/axelor/aos-ce:8.4,mirror.gcr.io/axelor/axelor/aos-ce:8.4"
+      image_update_map[2]="mirror.gcr.io/axelor/goovee-ce:v1.1.0,mirror.gcr.io/axelor/goovee-ce:v1.1.0"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# ConvertX
+function installConvertX()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory convertx "ConvertX"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName convertx-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/convertx
+  mkdir $HSHQ_STACKS_DIR/convertx/data
+  initServicesCredentials
+  set +e
+  addUserMailu alias $CONVERTX_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  CONVERTX_ADMIN_PASSWORD_HASH=$(echo -n "$CONVERTX_ADMIN_PASSWORD" | argon2 $(pwgen -c -n 32 1) -e -id -m 16 -t 2)
+  outputConfigConvertX
+  installStack convertx convertx-app "Elysia is running at" $HOME/convertx.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$CONVERTX_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_CONVERTX_APP Admin Login Info" -b "$FMLNAME_CONVERTX_APP Admin Username: $CONVERTX_ADMIN_EMAIL_ADDRESS\n$FMLNAME_CONVERTX_APP Admin Password: $CONVERTX_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    CONVERTX_INIT_ENV=true
+    updateConfigVar CONVERTX_INIT_ENV $CONVERTX_INIT_ENV
+  fi
+  sleep 3
+  sudo sqlite3 $HSHQ_STACKS_DIR/convertx/data/mydb.sqlite "insert into users(email,password) values('$CONVERTX_ADMIN_EMAIL_ADDRESS','$CONVERTX_ADMIN_PASSWORD_HASH');"
+  echo "Restarting convertx container..."
+  docker container restart convertx-app > /dev/null 2>&1
+  echo "Container restarted, continuing..."
+  if [ -z "$FMLNAME_CONVERTX_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_CONVERTX_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://convertx-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_CONVERTX_APP $MANAGETLS_CONVERTX_APP "$is_integrate_hshq" $NETDEFAULT_CONVERTX_APP "$inner_block"
+  insertSubAuthelia $SUB_CONVERTX_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll convertx "$FMLNAME_CONVERTX_APP" $USERTYPE_CONVERTX_APP "https://$SUB_CONVERTX_APP.$HOMESERVER_DOMAIN" "convertx.png" "$(getHeimdallOrderFromSub $SUB_CONVERTX_APP $USERTYPE_CONVERTX_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigConvertX()
+{
+  cat <<EOFMT > $HOME/convertx-compose.yml
+$STACK_VERSION_PREFIX convertx $(getScriptStackVersion convertx)
+
+services:
+  convertx-app:
+    image: $(getScriptImageByContainerName convertx-app)
+    container_name: convertx-app
+    hostname: convertx-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/convertx/data:/app/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/convertx.env
+TZ=\${PORTAINER_TZ}
+JWT_SECRET=$CONVERTX_JWT_SECRET
+HTTP_ALLOWED=true
+EOFMT
+}
+
+function performUpdateConvertX()
+{
+  perform_stack_name=convertx
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=ghcr.io/c4illin/convertx:v0.15.1
+      image_update_map[0]="ghcr.io/c4illin/convertx:v0.15.1,ghcr.io/c4illin/convertx:v0.15.1"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 #ADD_NEW_SERVICE_FUNCTIONS_HERE
 
 # ExampleService
@@ -86082,7 +86954,7 @@ EOFMT
 TZ=\${PORTAINER_TZ}
 LOGIN=$DBGATE_ADMIN_USERNAME
 PASSWORD=$DBGATE_ADMIN_PASSWORD
-CONNECTIONS=ActivePieces,Adminer,Automatisch,Budibase,Calcom,Discourse,Dolibarr,EasyAppointments,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,InvoiceNinja,InvoiceShelf,Kanboard,Keila,KillBill,KillBillAPI,Langfuse,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MindsDB,MintHCM,n8n,Nextcloud,Odoo,Ombi,OpenProject,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Rallly,Revolt,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Twenty,Vaultwarden,Wallabag,Wekan,Wikijs,WordPress,Yamtrack,Zammad,Zulip,Taiga,OpenSign,DocuSeal,ControlR
+CONNECTIONS=ActivePieces,Adminer,Automatisch,Budibase,Calcom,Discourse,Dolibarr,EasyAppointments,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,InvoiceNinja,InvoiceShelf,Kanboard,Keila,KillBill,KillBillAPI,Langfuse,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MindsDB,MintHCM,n8n,Nextcloud,Odoo,Ombi,OpenProject,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Rallly,Revolt,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Twenty,Vaultwarden,Wallabag,Wekan,Wikijs,WordPress,Yamtrack,Zammad,Zulip,Taiga,OpenSign,DocuSeal,ControlR,Akaunting,Axelor
 LABEL_ActivePieces=ActivePieces
 ENGINE_ActivePieces=postgres@dbgate-plugin-postgres
 SERVER_ActivePieces=activepieces-db
@@ -86552,6 +87424,20 @@ DATABASE_ControlR=CONTROLR_DATABASE_NAME
 USER_ControlR=CONTROLR_DATABASE_USER
 PASSWORD_ControlR=CONTROLR_DATABASE_USER_PASSWORD
 PORT_ControlR=5432
+LABEL_Akaunting=Akaunting
+ENGINE_Akaunting=mysql@dbgate-plugin-mysql
+SERVER_Akaunting=akaunting-db
+DATABASE_Akaunting=AKAUNTING_DATABASE_NAME
+USER_Akaunting=AKAUNTING_DATABASE_USER
+PASSWORD_Akaunting=AKAUNTING_DATABASE_USER_PASSWORD
+PORT_Akaunting=3306
+LABEL_Axelor=Axelor
+ENGINE_Axelor=postgres@dbgate-plugin-postgres
+SERVER_Axelor=axelor-db
+DATABASE_Axelor=AXELOR_DATABASE_NAME
+USER_Axelor=AXELOR_DATABASE_USER
+PASSWORD_Axelor=AXELOR_DATABASE_USER_PASSWORD
+PORT_Axelor=5432
 EOFMT
 #DBGATE_OUTPUT_CONFIG_ENV_END
 }
@@ -87216,6 +88102,22 @@ SQLPAD_CONNECTIONS__controlr__username=$CONTROLR_DATABASE_USER
 SQLPAD_CONNECTIONS__controlr__password=$CONTROLR_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__controlr__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__controlr__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__akaunting__name=Akaunting
+SQLPAD_CONNECTIONS__akaunting__driver=mysql
+SQLPAD_CONNECTIONS__akaunting__host=akaunting-db
+SQLPAD_CONNECTIONS__akaunting__database=$AKAUNTING_DATABASE_NAME
+SQLPAD_CONNECTIONS__akaunting__username=$AKAUNTING_DATABASE_USER
+SQLPAD_CONNECTIONS__akaunting__password=$AKAUNTING_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__akaunting__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__akaunting__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__axelor__name=Axelor
+SQLPAD_CONNECTIONS__axelor__driver=postgres
+SQLPAD_CONNECTIONS__axelor__host=axelor-db
+SQLPAD_CONNECTIONS__axelor__database=$AXELOR_DATABASE_NAME
+SQLPAD_CONNECTIONS__axelor__username=$AXELOR_DATABASE_USER
+SQLPAD_CONNECTIONS__axelor__password=$AXELOR_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__axelor__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__axelor__idleTimeoutSeconds=900
 EOFSP
 #SQLPAD_OUTPUT_CONFIG_ENV_END
 }
