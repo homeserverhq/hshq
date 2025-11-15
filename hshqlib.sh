@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=216
+HSHQ_LIB_SCRIPT_VERSION=217
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -29287,10 +29287,11 @@ function loadPinnedDockerImages()
   IMG_N8N_APP=mirror.gcr.io/n8nio/n8n:1.114.0
   IMG_NAVIDROME=deluan/navidrome:0.58.0
   IMG_NETDATA=mirror.gcr.io/netdata/netdata:v2.6.1
-  IMG_NEXTCLOUD_APP=mirror.gcr.io/nextcloud:31.0.7-fpm-alpine
-  IMG_NEXTCLOUD_IMAGINARY=mirror.gcr.io/nextcloud/aio-imaginary:20250811_115851
-  IMG_NEXTCLOUD_TALKHPB=ghcr.io/nextcloud-releases/aio-talk:20250811_115851
-  IMG_NEXTCLOUD_TALKRECORD=ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851
+  IMG_NEXTCLOUD_APP=mirror.gcr.io/nextcloud:32.0.1-fpm-alpine
+  IMG_NEXTCLOUD_HARP=ghcr.io/nextcloud/nextcloud-appapi-harp:v0.3.0
+  IMG_NEXTCLOUD_IMAGINARY=mirror.gcr.io/nextcloud/aio-imaginary:20251031_122139
+  IMG_NEXTCLOUD_TALKHPB=ghcr.io/nextcloud-releases/aio-talk:20251031_122139
+  IMG_NEXTCLOUD_TALKRECORD=ghcr.io/nextcloud-releases/aio-talk-recording:20251031_122139
   IMG_NTFY=mirror.gcr.io/binwiederhier/ntfy:v2.14.0
   IMG_NODE_EXPORTER=mirror.gcr.io/prom/node-exporter:v1.9.1
   IMG_ODOO_APP=mirror.gcr.io/odoo:19.0-20250918
@@ -29381,6 +29382,7 @@ function loadPinnedDockerImages()
   IMG_AXELOR_APP=mirror.gcr.io/axelor/aos-ce:8.4
   IMG_AXELOR_GOOVEE=mirror.gcr.io/axelor/goovee-ce:v1.1.0
   IMG_CONVERTX_APP=ghcr.io/c4illin/convertx:v0.15.1
+  IMG_KOPIA_APP=mirror.gcr.io/kopia/kopia:0.21.1
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -29403,7 +29405,7 @@ function getScriptStackVersion()
     collabora)
       echo "v8" ;;
     nextcloud)
-      echo "v10" ;;
+      echo "v11" ;;
     jitsi)
       echo "v8" ;;
     matrix)
@@ -29622,6 +29624,8 @@ function getScriptStackVersion()
       echo "v1" ;;
     convertx)
       echo "v1" ;;
+    kopia)
+      echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
 }
@@ -29824,6 +29828,7 @@ function pullDockerImages()
   pullImage $IMG_AXELOR_APP
   pullImage $IMG_AXELOR_GOOVEE
   pullImage $IMG_CONVERTX_APP
+  pullImage $IMG_KOPIA_APP
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -30169,6 +30174,8 @@ NEXTCLOUD_PUSH_PORT=7867
 NEXTCLOUD_TALKHPB_SIGNALING_SECRET=
 NEXTCLOUD_TALKHPB_INTERNAL_SECRET=
 NEXTCLOUD_TALKHPB_RECORDING_SECRET=
+NEXTCLOUD_HARP_PORT=8780
+NEXTCLOUD_HARP_SHARED_KEY=
 # Nextcloud (Service Details) END
 
 # Matrix (Service Details) BEGIN
@@ -31096,6 +31103,12 @@ CONVERTX_ADMIN_PASSWORD=
 CONVERTX_JWT_SECRET=
 # ConvertX (Service Details) END
 
+# Kopia (Service Details) BEGIN
+KOPIA_INIT_ENV=true
+KOPIA_ADMIN_USERNAME=
+KOPIA_ADMIN_PASSWORD=
+# Kopia (Service Details) END
+
 # Service Details END
 EOFCF
 }
@@ -31410,6 +31423,10 @@ function initServicesCredentials()
   if [ -z "$NEXTCLOUD_TALKHPB_RECORDING_SECRET" ]; then
     NEXTCLOUD_TALKHPB_RECORDING_SECRET=$(openssl rand --hex 32)
     updateConfigVar NEXTCLOUD_TALKHPB_RECORDING_SECRET $NEXTCLOUD_TALKHPB_RECORDING_SECRET
+  fi
+  if [ -z "$NEXTCLOUD_HARP_SHARED_KEY" ]; then
+    NEXTCLOUD_HARP_SHARED_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar NEXTCLOUD_HARP_SHARED_KEY $NEXTCLOUD_HARP_SHARED_KEY
   fi
   if [ -z "$MATRIX_DATABASE_NAME" ]; then
     MATRIX_DATABASE_NAME="matrixdb"
@@ -33534,6 +33551,14 @@ function initServicesCredentials()
     CONVERTX_JWT_SECRET=$(pwgen -c -n 64 1)
     updateConfigVar CONVERTX_JWT_SECRET $CONVERTX_JWT_SECRET
   fi
+  if [ -z "$KOPIA_ADMIN_USERNAME" ]; then
+    KOPIA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_kopia"
+    updateConfigVar KOPIA_ADMIN_USERNAME $KOPIA_ADMIN_USERNAME
+  fi
+  if [ -z "$KOPIA_ADMIN_PASSWORD" ]; then
+    KOPIA_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar KOPIA_ADMIN_PASSWORD $KOPIA_ADMIN_PASSWORD
+  fi
 #ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
@@ -33731,6 +33756,9 @@ function checkCreateNonbackupDirByStack()
     "akaunting")
       mkdir -p $HSHQ_NONBACKUP_DIR/akaunting/redis
       ;;
+    "kopia")
+      mkdir -p $HSHQ_NONBACKUP_DIR/kopia/snapshots
+      ;;
 #ADD_NEW_NONBACKUP_DIRS_HERE
     *)
       ;;
@@ -33927,6 +33955,7 @@ function initServiceVars()
   checkAddSvc "SVCD_AXELOR_APP=axelor,axelor,primary,user,Axelor,axelor,hshq"
   checkAddSvc "SVCD_AXELOR_GOOVEE=axelor,goovee,primary,user,Axelor Goovee,goovee,hshq"
   checkAddSvc "SVCD_CONVERTX_APP=convertx,convertx,primary,user,ConvertX,convertx,hshq"
+  checkAddSvc "SVCD_KOPIA_APP=kopia,kopia,primary,admin,Kopia,kopia,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -34167,6 +34196,8 @@ function installStackByName()
       installAxelor $is_integrate ;;
     convertx)
       installConvertX $is_integrate ;;
+    kopia)
+      installKopia $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -34415,6 +34446,8 @@ function performUpdateStackByName()
       performUpdateAxelor ;;
     convertx)
       performUpdateConvertX ;;
+    kopia)
+      performUpdateKopia ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -34593,6 +34626,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_WORDPRESS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_BESZEL_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_KOPIA_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_ADMIN_HERE
   retval="${retval}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -34711,12 +34745,13 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TAIGA_APP}-Admin" https://$SUB_TAIGA_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $TAIGA_ADMIN_USERNAME $TAIGA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENSIGN_APP}-Admin" https://$SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $OPENSIGN_ADMIN_EMAIL_ADDRESS $OPENSIGN_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DOCUSEAL_APP}-Admin" https://$SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN/sign_in $HOMESERVER_ABBREV $DOCUSEAL_ADMIN_EMAIL_ADDRESS $DOCUSEAL_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CONTROLR_APP}-Admin" \"https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN/Account/Login https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN/Account/Register\" $HOMESERVER_ABBREV $CONTROLR_ADMIN_EMAIL_ADDRESS $CONTROLR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CONTROLR_APP}-Admin" "\"https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN/Account/Login,https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN/Account/Register\"" $HOMESERVER_ABBREV $CONTROLR_ADMIN_EMAIL_ADDRESS $CONTROLR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CONTROLR_ASPIRE}-Admin" https://$SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CONTROLR_ADMIN_EMAIL_ADDRESS $CONTROLR_ASPIRE_TOKEN)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AKAUNTING_APP}-Admin" https://$SUB_AKAUNTING_APP.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $AKAUNTING_ADMIN_EMAIL_ADDRESS $AKAUNTING_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AXELOR_APP}-Admin" https://$SUB_AXELOR_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $AXELOR_ADMIN_USERNAME $AXELOR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AXELOR_GOOVEE}-Admin" https://$SUB_AXELOR_GOOVEE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $AXELOR_GOOVEE_ADMIN_USERNAME $AXELOR_GOOVEE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CONVERTX_APP}-Admin" https://$SUB_CONVERTX_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CONVERTX_ADMIN_EMAIL_ADDRESS $CONVERTX_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KOPIA_APP}-Admin" https://$SUB_KOPIA_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KOPIA_ADMIN_USERNAME $KOPIA_ADMIN_PASSWORD)"\n"
 #ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
@@ -34758,9 +34793,9 @@ function emailFormattedCredentials()
   strOutput=$strOutput"Be careful keeping this in your mailbox, it contains all of your Admin passwords in plain text! If you intend to install and use Vaultwarden, then you will receive an email once it is installed, and it will contain this information in a format that you can easily import into your vault. You can also resend yourself this email later from within Script-server, i.e. 01 Misc Utils -> 11 Email All Credentials\n\n\n\n"
   strOutput=$strOutput"Service Name, Username, Password, URL(s)\n"
   strOutput=$strOutput"________________________________________________________________________\n\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PORTAINER}" "\"https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT/#!/auth\"" $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PORTAINER}" "\"https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth,https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT/#!/auth\"" $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ADGUARD}" https://$SUB_ADGUARD.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $ADGUARD_ADMIN_USERNAME $ADGUARD_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SCRIPTSERVER}" "\"https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT/login.html\"" $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SCRIPTSERVER}" "\"https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html,https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT/login.html\"" $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENLDAP_PHP}" https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV \"$LDAP_ADMIN_BIND_DN\" $LDAP_ADMIN_BIND_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUTHELIA}" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_WAZUH}" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_ADMIN_USERNAME $WAZUH_USERS_ADMIN_PASSWORD)"\n"
@@ -34790,7 +34825,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MATRIX_ELEMENT_PUBLIC}" https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MEALIE}-Admin" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MEALIE}-User" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_REMOTELY}" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Register https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_REMOTELY}" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Register,https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DUPLICATI}" https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV "NA" $DUPLICATI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_FILEBROWSER}" https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $FILEBROWSER_USERNAME $FILEBROWSER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MASTODON}-Admin" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $MASTODON_ADMIN_EMAIL_ADDRESS $MASTODON_ADMIN_PASSWORD)"\n"
@@ -34823,7 +34858,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_MINDSDB_APP}-Admin" https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_MINDSDB_ADMIN_USERNAME $AISTACK_MINDSDB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_LANGFUSE}-Admin" https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN/auth/sign-in $HOMESERVER_ABBREV $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS $AISTACK_LANGFUSE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_OPENWEBUI}-Admin" https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/auth $HOMESERVER_ABBREV $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PIXELFED}-Admin" "\"https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/i/auth/sudo\"" $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PIXELFED}-Admin" "\"https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/i/auth/sudo\"" $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_YAMTRACK}-Admin" https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN/accounts/login $HOMESERVER_ABBREV $YAMTRACK_ADMIN_USERNAME $YAMTRACK_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SERVARR_SONARR}-Admin" https://$SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SONARR_ADMIN_USERNAME $SONARR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SERVARR_RADARR}-Admin" https://$SUB_SERVARR_RADARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RADARR_ADMIN_USERNAME $RADARR_ADMIN_PASSWORD)"\n"
@@ -34864,12 +34899,13 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TAIGA_APP}-Admin" https://$SUB_TAIGA_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $TAIGA_ADMIN_USERNAME $TAIGA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENSIGN_APP}-Admin" https://$SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $OPENSIGN_ADMIN_EMAIL_ADDRESS $OPENSIGN_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DOCUSEAL_APP}-Admin" https://$SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN/sign_in $HOMESERVER_ABBREV $DOCUSEAL_ADMIN_EMAIL_ADDRESS $DOCUSEAL_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CONTROLR_APP}-Admin" \"https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN/Account/Login https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN/Account/Register\" $HOMESERVER_ABBREV $CONTROLR_ADMIN_EMAIL_ADDRESS $CONTROLR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CONTROLR_APP}-Admin" "\"https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN/Account/Login,https://$SUB_CONTROLR_APP.$HOMESERVER_DOMAIN/Account/Register\"" $HOMESERVER_ABBREV $CONTROLR_ADMIN_EMAIL_ADDRESS $CONTROLR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CONTROLR_ASPIRE}-Admin" https://$SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CONTROLR_ADMIN_EMAIL_ADDRESS $CONTROLR_ASPIRE_TOKEN)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AKAUNTING_APP}-Admin" https://$SUB_AKAUNTING_APP.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $AKAUNTING_ADMIN_EMAIL_ADDRESS $AKAUNTING_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AXELOR_APP}-Admin" https://$SUB_AXELOR_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $AXELOR_ADMIN_USERNAME $AXELOR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AXELOR_GOOVEE}-Admin" https://$SUB_AXELOR_GOOVEE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $AXELOR_GOOVEE_ADMIN_USERNAME $AXELOR_GOOVEE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CONVERTX_APP}-Admin" https://$SUB_CONVERTX_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CONVERTX_ADMIN_EMAIL_ADDRESS $CONVERTX_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KOPIA_APP}-Admin" https://$SUB_KOPIA_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KOPIA_ADMIN_USERNAME $KOPIA_ADMIN_PASSWORD)"\n"
 #ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
@@ -35333,6 +35369,9 @@ function getHeimdallOrderFromSub()
     "$SUB_CONVERTX_APP")
       order_num=132
       ;;
+    "$SUB_KOPIA_APP")
+      order_num=133
+      ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=900
@@ -35383,18 +35422,18 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
-  DS_MEM_HIGH=discourse,netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
-  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
-  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  DS_MEM_HIGH=discourse,netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
 #INIT_SERVICE_DEFAULTS_END
 }
 
@@ -35498,7 +35537,10 @@ function getScriptImageByContainerName()
       container_image=$IMG_NEXTCLOUD_IMAGINARY
       ;;
     "nextcloud-web")
-      container_image=mirror.gcr.io/nginx:1.28.0-alpine
+      container_image=mirror.gcr.io/nginx:1.29.3-alpine
+      ;;
+    "nextcloud-harp")
+      container_image=$IMG_NEXTCLOUD_HARP
       ;;
     "nextcloud-talkhpb")
       container_image=$IMG_NEXTCLOUD_TALKHPB
@@ -36457,6 +36499,9 @@ function getScriptImageByContainerName()
     "convertx-app")
       container_image=$IMG_CONVERTX_APP
       ;;
+    "kopia-app")
+      container_image=$IMG_KOPIA_APP
+      ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
@@ -36547,6 +36592,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Akaunting" "AKAUNTING_INIT_ENV=false,AKAUNTING_ADMIN_USERNAME=,AKAUNTING_ADMIN_EMAIL_ADDRESS=,AKAUNTING_ADMIN_PASSWORD=,AKAUNTING_DATABASE_NAME=,AKAUNTING_DATABASE_ROOT_PASSWORD=,AKAUNTING_DATABASE_USER=,AKAUNTING_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Axelor" "AXELOR_INIT_ENV=false,AXELOR_ADMIN_USERNAME=,AXELOR_ADMIN_EMAIL_ADDRESS=,AXELOR_ADMIN_PASSWORD=,AXELOR_DATABASE_NAME=,AXELOR_DATABASE_USER=,AXELOR_DATABASE_USER_PASSWORD=,AXELOR_NEXTAUTH_SECRET=,AXELOR_GOOVEE_ADMIN_USERNAME=,AXELOR_GOOVEE_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "ConvertX" "CONVERTX_INIT_ENV=false,CONVERTX_ADMIN_USERNAME=,CONVERTX_ADMIN_EMAIL_ADDRESS=,CONVERTX_ADMIN_PASSWORD=,CONVERTX_JWT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Kopia" "KOPIA_INIT_ENV=false,KOPIA_ADMIN_USERNAME=,KOPIA_ADMIN_PASSWORD=" $CONFIG_FILE false
 #ADD_NEW_ADD_SVC_CONFIG_HERE
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
@@ -36572,6 +36618,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Homarr" "HOMARR_ADMIN_EMAIL_ADDRESS=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_TALKHPB_SIGNALING_SECRET=,NEXTCLOUD_TALKHPB_INTERNAL_SECRET=,NEXTCLOUD_TALKHPB_RECORDING_SECRET=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Portainer" "PORTAINER_ENDPOINT_ID=1" $HSHQ_PLAINTEXT_ROOT_CONFIG true
+  checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_HARP_PORT=8780,NEXTCLOUD_HARP_SHARED_KEY=" $CONFIG_FILE false
 }
 
 function importDBs()
@@ -43142,6 +43189,10 @@ function installNextcloud()
   if [ $? -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName nextcloud-harp)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   if ! [ -d $HSHQ_STACKS_DIR/coturn ]; then
     echo "Missing coturn, installing..."
     installCoturn
@@ -43346,6 +43397,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ config:system:set enabledPreviewProviders 0 --value="OC\\Preview\\Imaginary"
   docker exec -u www-data nextcloud-app php occ config:system:set preview_imaginary_url --value="http://nextcloud-imaginary:$NEXTCLOUD_IMAGINARY_PORT"
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install notify_push
+  docker exec -u www-data nextcloud-app php occ app_api:daemon:register --net int-nextcloud-net --compute_device cpu --set-default --harp --harp_frp_address nextcloud-harp:8782 --harp_shared_key $NEXTCLOUD_HARP_SHARED_KEY harp_proxy_docker "HaRP Proxy (Docker)" docker-install http nextcloud-harp:8780 https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
   docker exec -u www-data nextcloud-app php occ config:system:set maintenance_window_start --type=integer --value=1
   if ! [ "$(isServiceDisabled clamav)" = "true" ]; then
     docker exec -u www-data nextcloud-app php occ --no-warnings app:install files_antivirus
@@ -43408,6 +43460,9 @@ function installNextcloud()
   inner_block=$inner_block">>>>>>route /push/* {\n"
   inner_block=$inner_block">>>>>>>>uri strip_prefix /push\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-push:$NEXTCLOUD_PUSH_PORT\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>route /exapps/* {\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-harp:$NEXTCLOUD_HARP_PORT\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://nextcloud-web {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -43475,7 +43530,7 @@ function performNextcloudInstallFailCleanup()
 
 function outputConfigNextcloud()
 {
-  NCTALKRECORD_PYTHON_VER=python3.13
+  NCTALKRECORD_PYTHON_VER=python3.14
   outputNGINXConfigNextcloud
   cat <<EOFNC > $HSHQ_STACKS_DIR/nextcloud/www.conf
 [www]
@@ -43489,7 +43544,6 @@ pm.min_spare_servers = 50
 pm.max_spare_servers = 150
 
 EOFNC
-
   cat <<EOFLD > $HSHQ_STACKS_DIR/nextcloud/ldap-app.conf
 TLS_CERT /opt/ssl/nextcloud-app.crt
 TLS_KEY /opt/ssl/nextcloud-app.key
@@ -43497,7 +43551,6 @@ TLS_CACERT /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
 TLS_REQCERT demand
 TLS_REQSAN demand
 EOFLD
-
   cat <<EOFLC > $HSHQ_STACKS_DIR/nextcloud/ldap-cron.conf
 TLS_CERT /opt/ssl/nextcloud-cron.crt
 TLS_KEY /opt/ssl/nextcloud-cron.key
@@ -43505,7 +43558,6 @@ TLS_CACERT /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
 TLS_REQCERT demand
 TLS_REQSAN demand
 EOFLC
-
   cat <<EOFLC > $HSHQ_STACKS_DIR/nextcloud/ldap-push.conf
 TLS_CERT /opt/ssl/nextcloud-push.crt
 TLS_KEY /opt/ssl/nextcloud-push.key
@@ -43513,7 +43565,6 @@ TLS_CACERT /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
 TLS_REQCERT demand
 TLS_REQSAN demand
 EOFLC
-
   cat <<EOFNC > $HOME/nextcloud-compose-tmp.yml
 services:
   nextcloud-db:
@@ -43758,6 +43809,29 @@ services:
     environment:
       - TZ=$TZ
 
+  nextcloud-harp:
+    image: $(getScriptImageByContainerName nextcloud-harp)
+    container_name: nextcloud-harp
+    hostname: nextcloud-harp
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - int-nextcloud-net
+    depends_on:
+      - nextcloud-app
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - HP_SHARED_KEY=$NEXTCLOUD_HARP_SHARED_KEY
+      - NC_INSTANCE_URL=https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+
 volumes:
   v-nextcloud:
     driver: local
@@ -43792,16 +43866,14 @@ networks:
       driver: default
 
 EOFNC
-
   outputComposeNextcloud
-
   cat <<EOFNC > $HOME/nextcloud.env
 TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
 REDIS_TLS_ENABLED=no
-PYTHON_VER=python3.13
+PYTHON_VER=$NCTALKRECORD_PYTHON_VER
 EOFNC
 }
 
@@ -44067,6 +44139,30 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/nextcloud/web/nginx.conf:/etc/nginx/nginx.conf
       - \${PORTAINER_HSHQ_SSL_DIR}/nextcloud-web.crt:/etc/nginx/certs/cert.crt
       - \${PORTAINER_HSHQ_SSL_DIR}/nextcloud-web.key:/etc/nginx/certs/cert.key
+
+  nextcloud-harp:
+    image: $(getScriptImageByContainerName nextcloud-harp)
+    container_name: nextcloud-harp
+    hostname: nextcloud-harp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - int-nextcloud-net
+    depends_on:
+      - nextcloud-app
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - HP_SHARED_KEY=$NEXTCLOUD_HARP_SHARED_KEY
+      - NC_INSTANCE_URL=https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
 
 volumes:
   v-nextcloud:
@@ -44442,15 +44538,31 @@ function performUpdateNextcloud()
       return
     ;;
     10)
-      newVer=v10
+      newVer=v11
       curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/nextcloud:31.0.7-fpm-alpine,mirror.gcr.io/nextcloud/aio-imaginary:20250811_115851,mirror.gcr.io/nginx:1.28.0-alpine,ghcr.io/nextcloud-releases/aio-talk:20250811_115851,ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
-      image_update_map[2]="mirror.gcr.io/nextcloud:31.0.7-fpm-alpine,mirror.gcr.io/nextcloud:31.0.7-fpm-alpine"
-      image_update_map[3]="mirror.gcr.io/nextcloud/aio-imaginary:20250811_115851,mirror.gcr.io/nextcloud/aio-imaginary:20250811_115851"
-      image_update_map[4]="mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
-      image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20250811_115851,ghcr.io/nextcloud-releases/aio-talk:20250811_115851"
-      image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851,ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851"
+      image_update_map[2]="mirror.gcr.io/nextcloud:31.0.7-fpm-alpine,mirror.gcr.io/nextcloud:32.0.1-fpm-alpine"
+      image_update_map[3]="mirror.gcr.io/nextcloud/aio-imaginary:20250811_115851,mirror.gcr.io/nextcloud/aio-imaginary:20251031_122139"
+      image_update_map[4]="mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
+      image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20250811_115851,ghcr.io/nextcloud-releases/aio-talk:20251031_122139"
+      image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851,ghcr.io/nextcloud-releases/aio-talk-recording:20251031_122139"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfNextcloudV11AddHaRP
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      performMaintenanceNextcloud
+      docker exec -u www-data nextcloud-app php occ app_api:daemon:register --net int-nextcloud-net --compute_device cpu --set-default --harp --harp_frp_address nextcloud-harp:8782 --harp_shared_key $NEXTCLOUD_HARP_SHARED_KEY harp_proxy_docker "HaRP Proxy (Docker)" docker-install http nextcloud-harp:8780 https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      return
+    ;;
+    11)
+      newVer=v11
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/nextcloud:32.0.1-fpm-alpine,mirror.gcr.io/nextcloud/aio-imaginary:20251031_122139,mirror.gcr.io/nginx:1.28.0-alpine,ghcr.io/nextcloud-releases/aio-talk:20251031_122139,ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[2]="mirror.gcr.io/nextcloud:32.0.1-fpm-alpine,mirror.gcr.io/nextcloud:32.0.1-fpm-alpine"
+      image_update_map[3]="mirror.gcr.io/nextcloud/aio-imaginary:20251031_122139,mirror.gcr.io/nextcloud/aio-imaginary:20251031_122139"
+      image_update_map[4]="mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
+      image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20251031_122139,ghcr.io/nextcloud-releases/aio-talk:20251031_122139"
+      image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20251031_122139,ghcr.io/nextcloud-releases/aio-talk-recording:20251031_122139"
     ;;
     *)
       is_upgrade_error=true
@@ -44541,6 +44653,42 @@ function mfNextcloudAddTalkHPB()
 function mfNextcloudFixRedisCompose()
 {
   replaceRedisBlock nextcloud nextcloud-redis mirror.gcr.io/redis:8.2.0-bookworm false
+}
+
+function mfNextcloudV11AddHaRP()
+{
+  set +e
+  initServicesCredentials
+  pullImage $(getScriptImageByContainerName nextcloud-harp)
+  set +e
+  sed -i "s/^PYTHON_VER=.*/PYTHON_VER=python3.14/" $HOME/nextcloud.env
+  outputComposeNextcloud
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>rewrite /.well-known/carddav /remote.php/dav\n"
+  inner_block=$inner_block">>>>rewrite /.well-known/caldav /remote.php/dav\n"
+  inner_block=$inner_block">>>>rewrite /.well-known/webfinger /index.php/.well-known/webfinger\n"
+  inner_block=$inner_block">>>>rewrite /.well-known/nodeinfo /index.php/.well-known/nodeinfo\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>route /push/* {\n"
+  inner_block=$inner_block">>>>>>>>uri strip_prefix /push\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-push:$NEXTCLOUD_PUSH_PORT\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>route /exapps/* {\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-harp:$NEXTCLOUD_HARP_PORT\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>reverse_proxy https://nextcloud-web {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_NEXTCLOUD $MANAGETLS_NEXTCLOUD "$is_integrate_hshq" $NETDEFAULT_NEXTCLOUD "$inner_block"
+  set +e
 }
 
 # Jitsi
@@ -78225,6 +78373,154 @@ function performUpdateConvertX()
       newVer=v1
       curImageList=ghcr.io/c4illin/convertx:v0.15.1
       image_update_map[0]="ghcr.io/c4illin/convertx:v0.15.1,ghcr.io/c4illin/convertx:v0.15.1"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Kopia
+function installKopia()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory kopia "Kopia"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName kopia-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/kopia
+  mkdir $HSHQ_STACKS_DIR/kopia/config
+  mkdir $HSHQ_STACKS_DIR/kopia/cache
+  mkdir $HSHQ_STACKS_DIR/kopia/logs
+  mkdir $HSHQ_NONBACKUP_DIR/kopia
+  mkdir $HSHQ_NONBACKUP_DIR/kopia/snapshots
+  sudo mkdir -p $HSHQ_BACKUP_DIR/kopia
+  initServicesCredentials
+  set +e
+  generateCert kopia-app kopia-app
+  outputConfigKopia
+  installStack kopia kopia-app "" $HOME/kopia.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$KOPIA_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_KOPIA_APP Admin Login Info" -b "$FMLNAME_KOPIA_APP Admin Username: $KOPIA_ADMIN_USERNAME\n$FMLNAME_KOPIA_APP Admin Password: $KOPIA_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    KOPIA_INIT_ENV=true
+    updateConfigVar KOPIA_INIT_ENV $KOPIA_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_KOPIA_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_KOPIA_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy https://kopia-app:51515 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_KOPIA_APP $MANAGETLS_KOPIA_APP "$is_integrate_hshq" $NETDEFAULT_KOPIA_APP "$inner_block"
+  insertSubAuthelia $SUB_KOPIA_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcHeimdall kopia "$FMLNAME_KOPIA_APP" $USERTYPE_KOPIA_APP "https://$SUB_KOPIA_APP.$HOMESERVER_DOMAIN" "kopia.png" true "$(getHeimdallOrderFromSub $SUB_KOPIA_APP $USERTYPE_KOPIA_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigKopia()
+{
+  cat <<EOFMT > $HOME/kopia-compose.yml
+$STACK_VERSION_PREFIX kopia $(getScriptStackVersion kopia)
+
+services:
+  kopia-app:
+    image: $(getScriptImageByContainerName kopia-app)
+    container_name: kopia-app
+    hostname: kopia-app
+    restart: unless-stopped
+    env_file: stack.env
+    privileged: true
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    devices:
+      - /dev/fuse:/dev/fuse:rwm
+    command:
+      - server
+      - start
+      - --disable-csrf-token-checks
+      - --tls-cert-file=/certs/kopia-app.crt
+      - --tls-key-file=/certs/kopia-app.key
+      - --address=0.0.0.0:51515
+      - --server-username=$KOPIA_ADMIN_USERNAME
+      - --server-password=$KOPIA_ADMIN_PASSWORD
+    networks:
+      - dock-proxy-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/kopia/config:/app/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/kopia/cache:/app/cache
+      - \${PORTAINER_HSHQ_STACKS_DIR}/kopia/logs:/app/logs
+      - \${PORTAINER_HSHQ_DATA_DIR}:/data:ro
+      - \${PORTAINER_HSHQ_BACKUP_DIR}/kopia:/repository
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/kopia/snapshots:/tmp:shared
+      - \${PORTAINER_HSHQ_SSL_DIR}/kopia-app.crt:/certs/kopia-app.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/kopia-app.key:/certs/kopia-app.key:ro
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/kopia.env
+TZ=\${PORTAINER_TZ}
+KOPIA_PASSWORD=$KOPIA_ADMIN_PASSWORD
+USER=$USERID
+EOFMT
+}
+
+function performUpdateKopia()
+{
+  perform_stack_name=kopia
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/kopia/kopia:0.21.1
+      image_update_map[0]="mirror.gcr.io/kopia/kopia:0.21.1,mirror.gcr.io/kopia/kopia:0.21.1"
     ;;
     *)
       is_upgrade_error=true
