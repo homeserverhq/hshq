@@ -43530,7 +43530,7 @@ function performNextcloudInstallFailCleanup()
 
 function outputConfigNextcloud()
 {
-  NCTALKRECORD_PYTHON_VER=python3.13
+  NCTALKRECORD_PYTHON_VER=python3.14
   outputNGINXConfigNextcloud
   cat <<EOFNC > $HSHQ_STACKS_DIR/nextcloud/www.conf
 [www]
@@ -43873,7 +43873,7 @@ UID=$USERID
 GID=$GROUPID
 REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
 REDIS_TLS_ENABLED=no
-PYTHON_VER=python3.13
+PYTHON_VER=$NCTALKRECORD_PYTHON_VER
 EOFNC
 }
 
@@ -44547,7 +44547,7 @@ function performUpdateNextcloud()
       image_update_map[4]="mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
       image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20250811_115851,ghcr.io/nextcloud-releases/aio-talk:20251031_122139"
       image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851,ghcr.io/nextcloud-releases/aio-talk-recording:20251031_122139"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfNextcloudAddHaRP
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfNextcloudV11AddHaRP
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       performMaintenanceNextcloud
       docker exec -u www-data nextcloud-app php occ app_api:daemon:register --net int-nextcloud-net --compute_device cpu --set-default --harp --harp_frp_address nextcloud-harp:8782 --harp_shared_key $NEXTCLOUD_HARP_SHARED_KEY harp_proxy_docker "HaRP Proxy (Docker)" docker-install http nextcloud-harp:8780 https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
@@ -44655,12 +44655,13 @@ function mfNextcloudFixRedisCompose()
   replaceRedisBlock nextcloud nextcloud-redis mirror.gcr.io/redis:8.2.0-bookworm false
 }
 
-function mfNextcloudAddHaRP()
+function mfNextcloudV11AddHaRP()
 {
   set +e
   initServicesCredentials
   pullImage $(getScriptImageByContainerName nextcloud-harp)
   set +e
+  sed -i "s/^PYTHON_VER=.*/PYTHON_VER=python3.14/" $HOME/nextcloud.env
   outputComposeNextcloud
   inner_block=""
   inner_block=$inner_block">>https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN {\n"
