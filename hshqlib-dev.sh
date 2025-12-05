@@ -202,7 +202,7 @@ function init()
   SS_REMOVING=removing
   SS_RUNNING=running
   RESTORE_SCREEN_NAME=hshqRestore
-  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential gio|libglib2.0-bin ffmpeg|ffmpeg php|php-cli"
+  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential gio|libglib2.0-bin ffmpeg|ffmpeg php|php-cli gnupg2|gnupg2 apt-transport-https|apt-transport-https software-properties-common|software-properties-common"
   DESKTOP_APT_LIST=""
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd needrestart bsd-mailx"
   RELAYSERVER_UTILS_LIST="curl|curl awk|gawk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils logrotate|logrotate"
@@ -7095,16 +7095,9 @@ function installDockerUbuntu2204()
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
   echo "deb [arch=\$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
-  echo "Installing docker-ce..."
-  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
-  echo "Installing docker-ce-cli..."
-  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
-  echo "Installing containerd.io..."
-  performAptInstall containerd.io > /dev/null 2>&1
-  echo "Installing docker-compose..."
-  performAptInstall docker-compose > /dev/null 2>&1
-  echo "Installing docker-compose-plugin..."
-  performAptInstall docker-compose-plugin > /dev/null 2>&1
+  echo "Installing docker..."
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2204 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
+
 }
 
 function installDockerUbuntu2404()
@@ -7115,16 +7108,8 @@ function installDockerUbuntu2404()
   sudo chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \$(. /etc/os-release && echo "\$UBUNTU_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
-  echo "Installing docker-ce..."
-  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
-  echo "Installing docker-ce-cli..."
-  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
-  echo "Installing containerd.io..."
-  performAptInstall containerd.io > /dev/null 2>&1
-  echo "Installing docker-buildx-plugin..."
-  performAptInstall docker-buildx-plugin > /dev/null 2>&1
-  echo "Installing docker-compose-plugin..."
-  performAptInstall docker-compose-plugin > /dev/null 2>&1
+  echo "Installing docker..."
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2404 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
 }
 
 function installDockerDebian12()
@@ -7133,26 +7118,10 @@ function installDockerDebian12()
   sudo install -m 0755 -d /etc/apt/keyrings
   sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
-  sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
-Types: deb
-URIs: https://download.docker.com/linux/debian
-Suites: \$(. /etc/os-release && echo "\$VERSION_CODENAME")
-Components: stable
-Signed-By: /etc/apt/keyrings/docker.asc
-EOF
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
-  echo "Installing docker-ce..."
-  performAptInstall docker-ce=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
-  echo "Installing docker-ce-cli..."
-  performAptInstall docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
-  echo "Installing containerd.io..."
-  performAptInstall containerd.io > /dev/null 2>&1
-  echo "Installing docker-buildx-plugin..."
-  performAptInstall docker-buildx-plugin > /dev/null 2>&1
-  echo "Installing docker-compose..."
-  performAptInstall docker-compose > /dev/null 2>&1
-  echo "Installing docker-compose-plugin..."
-  performAptInstall docker-compose-plugin > /dev/null 2>&1
+  echo "Installing docker..."
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_DEBIAN_12 docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
 }
 
 function outputNukeScript()
@@ -24121,20 +24090,17 @@ function upgradeDocker()
 
 function upgradeDockerUbuntu2204()
 {
-  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
-  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2204 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
 }
 
 function upgradeDockerUbuntu2404()
 {
-  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
-  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2404 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
 }
 
 function upgradeDockerDebian12()
 {
-  performAptInstall docker-ce=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
-  performAptInstall docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_DEBIAN_12 docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
 }
 
 init
@@ -28186,6 +28152,7 @@ function installDocker()
   if [[ "$(isProgramInstalled $util)" = "true" ]]; then
     sudo systemctl restart rsyslog
     sudo systemctl restart docker
+    upgradeDocker
     return 0
   fi
   performAptInstall apt-transport-https > /dev/null 2>&1
@@ -28355,17 +28322,12 @@ function installDockerUbuntu2204()
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
   echo "Installing docker, please wait..."
-  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
-  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
-  performAptInstall containerd.io > /dev/null 2>&1
-  performAptInstall docker-compose > /dev/null 2>&1
-  performAptInstall docker-compose-plugin > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2204 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
 }
 
 function upgradeDockerUbuntu2204()
 {
-  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
-  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2204 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin_12 > /dev/null 2>&1
 }
 
 function installDockerUbuntu2404()
@@ -28377,17 +28339,12 @@ function installDockerUbuntu2404()
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$UBUNTU_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
   echo "Installing docker, please wait..."
-  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
-  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
-  performAptInstall containerd.io > /dev/null 2>&1
-  performAptInstall docker-buildx-plugin > /dev/null 2>&1
-  performAptInstall docker-compose-plugin > /dev/null 2>&1  
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2404 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
 }
 
 function upgradeDockerUbuntu2404()
 {
-  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
-  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2404 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin_12 > /dev/null 2>&1
 }
 
 function installDockerDebian12()
@@ -28396,27 +28353,15 @@ function installDockerDebian12()
   sudo install -m 0755 -d /etc/apt/keyrings
   sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
-  sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
-Types: deb
-URIs: https://download.docker.com/linux/debian
-Suites: $(. /etc/os-release && echo "$VERSION_CODENAME")
-Components: stable
-Signed-By: /etc/apt/keyrings/docker.asc
-EOF
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
   echo "Installing docker, please wait..."
-  performAptInstall docker-ce=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
-  performAptInstall docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
-  performAptInstall containerd.io > /dev/null 2>&1
-  performAptInstall docker-buildx-plugin > /dev/null 2>&1
-  performAptInstall docker-compose > /dev/null 2>&1
-  performAptInstall docker-compose-plugin > /dev/null 2>&1  
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_DEBIAN_12 docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
 }
 
 function upgradeDockerDebian12()
 {
-  performAptInstall docker-ce=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
-  performAptInstall docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_DEBIAN_12 docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin_12 > /dev/null 2>&1
 }
 
 function initCertificateAuthority()
