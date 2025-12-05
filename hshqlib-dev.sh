@@ -75,8 +75,8 @@ function init()
   MINDSDB_IMPORT_FILENAME=DBCImport.txt
   DNS_ZONE_FILENAME_BASE=DNSZoneInfo
   DOCKER_VERSION_UBUNTU_2204=5:28.3.3-1~ubuntu.22.04~jammy
-  DOCKER_VERSION_UBUNTU_2404=5:28.3.3-1~ubuntu.24.04~noble
-  DOCKER_VERSION_DEBIAN_12=5:28.3.3-1~debian.12~bookworm
+  DOCKER_VERSION_UBUNTU_2404=5:29.1.1-1~ubuntu.24.04~noble
+  DOCKER_VERSION_DEBIAN_12=5:29.1.1-1~debian.12~bookworm
   NET_EXTERNAL_BRIDGE_NAME=brdockext
   NET_EXTERNAL_SUBNET=172.16.1.0/24
   NET_EXTERNAL_SUBNET_PREFIX=172.16.1
@@ -7042,9 +7042,12 @@ function installDocker()
     return 0
   fi
   echo "Installing docker, please wait..."
+  performAptInstall apt-transport-https > /dev/null 2>&1
   performAptInstall ca-certificates > /dev/null 2>&1
   performAptInstall curl > /dev/null 2>&1
   performAptInstall gnupg > /dev/null 2>&1
+  performAptInstall gnupg2 > /dev/null 2>&1
+  performAptInstall software-properties-common > /dev/null 2>&1
   performAptInstall lsb-release > /dev/null 2>&1
   case "\$DISTRO_ID" in
   "ubuntu")
@@ -7130,7 +7133,13 @@ function installDockerDebian12()
   sudo install -m 0755 -d /etc/apt/keyrings
   sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
-  echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \$(. /etc/os-release && echo "\$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/debian
+Suites: \$(. /etc/os-release && echo "\$VERSION_CODENAME")
+Components: stable
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing docker-ce..."
   performAptInstall docker-ce=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
@@ -7138,6 +7147,8 @@ function installDockerDebian12()
   performAptInstall docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
   echo "Installing containerd.io..."
   performAptInstall containerd.io > /dev/null 2>&1
+  echo "Installing docker-buildx-plugin..."
+  performAptInstall docker-buildx-plugin > /dev/null 2>&1
   echo "Installing docker-compose..."
   performAptInstall docker-compose > /dev/null 2>&1
   echo "Installing docker-compose-plugin..."
@@ -23766,6 +23777,7 @@ function version218Update()
   fixMatrixV8
   fixMastodonV9
   fixPeertubeV7
+  upgradeDocker
 }
 
 function updateRelayServerWithScript()
@@ -28176,9 +28188,12 @@ function installDocker()
     sudo systemctl restart docker
     return 0
   fi
+  performAptInstall apt-transport-https > /dev/null 2>&1
   performAptInstall ca-certificates > /dev/null 2>&1
   performAptInstall curl > /dev/null 2>&1
   performAptInstall gnupg > /dev/null 2>&1
+  performAptInstall gnupg2 > /dev/null 2>&1
+  performAptInstall software-properties-common > /dev/null 2>&1
   performAptInstall lsb-release > /dev/null 2>&1
   case "$DISTRO_ID" in
   "ubuntu")
@@ -28381,12 +28396,19 @@ function installDockerDebian12()
   sudo install -m 0755 -d /etc/apt/keyrings
   sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/debian
+Suites: $(. /etc/os-release && echo "$VERSION_CODENAME")
+Components: stable
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
   sudo DEBIAN_FRONTEND=noninteractive apt update
   echo "Installing docker, please wait..."
   performAptInstall docker-ce=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
   performAptInstall docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
   performAptInstall containerd.io > /dev/null 2>&1
+  performAptInstall docker-buildx-plugin > /dev/null 2>&1
   performAptInstall docker-compose > /dev/null 2>&1
   performAptInstall docker-compose-plugin > /dev/null 2>&1  
 }
