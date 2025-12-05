@@ -5367,7 +5367,8 @@ function clearRedisTempDataByStackName()
   fi
   stackStatus=$(getStackStatusByName "$stackName")
   if ! [ "$stackStatus" = "1" ]; then
-    echo "ERROR: This stack is not currently running"
+    echo "WARNING: This stack is not currently running"
+    sudo rm -fr $HSHQ_NONBACKUP_DIR/$stackName/redis/*
     return
   fi
   echo "Stopping $stackName..."
@@ -29052,7 +29053,7 @@ function upgradeStack()
     fi
   fi
   set +e
-  removeImageCSVList "$rm_image_list"
+  #removeImageCSVList "$rm_image_list"
   stack_upgrade_report="${stack_upgrade_report}${comp_stack_name}: Upgraded from $old_ver to $new_ver"
 }
 
@@ -29194,7 +29195,7 @@ function upgradeDatabaseInStack()
   dbUser="$4"
   dbPassword="$5"
   dbRootPassword="$6"
-  curHostDirectory="$7"
+  curHostDBDirectory="$7"
   curExportDirectory="$8"
   curContainerDirectory="${9}"
   curImage="${10}"
@@ -29205,62 +29206,74 @@ function upgradeDatabaseInStack()
     return
   fi
   stackStatus=$(getStackStatusByName $stackName)
-  startStopStackByID $cur_stack_id
+  if [ $stackStatus -eq 1 ]; then
+    startStopStackByID $cur_stack_id stop
+  fi
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Stack did not shut down properly, returning..."
+    return 1
+  fi
   sudo rm -fr /tmp/$stackName
   mkdir /tmp/$stackName
-
+  echo "upgradeDatabaseInStack - Starting db container with current image..."
   case "$dbType" in 
     postgres)
-      docker run --name dbctemp -d --user="${USERID}:${GROUPID}" -e TZ=$TZ -e POSTGRES_DB=$dbName -e POSTGRES_USER=$dbUser -e POSTGRES_PASSWORD=$dbPassword -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro -v ${curDirectory}:${curContainerDirectory} -v ${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro -v ${curExportDirectory}:/dbexport $curImage
+      docker run --name dbctemp -d --user="${USERID}:${GROUPID}" -e TZ=$TZ -e POSTGRES_DB=$dbName -e POSTGRES_USER=$dbUser -e POSTGRES_PASSWORD=$dbPassword -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro -v ${curHostDBDirectory}:${curContainerDirectory} -v ${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro -v ${curExportDirectory}:/dbexport $curImage > /dev/null 2>&1
       waitForContainerLogString dbctemp 1 300 "ready to accept connections"
     ;;
     mysql)
-      docker run --name dbctemp -d -e TZ=$TZ -e MYSQL_DATABASE=$dbName -e MYSQL_USER=$dbUser -e MYSQL_PASSWORD=$dbPassword -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro -v ${curDirectory}:${curContainerDirectory} -v ${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro -v ${curExportDirectory}:/dbexport $curImage mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+      docker run --name dbctemp -d -e TZ=$TZ -e MYSQL_DATABASE=$dbName -e MYSQL_USER=$dbUser -e MYSQL_PASSWORD=$dbPassword -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro -v ${curHostDBDirectory}:${curContainerDirectory} -v ${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro -v ${curExportDirectory}:/dbexport $curImage mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120 > /dev/null 2>&1
       waitForContainerLogString dbctemp 1 300 "ready for connections"
     ;;
     *)
       echo "ERROR: Unknown database type, returning..."
-      return 1
+      return 2
     ;;
   esac
   if [ $? -ne 0 ]; then
     echo "ERROR: Database container did not start properly, returning..."
-    return 2
+    return 3
   fi
+  echo "upgradeDatabaseInStack - Exporting db..."
   sleep 1
-  docker exec dbctemp bash -c "/exportDB.sh"
-#> /dev/null 2>&1
-  docker container stop dbctemp
-  docker container rm dbctemp
+  docker exec dbctemp bash -c "/exportDB.sh" > /dev/null 2>&1
+  docker container stop dbctemp > /dev/null 2>&1
+  docker container rm dbctemp > /dev/null 2>&1
   sudo cp $curExportDirectory/${dbName}.sql /tmp/$stackName/${dbName}.sql
   sudo chmod 0555 /tmp/$stackName/${dbName}.sql
-  sudo mv $curHostDirectory ${curHostDirectory}_bak
-  mkdir $curHostDirectory
+  sudo mv $curHostDBDirectory ${curHostDBDirectory}_bak
+  mkdir $curHostDBDirectory
+  rtVal=0
+  echo "upgradeDatabaseInStack - Starting db container with new image..."
   case "$dbType" in 
     postgres)
-      docker run --name dbctemp -d --user="${USERID}:${GROUPID}" -e TZ=$TZ -e POSTGRES_DB=$dbName -e POSTGRES_USER=$dbUser -e POSTGRES_PASSWORD=$dbPassword -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro -v ${curDirectory}:${curContainerDirectory} -v /tmp/$stackName:/docker-entrypoint-initdb.d $newImage
+      docker run --name dbctemp -d --user="${USERID}:${GROUPID}" -e TZ=$TZ -e POSTGRES_DB=$dbName -e POSTGRES_USER=$dbUser -e POSTGRES_PASSWORD=$dbPassword -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro -v ${curHostDBDirectory}:${curContainerDirectory} -v /tmp/$stackName:/dbimport $newImage > /dev/null 2>&1
       waitForContainerLogString dbctemp 1 300 "ready to accept connections"
+      sleep 3
+      docker exec dbctemp /bin/bash -c "PGPASSWORD=$dbPassword psql --username $dbUser $dbName -f /dbimport/${dbName}.sql" > /dev/null 2>&1
     ;;
     mysql)
-      docker run --name dbctemp -d -e TZ=$TZ -e MYSQL_DATABASE=$dbName -e MYSQL_ROOT_PASSWORD=$dbRootPassword -e MYSQL_USER=$dbUser -e MYSQL_PASSWORD=$dbPassword -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro -v ${curDirectory}:${curContainerDirectory} -v /tmp/$stackName:/docker-entrypoint-initdb.d $newImage mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+      docker run --name dbctemp -d -e TZ=$TZ -e MYSQL_DATABASE=$dbName -e MYSQL_ROOT_PASSWORD=$dbRootPassword -e MYSQL_USER=$dbUser -e MYSQL_PASSWORD=$dbPassword -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro -v ${curHostDBDirectory}:${curContainerDirectory} -v /tmp/$stackName:/dbimport $newImage mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120 > /dev/null 2>&1
       waitForContainerLogString dbctemp 1 300 "ready for connections"
+      sleep 3
+      docker exec dbctemp /bin/bash -c "mysql -u $dbUser -p$dbPassword < /dbimport/${dbName}.sql" > /dev/null 2>&1
     ;;
     *)
       echo "ERROR: Unknown database type, returning..."
-      return 3
+      return 4
     ;;
   esac
-  rtVal=0
   if [ $? -eq 0 ]; then
-    sudo rm -fr ${curHostDirectory}_bak
+    sudo rm -fr ${curHostDBDirectory}_bak
   else
-    echo "ERROR: Database did not restore correctly. You can restore from the backup directory(${curHostDirectory}_bak) or retry..."
-    rtVal=4
+    echo "ERROR: Database did not restore correctly. You can restore from the backup directory(${curHostDBDirectory}_bak) or retry..."
+    rtVal=5
   fi
   sleep 5
-  docker container stop dbctemp
-  docker container rm dbctemp
+  docker container stop dbctemp > /dev/null 2>&1
+  docker container rm dbctemp > /dev/null 2>&1
   sudo rm -fr /tmp/$stackName
+  echo "upgradeDatabaseInStack - Import complete!"
   return $rtVal
 }
 
@@ -36900,7 +36913,6 @@ function outputConfigPortainer()
   else
     pdocknet=dock-privateip
   fi
-
   cat <<EOFPC > $HSHQ_STACKS_DIR/portainer/docker-compose.yml
 $STACK_VERSION_PREFIX portainer $(getScriptStackVersion portainer)
 
@@ -36919,8 +36931,8 @@ services:
     ports:
       - "$PORTAINER_LOCAL_HTTPS_PORT:9443"
     command:
-      --sslcert /data/certs/portainer.crt
-      --sslkey /data/certs/portainer.key
+      --tlscert /data/certs/portainer.crt
+      --tlskey /data/certs/portainer.key
       --http-disabled
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -36933,6 +36945,7 @@ services:
       - ${HSHQ_SSL_DIR}/portainer.crt:/data/certs/portainer.crt:ro
       - ${HSHQ_SSL_DIR}/portainer.key:/data/certs/portainer.key:ro
       - ${HSHQ_SECRETS_DIR}/portainer_key.txt:/run/portainer/portainer
+      - ${HSHQ_SECRETS_DIR}/portainer_key.txt:/run/secrets/portainer
 
 networks:
   dock-proxy-net:
@@ -36942,7 +36955,6 @@ networks:
     name: ${pdocknet}
     external: true
 EOFPC
-
   outputEnvPortainer
 }
 
@@ -36950,6 +36962,7 @@ function outputEnvPortainer()
 {
   rm -f $HSHQ_STACKS_DIR/portainer/portainer.env
   tee $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null <<EOFPC
+PORTAINER_SECRET_FILE=/run/secrets/portainer
 PORTAINER_HSHQ_BASE_DIR=$HSHQ_BASE_DIR
 PORTAINER_HSHQ_DATA_DIR=$HSHQ_DATA_DIR
 PORTAINER_HSHQ_BACKUP_DIR=$HSHQ_BACKUP_DIR
@@ -37044,14 +37057,20 @@ function performUpdatePortainer()
       image_update_map[0]="portainer/portainer-ce:2.19.4-alpine,portainer/portainer-ce:2.21.4-alpine"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=portainer/portainer-ce:2.21.4-alpine
-      image_update_map[0]="portainer/portainer-ce:2.21.4-alpine,portainer/portainer-ce:2.21.4-alpine"
+      image_update_map[0]="portainer/portainer-ce:2.21.4-alpine,mirror.gcr.io/portainer/portainer-ce:2.33.1-alpine"
     ;;
     4)
       newVer=v5
       curImageList=mirror.gcr.io/portainer/portainer-ce:2.33.1-alpine
       image_update_map[0]="mirror.gcr.io/portainer/portainer-ce:2.33.1-alpine,mirror.gcr.io/portainer/portainer-ce:2.33.5-alpine"
+      stopPortainer
+      outputConfigPortainer
+      startPortainer
+      sudo sed -i "1s|.*|$STACK_VERSION_PREFIX $perform_stack_name $newVer|" $perform_compose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     5)
       newVer=v5
@@ -44741,7 +44760,7 @@ function performUpdateNextcloud()
     ;;
     11)
       newVer=v12
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/nextcloud:32.0.1-fpm-alpine,mirror.gcr.io/nextcloud/aio-imaginary:20251031_122139,mirror.gcr.io/nginx:1.28.0-alpine,ghcr.io/nextcloud-releases/aio-talk:20251031_122139,ghcr.io/nextcloud-releases/aio-talk-recording:20251031_122139
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/nextcloud:32.0.1-fpm-alpine,mirror.gcr.io/nextcloud/aio-imaginary:20251031_122139,mirror.gcr.io/nginx:1.28.0-alpine,ghcr.io/nextcloud-releases/aio-talk:20251031_122139,ghcr.io/nextcloud-releases/aio-talk-recording:20251031_122139,ghcr.io/nextcloud/nextcloud-appapi-harp:v0.3.0
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
       image_update_map[2]="mirror.gcr.io/nextcloud:32.0.1-fpm-alpine,mirror.gcr.io/nextcloud:32.0.2-fpm-alpine"
@@ -44749,10 +44768,11 @@ function performUpdateNextcloud()
       image_update_map[4]="mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
       image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20251031_122139,ghcr.io/nextcloud-releases/aio-talk:20251128_084214"
       image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20251031_122139,ghcr.io/nextcloud-releases/aio-talk-recording:20251128_084214"
+      image_update_map[7]="ghcr.io/nextcloud/nextcloud-appapi-harp:v0.3.0,ghcr.io/nextcloud/nextcloud-appapi-harp:v0.3.0"
     ;;
     12)
       newVer=v12
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/nextcloud:32.0.2-fpm-alpine,mirror.gcr.io/nextcloud/aio-imaginary:20251128_084214,mirror.gcr.io/nginx:1.28.0-alpine,ghcr.io/nextcloud-releases/aio-talk:20251128_084214,ghcr.io/nextcloud-releases/aio-talk-recording:20251128_084214
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/nextcloud:32.0.2-fpm-alpine,mirror.gcr.io/nextcloud/aio-imaginary:20251128_084214,mirror.gcr.io/nginx:1.28.0-alpine,ghcr.io/nextcloud-releases/aio-talk:20251128_084214,ghcr.io/nextcloud-releases/aio-talk-recording:20251128_084214,ghcr.io/nextcloud/nextcloud-appapi-harp:v0.3.0
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
       image_update_map[2]="mirror.gcr.io/nextcloud:32.0.2-fpm-alpine,mirror.gcr.io/nextcloud:32.0.2-fpm-alpine"
@@ -44760,6 +44780,7 @@ function performUpdateNextcloud()
       image_update_map[4]="mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
       image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20251128_084214,ghcr.io/nextcloud-releases/aio-talk:20251128_084214"
       image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20251128_084214,ghcr.io/nextcloud-releases/aio-talk-recording:20251128_084214"
+      image_update_map[7]="ghcr.io/nextcloud/nextcloud-appapi-harp:v0.3.0,ghcr.io/nextcloud/nextcloud-appapi-harp:v0.3.0"
     ;;
     *)
       is_upgrade_error=true
@@ -49201,7 +49222,7 @@ function performUpdateAuthelia()
       curImageList=authelia/authelia:4.37.5,bitnami/redis:7.0.5
       image_update_map[0]="authelia/authelia:4.37.5,authelia/authelia:4.38.2"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateAutheliaConfig
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateAutheliaConfigV2
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -49229,14 +49250,23 @@ function performUpdateAuthelia()
     5)
       newVer=v6
       curImageList=authelia/authelia:4.39.1,bitnami/redis:7.4.2
-      image_update_map[0]="authelia/authelia:4.39.1,mirror.gcr.io/authelia/authelia:4.39.15"
-      image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.4.0-bookworm"
+      image_update_map[0]="authelia/authelia:4.39.1,mirror.gcr.io/authelia/authelia:4.39.6"
+      image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfAutheliaFixConfigV133 true mfAutheliaFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     6)
-      newVer=v6
+      newVer=v7
+      curImageList=mirror.gcr.io/authelia/authelia:4.39.6,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/authelia/authelia:4.39.6,mirror.gcr.io/authelia/authelia:4.39.15"
+      image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfUpdateAutheliaConfigV7 false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    7)
+      newVer=v7
       curImageList=mirror.gcr.io/authelia/authelia:4.39.15,mirror.gcr.io/redis:8.4.0-bookworm
       image_update_map[0]="mirror.gcr.io/authelia/authelia:4.39.15,mirror.gcr.io/authelia/authelia:4.39.15"
       image_update_map[1]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
@@ -49251,7 +49281,7 @@ function performUpdateAuthelia()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
-function mfUpdateAutheliaConfig()
+function mfUpdateAutheliaConfigV2()
 {
   configfile=$HSHQ_STACKS_DIR/authelia/config/configuration.yml
   acblock="$(sed -n "/#AC_BEGIN/,/#AC_END/p" $configfile | sed '1d' | sed '$d')"
@@ -49353,6 +49383,12 @@ function mfAutheliaFixRedisCompose()
   sed -i "/REDIS_TLS_CA_FILE=.*/d" $HOME/authelia.env
   sed -i "/REDIS_TLS_DH_PARAMS_FILE=.*/d" $HOME/authelia.env
   sed -i "/REDIS_TLS_AUTH_CLIENTS=.*/d" $HOME/authelia.env
+}
+
+function mfUpdateAutheliaConfigV7()
+{
+  sed -i "s/address: ldap:\/\/ldapserver:389/address: ldaps:\/\/ldapserver:636/" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
+  sed -i "s/start_tls: true/start_tls: false/" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
 }
 
 # WordPress
@@ -51139,28 +51175,28 @@ function performUpdateGitlab()
       echo -e "  by Gitlab! To disable it, go to Admin -> Settings -> Metrics and"
       echo -e "  profiling -> Event tracking. For more details, see this link:"
       echo -e "  https://docs.gitlab.com/17.11/administration/settings/event_data/"
+      echo -e ""
+      echo -e "  Go to this link in your Gitlab instance to disable it:"
+      echo -e "  https://$SUB_GITLAB.$HOMESERVER_DOMAIN/admin/application_settings/metrics_and_profiling#js-product-usage-data-settings"
       echo -e "========================================================================\n"
       return
     ;;
     7)
-      upgradeDatabaseInStack gitlab postgres $GITLAB_DATABASE_NAME $GITLAB_DATABASE_USER $GITLAB_DATABASE_USER_PASSWORD na $HSHQ_STACKS_DIR/gitlab/db $HSHQ_STACKS_DIR/gitlab/dbexport /var/lib/postgresql/data mirror.gcr.io/postgres:15.0-bullseye mirror.gcr.io/postgres:16.9-bookworm
-      if [ $? -ne 0 ]; then
-        is_upgrade_error=true
-        perform_update_report="ERROR ($perform_stack_name): There was a problem with the database migration"
-        return
-      fi
       newVer=v8
       curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/gitlab/gitlab-ce:17.11.6-ce.0,mirror.gcr.io/redis:8.2.0-bookworm
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="mirror.gcr.io/gitlab/gitlab-ce:17.11.6-ce.0,mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0"
       image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfGitlabUpgradeDB false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       echo -e "\n\n========================================================================"
       echo -e "  WARNING: User telemetry and event tracking has been forcebly enabled"
       echo -e "  by Gitlab! To disable it, go to Admin -> Settings -> Metrics and"
       echo -e "  profiling -> Event tracking. For more details, see this link:"
       echo -e "  https://docs.gitlab.com/17.11/administration/settings/event_data/"
+      echo -e ""
+      echo -e "  Go to this link in your Gitlab instance to disable it:"
+      echo -e "  https://$SUB_GITLAB.$HOMESERVER_DOMAIN/admin/application_settings/metrics_and_profiling#js-product-usage-data-settings"
       echo -e "========================================================================\n"
       return
     ;;
@@ -51185,6 +51221,12 @@ function mfGitlabFixRedisCompose()
 {
   replaceRedisBlock gitlab gitlab-redis mirror.gcr.io/redis:8.2.0-bookworm true
   sudo rm -fr $HSHQ_NONBACKUP_DIR/gitlab/redis/*
+}
+
+function mfGitlabUpgradeDB()
+{
+  isStartStackFromStopped=true
+  upgradeDatabaseInStack gitlab postgres $GITLAB_DATABASE_NAME $GITLAB_DATABASE_USER $GITLAB_DATABASE_USER_PASSWORD na $HSHQ_STACKS_DIR/gitlab/db $HSHQ_STACKS_DIR/gitlab/dbexport /var/lib/postgresql/data mirror.gcr.io/postgres:15.0-bullseye mirror.gcr.io/postgres:16.9-bookworm
 }
 
 # Vaultwarden
@@ -53136,6 +53178,7 @@ function mfFireflyAdd2ndImporter()
   mkdir -p $HSHQ_STACKS_DIR/firefly/fints
   rm -f $HOME/firefly-compose.yml
   outputComposeFirefly
+  sed -i "s/^TRUSTED_PROXIES=.*/TRUSTED_PROXIES=172.16.0.0\/15/" $HOME/firefly.env
   inner_block=""
   inner_block=$inner_block">>https://$SUB_FIREFLY_FINTSIMPORTER.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -56263,13 +56306,13 @@ function performUpdateLinkwarden()
     ;;
     7)
       newVer=v8
-      curImageList=postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.11.5
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.11.5
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.11.5,ghcr.io/linkwarden/linkwarden:v2.13.1"
     ;;
     8)
       newVer=v8
-      curImageList=postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.13.1
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.13.1
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.13.1,ghcr.io/linkwarden/linkwarden:v2.13.1"
     ;;
@@ -91243,9 +91286,9 @@ function performUpdateUptimeKuma()
       image_update_map[0]="louislam/uptime-kuma:1.23.15-alpine,louislam/uptime-kuma:1.23.16-alpine"
     ;;
     5)
-      sudo cp -a $HSHQ_STACKS_DIR/uptimekuma/app $HSHQ_STACKS_DIR/uptimekuma/app_bak
       newVer=v6
-      curImageList=mirror.gcr.io/louislam/uptime-kuma:2.0.2
+      sudo cp -a $HSHQ_STACKS_DIR/uptimekuma/app $HSHQ_STACKS_DIR/uptimekuma/app_bak
+      curImageList=louislam/uptime-kuma:1.23.16-alpine
       image_update_map[0]="louislam/uptime-kuma:1.23.16-alpine,mirror.gcr.io/louislam/uptime-kuma:2.0.2"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
       is_upgrade_error=true
