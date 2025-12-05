@@ -50628,7 +50628,6 @@ http:
     - 192.168.0.0/16
   ip_ban_enabled: true
   login_attempts_threshold: 5
-  server_host: 0.0.0.0
   server_port: $HOMEASSISTANT_LOCALHOST_PORT
   ssl_certificate: /certs/homeassistant-app.crt
   ssl_key: /certs/homeassistant-app.key
@@ -50772,6 +50771,9 @@ function performUpdateHomeAssistant()
       image_update_map[2]="nodered/node-red:4.0.9-22,mirror.gcr.io/nodered/node-red:4.1.2-22"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,mirror.gcr.io/causticlab/hass-configurator-docker:0.5.2"
       image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v4.1.3,ghcr.io/tasmoadmin/tasmoadmin:v4.3.2"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfHomeAssistantV10Update false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     9)
       newVer=v10
@@ -50781,6 +50783,9 @@ function performUpdateHomeAssistant()
       image_update_map[2]="mirror.gcr.io/nodered/node-red:4.1.0-22,mirror.gcr.io/nodered/node-red:4.1.2-22"
       image_update_map[3]="mirror.gcr.io/causticlab/hass-configurator-docker:0.5.2,mirror.gcr.io/causticlab/hass-configurator-docker:0.5.2"
       image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v4.3.1,ghcr.io/tasmoadmin/tasmoadmin:v4.3.2"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfHomeAssistantV10Update false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     10)
       newVer=v10
@@ -50834,6 +50839,11 @@ function mfHomeAssistantUpdatePythonCertPath()
   if [ $? -ne 0 ]; then
     echo "PYTHON_VER=python3.13" >> $HOME/homeassistant.env
   fi
+}
+
+function mfHomeAssistantV10Update()
+{
+  sed -i "/server_host/d" $HSHQ_STACKS_DIR/homeassistant/config/configuration.yaml
 }
 
 # Gitlab
@@ -71396,6 +71406,7 @@ NEXT_PUBLIC_SINGLE_ORG_SLUG=
 ORGANIZATIONS_ENABLED=
 EOFMT
   dtnow=$(date '+%Y-%m-%d %H:%M:%S.%3N')
+  randuid=$(uuidgen)
   cat <<EOFDS > $HSHQ_STACKS_DIR/calcom/dbexport/setupDBSettings.sh
 #!/bin/bash
 
@@ -71413,7 +71424,7 @@ do
   curSeconds=\$((curSeconds+3))
 done
 
-echo "insert into users(id,username,name,email,\"timeZone\",\"weekStart\",\"startTime\",\"endTime\",created,\"bufferTime\",\"emailVerified\",\"hideBranding\",\"completedOnboarding\",\"twoFactorEnabled\",locale,\"identityProvider\",verified,\"timeFormat\",\"defaultScheduleId\",\"allowDynamicBooking\",role,\"disableImpersonation\",\"allowSEOIndexing\",\"receiveMonthlyDigestEmail\",locked,\"isPlatformManaged\",\"smsLockState\",\"smsLockReviewedByAdmin\",\"creationSource\",\"whitelistWorkflows\") values(1,'${ADMIN_USERNAME_BASE}-calcom','Cal.com $(getAdminEmailName)','$CALCOM_ADMIN_EMAIL_ADDRESS','$TZ','Sunday',0,1440,'$dtnow',0,'$dtnow',false,true,false,'en','CAL',false,12,1,true,'ADMIN',false,true,true,false,false,'UNLOCKED',false,'webapp',false);" | psql -U $CALCOM_DATABASE_USER $CALCOM_DATABASE_NAME > /dev/null 2>&1
+echo "insert into users(id,username,name,email,\"timeZone\",\"weekStart\",\"startTime\",\"endTime\",created,\"bufferTime\",\"emailVerified\",\"hideBranding\",\"completedOnboarding\",\"twoFactorEnabled\",locale,\"identityProvider\",verified,\"timeFormat\",\"defaultScheduleId\",\"allowDynamicBooking\",role,\"disableImpersonation\",\"allowSEOIndexing\",\"receiveMonthlyDigestEmail\",locked,\"isPlatformManaged\",\"smsLockState\",\"smsLockReviewedByAdmin\",\"creationSource\",\"whitelistWorkflows\",uuid) values(1,'${ADMIN_USERNAME_BASE}-calcom','Cal.com $(getAdminEmailName)','$CALCOM_ADMIN_EMAIL_ADDRESS','$TZ','Sunday',0,1440,'$dtnow',0,'$dtnow',false,true,false,'en','CAL',false,12,1,true,'ADMIN',false,true,true,false,false,'UNLOCKED',false,'webapp',false,'$randuid');" | psql -U $CALCOM_DATABASE_USER $CALCOM_DATABASE_NAME > /dev/null 2>&1
 
 echo "insert into \"UserPassword\"(\"userId\",hash) values(1,'$CALCOM_ADMIN_PASSWORD_HASH');" | psql -U $CALCOM_DATABASE_USER $CALCOM_DATABASE_NAME > /dev/null 2>&1
 
