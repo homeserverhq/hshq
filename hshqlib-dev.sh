@@ -11037,8 +11037,6 @@ function connectVPN()
   if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     set +e
     echo "Installing ClientDNS..."
-    CLIENTDNS_USER1_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_clientdns"
-    CLIENTDNS_USER1_ADMIN_PASSWORD="$(pwgen -c -n 32 1)"
     installClientDNS user1 $RELAYSERVER_WG_HS_CLIENTDNS_IP "$CLIENTDNS_USER1_ADMIN_USERNAME" "$CLIENTDNS_USER1_ADMIN_PASSWORD"
     echo "Sleeping for 5 seconds..."
     sleep 5
@@ -29401,7 +29399,7 @@ function loadPinnedDockerImages()
   IMG_MATRIX_SYNAPSE=mirror.gcr.io/matrixdotorg/synapse:v1.143.0
   IMG_MATOMO_APP=mirror.gcr.io/matomo:5.6.1-fpm-alpine
   IMG_MEALIE=ghcr.io/mealie-recipes/mealie:v3.6.1
-  IMG_MESHCENTRAL=ghcr.io/ylianst/meshcentral:1.1.54
+  IMG_MESHCENTRAL=ghcr.io/ylianst/meshcentral:1.1.53
   IMG_METABASE=mirror.gcr.io/metabase/metabase:v0.57.5.3
   IMG_MINTHCM_WEB=mirror.gcr.io/minthcm/minthcm:latest
   IMG_MINTHCM_ELASTICSEARCH=docker.elastic.co/elasticsearch/elasticsearch:7.9.3
@@ -30188,6 +30186,11 @@ RELAYSERVER_SYNCTHING_API_KEY=
 RELAYSERVER_SYNCTHING_DEVICE_ID=
 RELAYSERVER_SYNCTHING_FOLDER_ID=
 # RelayServer Services END
+
+# clientdns-user1 (Service Details) BEGIN
+CLIENTDNS_USER1_ADMIN_USERNAME=
+CLIENTDNS_USER1_ADMIN_PASSWORD=
+# clientdns-user1 (Service Details) END
 
 # Config File Encryption Passphrase BEGIN
 CONFIG_ENCRYPTION_PASSPHRASE="$CONFIG_ENCRYPTION_PASSPHRASE"
@@ -33683,6 +33686,14 @@ function initServicesCredentials()
   fi
 #ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
+  if [ -z "$CLIENTDNS_USER1_ADMIN_USERNAME" ]; then
+    CLIENTDNS_USER1_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_clientdns"
+    updateConfigVar CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_USERNAME
+  fi
+  if [ -z "$CLIENTDNS_USER1_ADMIN_PASSWORD" ]; then
+    CLIENTDNS_USER1_ADMIN_PASSWORD="$(pwgen -c -n 32 1)"
+    updateConfigVar CLIENTDNS_USER1_ADMIN_PASSWORD $CLIENTDNS_USER1_ADMIN_PASSWORD
+  fi
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
     RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
     updateConfigVar RELAYSERVER_PORTAINER_ADMIN_USERNAME $RELAYSERVER_PORTAINER_ADMIN_USERNAME
@@ -36646,6 +36657,7 @@ function performPostStackRemoval()
 
 function checkAddAllNewSvcs()
 {
+  checkAddServiceToConfig "clientdns-user1" "CLIENTDNS_USER1_ADMIN_USERNAME=,CLIENTDNS_USER1_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Collabora" "COLLABORA_ADMIN_USERNAME=,COLLABORA_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Invidious" "INVIDIOUS_DATABASE_NAME=,INVIDIOUS_DATABASE_USER=,INVIDIOUS_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Mealie" "MEALIE_ADMIN_USERNAME=,MEALIE_ADMIN_EMAIL_ADDRESS=,MEALIE_ADMIN_PASSWORD=,MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
@@ -44760,7 +44772,7 @@ function performUpdateNextcloud()
     ;;
     11)
       newVer=v12
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/nextcloud:32.0.1-fpm-alpine,mirror.gcr.io/nextcloud/aio-imaginary:20251031_122139,mirror.gcr.io/nginx:1.28.0-alpine,ghcr.io/nextcloud-releases/aio-talk:20251031_122139,ghcr.io/nextcloud-releases/aio-talk-recording:20251031_122139,ghcr.io/nextcloud/nextcloud-appapi-harp:v0.3.0
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/nextcloud:32.0.1-fpm-alpine,mirror.gcr.io/nextcloud/aio-imaginary:20251031_122139,mirror.gcr.io/nginx:1.29.3-alpine,ghcr.io/nextcloud-releases/aio-talk:20251031_122139,ghcr.io/nextcloud-releases/aio-talk-recording:20251031_122139,ghcr.io/nextcloud/nextcloud-appapi-harp:v0.3.0
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
       image_update_map[2]="mirror.gcr.io/nextcloud:32.0.1-fpm-alpine,mirror.gcr.io/nextcloud:32.0.2-fpm-alpine"
@@ -44772,7 +44784,7 @@ function performUpdateNextcloud()
     ;;
     12)
       newVer=v12
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/nextcloud:32.0.2-fpm-alpine,mirror.gcr.io/nextcloud/aio-imaginary:20251128_084214,mirror.gcr.io/nginx:1.28.0-alpine,ghcr.io/nextcloud-releases/aio-talk:20251128_084214,ghcr.io/nextcloud-releases/aio-talk-recording:20251128_084214,ghcr.io/nextcloud/nextcloud-appapi-harp:v0.3.0
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/nextcloud:32.0.2-fpm-alpine,mirror.gcr.io/nextcloud/aio-imaginary:20251128_084214,mirror.gcr.io/nginx:1.29.3-alpine,ghcr.io/nextcloud-releases/aio-talk:20251128_084214,ghcr.io/nextcloud-releases/aio-talk-recording:20251128_084214,ghcr.io/nextcloud/nextcloud-appapi-harp:v0.3.0
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
       image_update_map[2]="mirror.gcr.io/nextcloud:32.0.2-fpm-alpine,mirror.gcr.io/nextcloud:32.0.2-fpm-alpine"
@@ -52928,12 +52940,35 @@ services:
     networks:
       - int-firefly-net
       - dock-proxy-net
+      - dock-privateip-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  firefly-fints-importer:
+    image: $(getScriptImageByContainerName firefly-fints-importer)
+    container_name: firefly-fints-importer
+    hostname: firefly-fints-importer
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - firefly-app
+    networks:
+      - int-firefly-net
+      - dock-proxy-net
+      - dock-privateip-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/firefly/fints:/app/configurations
 
   firefly-cron:
     image: $(getScriptImageByContainerName firefly-cron)
@@ -52958,27 +52993,6 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-
-  firefly-fints-importer:
-    image: $(getScriptImageByContainerName firefly-fints-importer)
-    container_name: firefly-fints-importer
-    hostname: firefly-fints-importer
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - firefly-app
-    networks:
-      - int-firefly-net
-      - dock-proxy-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/firefly/fints:/app/configurations
 
   firefly-redis:
     image: $(getScriptImageByContainerName firefly-redis)
@@ -53026,6 +53040,9 @@ networks:
     external: true
   dock-internalmail-net:
     name: dock-internalmail
+    external: true
+  dock-privateip-net:
+    name: dock-privateip
     external: true
   int-firefly-net:
     driver: bridge
@@ -66950,13 +66967,13 @@ function performUpdateMeshCentral()
       newVer=v2
       curImageList=mariadb:10.7.3,ghcr.io/ylianst/meshcentral:1.1.48
       image_update_map[0]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
-      image_update_map[1]="ghcr.io/ylianst/meshcentral:1.1.48,ghcr.io/ylianst/meshcentral:1.1.54"
+      image_update_map[1]="ghcr.io/ylianst/meshcentral:1.1.48,ghcr.io/ylianst/meshcentral:1.1.53"
     ;;
     2)
       newVer=v2
-      curImageList=mirror.gcr.io/mariadb:10.7.3,ghcr.io/ylianst/meshcentral:1.1.54
+      curImageList=mirror.gcr.io/mariadb:10.7.3,ghcr.io/ylianst/meshcentral:1.1.53
       image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
-      image_update_map[1]="ghcr.io/ylianst/meshcentral:1.1.54,ghcr.io/ylianst/meshcentral:1.1.54"
+      image_update_map[1]="ghcr.io/ylianst/meshcentral:1.1.53,ghcr.io/ylianst/meshcentral:1.1.53"
     ;;
     *)
       is_upgrade_error=true
@@ -90984,7 +91001,6 @@ function installClientDNS()
     return 1
   fi
   set -e
-
   mkdir -p $HSHQ_STACKS_DIR/clientdns-${cdns_stack_name}
   cdns_stack_name_upper=$(echo $cdns_stack_name | tr '[:lower:]' '[:upper:]')
   checkAddServiceToConfig "clientdns-${cdns_stack_name}" "CLIENTDNS_${cdns_stack_name_upper}_ADMIN_USERNAME=$CUR_CLIENTDNS_ADMIN_USERNAME,CLIENTDNS_${cdns_stack_name_upper}_ADMIN_PASSWORD=$CUR_CLIENTDNS_ADMIN_PASSWORD" $CONFIG_FILE false
@@ -91002,7 +91018,6 @@ function installClientDNS()
   fi
   echo "ClientDNS-${cdns_stack_name} installed, sleeping 5 seconds..."
   sleep 5
-
   inner_block=""
   inner_block=$inner_block">>https://${SUB_CLIENTDNS}-${cdns_stack_name}.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -91292,7 +91307,7 @@ function performUpdateUptimeKuma()
       image_update_map[0]="louislam/uptime-kuma:1.23.16-alpine,mirror.gcr.io/louislam/uptime-kuma:2.0.2"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
       is_upgrade_error=true
-      perform_update_report="WARNING ($perform_stack_name): This was a major upgrade from v1 to v2, see https://github.com/louislam/uptime-kuma/wiki/Migration-From-v1-To-v2 for more details. It may take awhile for the migration process to complete, ensure to check the logs for progress. If there are any issues, the original data directory has been backed up ($HSHQ_STACKS_DIR/uptimekuma/app_bak). If the UptimeKuma service comes back up successfully with all monitors working correctly, etc., then ensure to delete the backup directory (sudo rm -f $HSHQ_STACKS_DIR/uptimekuma/app_bak)."
+      perform_update_report="WARNING ($perform_stack_name): This is a major upgrade from v1 to v2, see https://github.com/louislam/uptime-kuma/wiki/Migration-From-v1-To-v2 for more details. It may take awhile (30+ minutes if you have a lot of monitors) for the migration process to complete, ensure to check the logs for progress (docker logs uptimekuma). Do NOT stop/restart the container during the migration. Be advised that many Script-server functions restart UptimeKuma automatically, so do not run any of them as well. If there are any issues, the original data directory has been backed up ($HSHQ_STACKS_DIR/uptimekuma/app_bak). If the UptimeKuma service comes back up successfully with all monitors working correctly, etc., then ensure to delete the backup directory (sudo rm -f $HSHQ_STACKS_DIR/uptimekuma/app_bak)."
       return
     ;;
     6)
