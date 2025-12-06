@@ -36395,7 +36395,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       ;;
     "zammad-db")
-      container_image=mirror.gcr.io/postgres:17.6
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
       ;;
     "zammad-init")
       container_image=$IMG_ZAMMAD
@@ -73744,8 +73744,8 @@ function performUpdateZammad()
   case "$perform_stack_ver" in
     1)
       newVer=v2
-      curImageList=mirror.gcr.io/postgres:17.6,ghcr.io/zammad/zammad:6.5.2-2,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/elasticsearch:8.19.4,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
-      image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/zammad/zammad:6.5.2-2,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/elasticsearch:8.19.4,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="ghcr.io/zammad/zammad:6.5.2-2,ghcr.io/zammad/zammad:6.5.2-49"
       image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
       image_update_map[3]="mirror.gcr.io/elasticsearch:8.19.4,mirror.gcr.io/elasticsearch:9.2.2"
@@ -73755,8 +73755,8 @@ function performUpdateZammad()
     ;;
     2)
       newVer=v2
-      curImageList=mirror.gcr.io/postgres:17.6,ghcr.io/zammad/zammad:6.5.2-49,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/elasticsearch:9.2.2,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
-      image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/zammad/zammad:6.5.2-49,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/elasticsearch:9.2.2,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="ghcr.io/zammad/zammad:6.5.2-49,ghcr.io/zammad/zammad:6.5.2-49"
       image_update_map[2]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
       image_update_map[3]="mirror.gcr.io/elasticsearch:9.2.2,mirror.gcr.io/elasticsearch:9.2.2"
