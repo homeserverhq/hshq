@@ -29018,7 +29018,7 @@ function upgradeStack()
     fi
   fi
   set +e
-  #removeImageCSVList "$rm_image_list"
+  removeImageCSVList "$rm_image_list"
   stack_upgrade_report="${stack_upgrade_report}${comp_stack_name}: Upgraded from $old_ver to $new_ver"
 }
 
