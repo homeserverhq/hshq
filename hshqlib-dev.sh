@@ -34841,7 +34841,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_INVOICENINJA_WEB}-Admin" https://$SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $INVOICENINJA_ADMIN_EMAIL_ADDRESS $INVOICENINJA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DOLIBARR_APP}-Admin" https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DOLIBARR_ADMIN_USERNAME $DOLIBARR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_N8N_APP}-Admin" https://$SUB_N8N_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $N8N_ADMIN_EMAIL_ADDRESS $N8N_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUTOMATISCH_APP}-Admin" https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOMATISCH_EMAIL_ADDRESS $AUTOMATISCH_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUTOMATISCH_APP}-Admin" https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOMATISCH_ADMIN_EMAIL_ADDRESS $AUTOMATISCH_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ACTIVEPIECES_APP}-Admin" https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN/sign-in $HOMESERVER_ABBREV $ACTIVEPIECES_ADMIN_EMAIL_ADDRESS $ACTIVEPIECES_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_BESZEL_APP}-Admin" https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $BESZEL_ADMIN_EMAIL_ADDRESS $BESZEL_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TAIGA_APP}-Admin" https://$SUB_TAIGA_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $TAIGA_ADMIN_USERNAME $TAIGA_ADMIN_PASSWORD)"\n"
@@ -34995,7 +34995,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_INVOICENINJA_WEB}-Admin" https://$SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $INVOICENINJA_ADMIN_EMAIL_ADDRESS $INVOICENINJA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DOLIBARR_APP}-Admin" https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DOLIBARR_ADMIN_USERNAME $DOLIBARR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_N8N_APP}-Admin" https://$SUB_N8N_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $N8N_ADMIN_EMAIL_ADDRESS $N8N_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUTOMATISCH_APP}-Admin" https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOMATISCH_EMAIL_ADDRESS $AUTOMATISCH_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUTOMATISCH_APP}-Admin" https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOMATISCH_ADMIN_EMAIL_ADDRESS $AUTOMATISCH_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ACTIVEPIECES_APP}-Admin" https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN/sign-in $HOMESERVER_ABBREV $ACTIVEPIECES_ADMIN_EMAIL_ADDRESS $ACTIVEPIECES_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_BESZEL_APP}-Admin" https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $BESZEL_ADMIN_EMAIL_ADDRESS $BESZEL_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TAIGA_APP}-Admin" https://$SUB_TAIGA_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $TAIGA_ADMIN_USERNAME $TAIGA_ADMIN_PASSWORD)"\n"
@@ -35537,7 +35537,7 @@ function initServiceDefaults()
   BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
   BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
   BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
   BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
 #INIT_SERVICE_DEFAULTS_END
 }
@@ -50882,7 +50882,6 @@ function installGitlab()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/gitlab
   mkdir $HSHQ_STACKS_DIR/gitlab/app
   mkdir $HSHQ_STACKS_DIR/gitlab/app/config
@@ -50893,7 +50892,6 @@ function installGitlab()
   chmod 777 $HSHQ_STACKS_DIR/gitlab/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/gitlab
   mkdir $HSHQ_NONBACKUP_DIR/gitlab/redis
-
   initServicesCredentials
   if [ -z "$GITLAB_ROOT_PASSWORD" ]; then
     GITLAB_ROOT_PASSWORD=$(pwgen -c -n 32 1)
@@ -50914,7 +50912,6 @@ function installGitlab()
   startStopStack gitlab stop
   sudo rm -fr $HSHQ_STACKS_DIR/gitlab
   sudo rm -fr $HSHQ_NONBACKUP_DIR/gitlab
-
   mkdir $HSHQ_STACKS_DIR/gitlab
   mkdir $HSHQ_STACKS_DIR/gitlab/app
   mkdir $HSHQ_STACKS_DIR/gitlab/app/config
@@ -50925,12 +50922,19 @@ function installGitlab()
   chmod 777 $HSHQ_STACKS_DIR/gitlab/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/gitlab
   mkdir $HSHQ_NONBACKUP_DIR/gitlab/redis
-
   mv $HOME/gitlab.rb $HSHQ_STACKS_DIR/gitlab/app/config/gitlab.rb
   mv $HOME/gitlab-postconfigure.sh $HSHQ_STACKS_DIR/gitlab/app/config/gitlab-postconfigure.sh
   chmod +x $HSHQ_STACKS_DIR/gitlab/app/config/gitlab-postconfigure.sh
   startStopStack gitlab start
-
+  echo -e "\n\n========================================================================"
+  echo -e "  WARNING: User telemetry and event tracking has been forcebly enabled"
+  echo -e "  by Gitlab! To disable it, go to Admin -> Settings -> Metrics and"
+  echo -e "  profiling -> Event tracking. For more details, see this link:"
+  echo -e "  https://docs.gitlab.com/17.11/administration/settings/event_data/"
+  echo -e ""
+  echo -e "  Go to this link in your Gitlab instance to disable it:"
+  echo -e "  https://$SUB_GITLAB.$HOMESERVER_DOMAIN/admin/application_settings/metrics_and_profiling#js-product-usage-data-settings"
+  echo -e "========================================================================\n"
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GITLAB.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -77286,7 +77290,7 @@ done
 echo "insert into user_identity(id,created,updated,email,password,\"trackEvents\",\"newsLetter\",verified,\"firstName\",\"lastName\",\"tokenVersion\",provider) values('$ident_id','$dtnow','$dtnow','$ACTIVEPIECES_ADMIN_EMAIL_ADDRESS','$ACTIVEPIECES_ADMIN_PASSWORD_HASH',true,false,true,'ActivePieces','$(getAdminEmailName)','$tok_ver','EMAIL');"  | psql -U $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_NAME
 echo "insert into \"user\"(id,created,updated,status,\"platformId\",\"platformRole\",\"identityId\") values('$user_id','$dtnow','$dtnow','ACTIVE','$plat_id','ADMIN','$ident_id');"  | psql -U $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_NAME
 echo "insert into platform(id,created,updated,\"ownerId\",name,\"primaryColor\",\"logoIconUrl\",\"fullLogoUrl\",\"favIconUrl\",\"cloudAuthEnabled\",\"filteredPieceNames\",\"filteredPieceBehavior\",\"allowedAuthDomains\",\"enforceAllowedAuthDomains\",\"emailAuthEnabled\",\"federatedAuthProviders\",\"pinnedPieces\") values('$plat_id','$dtnow','$dtnow','$user_id','ActivePieces Platform','#6e41e2','https://cdn.activepieces.com/brand/logo.svg','https://cdn.activepieces.com/brand/full-logo.png','https://cdn.activepieces.com/brand/favicon.ico',true,'{}','BLOCKED','{}',false,true,'{}','{}');"  | psql -U $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_NAME
-echo "insert into project(id,created,updated,\"ownerId\",\"displayName\",\"notifyStatus\",\"platformId\",\"releasesEnabled\") values('$proj_id','$dtnow','$dtnow','$user_id','ActivePieces Project','ALWAYS','$plat_id',false);"  | psql -U $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_NAME
+echo "insert into project(id,created,updated,\"ownerId\",\"displayName\",\"platformId\",\"releasesEnabled\",icon,type) values('$proj_id','$dtnow','$dtnow','$user_id','ActivePieces Project','$plat_id',false,'{\"color\": \"GREEN\"}','PERSONAL');"  | psql -U $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_NAME
 echo "insert into flag(id,created,updated,value) values('USER_CREATED','$dtnow','$dtnow','true');"  | psql -U $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_NAME
 
 EOFDS
