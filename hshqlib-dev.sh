@@ -22022,7 +22022,7 @@ function version46Update()
     sed -i "s/hshqmanager/script-server/g" $HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip
     cp $HSHQ_ASSETS_DIR/images/script-server.png $HSHQ_STACKS_DIR/heimdall/config/www/icons/
     sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set title='Script-server', icon='icons/script-server.png', url='https://script-server.$HOMESERVER_DOMAIN' where title='HSHQ Manager';"
-    sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Update monitor set name='Script-server', url='https://script-server.$HOMESERVER_DOMAIN' where name='HSHQ Manager';"
+    sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Update monitor set name='Script-server', url='https://script-server.$HOMESERVER_DOMAIN' where name='HSHQ Manager';"
     docker container restart authelia > /dev/null 2>&1
     installStackByName script-server
     releaseLock hshqopen "version46Update" false
@@ -29427,12 +29427,12 @@ function loadPinnedDockerImages()
   IMG_SHLINK_APP=mirror.gcr.io/shlinkio/shlink:4.6.0
   IMG_SHLINK_WEB=mirror.gcr.io/shlinkio/shlink-web-client:4.6.1
   IMG_SNIPPETBOX=pawelmalak/snippet-box:latest
-  IMG_SPEEDTEST_TRACKER_APP=mirror.gcr.io/linuxserver/speedtest-tracker:1.11.0
+  IMG_SPEEDTEST_TRACKER_APP=mirror.gcr.io/linuxserver/speedtest-tracker:1.12.0
   IMG_SQLPAD=mirror.gcr.io/sqlpad/sqlpad:7.5.5
   IMG_STANDARDNOTES_SERVER=standardnotes/server:0d82819cba9694bc9fb5a3fa53e2dbeda05d1242
   IMG_STANDARDNOTES_LOCALSTACK=mirror.gcr.io/localstack/localstack:4.11.1
   IMG_STANDARDNOTES_WEB=mirror.gcr.io/standardnotes/web:3190a278314fe788f9136528971c0a9cd0dffbf4
-  IMG_STIRLINGPDF=mirror.gcr.io/stirlingtools/stirling-pdf:2.1.0
+  IMG_STIRLINGPDF=mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0
   IMG_SYNCTHING=mirror.gcr.io/syncthing/syncthing:2.0.12
   IMG_TOMCAT=tomcat:11
   IMG_TWENTY_APP=mirror.gcr.io/twentycrm/twenty:v1.12.0
@@ -29563,7 +29563,7 @@ function getScriptStackVersion()
     linkwarden)
       echo "v8" ;;
     stirlingpdf)
-      echo "v8" ;;
+      echo "v7" ;;
     bar-assistant)
       echo "v8" ;;
     freshrss)
@@ -34750,8 +34750,8 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GRAFANA}" https://$SUB_GRAFANA.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAFANA_ADMIN_USERNAME $GRAFANA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_INFLUXDB}" https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $INFLUXDB_ADMIN_USERNAME $INFLUXDB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DOZZLE}" https://$SUB_DOZZLE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DOZZLE_USERNAME $DOZZLE_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JELLYFIN}-Admin" "\"https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/wizarduser.html\"" $HOMESERVER_ABBREV $JELLYFIN_ADMIN_USERNAME $JELLYFIN_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JELLYFIN}-User" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JELLYFIN}-Admin" "\"https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/wizard/user\"" $HOMESERVER_ABBREV $JELLYFIN_ADMIN_USERNAME $JELLYFIN_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JELLYFIN}-User" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PHOTOPRISM}-Admin" https://$SUB_PHOTOPRISM.$HOMESERVER_DOMAIN/library/login $HOMESERVER_ABBREV $PHOTOPRISM_ADMIN_USERNAME $PHOTOPRISM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GUACAMOLE}" https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN/guacamole/ $HOMESERVER_ABBREV $GUACAMOLE_DEFAULT_ADMIN_USERNAME $GUACAMOLE_DEFAULT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_UPTIMEKUMA}" https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $UPTIMEKUMA_USERNAME $UPTIMEKUMA_PASSWORD)"\n"
@@ -34774,7 +34774,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MEALIE}-Admin" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MEALIE}-User" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_REMOTELY}" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Register,https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DUPLICATI}" https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV "NA" $DUPLICATI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DUPLICATI}" "\"https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/login.html,https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/ngclient/login\"" $HOMESERVER_ABBREV "NA" $DUPLICATI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_FILEBROWSER}" https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $FILEBROWSER_USERNAME $FILEBROWSER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MASTODON}-Admin" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $MASTODON_ADMIN_EMAIL_ADDRESS $MASTODON_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MASTODON}-User" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
@@ -34878,7 +34878,7 @@ function emailUserVaultwardenCredentials()
   vw_email=$2
   strOutput="________________________________________________________________________\n\n"
   strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Username" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login,https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/,https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/,https://$SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN/index.php/login,https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN/login,https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/login/,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/accounts/login/,https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Username" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login,https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/,https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/,https://$SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN/index.php/login,https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN/login,https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/login/,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/accounts/login/,https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Email" "\"https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "Mailu-User" "https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login" $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
   strOutput=${strOutput}"\n\n"
@@ -34904,8 +34904,8 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GRAFANA}" https://$SUB_GRAFANA.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAFANA_ADMIN_USERNAME $GRAFANA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_INFLUXDB}" https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $INFLUXDB_ADMIN_USERNAME $INFLUXDB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DOZZLE}" https://$SUB_DOZZLE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DOZZLE_USERNAME $DOZZLE_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_JELLYFIN}-Admin" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html $HOMESERVER_ABBREV $JELLYFIN_ADMIN_USERNAME $JELLYFIN_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_JELLYFIN}-User" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_JELLYFIN}-Admin" "\"https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/wizard/user\"" $HOMESERVER_ABBREV $JELLYFIN_ADMIN_USERNAME $JELLYFIN_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_JELLYFIN}-User" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PHOTOPRISM}-Admin" https://$SUB_PHOTOPRISM.$HOMESERVER_DOMAIN/library/login $HOMESERVER_ABBREV $PHOTOPRISM_ADMIN_USERNAME $PHOTOPRISM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GUACAMOLE}" https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN/guacamole/ $HOMESERVER_ABBREV $GUACAMOLE_DEFAULT_ADMIN_USERNAME $GUACAMOLE_DEFAULT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_UPTIMEKUMA}" https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $UPTIMEKUMA_USERNAME $UPTIMEKUMA_PASSWORD)"\n"
@@ -34928,7 +34928,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MEALIE}-Admin" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MEALIE}-User" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_REMOTELY}" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Register,https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DUPLICATI}" https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV "NA" $DUPLICATI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DUPLICATI}" "\"https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/login.html,https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/ngclient/login\"" $HOMESERVER_ABBREV "NA" $DUPLICATI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_FILEBROWSER}" https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $FILEBROWSER_USERNAME $FILEBROWSER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MASTODON}-Admin" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $MASTODON_ADMIN_EMAIL_ADDRESS $MASTODON_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MASTODON}-User" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
@@ -35527,7 +35527,7 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia
   DS_MEM_LOW=minimal
   DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
   DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
@@ -46298,7 +46298,6 @@ function installMastodon()
   mkdir $HSHQ_NONBACKUP_DIR/mastodon
   mkdir $HSHQ_NONBACKUP_DIR/mastodon/redis
   mkdir $HSHQ_NONBACKUP_DIR/mastodon/static
-
   MASTODON_SECRET_KEY_BASE=$(openssl rand -hex 64)
   MASTODON_OTP_SECRET=$(openssl rand -hex 64)
   openssl ecparam -name prime256v1 -genkey -noout -out $HOME/vapid_private_key.pem
@@ -46307,7 +46306,6 @@ function installMastodon()
   MASTODON_VAPID_PUBLIC_KEY=$(cat $HOME/vapid_public_key.pem | sed -e "1 d" -e "$ d" | tr -d "\n")
   rm -f $HOME/vapid_private_key.pem
   rm -f $HOME/vapid_public_key.pem
-
   initServicesCredentials
   if [ -z "$MASTODON_REDIS_PASSWORD" ]; then
     MASTODON_REDIS_PASSWORD=$(pwgen -c -n 32 1)
@@ -46324,7 +46322,7 @@ function installMastodon()
   outputMastdonMigrate $(getScriptImageByContainerName mastodon-db) $(getScriptImageByContainerName mastodon-redis) $(getScriptImageByContainerName mastodon-app)
   cp $HOME/mastodon.env $HSHQ_STACKS_DIR/mastodon/stack.env
   sed -i "s|^TZ=.*|TZ=${TZ}|g" $HSHQ_STACKS_DIR/mastodon/stack.env
-  migrateMastodon
+  migrateMastodon install
   installStack mastodon mastodon-app "Listening on http" $HOME/mastodon.env 5
   retval=$?
   if [ $retval -ne 0 ]; then
@@ -46338,7 +46336,7 @@ function installMastodon()
   MASTODON_ADMIN_PASSWORD=$(echo $addaccount_res | rev | cut -d" " -f1 | rev)
   updateConfigVar MASTODON_ADMIN_PASSWORD $MASTODON_ADMIN_PASSWORD
   sendEmail -s "Mastodon Login Info" -b "Mastodon Admin Username: $MASTODON_ADMIN_EMAIL_ADDRESS\nMastodon Admin Password: $MASTODON_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
-  docker exec mastodon-app tootctl settings registrations close
+  docker exec mastodon-app tootctl settings registrations close > /dev/null 2>&1
   docker exec mastodon-app tootctl accounts approve $MASTODON_ADMIN_USERNAME > /dev/null 2>&1
   rm -f $HOME/mastodon-compose-tmp.yml
   inner_block=""
@@ -46648,13 +46646,13 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    command: bash -c "rm -f /mastodon/tmp/pids/server.pid; bundle exec rails s -p 3000"
+    command: bundle exec puma -C config/puma.rb
     depends_on:
       - mastodon-db
       - mastodon-redis
       #- mastodon-elasticsearch
     healthcheck:
-      test: ['CMD-SHELL', 'wget -q --spider --proxy=off localhost:3000/health || exit 1']
+      test: ['CMD-SHELL',"curl -s --noproxy localhost localhost:3000/health | grep -q 'OK' || exit 1"]
     networks:
       - int-mastodon-net
       - dock-ext-net
@@ -46706,7 +46704,7 @@ services:
       - mastodon-db
       - mastodon-redis
     healthcheck:
-      test: ['CMD-SHELL', "ps aux | grep '[s]idekiq\ 6' || false"]
+      test: ['CMD-SHELL', "ps aux | grep '[s]idekiq\ 8' || false"]
     networks:
       - int-mastodon-net
       - dock-ext-net
@@ -46922,14 +46920,14 @@ function performUpdateMastodon()
       image_update_map[5]="tootsuite/mastodon-streaming:v4.3.1,tootsuite/mastodon-streaming:v4.3.7"
     ;;
     8)
-      newVer=10
+      newVer=9
       curImageList=postgres:15.0-bullseye,bitnami/redis:7.4.2,tootsuite/mastodon:v4.3.7,nginx:1.27.4-alpine,elasticsearch:8.17.4,tootsuite/mastodon-streaming:v4.3.7
       image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
-      image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.4.0-bookworm"
-      image_update_map[2]="tootsuite/mastodon:v4.3.7,mirror.gcr.io/tootsuite/mastodon:v4.5.2"
-      image_update_map[3]="nginx:1.27.4-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
-      image_update_map[4]="elasticsearch:8.17.4,mirror.gcr.io/elasticsearch:9.2.2"
-      image_update_map[5]="tootsuite/mastodon-streaming:v4.3.7,mirror.gcr.io/tootsuite/mastodon-streaming:v4.5.2"
+      image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[2]="tootsuite/mastodon:v4.3.7,mirror.gcr.io/tootsuite/mastodon:v4.3.11"
+      image_update_map[3]="nginx:1.27.4-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
+      image_update_map[4]="elasticsearch:8.17.4,mirror.gcr.io/elasticsearch:9.1.1"
+      image_update_map[5]="tootsuite/mastodon-streaming:v4.3.7,mirror.gcr.io/tootsuite/mastodon-streaming:v4.3.11"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearStaticAssetsMastodon true mfMastodonFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
@@ -46943,6 +46941,9 @@ function performUpdateMastodon()
       image_update_map[3]="mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
       image_update_map[4]="mirror.gcr.io/elasticsearch:9.1.1,mirror.gcr.io/elasticsearch:9.2.2"
       image_update_map[5]="mirror.gcr.io/tootsuite/mastodon-streaming:v4.3.11,mirror.gcr.io/tootsuite/mastodon-streaming:v4.5.2"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearStaticAssetsMastodon true mfMastodonV10Fix
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     10)
       newVer=10
@@ -47031,12 +47032,12 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    command: bash -c "rm -f /mastodon/tmp/pids/server.pid; bundle exec rails s -p 3000"
+    command: bundle exec puma -C config/puma.rb
     depends_on:
       - mastodon-db
       - mastodon-redis
     healthcheck:
-      test: ['CMD-SHELL', 'wget -q --spider --proxy=off localhost:3000/health || exit 1']
+      test: ['CMD-SHELL',"curl -s --noproxy localhost localhost:3000/health | grep -q 'OK' || exit 1"]
     networks:
       - int-mastodon-net
       - dock-ext-net
@@ -47098,12 +47099,24 @@ function prepMastodonMigrate()
 
 function migrateMastodon()
 {
+  isInstallOrMigrate="$1"
   # This function assumes the Mastodon stack/containers are NOT running.
   echo -e "\nPerforming Mastodon database migration...this could take a few minutes\n"
   sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/static/*
   sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/redis/*
   cd ~
-  docker compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml run --rm mastodon-app bundle exec rake db:migrate > /dev/null 2>&1
+  case "$isInstallOrMigrate" in
+    install)
+      docker compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml run --rm mastodon-app bundle exec rails db:setup > /dev/null 2>&1
+    ;;
+    migrate)
+      docker compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml run --rm mastodon-app bundle exec rails db:migrate > /dev/null 2>&1
+    ;;
+    *)
+      echo "Case not found, returning..."
+      return
+    ;;
+  esac
   cd ~
   docker compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml down -v
   rm -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml
@@ -47120,7 +47133,7 @@ function mfMigrateMastodon()
     isStartStackFromStopped=true
     sleep 3
   fi
-  migrateMastodon
+  migrateMastodon migrate
 }
 
 function mfUpdateMastodonV7()
@@ -47233,6 +47246,12 @@ function fixMastodonV9()
 function mfMastodonV9Fix()
 {
   sed -i "s/tootsuite\/mastodon:v4.3.7/mirror.gcr.io\/tootsuite\/mastodon:v4.3.11/g" $HOME/mastodon-compose.yml
+}
+
+function mfMastodonV10Fix()
+{
+  rm -r $HOME/mastodon-compose.yml
+  outputMastodonCompose
 }
 
 # Dozzle
@@ -47404,7 +47423,6 @@ function installSearxNG()
   mkdir $HSHQ_STACKS_DIR/searxng/web
   mkdir $HSHQ_NONBACKUP_DIR/searxng
   mkdir $HSHQ_NONBACKUP_DIR/searxng/redis
-
   if [ -z "$SEARXNG_REDIS_PASSWORD" ]; then
     SEARXNG_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar SEARXNG_REDIS_PASSWORD $SEARXNG_REDIS_PASSWORD
@@ -47413,15 +47431,13 @@ function installSearxNG()
     SEARXNG_SECRET_KEY=$(openssl rand -hex 32)
     updateConfigVar SEARXNG_SECRET_KEY $SEARXNG_SECRET_KEY
   fi
-
   generateCert searxng-caddy searxng-caddy
   outputConfigSearxNG
-  installStack searxng searxng-app "Listen on " $HOME/searxng.env
+  installStack searxng searxng-app "Listening at" $HOME/searxng.env
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SEARXNG.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -47535,11 +47551,9 @@ networks:
       driver: default
 
 EOFSE
-
   cat <<EOFSE > $HOME/searxng.env
 SEARXNG_BASE_URL=https://$SUB_SEARXNG.$HOMESERVER_DOMAIN/
 EOFSE
-
   cat <<EOFSE > $HSHQ_STACKS_DIR/searxng/web/settings.yml
 use_default_settings: true
 general:
@@ -47560,7 +47574,7 @@ ui:
     simple_style: dark
   center_alignment: true
   results_on_new_tab: true
-redis:
+valkey:
   url: redis://:$SEARXNG_REDIS_PASSWORD@searxng-redis:6379/0
 enabled_plugins:
   - 'Hash plugin'
@@ -47605,7 +47619,6 @@ engines:
     timeout: 6.0
     disabled: false
 EOFSE
-
   cat <<EOFSE > $HSHQ_STACKS_DIR/searxng/caddy/Caddyfile
 {
   admin off
@@ -47672,7 +47685,33 @@ https://searxng-caddy {
 }
 
 EOFSE
+  outputSearxNGLimiterConfig
+}
 
+function outputSearxNGLimiterConfig()
+{
+  cat <<EOFSE > $HSHQ_STACKS_DIR/searxng/web/limiter.toml
+[botdetection]
+ipv4_prefix = 32
+ipv6_prefix = 48
+trusted_proxies = [
+  '127.0.0.0/8',
+  '::1',
+  '192.168.0.0/16',
+  '172.16.0.0/12',
+  '10.0.0.0/8',
+  'fd00::/8',
+]
+
+[botdetection.ip_limit]
+filter_link_local = false
+link_token = false
+
+[botdetection.ip_lists]
+block_ip = []
+pass_ip = []
+pass_searxng_org = true
+EOFSE
 }
 
 function performUpdateSearxNG()
@@ -47731,11 +47770,11 @@ function performUpdateSearxNG()
       return
     ;;
     7)
-      newVer=v9
+      newVer=v8
       curImageList=searxng/searxng:2025.4.1-e6308b816,caddy:2.9.1,bitnami/redis:7.4.2
-      image_update_map[0]="searxng/searxng:2025.4.1-e6308b816,mirror.gcr.io/searxng/searxng:2025.12.3-1f6ea4127"
-      image_update_map[1]="caddy:2.9.1,mirror.gcr.io/caddy:2.10.2"
-      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.4.0-bookworm"
+      image_update_map[0]="searxng/searxng:2025.4.1-e6308b816,mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d"
+      image_update_map[1]="caddy:2.9.1,mirror.gcr.io/caddy:2.10.0"
+      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfSearxngFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
@@ -47746,6 +47785,9 @@ function performUpdateSearxNG()
       image_update_map[0]="mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d,mirror.gcr.io/searxng/searxng:2025.12.3-1f6ea4127"
       image_update_map[1]="mirror.gcr.io/caddy:2.10.0,mirror.gcr.io/caddy:2.10.2"
       image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfSearxngFixV9 false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     9)
       newVer=v9
@@ -47773,6 +47815,12 @@ function mfSearxngFixRedisCompose()
 {
   replaceRedisBlock searxng searxng-redis mirror.gcr.io/redis:8.2.0-bookworm true
   sudo rm -fr $HSHQ_NONBACKUP_DIR/searxng/redis/*
+}
+
+function mfSearxngFixV9()
+{
+  outputSearxNGLimiterConfig
+  sed -i "s/^redis:/valkey:/" $HSHQ_STACKS_DIR/searxng/web/settings.yml
 }
 
 # Jellyfin
@@ -49057,10 +49105,10 @@ authentication_backend:
     disable: true
   refresh_interval: 5m
   ldap:
-    address: $LDAP_URI
+    address: $LDAPS_URI
     implementation: custom
     timeout: 5s
-    start_tls: true
+    start_tls: false
     tls:
       server_name: ldapserver
       skip_verify: false
@@ -56448,11 +56496,12 @@ function performUpdateStirlingPDF()
       image_update_map[0]="frooodle/s-pdf:0.45.0,mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0"
     ;;
     7)
-      newVer=v8
+      newVer=v7
       curImageList=mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0
       image_update_map[0]="mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0,mirror.gcr.io/stirlingtools/stirling-pdf:2.1.0"
     ;;
     8)
+      # Hold off on this update, there are a lot of changes to review.
       newVer=v8
       curImageList=mirror.gcr.io/stirlingtools/stirling-pdf:2.1.0
       image_update_map[0]="mirror.gcr.io/stirlingtools/stirling-pdf:2.1.0,mirror.gcr.io/stirlingtools/stirling-pdf:2.1.0"
@@ -58509,19 +58558,19 @@ function performUpdateSpeedtestTrackerLocal()
       newVer=v7
       curImageList=postgres:15.0-bullseye,linuxserver/speedtest-tracker:1.3.0
       image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
-      image_update_map[1]="linuxserver/speedtest-tracker:1.3.0,mirror.gcr.io/linuxserver/speedtest-tracker:1.11.0"
+      image_update_map[1]="linuxserver/speedtest-tracker:1.3.0,mirror.gcr.io/linuxserver/speedtest-tracker:1.12.0"
     ;;
     6)
       newVer=v7
       curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
-      image_update_map[1]="mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6,mirror.gcr.io/linuxserver/speedtest-tracker:1.11.0"
+      image_update_map[1]="mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6,mirror.gcr.io/linuxserver/speedtest-tracker:1.12.0"
     ;;
     7)
       newVer=v7
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/linuxserver/speedtest-tracker:1.11.0
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/linuxserver/speedtest-tracker:1.12.0
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
-      image_update_map[1]="mirror.gcr.io/linuxserver/speedtest-tracker:1.11.0,mirror.gcr.io/linuxserver/speedtest-tracker:1.11.0"
+      image_update_map[1]="mirror.gcr.io/linuxserver/speedtest-tracker:1.12.0,mirror.gcr.io/linuxserver/speedtest-tracker:1.12.0"
     ;;
     *)
       is_upgrade_error=true
@@ -58774,19 +58823,19 @@ function performUpdateSpeedtestTrackerVPN()
       newVer=v7
       curImageList=postgres:15.0-bullseye,linuxserver/speedtest-tracker:1.3.0
       image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
-      image_update_map[1]="linuxserver/speedtest-tracker:1.3.0,mirror.gcr.io/linuxserver/speedtest-tracker:1.11.0"
+      image_update_map[1]="linuxserver/speedtest-tracker:1.3.0,mirror.gcr.io/linuxserver/speedtest-tracker:1.12.0"
     ;;
     6)
       newVer=v7
       curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
-      image_update_map[1]="mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6,mirror.gcr.io/linuxserver/speedtest-tracker:1.11.0"
+      image_update_map[1]="mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6,mirror.gcr.io/linuxserver/speedtest-tracker:1.12.0"
     ;;
     7)
       newVer=v7
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/linuxserver/speedtest-tracker:1.11.0
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/linuxserver/speedtest-tracker:1.12.0
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
-      image_update_map[1]="mirror.gcr.io/linuxserver/speedtest-tracker:1.11.0,mirror.gcr.io/linuxserver/speedtest-tracker:1.11.0"
+      image_update_map[1]="mirror.gcr.io/linuxserver/speedtest-tracker:1.12.0,mirror.gcr.io/linuxserver/speedtest-tracker:1.12.0"
     ;;
     *)
       is_upgrade_error=true
@@ -68881,7 +68930,7 @@ function installWekan()
   oidcBlock=$(cat $HOME/wekan.oidc)
   rm -f $HOME/wekan.oidc
   insertOIDCClientAuthelia wekan "$oidcBlock"
-  installStack wekan wekan-app "SyncedCron" $HOME/wekan.env 3
+  installStack wekan wekan-app "Universal file server initialized successfully" $HOME/wekan.env 3
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -68934,7 +68983,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - v-wekan-db:/data/db
-      - v-wekan-export:/dump
+      - v-wekan-dbexport:/dump
 
   wekan-app:
     image: $(getScriptImageByContainerName wekan-app)
@@ -79790,7 +79839,7 @@ function installScriptServer()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SCRIPTSERVER $MANAGETLS_SCRIPTSERVER "$is_integrate_hshq" $NETDEFAULT_SCRIPTSERVER "$inner_block"
   insertSubAuthelia $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
-  insertEnableSvcAll script-server "$FMLNAME_SCRIPTSERVER" $USERTYPE_SCRIPTSERVER "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" "script-server.png" "$(getHeimdallOrderFromSub $SUB_SCRIPTSERVER $USERTYPE_SCRIPTSERVER)"
+  insertEnableSvcHeimdall script-server "$FMLNAME_SCRIPTSERVER" $USERTYPE_SCRIPTSERVER "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" "script-server.png" true "$(getHeimdallOrderFromSub $SUB_SCRIPTSERVER $USERTYPE_SCRIPTSERVER)"
   insertEnableSvcHeimdall script-server "$FMLNAME_SCRIPTSERVER (IP)" $USERTYPE_SCRIPTSERVER "https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT" "script-server.png" true "$(getHeimdallOrderFromSub $SUB_SCRIPTSERVER $USERTYPE_SCRIPTSERVER)"
   restartAllCaddyContainers
   sudo systemctl daemon-reload
@@ -89447,23 +89496,19 @@ function installHeimdall()
     exit 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/heimdall
   mkdir $HSHQ_STACKS_DIR/heimdall/config
   mkdir $HSHQ_STACKS_DIR/heimdall/html
-
   initServicesCredentials
   if [ -z "$HEIMDALL_WINDOW_TITLE" ]; then
     HEIMDALL_WINDOW_TITLE="$HOMESERVER_NAME Home"
     updateConfigVar HEIMDALL_WINDOW_TITLE "$HEIMDALL_WINDOW_TITLE"
   fi
   HEIMDALL_APP_NAME="Heimdall"
-
   generateCert heimdall heimdall
   outputConfigHeimdall
   cd ~
   sudo docker compose -f $HOME/heimdall-compose-tmp.yml up -d
-
   stack_loaded_text="service 99-ci-service-check successfully started"
   search="$stack_loaded_text"
   isFound=false
@@ -89491,7 +89536,6 @@ function installHeimdall()
   cd ~
   sudo docker compose -f $HOME/heimdall-compose-tmp.yml down -v
   rm -f $HOME/heimdall-compose-tmp.yml
-
   sed -i "s|^APP_NAME=.*|APP_NAME=\"$HEIMDALL_WINDOW_TITLE\"|g" $HSHQ_STACKS_DIR/heimdall/config/www/.env
   sed -i "s|^MAIL_HOST=.*|MAIL_HOST=|g" $HSHQ_STACKS_DIR/heimdall/config/www/.env
   # https://github.com/linuxserver/Heimdall/issues/840
@@ -89499,13 +89543,11 @@ function installHeimdall()
   echo "SESSION_SECURE_COOKIE=true" >> $HSHQ_STACKS_DIR/heimdall/config/www/.env
   # Fixes the annoying excess space at the bottom of Firefox browser windows
   sed -i '/\.sidenav ul {/{:a;N;/}/!ba;s/\.sidenav ul {.*}/\.sidenav ul {\n  list-style: none;\n  margin: 0;\n  padding: 20px;\n  overflow-y: auto;\n}/g}' $HSHQ_STACKS_DIR/heimdall/html/public/css/app.css
-
   admin_password_hash=$(htpasswd -nbBC 10 $HEIMDALL_ADMIN_USERNAME $HEIMDALL_ADMIN_PASSWORD | cut -d":" -f2-)
   user_password_hash=$(htpasswd -nbBC 10 $HEIMDALL_USER_USERNAME $HEIMDALL_USER_PASSWORD | cut -d":" -f2-)
   hs_password_hash=$(htpasswd -nbBC 10 $HEIMDALL_HOMESERVERS_USERNAME $HEIMDALL_HOMESERVERS_PASSWORD | cut -d":" -f2-)
   rs_password_hash=$(htpasswd -nbBC 10 $HEIMDALL_RELAYSERVER_USERNAME $HEIMDALL_RELAYSERVER_PASSWORD | cut -d":" -f2-)
   curdt=$(getCurrentDate)
-
   sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "PRAGMA foreign_keys=ON;DELETE FROM users;"
   cp $HSHQ_ASSETS_DIR/images/admin.png $HSHQ_STACKS_DIR/heimdall/config/www/avatars/
   cp $HSHQ_ASSETS_DIR/images/users.png $HSHQ_STACKS_DIR/heimdall/config/www/avatars/
@@ -89515,11 +89557,9 @@ function installHeimdall()
   cp $HSHQ_ASSETS_DIR/images/userbackground.jpg $HSHQ_STACKS_DIR/heimdall/config/www/backgrounds/
   cp $HSHQ_ASSETS_DIR/images/wghomeserversbackground.jpg $HSHQ_STACKS_DIR/heimdall/config/www/backgrounds/
   cp $HSHQ_ASSETS_DIR/images/relayserverbackground.jpg $HSHQ_STACKS_DIR/heimdall/config/www/backgrounds/
-
   domain_noext=$(echo $HOMESERVER_DOMAIN | cut -d"." -f1)
   search_provider="\n${domain_noext}:\n   id: ${domain_noext}\n   url: https://$SUB_SEARXNG.$HOMESERVER_DOMAIN\n   name: \"$HOMESERVER_NAME\"\n   method: get\n   target: _blank\n   query: q"
   echo -e "$search_provider" >> $HSHQ_STACKS_DIR/heimdall/config/www/searchproviders.yaml
-
   sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO users(id,username,email,avatar,password,autologin,public_front,remember_token,created_at,updated_at) VALUES(1,'$HEIMDALL_ADMIN_USERNAME','$EMAIL_ADMIN_EMAIL_ADDRESS','avatars/admin.png','$admin_password_hash',NULL,0,NULL,'$curdt','$curdt');"
   sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO users(id,username,email,avatar,password,autologin,public_front,remember_token,created_at,updated_at) VALUES(2,'$HEIMDALL_USER_USERNAME','$EMAIL_ADMIN_EMAIL_ADDRESS','avatars/users.png','$user_password_hash',NULL,1,NULL,'$curdt','$curdt');"
   sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO users(id,username,email,avatar,password,autologin,public_front,remember_token,created_at,updated_at) VALUES(3,'$HEIMDALL_HOMESERVERS_USERNAME','$EMAIL_ADMIN_EMAIL_ADDRESS','avatars/homeserver.png','$hs_password_hash',NULL,1,NULL,'$curdt','$curdt');"
@@ -89536,7 +89576,6 @@ function installHeimdall()
   sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(4,2,'${domain_noext}');"
   sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(4,3,'${domain_noext}');"
   sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(4,4,'${domain_noext}');"
-
   if ! [ "$(isServiceDisabled searxng)" = "true" ]; then
     set -e
     sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(3,2,1);"
@@ -89549,7 +89588,6 @@ function installHeimdall()
     echo "ERROR: There was a problem installing Heimdall"
     exit $retval
   fi
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -91162,10 +91200,8 @@ function installUptimeKuma()
     exit 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/uptimekuma
   mkdir $HSHQ_STACKS_DIR/uptimekuma/app
-
   initServicesCredentials
   UPTIMEKUMA_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $UPTIMEKUMA_PASSWORD | tr -d ':\n' | sed 's/$2y/$2a/')
   outputConfigUptimeKuma
@@ -91176,20 +91212,19 @@ function installUptimeKuma()
     exit $retval
   fi
   startStopStack uptimekuma stop
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO user(id,username,password,active,timezone,twofa_secret,twofa_status,twofa_last_token) VALUES(1,'$UPTIMEKUMA_USERNAME','$UPTIMEKUMA_PASSWORD_HASH',1,'$TZ',NULL,0,NULL);"
+  sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO user(id,username,password,active,timezone,twofa_secret,twofa_status,twofa_last_token) VALUES(1,'$UPTIMEKUMA_USERNAME','$UPTIMEKUMA_PASSWORD_HASH',1,'$TZ',NULL,0,NULL);"
   curdt=$(getCurrentDate)
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag(id,name,color,created_date) VALUES(1,'$HEIMDALL_ADMIN_USERNAME','$ADMIN_COLOR_CODE','$curdt');"
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag(id,name,color,created_date) VALUES(2,'$HEIMDALL_USER_USERNAME','$USERS_COLOR_CODE','$curdt');"
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag(id,name,color,created_date) VALUES(3,'$HEIMDALL_RELAYSERVER_USERNAME','$RELAYSERVER_COLOR_CODE','$curdt');"
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag(id,name,color,created_date) VALUES(4,'$HEIMDALL_HOMESERVERS_USERNAME','$HOMESERVERS_COLOR_CODE','$curdt');"
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO notification(id,name,active,user_id,is_default,config) VALUES(1,'Service Alerts',1,1,1,'{\"name\":\"Service Alerts\",\"type\":\"smtp\",\"isDefault\":true,\"smtpSecure\":false,\"smtpHost\":\"$SMTP_HOSTNAME\",\"smtpPort\":$SMTP_HOSTPORT,\"smtpFrom\":\"\\\"Uptime Kuma $(getAdminEmailName)\\\" <$EMAIL_ADMIN_EMAIL_ADDRESS>\",\"smtpTo\":\"$EMAIL_ADMIN_EMAIL_ADDRESS\",\"applyExisting\":true}');"
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value,type) VALUES('keepDataPeriodDays',30,'general');"
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value,type) VALUES('primaryBaseURL','https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN','general');"
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value,type) VALUES('serverTimezone','\"$TZ\"','general');"
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value) VALUES('initServerTimezone','true');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag(id,name,color,created_date) VALUES(1,'$HEIMDALL_ADMIN_USERNAME','$ADMIN_COLOR_CODE','$curdt');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag(id,name,color,created_date) VALUES(2,'$HEIMDALL_USER_USERNAME','$USERS_COLOR_CODE','$curdt');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag(id,name,color,created_date) VALUES(3,'$HEIMDALL_RELAYSERVER_USERNAME','$RELAYSERVER_COLOR_CODE','$curdt');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag(id,name,color,created_date) VALUES(4,'$HEIMDALL_HOMESERVERS_USERNAME','$HOMESERVERS_COLOR_CODE','$curdt');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO notification(id,name,active,user_id,is_default,config) VALUES(1,'Service Alerts',1,1,1,'{\"name\":\"Service Alerts\",\"type\":\"smtp\",\"isDefault\":true,\"smtpSecure\":false,\"smtpHost\":\"$SMTP_HOSTNAME\",\"smtpPort\":$SMTP_HOSTPORT,\"smtpFrom\":\"\\\"Uptime Kuma $(getAdminEmailName)\\\" <$EMAIL_ADMIN_EMAIL_ADDRESS>\",\"smtpTo\":\"$EMAIL_ADMIN_EMAIL_ADDRESS\",\"applyExisting\":true}');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value,type) VALUES('keepDataPeriodDays',30,'general');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value,type) VALUES('primaryBaseURL','https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN','general');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value,type) VALUES('serverTimezone','\"$TZ\"','general');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value) VALUES('initServerTimezone','true');"
   insertServicesUptimeKuma
   startStopStack uptimekuma start
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -91243,11 +91278,20 @@ networks:
     name: dock-internalmail
     external: true
 EOFUK
-
   cat <<EOFUK > $HOME/uptimekuma.env
 NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 PUID=$USERID
 PGID=$GROUPID
+EOFUK
+  cat <<EOFUK > $HSHQ_STACKS_DIR/uptimekuma/app/db-config.json
+{
+    "type": "sqlite",
+    "port": 3306,
+    "hostname": "",
+    "username": "",
+    "password": "",
+    "dbName": "kuma"
+}
 EOFUK
 }
 
@@ -91322,10 +91366,10 @@ function insertServiceUptimeKuma()
   else
     user_id=0
   fi
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO monitor(id,name,active,user_id,interval,url,type,weight,hostname,port,created_date,keyword,maxretries,ignore_tls,upside_down,maxredirects,accepted_statuscodes_json,dns_resolve_type,dns_resolve_server,dns_last_result,retry_interval,push_token,method,body,headers,basic_auth_user,basic_auth_pass,docker_host,docker_container,proxy_id,expiry_notification,mqtt_topic,mqtt_success_message,mqtt_username,mqtt_password,database_connection_string,database_query,auth_method,auth_domain,auth_workstation,grpc_url,grpc_protobuf,grpc_body,grpc_metadata,grpc_method,grpc_service_name,grpc_enable_tls,radius_username,radius_password,radius_called_station_id,radius_called_station_id,radius_secret,resend_interval,packet_size,game) VALUES(NULL,'$svc_proper_name',$svc_is_active,1,$UPTIMEKUMA_HEARTBEAT_INTERVAL,'$svc_url','http',2000,NULL,NULL,'$curdt',NULL,$UPTIMEKUMA_HEARTBEAT_RETRIES,0,0,10,'[\"200-299\"]','A','9.9.9.9',NULL,$UPTIMEKUMA_RETRY_INTERVAL,NULL,'GET',NULL,NULL,NULL,NULL,NULL,'',NULL,0,'','','','',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,$UPTIMEKUMA_RESEND_NOTIFY,56,NULL);"
-  svc_id=$(sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Select id from monitor where url='$svc_url';")
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO monitor_tag(id,monitor_id,tag_id,value) VALUES(NULL,$svc_id,$user_id,'');"
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO monitor_notification(id,monitor_id,notification_id) VALUES(NULL,$svc_id,1);"
+  sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO monitor(id,name,active,user_id,interval,url,type,weight,hostname,port,created_date,keyword,maxretries,ignore_tls,upside_down,maxredirects,accepted_statuscodes_json,dns_resolve_type,dns_resolve_server,dns_last_result,retry_interval,push_token,method,body,headers,basic_auth_user,basic_auth_pass,docker_host,docker_container,proxy_id,expiry_notification,mqtt_topic,mqtt_success_message,mqtt_username,mqtt_password,database_connection_string,database_query,auth_method,auth_domain,auth_workstation,grpc_url,grpc_protobuf,grpc_body,grpc_metadata,grpc_method,grpc_service_name,grpc_enable_tls,radius_username,radius_password,radius_called_station_id,radius_called_station_id,radius_secret,resend_interval,packet_size,game) VALUES(NULL,'$svc_proper_name',$svc_is_active,1,$UPTIMEKUMA_HEARTBEAT_INTERVAL,'$svc_url','http',2000,NULL,NULL,'$curdt',NULL,$UPTIMEKUMA_HEARTBEAT_RETRIES,0,0,10,'[\"200-299\"]','A','9.9.9.9',NULL,$UPTIMEKUMA_RETRY_INTERVAL,NULL,'GET',NULL,NULL,NULL,NULL,NULL,'',NULL,0,'','','','',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,$UPTIMEKUMA_RESEND_NOTIFY,56,NULL);"
+  svc_id=$(sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Select id from monitor where url='$svc_url';")
+  sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO monitor_tag(id,monitor_id,tag_id,value) VALUES(NULL,$svc_id,$user_id,'');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO monitor_notification(id,monitor_id,notification_id) VALUES(NULL,$svc_id,1);"
 }
 
 function checkInsertServiceUptimeKuma()
@@ -91343,11 +91387,11 @@ function checkInsertServiceUptimeKuma()
   fi
   docker container stop uptimekuma > /dev/null 2>&1
   set -e
-  svc_id=$(sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Select id from monitor where url='$svc_url';")
+  svc_id=$(sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Select id from monitor where url='$svc_url';")
   if [ -z "$svc_id" ]; then
     insertServiceUptimeKuma "$svc_proper_name" "$user_type" "$svc_url" "$svc_is_active"
   else
-    sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "update monitor set active=$svc_is_active where url='$svc_url';"
+    sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "update monitor set active=$svc_is_active where url='$svc_url';"
   fi
   set +e
   if [ "$is_restart" = "true" ]; then
@@ -91370,7 +91414,7 @@ function deleteSvcUptimeKuma()
     if [ "$is_manage_container" = "true" ]; then
       docker container stop uptimekuma >/dev/null
     fi
-    sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "PRAGMA foreign_keys=ON;delete from monitor where url like '${svc_url}%';"
+    sudo sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "PRAGMA foreign_keys=ON;delete from monitor where url like '${svc_url}%';"
     if [ "$is_manage_container" = "true" ]; then
       echo "Restarting UptimeKuma..."
       docker container start uptimekuma
