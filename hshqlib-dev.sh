@@ -131,7 +131,7 @@ function init()
   WAZUH_PORT_3=514
   WAZUH_PORT_4=55000
   WAZUH_PORT_5=9200
-  WAZUH_AGENT_VERSION=4.14.1-1
+  WAZUH_AGENT_VERSION=4.11.2-1
   DEFAULT_UNFOUND_IP_ADDRESS=169.254.84.48
   DEFAULT_UNFOUND_IP_SUBNET=169.254.0.0/16
   MAX_DOCKER_PULL_TRIES=10
@@ -29311,7 +29311,7 @@ function loadPinnedDockerImages()
   IMG_GITEA_APP=mirror.gcr.io/gitea/gitea:1.25.2
   IMG_GITLAB_APP=mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0
   IMG_GRAFANA=mirror.gcr.io/grafana/grafana-oss:12.2.0-17142428006
-  IMG_GRAMPSWEB=ghcr.io/gramps-project/grampsweb:25.11.2
+  IMG_GRAMPSWEB=ghcr.io/gramps-project/grampsweb:25.7.3
   IMG_GUACAMOLE_GUACD=mirror.gcr.io/guacamole/guacd:1.6.0
   IMG_GUACAMOLE_WEB=mirror.gcr.io/guacamole/guacamole:1.6.0
   IMG_HEIMDALL=linuxserver/heimdall:2.4.13
@@ -29440,9 +29440,9 @@ function loadPinnedDockerImages()
   IMG_VAULTWARDEN_APP=mirror.gcr.io/vaultwarden/server:1.34.3-alpine
   IMG_VAULTWARDEN_LDAP=mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2
   IMG_WALLABAG=mirror.gcr.io/wallabag/wallabag:2.6.14
-  IMG_WAZUH_MANAGER=mirror.gcr.io/wazuh/wazuh-manager:4.14.1
-  IMG_WAZUH_INDEXER=mirror.gcr.io/wazuh/wazuh-indexer:4.14.1
-  IMG_WAZUH_DASHBOARD=mirror.gcr.io/wazuh/wazuh-dashboard:4.14.1
+  IMG_WAZUH_MANAGER=wazuh/wazuh-manager:4.11.2
+  IMG_WAZUH_INDEXER=wazuh/wazuh-indexer:4.11.2
+  IMG_WAZUH_DASHBOARD=wazuh/wazuh-dashboard:4.11.2
   IMG_WEKAN_APP=ghcr.io/wekan/wekan:v8.17
   IMG_WGPORTAL=wgportal/wg-portal:1.0.19
   IMG_WIKIJS=mirror.gcr.io/requarks/wiki:2.5.308
@@ -29487,7 +29487,7 @@ function getScriptStackVersion()
     mailu)
       echo "v6" ;;
     wazuh)
-      echo "v8" ;;
+      echo "v7" ;;
     collabora)
       echo "v9" ;;
     nextcloud)
@@ -29593,7 +29593,7 @@ function getScriptStackVersion()
     piped)
       echo "v2" ;;
     grampsweb)
-      echo "v5" ;;
+      echo "v4" ;;
     penpot)
       echo "v4" ;;
     espocrm)
@@ -36044,7 +36044,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_GRAMPSWEB
       ;;
     "grampsweb-redis")
-      container_image=mirror.gcr.io/redis:8.4.0-bookworm
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "penpot-db")
       container_image=mirror.gcr.io/postgres:15.0-bullseye
@@ -42986,15 +42986,12 @@ function performUpdateWazuh()
       return
     ;;
     7)
-      newVer=v8
+      newVer=v7
       curImageList=wazuh/wazuh-manager:4.11.2,wazuh/wazuh-indexer:4.11.2,wazuh/wazuh-dashboard:4.11.2
       image_update_map[0]="wazuh/wazuh-manager:4.11.2,mirror.gcr.io/wazuh/wazuh-manager:4.14.1"
       image_update_map[1]="wazuh/wazuh-indexer:4.11.2,mirror.gcr.io/wazuh/wazuh-indexer:4.14.1"
       image_update_map[2]="wazuh/wazuh-dashboard:4.11.2,mirror.gcr.io/wazuh/wazuh-dashboard:4.14.1"
       updateWazuhAgents "4.14.1-1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" version412WazuhUpdate false
-      perform_update_report="${perform_update_report}$stack_upgrade_report"
-      return
     ;;
     8)
       newVer=v8
@@ -60417,12 +60414,13 @@ function performUpdateGrampsWeb()
       return
     ;;
     4)
-      newVer=v5
+      newVer=v4
       curImageList=ghcr.io/gramps-project/grampsweb:25.7.3,mirror.gcr.io/redis:8.2.0-bookworm
       image_update_map[0]="ghcr.io/gramps-project/grampsweb:25.7.3,ghcr.io/gramps-project/grampsweb:25.11.2"
       image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
     ;;
     5)
+      # This version is broken, come back to it later...
       newVer=v5
       curImageList=ghcr.io/gramps-project/grampsweb:25.11.2,mirror.gcr.io/redis:8.4.0-bookworm
       image_update_map[0]="ghcr.io/gramps-project/grampsweb:25.11.2,ghcr.io/gramps-project/grampsweb:25.11.2"
