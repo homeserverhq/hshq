@@ -46952,7 +46952,9 @@ function performUpdateMastodon()
       image_update_map[3]="mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
       image_update_map[4]="mirror.gcr.io/elasticsearch:9.1.1,mirror.gcr.io/elasticsearch:9.2.2"
       image_update_map[5]="mirror.gcr.io/tootsuite/mastodon-streaming:v4.3.11,mirror.gcr.io/tootsuite/mastodon-streaming:v4.5.2"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearStaticAssetsMastodon true mfMastodonV10Fix
+      # This upgrade requires a migration
+      prepMastodonMigrate mirror.gcr.io/postgres:15.0-bullseye mirror.gcr.io/redis:8.4.0-bookworm mirror.gcr.io/tootsuite/mastodon:v4.5.2 $perform_stack_id
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfMigrateMastodon true mfMastodonV10Fix
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -47113,8 +47115,7 @@ function migrateMastodon()
   isInstallOrMigrate="$1"
   # This function assumes the Mastodon stack/containers are NOT running.
   echo -e "\nPerforming Mastodon database migration...this could take a few minutes\n"
-  sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/static/*
-  sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/redis/*
+  clearStaticAssetsMastodon
   cd ~
   case "$isInstallOrMigrate" in
     install)
