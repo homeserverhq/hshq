@@ -23752,7 +23752,7 @@ function version218Update()
   echo -e "========================================================================"
   echo -e "     The docker service is now being updated. This process will stop"
   echo -e "     all stacks in Portainer, perform the update, then restart the"
-  echo -e "     stacks. This process will take around 10 minutes to complete,"
+  echo -e "     stacks. This process will take around 10-15 minutes to complete,"
   echo -e "     so please be patient."
   echo -e "========================================================================"
   restartAllStacks "" false upgradeDocker false
@@ -47703,7 +47703,7 @@ EOFSE
 
 function outputSearxNGLimiterConfig()
 {
-  cat <<EOFSE > $HSHQ_STACKS_DIR/searxng/web/limiter.toml
+  sudo tee $HSHQ_STACKS_DIR/searxng/web/limiter.toml >/dev/null <<EOFSE
 [botdetection]
 ipv4_prefix = 32
 ipv6_prefix = 48
@@ -47725,6 +47725,7 @@ block_ip = []
 pass_ip = []
 pass_searxng_org = true
 EOFSE
+  sudo chown 977:977 $HSHQ_STACKS_DIR/searxng/web/limiter.toml
 }
 
 function performUpdateSearxNG()
