@@ -47726,6 +47726,7 @@ pass_ip = []
 pass_searxng_org = true
 EOFSE
   sudo chown 977:977 $HSHQ_STACKS_DIR/searxng/web/limiter.toml
+  sudo chmod 644 $HSHQ_STACKS_DIR/searxng/web/limiter.toml
 }
 
 function performUpdateSearxNG()
@@ -47834,7 +47835,7 @@ function mfSearxngFixRedisCompose()
 function mfSearxngFixV9()
 {
   outputSearxNGLimiterConfig
-  sed -i "s/^redis:/valkey:/" $HSHQ_STACKS_DIR/searxng/web/settings.yml
+  sudo sed -i "s/^redis:/valkey:/" $HSHQ_STACKS_DIR/searxng/web/settings.yml
 }
 
 # Jellyfin
@@ -91349,7 +91350,21 @@ function performUpdateUptimeKuma()
       image_update_map[0]="louislam/uptime-kuma:1.23.16-alpine,mirror.gcr.io/louislam/uptime-kuma:2.0.2"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
       is_upgrade_error=true
-      perform_update_report="WARNING ($perform_stack_name): This is a major upgrade from v1 to v2, see https://github.com/louislam/uptime-kuma/wiki/Migration-From-v1-To-v2 for more details. It may take awhile (30+ minutes if you have a lot of monitors) for the migration process to complete, ensure to check the logs for progress (docker logs uptimekuma). Do NOT stop/restart the container during the migration. Be advised that many Script-server functions restart UptimeKuma automatically, so do not run any of them as well. If there are any issues, the original data directory has been backed up ($HSHQ_STACKS_DIR/uptimekuma/app_bak). If the UptimeKuma service comes back up successfully with all monitors working correctly, etc., then ensure to delete the backup directory (sudo rm -f $HSHQ_STACKS_DIR/uptimekuma/app_bak)."
+      echo -e "\n\n========================================================================"
+      echo -e "  WARNING ($perform_stack_name): This is a major upgrade from v1 to v2,"
+      echo -e "  see https://github.com/louislam/uptime-kuma/wiki/Migration-From-v1-To-v2"
+      echo -e "  for more details. It may take awhile (~15 minutes to 2+ hours depending"
+      echo -e "  on # monitors/history you have) for the migration process to complete,"
+      echo -e "  ensure to check the logs for progress (docker logs uptimekuma). Do NOT"
+      echo -e "  stop/restart the container during the migration. Be advised that many"
+      echo -e "  Script-server functions restart UptimeKuma automatically, so do NOT run"
+      echo -e "  any of them as well. If there are any issues, the original data directory"
+      echo -e "  has been backed up ($HSHQ_STACKS_DIR/uptimekuma/app_bak). If the UptimeKuma"
+      echo -e "  service comes back up successfully with all monitors working correctly,"
+      echo -e "  etc., then ensure to delete the backup directory with this command:"
+      echo -e "    sudo rm -f $HSHQ_STACKS_DIR/uptimekuma/app_bak"
+      echo -e ""
+      perform_update_report="WARNING ($perform_stack_name): This is a major upgrade from v1 to v2, see https://github.com/louislam/uptime-kuma/wiki/Migration-From-v1-To-v2 for more details. It may take awhile (~15 minutes to 2+ hours depending on # monitors/history you have) for the migration process to complete, ensure to check the logs for progress (docker logs uptimekuma). Do NOT stop/restart the container during the migration. Be advised that many Script-server functions restart UptimeKuma automatically, so do not run any of them as well. If there are any issues, the original data directory has been backed up ($HSHQ_STACKS_DIR/uptimekuma/app_bak). If the UptimeKuma service comes back up successfully with all monitors working correctly, etc., then ensure to delete the backup directory (sudo rm -f $HSHQ_STACKS_DIR/uptimekuma/app_bak)."
       return
     ;;
     6)
