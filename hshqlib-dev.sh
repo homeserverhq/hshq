@@ -7002,7 +7002,8 @@ function outputDockerSettings()
     "tag": "docker/{{.Name}}"
   },
   "ipv6": false,
-  "registry-mirrors": ["https://mirror.gcr.io"]
+  "registry-mirrors": ["https://mirror.gcr.io"],
+  "min-api-version": "1.24"
 }
 EOFRL
   set +e
@@ -23746,7 +23747,15 @@ function version218Update()
   fixMatrixV8
   fixMastodonV9
   fixPeertubeV7
-  upgradeDocker
+  sleep 5
+  outputDockerDaemonJson
+  echo -e "========================================================================"
+  echo -e "     The docker service is now being updated. This process will stop"
+  echo -e "     all stacks in Portainer, perform the update, then restart the"
+  echo -e "     stacks. This process will take around 10 minutes to complete,"
+  echo -e "     so please be patient."
+  echo -e "========================================================================"
+  restartAllStacks "" false upgradeDocker false
 }
 
 function updateRelayServerWithScript()
@@ -28203,7 +28212,7 @@ function installDocker()
 
 function upgradeDocker()
 {
-  echo "Upgrading docker, please wait..."
+  echo "Upgrading docker, this could take 5-10 minutes, please wait..."
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null
   sudo apt-mark unhold docker-ce
   sudo apt-mark unhold docker-ce-cli
@@ -28237,6 +28246,8 @@ function upgradeDocker()
     fi
     ;;
   *)
+    echo "Linux version not found when upgrading Docker, exiting..."
+    exit 5
     ;;
   esac
   sudo apt-mark hold docker-ce
@@ -28310,7 +28321,8 @@ function outputDockerDaemonJson()
   },
   "ipv6": false,
   "metrics-addr": "0.0.0.0:$DOCKER_METRICS_PORT",
-  "registry-mirrors": ["https://mirror.gcr.io"]
+  "registry-mirrors": ["https://mirror.gcr.io"],
+  "min-api-version": "1.24"
 }
 EOFRL
 }
@@ -28327,7 +28339,7 @@ function installDockerUbuntu2204()
 
 function upgradeDockerUbuntu2204()
 {
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2204 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin_12 > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2204 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
 }
 
 function installDockerUbuntu2404()
@@ -28344,7 +28356,7 @@ function installDockerUbuntu2404()
 
 function upgradeDockerUbuntu2404()
 {
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2404 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin_12 > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2404 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
 }
 
 function installDockerDebian12()
@@ -28361,7 +28373,7 @@ function installDockerDebian12()
 
 function upgradeDockerDebian12()
 {
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_DEBIAN_12 docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin_12 > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_DEBIAN_12 docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
 }
 
 function initCertificateAuthority()
@@ -42136,6 +42148,7 @@ function fixMailuV6()
   if ! [ "$mailu_stack_ver" = "6" ] || ! [ $rtVal -eq 0 ]; then
     return
   fi
+  echo "Fixing mailu stack container images..."
   pullImage mirror.gcr.io/clamav/clamav:1.4.3
   retVal=$?
   if [ $retVal -ne 0 ]; then
@@ -45797,6 +45810,7 @@ function fixMatrixV8()
   if ! [ "$matrix_stack_ver" = "8" ] || ! [ $rtVal -eq 0 ]; then
     return
   fi
+  echo "Fixing matrix stack container images..."
   pullImage mirror.gcr.io/matrixdotorg/synapse:v1.136.0
   retVal=$?
   if [ $retVal -ne 0 ]; then
@@ -47227,6 +47241,7 @@ function fixMastodonV9()
   if ! [ "$mastodon_stack_ver" = "9" ] || ! [ $rtVal -eq 0 ]; then
     return
   fi
+  echo "Fixing mastodon stack container images..."
   pullImage mirror.gcr.io/tootsuite/mastodon:v4.3.11
   retVal=$?
   if [ $retVal -ne 0 ]; then
@@ -50233,6 +50248,7 @@ function fixPeertubeV7()
   if ! [ "$peertube_stack_ver" = "7" ] || ! [ $rtVal -eq 0 ]; then
     return
   fi
+  echo "Fixing peertube stack container images..."
   pullImage mirror.gcr.io/chocobozzz/peertube:v7.2.3-bookworm
   retVal=$?
   if [ $retVal -ne 0 ]; then
