@@ -23751,6 +23751,9 @@ function version218Update()
   set +e
   sudo DEBIAN_FRONTEND=noninteractive apt update
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  performAptInstall gnupg2
+  performAptInstall software-properties-common
+  performAptInstall apt-transport-https
   outputDockerDaemonJson
   echo -e "========================================================================"
   echo -e "     The docker service is now being updated. This process will stop"
@@ -23758,6 +23761,7 @@ function version218Update()
   echo -e "     stacks. This process will take around 10-15 minutes to complete,"
   echo -e "     so please be patient."
   echo -e "========================================================================"
+  sleep 3
   restartAllStacks "" false upgradeDocker false
 }
 
