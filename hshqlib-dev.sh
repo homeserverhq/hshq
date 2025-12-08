@@ -23743,11 +23743,14 @@ function version205Update()
 
 function version218Update()
 {
+  set +e
   fixMailuV6
   fixMatrixV8
   fixMastodonV9
   fixPeertubeV7
-  sleep 5
+  set +e
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   outputDockerDaemonJson
   echo -e "========================================================================"
   echo -e "     The docker service is now being updated. This process will stop"
