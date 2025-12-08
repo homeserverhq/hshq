@@ -74,7 +74,7 @@ function init()
   SCRIPTSERVER_REDIS_STACKLIST_FILENAME=redisStackList.txt
   MINDSDB_IMPORT_FILENAME=DBCImport.txt
   DNS_ZONE_FILENAME_BASE=DNSZoneInfo
-  DOCKER_VERSION_UBUNTU_2204=5:28.3.3-1~ubuntu.22.04~jammy
+  DOCKER_VERSION_UBUNTU_2204=5:29.1.1-1~ubuntu.22.04~jammy
   DOCKER_VERSION_UBUNTU_2404=5:29.1.1-1~ubuntu.24.04~noble
   DOCKER_VERSION_DEBIAN_12=5:29.1.1-1~debian.12~bookworm
   NET_EXTERNAL_BRIDGE_NAME=brdockext
@@ -46108,7 +46108,7 @@ EOFDP
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--accept-any-ssl-certificate','true');"
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-from','Duplicati $(getAdminEmailName)<$EMAIL_ADMIN_EMAIL_ADDRESS>');"
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-to','$EMAIL_ADMIN_EMAIL_ADDRESS');"
-  sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-url','smtp://$SMTP_HOSTNAME:$SMTP_HOSTPORT');"
+  sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-url','smtp://$SMTP_HOSTNAME:$SMTP_HOSTPORT?starttls=never');"
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-level','all');"
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-2,'','startup-delay','45s');"
   set +e
