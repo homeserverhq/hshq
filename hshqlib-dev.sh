@@ -29504,7 +29504,7 @@ function getScriptStackVersion()
     openldap)
       echo "v1" ;;
     mailu)
-      echo "v6" ;;
+      echo "v7" ;;
     wazuh)
       echo "v7" ;;
     collabora)
