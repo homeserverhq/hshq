@@ -7244,7 +7244,7 @@ function isProgramInstalled()
 
 function getDockerSubnet()
 {
-  echo \$(docker network inspect \$1 | grep Subnet | awk '{print \$2}' | sed 's/[",]//g')
+  echo \$(docker network inspect \$1 | grep \"Subnet\": | awk '{print \$2}' | sed 's/[",]//g')
 }
 
 function createDockerNetworks()
@@ -8837,7 +8837,7 @@ EOFWZ
 
 function getDockerSubnet()
 {
-  echo \$(docker network inspect \$1 | grep Subnet | awk '{print \$2}' | sed 's/[",]//g')
+  echo \$(docker network inspect \$1 | grep \"Subnet\": | awk '{print \$2}' | sed 's/[",]//g')
 }
 
 function installPortainer()
@@ -16095,7 +16095,7 @@ EOF
 
 function getDockerSubnet()
 {
-  subnet=$(docker network inspect $1 | grep Subnet | awk '{print $2}' | sed 's/[",]//g')
+  subnet=$(docker network inspect $1 | grep \"Subnet\": | awk '{print $2}' | sed 's/[",]//g')
   echo $subnet
 }
 
@@ -27271,7 +27271,7 @@ function up()
     fi
   fi
 
-  if [ -z \$DOCKER_NETWORK_SUBNET ]; then
+  if [ -z "\$DOCKER_NETWORK_SUBNET" ]; then
     echo "Docker network subnet has not been set"
     return
   fi
