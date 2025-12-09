@@ -4500,7 +4500,7 @@ function showConfigureSimpleBackupMenu()
     showMessageBox "ERROR" "There is an error with /etc/fstab: ${chkfstab}\nPlease fix this issue and retry."
     return
   fi
-  if ! [ -f $HSHQ_STACKS_DIR/duplicati/config/Duplicati-server.sqlite ]; then
+  if ! sudo test -f $HSHQ_STACKS_DIR/duplicati/config/Duplicati-server.sqlite; then
     showMessageBox "ERROR" "Could not find the Duplicati database, returning..."
     return
   fi
