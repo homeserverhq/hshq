@@ -16912,7 +16912,7 @@ function getAdditionalSources()
 {
   sudo ls $HSHQ_SCRIPTS_DIR/source | while read fname
   do
-    if ! sudo test -f "$fname"; then continue; fi
+    if ! sudo test -f "$HSHQ_SCRIPTS_DIR/source/$fname"; then continue; fi
     source <(sudo cat $HSHQ_SCRIPTS_DIR/source/$fname)
   done
 }
