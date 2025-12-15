@@ -21029,6 +21029,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=218
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 219 ]; then
+    echo "Updating to Version 219..."
+    version219Update
+    HSHQ_VERSION=219
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
