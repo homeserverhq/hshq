@@ -43616,6 +43616,8 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapPort "636"
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapLoginFilter "(&(&(|(objectclass=inetOrgPerson)(objectclass=person)(objectclass=posixAccount))(|(memberof=cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)(memberof=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)))(uid=%uid))"
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapUserFilter "(&(|(objectclass=inetOrgPerson)(objectclass=person)(objectclass=posixAccount))(|(memberof=cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)(memberof=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)))"
+  docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapUserDisplayName cn
+  docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapEmailAttribute mail
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapUserFilterGroups "$LDAP_ADMIN_USER_GROUP_NAME;$LDAP_PRIMARY_USER_GROUP_NAME"
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapUserFilterObjectclass "inetOrgPerson;person;posixAccount"
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 turnOnPasswordChange "1"
@@ -43625,6 +43627,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ config:app:set user_ldap enabled --value="yes"
   docker exec -u www-data nextcloud-app php occ ldap:check-user --force "$LDAP_ADMIN_USER_USERNAME"
   docker exec -u www-data nextcloud-app php occ ldap:search "$LDAP_ADMIN_USER_USERNAME"
+  docker exec -u www-data nextcloud-app php occ ldap:promote-group "admins" -y
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install ldap_write_support
   docker exec -u www-data nextcloud-app php occ config:system:set trusted_domains 2 --value=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
   docker exec -u www-data nextcloud-app php occ config:system:set enabledPreviewProviders 0 --value="OC\\Preview\\Imaginary"
