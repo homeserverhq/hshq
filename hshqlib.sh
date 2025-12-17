@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=218
+HSHQ_LIB_SCRIPT_VERSION=219
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -3108,7 +3108,8 @@ function createSwapfile()
     sudo chmod 600 /swapfile
     sudo mkswap /swapfile
     sudo swapon /swapfile
-    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+    echo "# Swap file" | sudo tee -a /etc/fstab > /dev/null 2>&1
+    echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
   fi
 }
 
@@ -6725,7 +6726,8 @@ function createSwapfile()
     sudo chmod 600 /swapfile
     sudo mkswap /swapfile
     sudo swapon /swapfile
-    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+    echo "# Swap file" | sudo tee -a /etc/fstab > /dev/null 2>&1
+    echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
   fi
 }
 
@@ -16894,6 +16896,9 @@ function loadConfigVars()
     exit 9
   fi
   loadSvcVars
+  set +e
+  getAdditionalSources
+  set -e
   if ! [ "$is_chk_update" = "false" ]; then
     checkUpdateVersion
   fi
@@ -16901,6 +16906,15 @@ function loadConfigVars()
   if ! [ -z "$lcv_curE" ]; then
     set -e
   fi
+}
+
+function getAdditionalSources()
+{
+  sudo ls $HSHQ_SCRIPTS_DIR/source | while read fname
+  do
+    if ! sudo test -f "$HSHQ_SCRIPTS_DIR/source/$fname"; then continue; fi
+    source <(sudo cat $HSHQ_SCRIPTS_DIR/source/$fname)
+  done
 }
 
 function fixConfigV130()
@@ -20459,6 +20473,8 @@ function createInitialEnv()
   sudo chmod 700 $HSHQ_SCRIPTS_DIR/root
   sudo mkdir -p $HSHQ_SCRIPTS_DIR/userasroot
   sudo chmod 700 $HSHQ_SCRIPTS_DIR/userasroot
+  sudo mkdir -p $HSHQ_SCRIPTS_DIR/source
+  sudo chmod 700 $HSHQ_SCRIPTS_DIR/source
   sudo mkdir -p $HSHQ_SCRIPTS_DIR/boot
   sudo mkdir -p $HSHQ_SCRIPTS_DIR/boot/beforenetwork
   sudo mkdir -p $HSHQ_SCRIPTS_DIR/boot/afterdocker
@@ -21011,6 +21027,12 @@ function checkUpdateVersion()
     echo "Updating to Version 218..."
     version218Update
     HSHQ_VERSION=218
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 219 ]; then
+    echo "Updating to Version 219..."
+    version219Update
+    HSHQ_VERSION=219
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
@@ -23763,6 +23785,12 @@ function version218Update()
   echo -e "========================================================================"
   sleep 3
   restartAllStacks "" false upgradeDocker false
+}
+
+function version219Update()
+{
+  sudo mkdir -p $HSHQ_SCRIPTS_DIR/source
+  sudo chmod 700 $HSHQ_SCRIPTS_DIR/source
 }
 
 function updateRelayServerWithScript()
@@ -29304,7 +29332,7 @@ function loadPinnedDockerImages()
   IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME=mirror.gcr.io/dgtlmoon/sockpuppetbrowser:latest
   IMG_CLOUDBEAVER_APP=mirror.gcr.io/dbeaver/cloudbeaver:25.3.0
   IMG_CODESERVER=mirror.gcr.io/codercom/code-server:4.106.3
-  IMG_COLLABORA=mirror.gcr.io/collabora/code:25.04.7.3.1
+  IMG_COLLABORA=mirror.gcr.io/collabora/code:25.04.4.2.1
   IMG_COTURN=mirror.gcr.io/coturn/coturn:4.7.0
   IMG_DBGATE_APP=mirror.gcr.io/dbgate/dbgate:6.7.3-alpine
   IMG_DISCOURSE=mirror.gcr.io/bitnami/discourse:3.4.7
@@ -29508,7 +29536,7 @@ function getScriptStackVersion()
     wazuh)
       echo "v7" ;;
     collabora)
-      echo "v9" ;;
+      echo "v8" ;;
     nextcloud)
       echo "v12" ;;
     jitsi)
@@ -34328,6 +34356,12 @@ function installStackByName()
       exit 1
     fi
   fi
+  postInstallActionsByName "$stack_name"
+}
+
+function postInstallActionsByName()
+{
+  return
 }
 
 function performUpdateStackByName()
@@ -35546,18 +35580,18 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  DS_MEM_HIGH=discourse,netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
   BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
 #INIT_SERVICE_DEFAULTS_END
 }
 
@@ -43297,42 +43331,42 @@ function performUpdateCollabora()
     1)
       newVer=v8
       curImageList=collabora/code:23.05.5.3.1
-      image_update_map[0]="collabora/code:23.05.5.3.1,mirror.gcr.io/collabora/code:25.04.7.3.1"
+      image_update_map[0]="collabora/code:23.05.5.3.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     2)
-      newVer=v9
+      newVer=v8
       curImageList=collabora/code:23.05.6.4.1
-      image_update_map[0]="collabora/code:23.05.6.4.1,mirror.gcr.io/collabora/code:25.04.7.3.1"
+      image_update_map[0]="collabora/code:23.05.6.4.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     3)
-      newVer=v9
+      newVer=v8
       curImageList=collabora/code:23.05.8.2.1
-      image_update_map[0]="collabora/code:23.05.8.2.1,mirror.gcr.io/collabora/code:25.04.7.3.1"
+      image_update_map[0]="collabora/code:23.05.8.2.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     4)
-      newVer=v9
+      newVer=v8
       curImageList=collabora/code:23.05.9.4.1
-      image_update_map[0]="collabora/code:23.05.9.4.1,mirror.gcr.io/collabora/code:25.04.7.3.1"
+      image_update_map[0]="collabora/code:23.05.9.4.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     5)
-      newVer=v9
+      newVer=v8
       curImageList=collabora/code:24.04.5.2.1
-      image_update_map[0]="collabora/code:24.04.5.2.1,mirror.gcr.io/collabora/code:25.04.7.3.1"
+      image_update_map[0]="collabora/code:24.04.5.2.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     6)
-      newVer=v9
+      newVer=v8
       curImageList=collabora/code:24.04.9.1.1
-      image_update_map[0]="collabora/code:24.04.9.1.1,mirror.gcr.io/collabora/code:25.04.7.3.1"
+      image_update_map[0]="collabora/code:24.04.9.1.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     7)
-      newVer=v9
+      newVer=v8
       curImageList=collabora/code:24.04.13.2.1
-      image_update_map[0]="collabora/code:24.04.13.2.1,mirror.gcr.io/collabora/code:25.04.7.3.1"
+      image_update_map[0]="collabora/code:24.04.13.2.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     8)
-      newVer=v9
+      newVer=v8
       curImageList=mirror.gcr.io/collabora/code:25.04.4.2.1
-      image_update_map[0]="mirror.gcr.io/collabora/code:25.04.4.2.1,mirror.gcr.io/collabora/code:25.04.7.3.1"
+      image_update_map[0]="mirror.gcr.io/collabora/code:25.04.4.2.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     9)
       newVer=v9
@@ -43582,6 +43616,8 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapPort "636"
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapLoginFilter "(&(&(|(objectclass=inetOrgPerson)(objectclass=person)(objectclass=posixAccount))(|(memberof=cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)(memberof=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)))(uid=%uid))"
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapUserFilter "(&(|(objectclass=inetOrgPerson)(objectclass=person)(objectclass=posixAccount))(|(memberof=cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)(memberof=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)))"
+  docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapUserDisplayName cn
+  docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapEmailAttribute mail
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapUserFilterGroups "$LDAP_ADMIN_USER_GROUP_NAME;$LDAP_PRIMARY_USER_GROUP_NAME"
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapUserFilterObjectclass "inetOrgPerson;person;posixAccount"
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 turnOnPasswordChange "1"
@@ -43591,6 +43627,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ config:app:set user_ldap enabled --value="yes"
   docker exec -u www-data nextcloud-app php occ ldap:check-user --force "$LDAP_ADMIN_USER_USERNAME"
   docker exec -u www-data nextcloud-app php occ ldap:search "$LDAP_ADMIN_USER_USERNAME"
+  docker exec -u www-data nextcloud-app php occ ldap:promote-group "admins" -y
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install ldap_write_support
   docker exec -u www-data nextcloud-app php occ config:system:set trusted_domains 2 --value=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
   docker exec -u www-data nextcloud-app php occ config:system:set enabledPreviewProviders 0 --value="OC\\Preview\\Imaginary"
@@ -52992,7 +53029,7 @@ services:
     networks:
       - int-firefly-net
       - dock-proxy-net
-      - dock-privateip-net
+      - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -53013,7 +53050,7 @@ services:
     networks:
       - int-firefly-net
       - dock-proxy-net
-      - dock-privateip-net
+      - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -53093,8 +53130,8 @@ networks:
   dock-internalmail-net:
     name: dock-internalmail
     external: true
-  dock-privateip-net:
-    name: dock-privateip
+  dock-ext-net:
+    name: dock-ext
     external: true
   int-firefly-net:
     driver: bridge
@@ -53102,7 +53139,6 @@ networks:
     ipam:
       driver: default
 EOFFF
-
 }
 
 function performUpdateFirefly()
@@ -62607,7 +62643,7 @@ function performUpdateSnippetBox()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
-# AIStack
+# AIStack (Deprecated)
 function installAIStack()
 {
   set +e
@@ -66932,6 +66968,7 @@ EOFMT
   cat <<EOFMT > $HOME/meshcentral.env
 TZ=\${PORTAINER_TZ}
 NODE_ENV=production
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 DYNAMIC_CONFIG=false
 HOSTNAME=$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN
 EOFMT
@@ -67024,6 +67061,7 @@ function performUpdateMeshCentral()
       image_update_map[1]="ghcr.io/ylianst/meshcentral:1.1.48,ghcr.io/ylianst/meshcentral:1.1.53"
     ;;
     2)
+      # When upgrading to 1.1.54, ensure to add NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt to environment
       newVer=v2
       curImageList=mirror.gcr.io/mariadb:10.7.3,ghcr.io/ylianst/meshcentral:1.1.53
       image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
@@ -91369,7 +91407,7 @@ function performUpdateUptimeKuma()
       echo -e "  has been backed up ($HSHQ_STACKS_DIR/uptimekuma/app_bak). If the UptimeKuma"
       echo -e "  service comes back up successfully with all monitors working correctly,"
       echo -e "  etc., then ensure to delete the backup directory with this command:"
-      echo -e "    sudo rm -f $HSHQ_STACKS_DIR/uptimekuma/app_bak"
+      echo -e "    sudo rm -fr $HSHQ_STACKS_DIR/uptimekuma/app_bak"
       echo -e ""
       perform_update_report="WARNING ($perform_stack_name): This is a major upgrade from v1 to v2, see https://github.com/louislam/uptime-kuma/wiki/Migration-From-v1-To-v2 for more details. It may take awhile (~15 minutes to 2+ hours depending on # monitors/history you have) for the migration process to complete, ensure to check the logs for progress (docker logs uptimekuma). Do NOT stop/restart the container during the migration. Be advised that many Script-server functions restart UptimeKuma automatically, so do not run any of them as well. If there are any issues, the original data directory has been backed up ($HSHQ_STACKS_DIR/uptimekuma/app_bak). If the UptimeKuma service comes back up successfully with all monitors working correctly, etc., then ensure to delete the backup directory (sudo rm -f $HSHQ_STACKS_DIR/uptimekuma/app_bak)."
       return
