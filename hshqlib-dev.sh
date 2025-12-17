@@ -29332,7 +29332,7 @@ function loadPinnedDockerImages()
   IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME=mirror.gcr.io/dgtlmoon/sockpuppetbrowser:latest
   IMG_CLOUDBEAVER_APP=mirror.gcr.io/dbeaver/cloudbeaver:25.3.0
   IMG_CODESERVER=mirror.gcr.io/codercom/code-server:4.106.3
-  IMG_COLLABORA=mirror.gcr.io/collabora/code:25.04.7.3.1
+  IMG_COLLABORA=mirror.gcr.io/collabora/code:25.04.4.2.1
   IMG_COTURN=mirror.gcr.io/coturn/coturn:4.7.0
   IMG_DBGATE_APP=mirror.gcr.io/dbgate/dbgate:6.7.3-alpine
   IMG_DISCOURSE=mirror.gcr.io/bitnami/discourse:3.4.7
@@ -29536,7 +29536,7 @@ function getScriptStackVersion()
     wazuh)
       echo "v7" ;;
     collabora)
-      echo "v9" ;;
+      echo "v8" ;;
     nextcloud)
       echo "v12" ;;
     jitsi)
@@ -35591,7 +35591,7 @@ function initServiceDefaults()
   BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
   BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
   BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
 #INIT_SERVICE_DEFAULTS_END
 }
 
@@ -43331,42 +43331,42 @@ function performUpdateCollabora()
     1)
       newVer=v8
       curImageList=collabora/code:23.05.5.3.1
-      image_update_map[0]="collabora/code:23.05.5.3.1,mirror.gcr.io/collabora/code:25.04.7.3.1"
+      image_update_map[0]="collabora/code:23.05.5.3.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     2)
-      newVer=v9
+      newVer=v8
       curImageList=collabora/code:23.05.6.4.1
-      image_update_map[0]="collabora/code:23.05.6.4.1,mirror.gcr.io/collabora/code:25.04.7.3.1"
+      image_update_map[0]="collabora/code:23.05.6.4.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     3)
-      newVer=v9
+      newVer=v8
       curImageList=collabora/code:23.05.8.2.1
-      image_update_map[0]="collabora/code:23.05.8.2.1,mirror.gcr.io/collabora/code:25.04.7.3.1"
+      image_update_map[0]="collabora/code:23.05.8.2.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     4)
-      newVer=v9
+      newVer=v8
       curImageList=collabora/code:23.05.9.4.1
-      image_update_map[0]="collabora/code:23.05.9.4.1,mirror.gcr.io/collabora/code:25.04.7.3.1"
+      image_update_map[0]="collabora/code:23.05.9.4.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     5)
-      newVer=v9
+      newVer=v8
       curImageList=collabora/code:24.04.5.2.1
-      image_update_map[0]="collabora/code:24.04.5.2.1,mirror.gcr.io/collabora/code:25.04.7.3.1"
+      image_update_map[0]="collabora/code:24.04.5.2.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     6)
-      newVer=v9
+      newVer=v8
       curImageList=collabora/code:24.04.9.1.1
-      image_update_map[0]="collabora/code:24.04.9.1.1,mirror.gcr.io/collabora/code:25.04.7.3.1"
+      image_update_map[0]="collabora/code:24.04.9.1.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     7)
-      newVer=v9
+      newVer=v8
       curImageList=collabora/code:24.04.13.2.1
-      image_update_map[0]="collabora/code:24.04.13.2.1,mirror.gcr.io/collabora/code:25.04.7.3.1"
+      image_update_map[0]="collabora/code:24.04.13.2.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     8)
-      newVer=v9
+      newVer=v8
       curImageList=mirror.gcr.io/collabora/code:25.04.4.2.1
-      image_update_map[0]="mirror.gcr.io/collabora/code:25.04.4.2.1,mirror.gcr.io/collabora/code:25.04.7.3.1"
+      image_update_map[0]="mirror.gcr.io/collabora/code:25.04.4.2.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     9)
       newVer=v9
