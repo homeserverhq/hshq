@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=219
+HSHQ_LIB_SCRIPT_VERSION=220
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -16896,9 +16896,6 @@ function loadConfigVars()
     exit 9
   fi
   loadSvcVars
-  set +e
-  getAdditionalSources
-  set -e
   if ! [ "$is_chk_update" = "false" ]; then
     checkUpdateVersion
   fi
@@ -16906,15 +16903,6 @@ function loadConfigVars()
   if ! [ -z "$lcv_curE" ]; then
     set -e
   fi
-}
-
-function getAdditionalSources()
-{
-  sudo ls $HSHQ_SCRIPTS_DIR/source | while read fname
-  do
-    if ! sudo test -f "$HSHQ_SCRIPTS_DIR/source/$fname"; then continue; fi
-    source <(sudo cat $HSHQ_SCRIPTS_DIR/source/$fname)
-  done
 }
 
 function fixConfigV130()
@@ -21035,6 +21023,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=219
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 220 ]; then
+    echo "Updating to Version 220..."
+    version220Update
+    HSHQ_VERSION=220
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -23791,6 +23785,13 @@ function version219Update()
 {
   sudo mkdir -p $HSHQ_SCRIPTS_DIR/source
   sudo chmod 700 $HSHQ_SCRIPTS_DIR/source
+}
+
+function version220Update()
+{
+  outputPerformPostDockerBootActionsScript
+  outputUpdateIPTablesBeforeNetworkBootscript
+  outputPerformNetworkingChecks
 }
 
 function updateRelayServerWithScript()
@@ -26562,6 +26563,7 @@ HSHQ_LOG_FILE=$HSHQ_LOG_FILE
 HSHQ_BASE_DIR=$HSHQ_BASE_DIR
 HSHQ_LIB_DIR=$HSHQ_LIB_DIR
 HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
+HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
 LOCK_UTILS_FILENAME=$LOCK_UTILS_FILENAME
 SYSTEM_STATE_FILENAME=$SYSTEM_STATE_FILENAME
 MIN_NETWORKCHECK_INTERVAL=$MIN_NETWORKCHECK_INTERVAL
@@ -26590,6 +26592,11 @@ EOFSS
     echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [debug] performNetworkingChecks.sh - BEGIN, CurState: \$SYS_STATE, LastCheck: \$(date -d @\$LAST_NETWORK_CHECK +"%Y-%m-%d %T"), IsTooSoon: \$isTooSoon" >> \$HSHQ_LOG_FILE
   fi
   source \$HSHQ_LIB_SCRIPT lib
+  for curSource in \$HSHQ_SCRIPTS_DIR/source/*; do
+    if [ -f "\$curSource" ]; then
+      source "\$curSource"
+    fi
+  done
   tgLock="\$(tryGetLock networkchecks performNetworkingChecks)"
   if ! [ "\$tgLock" = "true" ]; then
     checkRes="\$(getLockOpenMsg networkchecks)"
@@ -26654,6 +26661,7 @@ function outputUpdateIPTablesBeforeNetworkBootscript()
 HSHQ_BASE_DIR=$HSHQ_BASE_DIR
 HSHQ_LIB_DIR=$HSHQ_LIB_DIR
 HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
+HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
 
 function main()
 {
@@ -26662,6 +26670,11 @@ function main()
   forceGetLock networkchecks performPostDockerBootActions
 
   source \$HSHQ_LIB_SCRIPT lib
+  for curSource in \$HSHQ_SCRIPTS_DIR/source/*; do
+    if [ -f "\$curSource" ]; then
+      source "\$curSource"
+    fi
+  done
   source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
   notifyBootInit
   checkUpdateAllIPTables prenetwork
@@ -26683,10 +26696,16 @@ function outputPerformPostDockerBootActionsScript()
 HSHQ_BASE_DIR=$HSHQ_BASE_DIR
 HSHQ_LIB_DIR=$HSHQ_LIB_DIR
 HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
+HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
 
 function main()
 {
   source \$HSHQ_LIB_SCRIPT lib
+  for curSource in \$HSHQ_SCRIPTS_DIR/source/*; do
+    if [ -f "\$curSource" ]; then
+      source "\$curSource"
+    fi
+  done
   tgLock="\$(tryGetLock hshqopen performPostDockerBootActions)"
   if ! [ "\$tgLock" = "true" ]; then
     checkRes="\$(getLockOpenMsg hshqopen)"
@@ -29516,6 +29535,13 @@ function loadPinnedDockerImages()
   IMG_AXELOR_GOOVEE=mirror.gcr.io/axelor/goovee-ce:v1.1.0
   IMG_CONVERTX_APP=ghcr.io/c4illin/convertx:v0.16.0
   IMG_KOPIA_APP=mirror.gcr.io/kopia/kopia:0.22.3
+  IMG_LOCALAI_SERVER=mirror.gcr.io/localai/localai:v3.8.0-aio-cpu
+  IMG_LOCALAI_RECALL=quay.io/mudler/localrecall:v0.4.1
+  IMG_LOCALAI_LRHEALTH=mirror.gcr.io/busybox:1.37.0
+  IMG_LOCALAI_SSHBOX=hshq/sshbox:v1
+  IMG_LOCALAI_DIND=mirror.gcr.io/docker:29.1.3-dind
+  IMG_LOCALAI_AGI=quay.io/mudler/localagi:v2.6.0
+  IMG_COMFYUI_APP=mirror.gcr.io/corundex/comfyui-rocm:comfyui_0.3.43__rocm6.4.1_ubuntu24.04_py3.12_pytorch_2.6.0
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -29759,6 +29785,10 @@ function getScriptStackVersion()
       echo "v2" ;;
     kopia)
       echo "v2" ;;
+    localai)
+      echo "v1" ;;
+    comfyui)
+      echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
 }
@@ -29963,6 +29993,13 @@ function pullDockerImages()
   pullImage $IMG_AXELOR_GOOVEE
   pullImage $IMG_CONVERTX_APP
   pullImage $IMG_KOPIA_APP
+  pullImage $IMG_LOCALAI_SERVER
+  pullImage $IMG_LOCALAI_RECALL
+  pullImage $IMG_LOCALAI_LRHEALTH
+  pullImage $IMG_LOCALAI_SSHBOX
+  pullImage $IMG_LOCALAI_DIND
+  pullImage $IMG_LOCALAI_AGI
+  pullImage $IMG_COMFYUI_APP
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -31247,6 +31284,22 @@ KOPIA_INIT_ENV=true
 KOPIA_ADMIN_USERNAME=
 KOPIA_ADMIN_PASSWORD=
 # Kopia (Service Details) END
+
+# LocalAI (Service Details) BEGIN
+LOCALAI_INIT_ENV=true
+LOCALAI_ADMIN_USERNAME=
+LOCALAI_ADMIN_EMAIL_ADDRESS=
+LOCALAI_ADMIN_PASSWORD=
+LOCALAI_API_KEY=
+LOCALAI_SSHBOX_PASSWORD=
+# LocalAI (Service Details) END
+
+# ComfyUI (Service Details) BEGIN
+COMFYUI_INIT_ENV=true
+COMFYUI_ADMIN_USERNAME=
+COMFYUI_ADMIN_EMAIL_ADDRESS=
+COMFYUI_ADMIN_PASSWORD=
+# ComfyUI (Service Details) END
 
 # Service Details END
 EOFCF
@@ -33698,6 +33751,38 @@ function initServicesCredentials()
     KOPIA_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar KOPIA_ADMIN_PASSWORD $KOPIA_ADMIN_PASSWORD
   fi
+  if [ -z "$LOCALAI_ADMIN_USERNAME" ]; then
+    LOCALAI_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_localai"
+    updateConfigVar LOCALAI_ADMIN_USERNAME $LOCALAI_ADMIN_USERNAME
+  fi
+  if [ -z "$LOCALAI_ADMIN_EMAIL_ADDRESS" ]; then
+    LOCALAI_ADMIN_EMAIL_ADDRESS=$LOCALAI_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar LOCALAI_ADMIN_EMAIL_ADDRESS $LOCALAI_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$LOCALAI_ADMIN_PASSWORD" ]; then
+    LOCALAI_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LOCALAI_ADMIN_PASSWORD $LOCALAI_ADMIN_PASSWORD
+  fi
+  if [ -z "$LOCALAI_API_KEY" ]; then
+    LOCALAI_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar LOCALAI_API_KEY $LOCALAI_API_KEY
+  fi
+  if [ -z "$LOCALAI_SSHBOX_PASSWORD" ]; then
+    LOCALAI_SSHBOX_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LOCALAI_SSHBOX_PASSWORD $LOCALAI_SSHBOX_PASSWORD
+  fi
+  if [ -z "$COMFYUI_ADMIN_USERNAME" ]; then
+    COMFYUI_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_comfyui"
+    updateConfigVar COMFYUI_ADMIN_USERNAME $COMFYUI_ADMIN_USERNAME
+  fi
+  if [ -z "$COMFYUI_ADMIN_EMAIL_ADDRESS" ]; then
+    COMFYUI_ADMIN_EMAIL_ADDRESS=$COMFYUI_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar COMFYUI_ADMIN_EMAIL_ADDRESS $COMFYUI_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$COMFYUI_ADMIN_PASSWORD" ]; then
+    COMFYUI_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar COMFYUI_ADMIN_PASSWORD $COMFYUI_ADMIN_PASSWORD
+  fi
 #ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
   if [ -z "$CLIENTDNS_USER1_ADMIN_USERNAME" ]; then
@@ -33906,6 +33991,9 @@ function checkCreateNonbackupDirByStack()
     "kopia")
       mkdir -p $HSHQ_NONBACKUP_DIR/kopia/snapshots
       ;;
+    "localai")
+      mkdir -p $HSHQ_NONBACKUP_DIR/aimodels
+      ;;
 #ADD_NEW_NONBACKUP_DIRS_HERE
     *)
       ;;
@@ -34104,6 +34192,10 @@ function initServiceVars()
   checkAddSvc "SVCD_AXELOR_GOOVEE=axelor,goovee,primary,user,Axelor Goovee,goovee,hshq"
   checkAddSvc "SVCD_CONVERTX_APP=convertx,convertx,primary,user,ConvertX,convertx,hshq"
   checkAddSvc "SVCD_KOPIA_APP=kopia,kopia,primary,admin,Kopia,kopia,hshq"
+  checkAddSvc "SVCD_LOCALAI_SERVER=localai,localai,primary,user,LocalAI,localai,hshq"
+  checkAddSvc "SVCD_LOCALAI_RECALL=localai,localrecall,primary,user,LocalRecall,localrecall,hshq"
+  checkAddSvc "SVCD_LOCALAI_AGI=localai,localagi,primary,user,LocalAGI,localagi,hshq"
+  checkAddSvc "SVCD_COMFYUI_APP=comfyui,comfyui,primary,user,ComfyUI,comfyui,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -34346,6 +34438,10 @@ function installStackByName()
       installConvertX $is_integrate ;;
     kopia)
       installKopia $is_integrate ;;
+    localai)
+      installLocalAI $is_integrate ;;
+    comfyui)
+      installComfyUI $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -34602,6 +34698,10 @@ function performUpdateStackByName()
       performUpdateConvertX ;;
     kopia)
       performUpdateKopia ;;
+    localai)
+      performUpdateLocalAI ;;
+    comfyui)
+      performUpdateComfyUI ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -34728,6 +34828,10 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_AXELOR_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_AXELOR_GOOVEE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CONVERTX_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_LOCALAI_RECALL.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_LOCALAI_AGI.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_COMFYUI_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_PRIMARY_HERE
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -34907,6 +35011,8 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AXELOR_GOOVEE}-Admin" https://$SUB_AXELOR_GOOVEE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $AXELOR_GOOVEE_ADMIN_USERNAME $AXELOR_GOOVEE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CONVERTX_APP}-Admin" https://$SUB_CONVERTX_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CONVERTX_ADMIN_EMAIL_ADDRESS $CONVERTX_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KOPIA_APP}-Admin" https://$SUB_KOPIA_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KOPIA_ADMIN_USERNAME $KOPIA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LOCALAI_SERVER}-Admin" https://$SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOCALAI_ADMIN_USERNAME $LOCALAI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_COMFYUI_APP}-Admin" https://$SUB_COMFYUI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $COMFYUI_ADMIN_USERNAME $COMFYUI_ADMIN_PASSWORD)"\n"
 #ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
@@ -35061,6 +35167,8 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AXELOR_GOOVEE}-Admin" https://$SUB_AXELOR_GOOVEE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $AXELOR_GOOVEE_ADMIN_USERNAME $AXELOR_GOOVEE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CONVERTX_APP}-Admin" https://$SUB_CONVERTX_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CONVERTX_ADMIN_EMAIL_ADDRESS $CONVERTX_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KOPIA_APP}-Admin" https://$SUB_KOPIA_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KOPIA_ADMIN_USERNAME $KOPIA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LOCALAI_SERVER}-Admin" https://$SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOCALAI_ADMIN_USERNAME $LOCALAI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_COMFYUI_APP}-Admin" https://$SUB_COMFYUI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $COMFYUI_ADMIN_USERNAME $COMFYUI_ADMIN_PASSWORD)"\n"
 #ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
@@ -35530,6 +35638,18 @@ function getHeimdallOrderFromSub()
     "$SUB_KOPIA_APP")
       order_num=133
       ;;
+    "$SUB_LOCALAI_SERVER")
+      order_num=134
+      ;;
+    "$SUB_LOCALAI_RECALL")
+      order_num=135
+      ;;
+    "$SUB_LOCALAI_AGI")
+      order_num=136
+      ;;
+    "$SUB_COMFYUI_APP")
+      order_num=137
+      ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=900
@@ -35580,22 +35700,22 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,comfyui
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
+  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
+  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
+  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
 #INIT_SERVICE_DEFAULTS_END
 }
 
-function getScriptImageByContainerName()
+getScriptImageByContainerName()
 {
   case "$1" in
     "portainer")
@@ -36657,6 +36777,27 @@ function getScriptImageByContainerName()
     "kopia-app")
       container_image=$IMG_KOPIA_APP
       ;;
+    "localai-server")
+      container_image=$IMG_LOCALAI_SERVER
+      ;;
+    "localai-recall")
+      container_image=$IMG_LOCALAI_RECALL
+      ;;
+    "localai-lrhealth")
+      container_image=$IMG_LOCALAI_LRHEALTH
+      ;;
+    "localai-sshbox")
+      container_image=$IMG_LOCALAI_SSHBOX
+      ;;
+    "localai-dind")
+      container_image=$IMG_LOCALAI_DIND
+      ;;
+    "localai-agi")
+      container_image=$IMG_LOCALAI_AGI
+      ;;
+    "comfyui-app")
+      container_image=$IMG_COMFYUI_APP
+      ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
@@ -36749,6 +36890,8 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Axelor" "AXELOR_INIT_ENV=false,AXELOR_ADMIN_USERNAME=,AXELOR_ADMIN_EMAIL_ADDRESS=,AXELOR_ADMIN_PASSWORD=,AXELOR_DATABASE_NAME=,AXELOR_DATABASE_USER=,AXELOR_DATABASE_USER_PASSWORD=,AXELOR_NEXTAUTH_SECRET=,AXELOR_GOOVEE_ADMIN_USERNAME=,AXELOR_GOOVEE_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "ConvertX" "CONVERTX_INIT_ENV=false,CONVERTX_ADMIN_USERNAME=,CONVERTX_ADMIN_EMAIL_ADDRESS=,CONVERTX_ADMIN_PASSWORD=,CONVERTX_JWT_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "Kopia" "KOPIA_INIT_ENV=false,KOPIA_ADMIN_USERNAME=,KOPIA_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "LocalAI" "LOCALAI_INIT_ENV=false,LOCALAI_ADMIN_USERNAME=,LOCALAI_ADMIN_EMAIL_ADDRESS=,LOCALAI_ADMIN_PASSWORD=,LOCALAI_API_KEY=,LOCALAI_SSHBOX_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "ComfyUI" "COMFYUI_INIT_ENV=false,COMFYUI_ADMIN_USERNAME=,COMFYUI_ADMIN_EMAIL_ADDRESS=,COMFYUI_ADMIN_PASSWORD=" $CONFIG_FILE false
 #ADD_NEW_ADD_SVC_CONFIG_HERE
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
@@ -36807,10 +36950,13 @@ function buildOrPullImage()
       buildImagePixelfedV1
       ;;
     "hshq/mindsdb:v1")
-      buildMindsDBImageV1
+      buildImageMindsDBV1
       ;;
     "hshq/mindsdb:v2")
-      buildMindsDBImageV2
+      buildImageMindsDBV2
+      ;;
+    "hshq/sshbox:v1")
+      buildImageLocalAISSHBoxV1
       ;;
     *)
       pullImage "$curImg"
@@ -62681,7 +62827,7 @@ function installAIStack()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  buildMindsDBImageV1
+  buildImageMindsDBV1
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -63530,7 +63676,7 @@ function importDBConnectionsAIStack()
   rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME
 }
 
-function buildMindsDBImageV1()
+function buildImageMindsDBV1()
 {
   # Capture the return value deliberately, just so we don't forget down the road
   buildMindsDBImage "mindsdb/mindsdb:v25.4.5.0" "hshq/mindsdb:v1"
@@ -63538,7 +63684,7 @@ function buildMindsDBImageV1()
   return $rtval
 }
 
-function buildMindsDBImageV2()
+function buildImageMindsDBV2()
 {
   # Capture the return value deliberately, just so we don't forget down the road
   buildMindsDBImage "mirror.gcr.io/mindsdb/mindsdb:v25.7.4.0" "hshq/mindsdb:v2"
@@ -63619,7 +63765,7 @@ function performUpdateAIStack()
       image_update_map[4]="ollama/ollama:0.6.8,mirror.gcr.io/ollama/ollama:0.11.4"
       image_update_map[5]="ghcr.io/open-webui/open-webui:git-aa37482,ghcr.io/open-webui/open-webui:0.6.22"
       image_update_map[6]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
-      buildMindsDBImageV2
+      buildImageMindsDBV2
       if [ $? -ne 0 ]; then
         perform_update_report="ERROR ($perform_stack_name): Could not build new MindsDB image"
         return
@@ -79536,6 +79682,491 @@ function performUpdateKopia()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# LocalAI
+function installLocalAI()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory localai "LocalAI"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName localai-server)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName localai-recall)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName localai-lrhealth)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName localai-dind)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName localai-agi)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildImageLocalAISSHBoxV1
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/localai
+  mkdir $HSHQ_STACKS_DIR/localai/agi
+  mkdir $HSHQ_STACKS_DIR/localai/assets
+  mkdir $HSHQ_STACKS_DIR/localai/backends
+  mkdir $HSHQ_STACKS_DIR/localai/db
+  mkdir $HSHQ_STACKS_DIR/localai/images
+  mkdir -p $HSHQ_NONBACKUP_DIR/aimodels
+  initServicesCredentials
+  set +e
+  outputConfigLocalAI
+  installStack localai localai-server "" $HOME/localai.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$LOCALAI_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_LOCALAI_SERVER Admin Login Info" -b "$FMLNAME_LOCALAI_SERVER Admin Username: $LOCALAI_ADMIN_USERNAME\n$FMLNAME_LOCALAI_SERVER Admin Email: $LOCALAI_ADMIN_EMAIL_ADDRESS\n$FMLNAME_LOCALAI_SERVER Admin Password: $LOCALAI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    LOCALAI_INIT_ENV=true
+    updateConfigVar LOCALAI_INIT_ENV $LOCALAI_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_LOCALAI_SERVER" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://localai-server:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_LOCALAI_SERVER $MANAGETLS_LOCALAI_SERVER "$is_integrate_hshq" $NETDEFAULT_LOCALAI_SERVER "$inner_block"
+  insertSubAuthelia $SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_LOCALAI_RECALL.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://localai-recall:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_LOCALAI_RECALL $MANAGETLS_LOCALAI_RECALL "$is_integrate_hshq" $NETDEFAULT_LOCALAI_RECALL "$inner_block"
+  insertSubAuthelia $SUB_LOCALAI_RECALL.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_LOCALAI_AGI.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://localai-agi:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_LOCALAI_AGI $MANAGETLS_LOCALAI_AGI "$is_integrate_hshq" $NETDEFAULT_LOCALAI_AGI "$inner_block"
+  insertSubAuthelia $SUB_LOCALAI_AGI.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll localai "$FMLNAME_LOCALAI_SERVER" $USERTYPE_LOCALAI_SERVER "https://$SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN" "localai.png" "$(getHeimdallOrderFromSub $SUB_LOCALAI_SERVER $USERTYPE_LOCALAI_SERVER)"
+    insertEnableSvcAll localai "$FMLNAME_LOCALAI_RECALL" $USERTYPE_LOCALAI_RECALL "https://$SUB_LOCALAI_RECALL.$HOMESERVER_DOMAIN" "localrecall.png" "$(getHeimdallOrderFromSub $SUB_LOCALAI_RECALL $USERTYPE_LOCALAI_RECALL)"
+    insertEnableSvcAll localai "$FMLNAME_LOCALAI_AGI" $USERTYPE_LOCALAI_AGI "https://$SUB_LOCALAI_AGI.$HOMESERVER_DOMAIN" "localagi.png" "$(getHeimdallOrderFromSub $SUB_LOCALAI_AGI $USERTYPE_LOCALAI_AGI)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigLocalAI()
+{
+  cat <<EOFMT > $HOME/localai-compose.yml
+$STACK_VERSION_PREFIX localai $(getScriptStackVersion localai)
+
+services:
+  localai-server:
+    image: $(getScriptImageByContainerName localai-server)
+    container_name: localai-server
+    hostname: localai-server
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-localai-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/localai:/models
+      - \${PORTAINER_HSHQ_STACKS_DIR}/localai/backends:/backends
+      - \${PORTAINER_HSHQ_STACKS_DIR}/localai/images:/tmp/generated/images
+
+  localai-recall:
+    image: $(getScriptImageByContainerName localai-recall)
+    container_name: localai-recall
+    hostname: localai-recall
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-localai-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/localai/db:/db
+      - \${PORTAINER_HSHQ_STACKS_DIR}/localai/assets:/assets
+
+  localai-sshbox:
+    image: $(getScriptImageByContainerName localai-sshbox)
+    container_name: localai-sshbox
+    hostname: localai-sshbox
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-localai-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    environment:
+      - SSH_USER=root
+      - SSH_PASSWORD=$LOCALAI_SSHBOX_PASSWORD
+
+  localai-dind:
+    image: $(getScriptImageByContainerName localai-dind)
+    container_name: localai-dind
+    hostname: localai-dind
+    restart: unless-stopped
+    privileged: true
+    networks:
+      - int-localai-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    environment:
+      - DOCKER_TLS_CERTDIR=""
+
+  localai-agi:
+    image: $(getScriptImageByContainerName localai-agi)
+    container_name: localai-agi
+    hostname: localai-agi
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-localai-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/localai/agi:/pool
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-privateip-net:
+    name: dock-privateip
+    external: true
+  int-localai-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/localai.env
+TZ=\${PORTAINER_TZ}
+DEBUG=true
+DOCKER_HOST=tcp://localai-dind:2375
+LOCALAI_API_KEY=$LOCALAI_API_KEY
+LOCALAI_MAX_ACTIVE_BACKENDS=4
+COLLECTION_DB_PATH=/db
+EMBEDDING_MODEL=granite-embedding-107m-multilingual
+FILE_ASSETS=/assets
+OPENAI_API_KEY=$LOCALAI_API_KEY
+OPENAI_BASE_URL=http://localai-server:8080
+LOCALAGI_MODEL=gemma-3-4b-it-qat
+LOCALAGI_MULTIMODAL_MODEL=moondream2-20250414
+LOCALAGI_IMAGE_MODEL=sd-1.5-ggml
+LOCALAGI_LLM_API_URL=http://localai-server:8080
+LOCALAGI_LLM_API_KEY=$LOCALAI_API_KEY
+LOCALAGI_LOCALRAG_URL=http://localai-recall:8080
+LOCALAGI_STATE_DIR=/pool
+LOCALAGI_TIMEOUT=5m
+LOCALAGI_ENABLE_CONVERSATIONS_LOGGING=false
+LOCALAGI_SSHBOX_URL=root:$LOCALAI_SSHBOX_PASSWORD@localai-sshbox:22
+EOFMT
+}
+
+function performUpdateLocalAI()
+{
+  perform_stack_name=localai
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/localai/localai:v3.8.0-aio-gpu-hipblas,quay.io/mudler/localrecall:v0.4.1,mirror.gcr.io/busybox:1.37.0,sshbox:v1,mirror.gcr.io/docker:29.1.3-dind,quay.io/mudler/localagi:v2.6.0
+      image_update_map[0]="mirror.gcr.io/localai/localai:v3.8.0-aio-gpu-hipblas,mirror.gcr.io/localai/localai:v3.8.0-aio-gpu-hipblas"
+      image_update_map[1]="quay.io/mudler/localrecall:v0.4.1,quay.io/mudler/localrecall:v0.4.1"
+      image_update_map[2]="mirror.gcr.io/busybox:1.37.0,mirror.gcr.io/busybox:1.37.0"
+      image_update_map[3]="sshbox:v1,sshbox:v1"
+      image_update_map[4]="mirror.gcr.io/docker:29.1.3-dind,mirror.gcr.io/docker:29.1.3-dind"
+      image_update_map[5]="quay.io/mudler/localagi:v2.6.0,quay.io/mudler/localagi:v2.6.0"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function buildImageLocalAISSHBoxV1()
+{
+  set +e
+  sudo rm -fr $HSHQ_BUILD_DIR/localaisshbox
+  mkdir $HSHQ_BUILD_DIR/localaisshbox
+  # This Dockerfile is copied directly from https://github.com/mudler/LocalAGI/blob/main/Dockerfile.sshbox
+  # Since it is so small and unlikely to change, we'll just
+  # avoid the git clone and thus decrease pof.
+  cat <<EOFMT > $HSHQ_BUILD_DIR/localaisshbox/Dockerfile
+# Final stage
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    tzdata \
+    docker.io \
+    bash \
+    wget \
+    curl \
+    openssh-server \
+    sudo
+
+# Configure SSH
+RUN mkdir /var/run/sshd
+RUN echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config
+
+# Create startup script
+RUN echo '#!/bin/bash\n\
+if [ -n "\$SSH_USER" ]; then\n\
+    if [ "\$SSH_USER" = "root" ]; then\n\
+        echo "PermitRootLogin yes" >> /etc/ssh/sshd_config\n\
+        if [ -n "\$SSH_PASSWORD" ]; then\n\
+            echo "root:\$SSH_PASSWORD" | chpasswd\n\
+        fi\n\
+    else\n\
+        echo "PermitRootLogin no" >> /etc/ssh/sshd_config\n\
+        useradd -m -s /bin/bash \$SSH_USER\n\
+        if [ -n "\$SSH_PASSWORD" ]; then\n\
+            echo "\$SSH_USER:\$SSH_PASSWORD" | chpasswd\n\
+        fi\n\
+        if [ -n "\$SUDO_ACCESS" ] && [ "\$SUDO_ACCESS" = "true" ]; then\n\
+            echo "\$SSH_USER ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/\$SSH_USER\n\
+        fi\n\
+    fi\n\
+fi\n\
+/usr/sbin/sshd -D' > /start.sh
+
+RUN chmod +x /start.sh
+
+EXPOSE 22
+
+CMD ["/start.sh"]
+EOFMT
+  docker build -t hshq/sshbox:v1 $HSHQ_BUILD_DIR/localaisshbox
+  retVal=$?
+  sudo rm -fr $HSHQ_BUILD_DIR/localaisshbox
+  return $retVal
+}
+
+# ComfyUI
+function installComfyUI()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory comfyui "ComfyUI"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName comfyui-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/comfyui
+  mkdir $HSHQ_STACKS_DIR/comfyui/models
+  mkdir $HSHQ_STACKS_DIR/comfyui/input
+  mkdir $HSHQ_STACKS_DIR/comfyui/output
+  mkdir $HSHQ_STACKS_DIR/comfyui/custom_nodes
+  mkdir $HSHQ_STACKS_DIR/comfyui/user
+  mkdir $HSHQ_STACKS_DIR/comfyui/temp
+  initServicesCredentials
+  set +e
+  outputConfigComfyUI
+  installStack comfyui comfyui-app "" $HOME/comfyui.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$COMFYUI_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_COMFYUI_APP Admin Login Info" -b "$FMLNAME_COMFYUI_APP Admin Username: $COMFYUI_ADMIN_USERNAME\n$FMLNAME_COMFYUI_APP Admin Email: $COMFYUI_ADMIN_EMAIL_ADDRESS\n$FMLNAME_COMFYUI_APP Admin Password: $COMFYUI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    COMFYUI_INIT_ENV=true
+    updateConfigVar COMFYUI_INIT_ENV $COMFYUI_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_COMFYUI_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_COMFYUI_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://comfyui-app:8188 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_COMFYUI_APP $MANAGETLS_COMFYUI_APP "$is_integrate_hshq" $NETDEFAULT_COMFYUI_APP "$inner_block"
+  insertSubAuthelia $SUB_COMFYUI_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll comfyui "$FMLNAME_COMFYUI_APP" $USERTYPE_COMFYUI_APP "https://$SUB_COMFYUI_APP.$HOMESERVER_DOMAIN" "comfyui.png" "$(getHeimdallOrderFromSub $SUB_COMFYUI_APP $USERTYPE_COMFYUI_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigComfyUI()
+{
+  cat <<EOFMT > $HOME/comfyui-compose.yml
+$STACK_VERSION_PREFIX comfyui $(getScriptStackVersion comfyui)
+
+services:
+  comfyui-app:
+    image: $(getScriptImageByContainerName comfyui-app)
+    container_name: comfyui-app
+    hostname: comfyui-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    devices:
+      - /dev/dri
+      - /dev/kfd
+    group_add:
+      - video
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/models:/workspace/ComfyUI/models
+      - \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/input:/workspace/ComfyUI/input
+      - \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/output:/workspace/ComfyUI/output
+      - \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/custom_nodes:/workspace/ComfyUI/custom_nodes
+      - \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/user:/workspace/ComfyUI/user
+      - \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/temp:/workspace/ComfyUI/temp
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/comfyui.env
+TZ=\${PORTAINER_TZ}
+MODEL_DOWNLOAD=default
+HIP_VISIBLE_DEVICES=0
+CUDA_VISIBLE_DEVICES=""
+EOFMT
+}
+
+function performUpdateComfyUI()
+{
+  perform_stack_name=comfyui
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/corundex/comfyui-rocm:comfyui_0.3.43__rocm6.4.1_ubuntu24.04_py3.12_pytorch_2.6.0
+      image_update_map[0]="mirror.gcr.io/corundex/comfyui-rocm:comfyui_0.3.43__rocm6.4.1_ubuntu24.04_py3.12_pytorch_2.6.0,mirror.gcr.io/corundex/comfyui-rocm:comfyui_0.3.43__rocm6.4.1_ubuntu24.04_py3.12_pytorch_2.6.0"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 #ADD_NEW_SERVICE_FUNCTIONS_HERE
 
 # ExampleService
@@ -80137,6 +80768,22 @@ function getArgumentValue()
 
 EOFSC
 
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
+#!/bin/bash
+
+function main()
+{
+  source $HSHQ_LIB_SCRIPT lib
+  for curSource in $HSHQ_SCRIPTS_DIR/source/*; do
+    if [ -f "\$curSource" ]; then
+      source "\$curSource"
+    fi
+  done
+}
+
+main
+EOFSC
+
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkConfirm.sh
 #!/bin/bash
 
@@ -80194,7 +80841,7 @@ EOFSC
 
 function main()
 {
-  source $HSHQ_LIB_SCRIPT lib
+  source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
   stty -echo
   read -r -s -p "$config_stdin_prompt" USER_CONFIG_PW
   if [ -z "\$USER_CONFIG_PW" ]; then
@@ -80335,7 +80982,7 @@ EOFSC
 
 interfaceName="\$1"
 interfaceName=\$(echo "\$interfaceName" | cut -d" " -f1 | xargs)
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 getIPAddressOfInterface \$interfaceName
 
 EOFSC
@@ -80345,7 +80992,7 @@ EOFSC
 
 interfaceName="\$1"
 interfaceName=\$(echo "\$interfaceName" | cut -d" " -f1 | xargs)
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 getCIDRLengthOfInterface \$interfaceName
 
 EOFSC
@@ -80355,7 +81002,7 @@ EOFSC
 
 interfaceName="\$1"
 interfaceName=\$(echo "\$interfaceName" | cut -d" " -f1 | xargs)
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 getGatewayOfInterface \$interfaceName
 
 EOFSC
@@ -80437,7 +81084,7 @@ EOFSC
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 confirm=\$(getArgumentValue confirm "\$@")
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkConfirm.sh "\$confirm"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 restartAllCaddyContainers
 echo "Caddy containers successfully restarted."
 
@@ -80477,7 +81124,7 @@ EOFSC
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/restartPortainerStack.sh
 #!/bin/bash
 
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 restartPortainer
 echo "Portainer successfully restarted."
@@ -81252,7 +81899,7 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
-
+echo "Service: \$(getScriptImageByContainerName localai-server)"
 services=\$(getArgumentValue services "\$@")
 
 set +e
@@ -82357,7 +83004,7 @@ EOFSC
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkUpdateHSHQ.sh
 #!/bin/bash
 
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 
 latest_ver_wrapper=\$(getLatestVersionWrapper)
 this_ver_wrapper=\$(getThisVersionWrapper)
@@ -82580,6 +83227,11 @@ else
 fi
 
 source \$HSHQ_LIB_SCRIPT lib
+for curSource in $HSHQ_SCRIPTS_DIR/source/*; do
+  if [ -f "\$curSource" ]; then
+    source "\$curSource"
+  fi
+done
 checkUpdateVersion
 
 if ! [ "\$is_any_updated" = "true" ]; then
@@ -82686,7 +83338,7 @@ EOFSC
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 set +e
@@ -82778,7 +83430,7 @@ EOFSC
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 confirm=\$(getArgumentValue confirm "\$@")
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkConfirm.sh "\$confirm"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 
 echo "Downloading all docker images..."
 pullDockerImages
@@ -82821,7 +83473,7 @@ EOFSC
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 
 sellock=\$(getArgumentValue sellock "\$@")
 releaseLock "\$sellock" "resetMutexLock" true
@@ -82989,7 +83641,7 @@ EOFSC
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/displayAllConnections.sh
 #!/bin/bash
 
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 
 echo "  | Name | EmailAddress | NetworkType | PublicKey | IPAddress |"
 echo "---------------------------------------------------------------------------------------"
@@ -83084,7 +83736,7 @@ EOFSC
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/updateHomeServerLogoImages.sh
 #!/bin/bash
 
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 updateHomeServerLogoImages
 
 EOFSC
@@ -83446,7 +84098,7 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 checkkey=\$(getArgumentValue checkkey "\$@")
@@ -87040,7 +87692,7 @@ EOFSC
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/displayAllPortforwards.sh
 #!/bin/bash
 
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 
 echo "  | ID | PFType | Name | ExtStart | ExtEnd | IntStart | IntEnd | Protocol | InternalHost | IPAddress | LastUpdated |"
 echo "---------------------------------------------------------------------------------------"
@@ -87171,7 +87823,7 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 
 set +e
 outputAllNetworkInterfaces
@@ -87996,7 +88648,7 @@ EOFSC
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 set +e
@@ -88054,7 +88706,7 @@ EOFSC
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 selinterface=\$(getArgumentValue selinterface "\$@")
