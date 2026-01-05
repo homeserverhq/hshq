@@ -101,6 +101,9 @@ function init()
   NET_MAILU_INT_BRIDGE_NAME=brmailuint
   NET_MAILU_INT_SUBNET=172.16.8.0/24
   NET_MAILU_INT_SUBNET_PREFIX=172.16.8
+  NET_AIPRIVATE_SUBNET=172.16.9.0/24
+  NET_AIPRIVATE_SUBNET_PREFIX=172.16.9
+  NET_AIPRIVATE_BRIDGE_NAME=brdockaipriv
   ADGUARD_DNS_PORT=53
   CADDY_HTTP_PORT=80
   CADDY_HTTPS_PORT=443
@@ -112,6 +115,7 @@ function init()
   JITSI_COLIBRI_PORT=8020
   JITSI_JVB_PORT=4443
   JITSI_MEET_PORT=10000
+  KHOJ_VNC_PORT=55901
   MAILU_PORT_1=25
   MAILU_PORT_2=110
   MAILU_PORT_3=143
@@ -3069,7 +3073,7 @@ net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 
 # Reserve for Coturn and any other ports above 10000
-net.ipv4.ip_local_reserved_ports = $JITSI_MEET_PORT,$COTURN_COMMS_MIN_PORT-$COTURN_COMMS_MAX_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$WAZUH_PORT_4
+net.ipv4.ip_local_reserved_ports = $JITSI_MEET_PORT,$KHOJ_VNC_PORT,$COTURN_COMMS_MIN_PORT-$COTURN_COMMS_MAX_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$WAZUH_PORT_4
 
 # See https://community.home-assistant.io/t/zeroconf-error/153883
 
@@ -23792,6 +23796,17 @@ function version220Update()
   outputPerformPostDockerBootActionsScript
   outputUpdateIPTablesBeforeNetworkBootscript
   outputPerformNetworkingChecks
+  set +e
+  docker network inspect dock-aipriv > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    docker network create --driver=bridge dock-aipriv > /dev/null 2>&1
+    docker_subnet=$(getDockerSubnet dock-aipriv)
+    docker network rm dock-aipriv > /dev/null 2>&1
+    docker network create -o com.docker.network.bridge.name=$NET_AIPRIVATE_BRIDGE_NAME --driver=bridge --subnet $docker_subnet --internal dock-aipriv > /dev/null
+  fi
+  sudo sed -i "/^SVCD_AISTACK_MINDSDB_APP=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^SVCD_AISTACK_LANGFUSE=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^SVCD_AISTACK_OPENWEBUI=/d" $CONFIG_FILE >/dev/null
 }
 
 function updateRelayServerWithScript()
@@ -25895,11 +25910,11 @@ function checkUpdateAllIPTables()
   # Limit connections per source IP
   comment="HSHQ_BEGIN INPUT --connlimit-above 200 HSHQ_END"
   checkAddRule "$comment" 'sudo iptables -I INPUT -p tcp --syn -m connlimit --connlimit-above 200 -m comment --comment "$comment" -j REJECT --reject-with tcp-reset'
-
-  # Append any remaining to the bottom
   # Configure loopback
   comment="HSHQ_BEGIN INPUT allow loopback HSHQ_END"
-  checkAddRule "$comment" 'sudo iptables -A INPUT -i lo -m comment --comment "$comment" -j ACCEPT'
+  checkAddRule "$comment" 'sudo iptables -I INPUT -i lo -m comment --comment "$comment" -j ACCEPT'
+  
+  # Append any remaining to the bottom
   # Allow ICMP
   comment="HSHQ_BEGIN INPUT allow ICMP HSHQ_END"
   checkAddRule "$comment" 'sudo iptables -A INPUT -p icmp -m comment --comment "$comment" -j ACCEPT'
@@ -28859,6 +28874,7 @@ function createDockerNetworks()
   docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null
   docker network create -o com.docker.network.bridge.name=$NET_MAILU_EXT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_EXT_SUBNET dock-mailu-ext > /dev/null
   docker network create -o com.docker.network.bridge.name=$NET_MAILU_INT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_INT_SUBNET --internal dock-mailu-int > /dev/null
+  docker network create -o com.docker.network.bridge.name=$NET_AIPRIVATE_BRIDGE_NAME --driver=bridge --subnet $NET_AIPRIVATE_SUBNET --internal dock-aipriv > /dev/null
 }
 
 function removeDockerNetworks()
@@ -29542,6 +29558,22 @@ function loadPinnedDockerImages()
   IMG_LOCALAI_DIND=mirror.gcr.io/docker:29.1.3-dind
   IMG_LOCALAI_AGI=quay.io/mudler/localagi:v2.6.0
   IMG_COMFYUI_APP=mirror.gcr.io/corundex/comfyui-rocm:comfyui_0.3.43__rocm6.4.1_ubuntu24.04_py3.12_pytorch_2.6.0
+  IMG_LANGFLOW_APP=mirror.gcr.io/langflowai/langflow:1.7.1
+  IMG_ANYTHINGLLM_APP=mirror.gcr.io/mintplexlabs/anythingllm:1.9.1
+  IMG_PERPLEXICA_APP=mirror.gcr.io/itzcrazykns1337/perplexica:slim-v1.12.0
+  IMG_FIRECRAWL_DB=hshq/firecrawl-db:v1
+  IMG_FIRECRAWL_PLAYWRIGHT=ghcr.io/firecrawl/playwright-service:latest
+  IMG_FIRECRAWL_API=ghcr.io/firecrawl/firecrawl:latest
+  IMG_LIBRECHAT_APP=ghcr.io/danny-avila/librechat:v0.8.1
+  IMG_LIBRECHAT_RAGAPI=ghcr.io/danny-avila/librechat-rag-api-dev-lite:v0.7.0
+  IMG_CRAWL4AI_APP=mirror.gcr.io/unclecode/crawl4ai:0.7.8
+  IMG_CRAWL4AI_PROXY=ghcr.io/lennyerik/crawl4ai-proxy:latest
+  IMG_OLLAMA_SERVER=mirror.gcr.io/ollama/ollama:0.13.5-rocm
+  IMG_OPENWEBUI_APP=ghcr.io/open-webui/open-webui:0.6.43
+  IMG_KHOJ_SANDBOX=ghcr.io/khoj-ai/terrarium:latest
+  IMG_KHOJ_COMPUTER=ghcr.io/khoj-ai/khoj-computer:1.42.0
+  IMG_KHOJ_SERVER=ghcr.io/khoj-ai/khoj:1.42.10
+  IMG_LOBECHAT_APP=mirror.gcr.io/lobehub/lobe-chat-database:1.143.2
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -29789,6 +29821,26 @@ function getScriptStackVersion()
       echo "v1" ;;
     comfyui)
       echo "v1" ;;
+    langflow)
+      echo "v1" ;;
+    anythingllm)
+      echo "v1" ;;
+    perplexica)
+      echo "v1" ;;
+    firecrawl)
+      echo "v1" ;;
+    librechat)
+      echo "v1" ;;
+    crawl4ai)
+      echo "v1" ;;
+    ollama)
+      echo "v1" ;;
+    openwebui)
+      echo "v1" ;;
+    khoj)
+      echo "v1" ;;
+    lobechat)
+      echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
 }
@@ -30000,6 +30052,22 @@ function pullDockerImages()
   pullImage $IMG_LOCALAI_DIND
   pullImage $IMG_LOCALAI_AGI
   pullImage $IMG_COMFYUI_APP
+  pullImage $IMG_LANGFLOW_APP
+  pullImage $IMG_ANYTHINGLLM_APP
+  pullImage $IMG_PERPLEXICA_APP
+  pullImage $IMG_FIRECRAWL_DB
+  pullImage $IMG_FIRECRAWL_PLAYWRIGHT
+  pullImage $IMG_FIRECRAWL_API
+  pullImage $IMG_LIBRECHAT_APP
+  pullImage $IMG_LIBRECHAT_RAGAPI
+  pullImage $IMG_CRAWL4AI_APP
+  pullImage $IMG_CRAWL4AI_PROXY
+  pullImage $IMG_OLLAMA_SERVER
+  pullImage $IMG_OPENWEBUI_APP
+  pullImage $IMG_KHOJ_SANDBOX
+  pullImage $IMG_KHOJ_COMPUTER
+  pullImage $IMG_KHOJ_SERVER
+  pullImage $IMG_LOBECHAT_APP
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -31301,6 +31369,101 @@ COMFYUI_ADMIN_EMAIL_ADDRESS=
 COMFYUI_ADMIN_PASSWORD=
 # ComfyUI (Service Details) END
 
+# Langflow (Service Details) BEGIN
+LANGFLOW_INIT_ENV=true
+LANGFLOW_ADMIN_USERNAME=
+LANGFLOW_ADMIN_EMAIL_ADDRESS=
+LANGFLOW_ADMIN_PASSWORD=
+LANGFLOW_DATABASE_NAME=
+LANGFLOW_DATABASE_USER=
+LANGFLOW_DATABASE_USER_PASSWORD=
+# Langflow (Service Details) END
+
+# AnythingLLM (Service Details) BEGIN
+ANYTHINGLLM_INIT_ENV=true
+ANYTHINGLLM_ADMIN_USERNAME=
+ANYTHINGLLM_ADMIN_EMAIL_ADDRESS=
+ANYTHINGLLM_ADMIN_PASSWORD=
+ANYTHINGLLM_SIG_KEY=
+ANYTHINGLLM_SIG_SALT=
+ANYTHINGLLM_JWT_SECRET=
+# AnythingLLM (Service Details) END
+
+# Firecrawl (Service Details) BEGIN
+FIRECRAWL_INIT_ENV=true
+FIRECRAWL_DATABASE_NAME=
+FIRECRAWL_DATABASE_USER=
+FIRECRAWL_DATABASE_USER_PASSWORD=
+FIRECRAWL_REDIS_PASSWORD=
+FIRECRAWL_BULL_AUTH_KEY=
+FIRECRAWL_API_KEY=
+FIRECRAWL_RABBITMQ_USERNAME=
+FIRECRAWL_RABBITMQ_PASSWORD=
+# Firecrawl (Service Details) END
+
+# LibreChat (Service Details) BEGIN
+LIBRECHAT_INIT_ENV=true
+LIBRECHAT_ADMIN_USERNAME=
+LIBRECHAT_ADMIN_EMAIL_ADDRESS=
+LIBRECHAT_ADMIN_PASSWORD=
+LIBRECHAT_DATABASE_NAME=
+LIBRECHAT_DATABASE_USER=
+LIBRECHAT_DATABASE_USER_PASSWORD=
+LIBRECHAT_REDIS_PASSWORD=
+LIBRECHAT_MONGODB_DATABASE=
+LIBRECHAT_MONGODB_USER=
+LIBRECHAT_MONGODB_USER_PASSWORD=
+LIBRECHAT_CREDS_KEY=
+LIBRECHAT_CREDS_IV=
+LIBRECHAT_JWT_SECRET=
+LIBRECHAT_JWT_REFRESH_SECRET=
+LIBRECHAT_MEILI_MASTER_KEY=
+LIBRECHAT_OIDC_CLIENT_SECRET=
+# LibreChat (Service Details) END
+
+# OpenWebUI (Service Details) BEGIN
+OPENWEBUI_INIT_ENV=true
+OPENWEBUI_ADMIN_USERNAME=
+OPENWEBUI_ADMIN_EMAIL_ADDRESS=
+OPENWEBUI_ADMIN_PASSWORD=
+OPENWEBUI_DATABASE_NAME=
+OPENWEBUI_DATABASE_USER=
+OPENWEBUI_DATABASE_USER_PASSWORD=
+OPENWEBUI_REDIS_PASSWORD=
+OPENWEBUI_OIDC_CLIENT_ID=
+OPENWEBUI_OIDC_CLIENT_SECRET=
+OPENWEBUI_SECRET_KEY=
+# OpenWebUI (Service Details) END
+
+# Khoj (Service Details) BEGIN
+KHOJ_INIT_ENV=true
+KHOJ_ADMIN_USERNAME=
+KHOJ_ADMIN_EMAIL_ADDRESS=
+KHOJ_ADMIN_PASSWORD=
+KHOJ_DATABASE_NAME=
+KHOJ_DATABASE_USER=
+KHOJ_DATABASE_USER_PASSWORD=
+KHOJ_DJANGO_SECRET_KEY=
+# Khoj (Service Details) END
+
+# LobeChat (Service Details) BEGIN
+LOBECHAT_INIT_ENV=true
+LOBECHAT_ADMIN_USERNAME=
+LOBECHAT_ADMIN_EMAIL_ADDRESS=
+LOBECHAT_ADMIN_PASSWORD=
+LOBECHAT_DATABASE_NAME=
+LOBECHAT_DATABASE_USER=
+LOBECHAT_DATABASE_USER_PASSWORD=
+LOBECHAT_REDIS_PASSWORD=
+LOBECHAT_NEXTAUTH_SECRET=
+LOBECHAT_KEYVAULTS_SECRET=
+LOBECHAT_MINIO_LOBE_BUCKET=
+LOBECHAT_MINIO_ROOT_USER=
+LOBECHAT_MINIO_ROOT_PASSWORD=
+LOBECHAT_OIDC_CLIENT_ID=
+LOBECHAT_OIDC_CLIENT_SECRET=
+# LobeChat (Service Details) END
+
 # Service Details END
 EOFCF
 }
@@ -31406,9 +31569,9 @@ INPUT_OTHER_VPN_ALLOW_PORTS_DEFAULT=
 # INPUT Chain Defaults END
 
 # DOCKER-USER Chain Defaults BEGIN
-DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT=$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$UPNP_PORT,$PEERTUBE_RDP_PORT,$QBITTORRENT_PORT,$JELLYFIN_PORT,$JITSI_MEET_PORT,$JITSI_JVB_PORT,$JITSI_COLIBRI_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
-DOCKERUSER_PRIMARY_VPN_ALLOW_PORTS_DEFAULT=$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$JITSI_MEET_PORT,$JITSI_JVB_PORT,$JITSI_COLIBRI_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
-DOCKERUSER_OTHER_VPN_ALLOW_PORTS_DEFAULT=$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
+DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT=$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$UPNP_PORT,$PEERTUBE_RDP_PORT,$QBITTORRENT_PORT,$JELLYFIN_PORT,$JITSI_MEET_PORT,$JITSI_JVB_PORT,$JITSI_COLIBRI_PORT,$KHOJ_VNC_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
+DOCKERUSER_PRIMARY_VPN_ALLOW_PORTS_DEFAULT=$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$JITSI_MEET_PORT,$JITSI_JVB_PORT,$JITSI_COLIBRI_PORT,$KHOJ_VNC_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
+DOCKERUSER_OTHER_VPN_ALLOW_PORTS_DEFAULT=$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT,$KHOJ_VNC_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
 # DOCKER-USER Chain Defaults END
 
 EOFPT
@@ -33783,6 +33946,274 @@ function initServicesCredentials()
     COMFYUI_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar COMFYUI_ADMIN_PASSWORD $COMFYUI_ADMIN_PASSWORD
   fi
+  if [ -z "$LANGFLOW_ADMIN_USERNAME" ]; then
+    LANGFLOW_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_langflow"
+    updateConfigVar LANGFLOW_ADMIN_USERNAME $LANGFLOW_ADMIN_USERNAME
+  fi
+  if [ -z "$LANGFLOW_ADMIN_EMAIL_ADDRESS" ]; then
+    LANGFLOW_ADMIN_EMAIL_ADDRESS=$LANGFLOW_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar LANGFLOW_ADMIN_EMAIL_ADDRESS $LANGFLOW_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$LANGFLOW_ADMIN_PASSWORD" ]; then
+    LANGFLOW_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LANGFLOW_ADMIN_PASSWORD $LANGFLOW_ADMIN_PASSWORD
+  fi
+  if [ -z "$LANGFLOW_DATABASE_NAME" ]; then
+    LANGFLOW_DATABASE_NAME=langflowdb
+    updateConfigVar LANGFLOW_DATABASE_NAME $LANGFLOW_DATABASE_NAME
+  fi
+  if [ -z "$LANGFLOW_DATABASE_USER" ]; then
+    LANGFLOW_DATABASE_USER=langflow-user
+    updateConfigVar LANGFLOW_DATABASE_USER $LANGFLOW_DATABASE_USER
+  fi
+  if [ -z "$LANGFLOW_DATABASE_USER_PASSWORD" ]; then
+    LANGFLOW_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LANGFLOW_DATABASE_USER_PASSWORD $LANGFLOW_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$ANYTHINGLLM_ADMIN_USERNAME" ]; then
+    ANYTHINGLLM_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_anythingllm"
+    updateConfigVar ANYTHINGLLM_ADMIN_USERNAME $ANYTHINGLLM_ADMIN_USERNAME
+  fi
+  if [ -z "$ANYTHINGLLM_ADMIN_EMAIL_ADDRESS" ]; then
+    ANYTHINGLLM_ADMIN_EMAIL_ADDRESS=$ANYTHINGLLM_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar ANYTHINGLLM_ADMIN_EMAIL_ADDRESS $ANYTHINGLLM_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$ANYTHINGLLM_ADMIN_PASSWORD" ]; then
+    ANYTHINGLLM_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ANYTHINGLLM_ADMIN_PASSWORD $ANYTHINGLLM_ADMIN_PASSWORD
+  fi
+  if [ -z "$ANYTHINGLLM_SIG_KEY" ]; then
+    ANYTHINGLLM_SIG_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar ANYTHINGLLM_SIG_KEY $ANYTHINGLLM_SIG_KEY
+  fi
+  if [ -z "$ANYTHINGLLM_SIG_SALT" ]; then
+    ANYTHINGLLM_SIG_SALT=$(pwgen -c -n 32 1)
+    updateConfigVar ANYTHINGLLM_SIG_SALT $ANYTHINGLLM_SIG_SALT
+  fi
+  if [ -z "$ANYTHINGLLM_JWT_SECRET" ]; then
+    ANYTHINGLLM_JWT_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar ANYTHINGLLM_JWT_SECRET $ANYTHINGLLM_JWT_SECRET
+  fi
+  if [ -z "$FIRECRAWL_DATABASE_NAME" ]; then
+    FIRECRAWL_DATABASE_NAME=firecrawldb
+    updateConfigVar FIRECRAWL_DATABASE_NAME $FIRECRAWL_DATABASE_NAME
+  fi
+  if [ -z "$FIRECRAWL_DATABASE_USER" ]; then
+    FIRECRAWL_DATABASE_USER=firecrawl-user
+    updateConfigVar FIRECRAWL_DATABASE_USER $FIRECRAWL_DATABASE_USER
+  fi
+  if [ -z "$FIRECRAWL_DATABASE_USER_PASSWORD" ]; then
+    FIRECRAWL_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FIRECRAWL_DATABASE_USER_PASSWORD $FIRECRAWL_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$FIRECRAWL_REDIS_PASSWORD" ]; then
+    FIRECRAWL_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FIRECRAWL_REDIS_PASSWORD $FIRECRAWL_REDIS_PASSWORD
+  fi
+  if [ -z "$FIRECRAWL_BULL_AUTH_KEY" ]; then
+    FIRECRAWL_BULL_AUTH_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar FIRECRAWL_BULL_AUTH_KEY $FIRECRAWL_BULL_AUTH_KEY
+  fi
+  if [ -z "$FIRECRAWL_API_KEY" ]; then
+    FIRECRAWL_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar FIRECRAWL_API_KEY $FIRECRAWL_API_KEY
+  fi
+  if [ -z "$FIRECRAWL_RABBITMQ_USERNAME" ]; then
+    FIRECRAWL_RABBITMQ_USERNAME=$ADMIN_USERNAME_BASE"_firecrawl_rmq"
+    updateConfigVar FIRECRAWL_RABBITMQ_USERNAME $FIRECRAWL_RABBITMQ_USERNAME
+  fi
+  if [ -z "$FIRECRAWL_RABBITMQ_PASSWORD" ]; then
+    FIRECRAWL_RABBITMQ_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FIRECRAWL_RABBITMQ_PASSWORD $FIRECRAWL_RABBITMQ_PASSWORD
+  fi
+  if [ -z "$LIBRECHAT_ADMIN_USERNAME" ]; then
+    LIBRECHAT_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_librechat"
+    updateConfigVar LIBRECHAT_ADMIN_USERNAME $LIBRECHAT_ADMIN_USERNAME
+  fi
+  if [ -z "$LIBRECHAT_ADMIN_EMAIL_ADDRESS" ]; then
+    LIBRECHAT_ADMIN_EMAIL_ADDRESS=$LIBRECHAT_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar LIBRECHAT_ADMIN_EMAIL_ADDRESS $LIBRECHAT_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$LIBRECHAT_ADMIN_PASSWORD" ]; then
+    LIBRECHAT_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LIBRECHAT_ADMIN_PASSWORD $LIBRECHAT_ADMIN_PASSWORD
+  fi
+  if [ -z "$LIBRECHAT_DATABASE_NAME" ]; then
+    LIBRECHAT_DATABASE_NAME=librechatdb
+    updateConfigVar LIBRECHAT_DATABASE_NAME $LIBRECHAT_DATABASE_NAME
+  fi
+  if [ -z "$LIBRECHAT_DATABASE_USER" ]; then
+    LIBRECHAT_DATABASE_USER=librechat-user
+    updateConfigVar LIBRECHAT_DATABASE_USER $LIBRECHAT_DATABASE_USER
+  fi
+  if [ -z "$LIBRECHAT_DATABASE_USER_PASSWORD" ]; then
+    LIBRECHAT_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LIBRECHAT_DATABASE_USER_PASSWORD $LIBRECHAT_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$LIBRECHAT_REDIS_PASSWORD" ]; then
+    LIBRECHAT_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LIBRECHAT_REDIS_PASSWORD $LIBRECHAT_REDIS_PASSWORD
+  fi
+  if [ -z "$LIBRECHAT_MONGODB_USER" ]; then
+    LIBRECHAT_MONGODB_USER=librechat-user
+    updateConfigVar LIBRECHAT_MONGODB_USER $LIBRECHAT_MONGODB_USER
+  fi
+  if [ -z "$LIBRECHAT_MONGODB_USER_PASSWORD" ]; then
+    LIBRECHAT_MONGODB_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LIBRECHAT_MONGODB_USER_PASSWORD $LIBRECHAT_MONGODB_USER_PASSWORD
+  fi
+  if [ -z "$LIBRECHAT_MONGODB_DATABASE" ]; then
+    LIBRECHAT_MONGODB_DATABASE=librechatmongodb
+    updateConfigVar LIBRECHAT_MONGODB_DATABASE $LIBRECHAT_MONGODB_DATABASE
+  fi
+  if [ -z "$LIBRECHAT_CREDS_KEY" ]; then
+    LIBRECHAT_CREDS_KEY=$(openssl rand -hex 32)
+    updateConfigVar LIBRECHAT_CREDS_KEY $LIBRECHAT_CREDS_KEY
+  fi
+  if [ -z "$LIBRECHAT_CREDS_IV" ]; then
+    LIBRECHAT_CREDS_IV=$(openssl rand -hex 16)
+    updateConfigVar LIBRECHAT_CREDS_IV $LIBRECHAT_CREDS_IV
+  fi
+  if [ -z "$LIBRECHAT_JWT_SECRET" ]; then
+    LIBRECHAT_JWT_SECRET=$(openssl rand -hex 32)
+    updateConfigVar LIBRECHAT_JWT_SECRET $LIBRECHAT_JWT_SECRET
+  fi
+  if [ -z "$LIBRECHAT_JWT_REFRESH_SECRET" ]; then
+    LIBRECHAT_JWT_REFRESH_SECRET=$(openssl rand -hex 32)
+    updateConfigVar LIBRECHAT_JWT_REFRESH_SECRET $LIBRECHAT_JWT_REFRESH_SECRET
+  fi
+  if [ -z "$LIBRECHAT_MEILI_MASTER_KEY" ]; then
+    LIBRECHAT_MEILI_MASTER_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar LIBRECHAT_MEILI_MASTER_KEY $LIBRECHAT_MEILI_MASTER_KEY
+  fi
+  if [ -z "$LIBRECHAT_OIDC_CLIENT_SECRET" ]; then
+    LIBRECHAT_OIDC_CLIENT_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar LIBRECHAT_OIDC_CLIENT_SECRET $LIBRECHAT_OIDC_CLIENT_SECRET
+  fi
+  if [ -z "$OPENWEBUI_ADMIN_USERNAME" ]; then
+    OPENWEBUI_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_openwebui"
+    updateConfigVar OPENWEBUI_ADMIN_USERNAME $OPENWEBUI_ADMIN_USERNAME
+  fi
+  if [ -z "$OPENWEBUI_ADMIN_EMAIL_ADDRESS" ]; then
+    OPENWEBUI_ADMIN_EMAIL_ADDRESS=$OPENWEBUI_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar OPENWEBUI_ADMIN_EMAIL_ADDRESS $OPENWEBUI_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$OPENWEBUI_ADMIN_PASSWORD" ]; then
+    OPENWEBUI_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OPENWEBUI_ADMIN_PASSWORD $OPENWEBUI_ADMIN_PASSWORD
+  fi
+  if [ -z "$OPENWEBUI_DATABASE_NAME" ]; then
+    OPENWEBUI_DATABASE_NAME=openwebuidb
+    updateConfigVar OPENWEBUI_DATABASE_NAME $OPENWEBUI_DATABASE_NAME
+  fi
+  if [ -z "$OPENWEBUI_DATABASE_USER" ]; then
+    OPENWEBUI_DATABASE_USER=openwebui-user
+    updateConfigVar OPENWEBUI_DATABASE_USER $OPENWEBUI_DATABASE_USER
+  fi
+  if [ -z "$OPENWEBUI_DATABASE_USER_PASSWORD" ]; then
+    OPENWEBUI_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OPENWEBUI_DATABASE_USER_PASSWORD $OPENWEBUI_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$OPENWEBUI_REDIS_PASSWORD" ]; then
+    OPENWEBUI_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OPENWEBUI_REDIS_PASSWORD $OPENWEBUI_REDIS_PASSWORD
+  fi
+  if [ -z "$OPENWEBUI_OIDC_CLIENT_ID" ]; then
+    OPENWEBUI_OIDC_CLIENT_ID=openwebui
+    updateConfigVar OPENWEBUI_OIDC_CLIENT_ID $OPENWEBUI_OIDC_CLIENT_ID
+  fi
+  if [ -z "$OPENWEBUI_OIDC_CLIENT_SECRET" ]; then
+    OPENWEBUI_OIDC_CLIENT_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar OPENWEBUI_OIDC_CLIENT_SECRET $OPENWEBUI_OIDC_CLIENT_SECRET
+  fi
+  if [ -z "$OPENWEBUI_SECRET_KEY" ]; then
+    OPENWEBUI_SECRET_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar OPENWEBUI_SECRET_KEY $OPENWEBUI_SECRET_KEY
+  fi
+  if [ -z "$KHOJ_ADMIN_USERNAME" ]; then
+    KHOJ_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_khoj"
+    updateConfigVar KHOJ_ADMIN_USERNAME $KHOJ_ADMIN_USERNAME
+  fi
+  if [ -z "$KHOJ_ADMIN_EMAIL_ADDRESS" ]; then
+    KHOJ_ADMIN_EMAIL_ADDRESS=$KHOJ_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$KHOJ_ADMIN_PASSWORD" ]; then
+    KHOJ_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar KHOJ_ADMIN_PASSWORD $KHOJ_ADMIN_PASSWORD
+  fi
+  if [ -z "$KHOJ_DATABASE_NAME" ]; then
+    KHOJ_DATABASE_NAME=khojdb
+    updateConfigVar KHOJ_DATABASE_NAME $KHOJ_DATABASE_NAME
+  fi
+  if [ -z "$KHOJ_DATABASE_USER" ]; then
+    KHOJ_DATABASE_USER=khoj-user
+    updateConfigVar KHOJ_DATABASE_USER $KHOJ_DATABASE_USER
+  fi
+  if [ -z "$KHOJ_DATABASE_USER_PASSWORD" ]; then
+    KHOJ_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar KHOJ_DATABASE_USER_PASSWORD $KHOJ_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$KHOJ_DJANGO_SECRET_KEY" ]; then
+    KHOJ_DJANGO_SECRET_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar KHOJ_DJANGO_SECRET_KEY $KHOJ_DJANGO_SECRET_KEY
+  fi
+  if [ -z "$LOBECHAT_ADMIN_USERNAME" ]; then
+    LOBECHAT_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_lobechat"
+    updateConfigVar LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_USERNAME
+  fi
+  if [ -z "$LOBECHAT_ADMIN_EMAIL_ADDRESS" ]; then
+    LOBECHAT_ADMIN_EMAIL_ADDRESS=$LOBECHAT_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar LOBECHAT_ADMIN_EMAIL_ADDRESS $LOBECHAT_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$LOBECHAT_ADMIN_PASSWORD" ]; then
+    LOBECHAT_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LOBECHAT_ADMIN_PASSWORD $LOBECHAT_ADMIN_PASSWORD
+  fi
+  if [ -z "$LOBECHAT_DATABASE_NAME" ]; then
+    LOBECHAT_DATABASE_NAME=lobechatdb
+    updateConfigVar LOBECHAT_DATABASE_NAME $LOBECHAT_DATABASE_NAME
+  fi
+  if [ -z "$LOBECHAT_DATABASE_USER" ]; then
+    LOBECHAT_DATABASE_USER=lobechat-user
+    updateConfigVar LOBECHAT_DATABASE_USER $LOBECHAT_DATABASE_USER
+  fi
+  if [ -z "$LOBECHAT_DATABASE_USER_PASSWORD" ]; then
+    LOBECHAT_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LOBECHAT_DATABASE_USER_PASSWORD $LOBECHAT_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$LOBECHAT_REDIS_PASSWORD" ]; then
+    LOBECHAT_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LOBECHAT_REDIS_PASSWORD $LOBECHAT_REDIS_PASSWORD
+  fi
+  if [ -z "$LOBECHAT_NEXTAUTH_SECRET" ]; then
+    LOBECHAT_NEXTAUTH_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar LOBECHAT_NEXTAUTH_SECRET $LOBECHAT_NEXTAUTH_SECRET
+  fi
+  if [ -z "$LOBECHAT_KEYVAULTS_SECRET" ]; then
+    LOBECHAT_KEYVAULTS_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar LOBECHAT_KEYVAULTS_SECRET $LOBECHAT_KEYVAULTS_SECRET
+  fi
+  if [ -z "$LOBECHAT_MINIO_LOBE_BUCKET" ]; then
+    LOBECHAT_MINIO_LOBE_BUCKET=lobechat
+    updateConfigVar LOBECHAT_MINIO_LOBE_BUCKET $LOBECHAT_MINIO_LOBE_BUCKET
+  fi
+  if [ -z "$LOBECHAT_MINIO_ROOT_USER" ]; then
+    LOBECHAT_MINIO_ROOT_USER=lobechatadmin
+    updateConfigVar LOBECHAT_MINIO_ROOT_USER $LOBECHAT_MINIO_ROOT_USER
+  fi
+  if [ -z "$LOBECHAT_MINIO_ROOT_PASSWORD" ]; then
+    LOBECHAT_MINIO_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LOBECHAT_MINIO_ROOT_PASSWORD $LOBECHAT_MINIO_ROOT_PASSWORD
+  fi
+  if [ -z "$LOBECHAT_OIDC_CLIENT_ID" ]; then
+    LOBECHAT_OIDC_CLIENT_ID=lobechat
+    updateConfigVar LOBECHAT_OIDC_CLIENT_ID $LOBECHAT_OIDC_CLIENT_ID
+  fi
+  if [ -z "$LOBECHAT_OIDC_CLIENT_SECRET" ]; then
+    LOBECHAT_OIDC_CLIENT_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar LOBECHAT_OIDC_CLIENT_SECRET $LOBECHAT_OIDC_CLIENT_SECRET
+  fi
 #ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
   if [ -z "$CLIENTDNS_USER1_ADMIN_USERNAME" ]; then
@@ -33994,6 +34425,18 @@ function checkCreateNonbackupDirByStack()
     "localai")
       mkdir -p $HSHQ_NONBACKUP_DIR/aimodels
       ;;
+    "firecrawl")
+      mkdir -p $HSHQ_NONBACKUP_DIR/firecrawl/redis
+      ;;
+    "librechat")
+      mkdir -p $HSHQ_NONBACKUP_DIR/librechat/redis
+      ;;
+    "openwebui")
+      mkdir -p $HSHQ_NONBACKUP_DIR/openwebui/redis
+      ;;
+    "lobechat")
+      mkdir -p $HSHQ_NONBACKUP_DIR/lobechat/redis
+      ;;
 #ADD_NEW_NONBACKUP_DIRS_HERE
     *)
       ;;
@@ -34035,9 +34478,6 @@ function initServiceVars()
   checkAddSvc "SVCD_ACTIVEPIECES_APP=activepieces,activepieces,primary,admin,ActivePieces,activepieces,hshq"
   checkAddSvc "SVCD_ADGUARD=adguard,adguard,primary,admin,AdguardHome,adguard,hshq"
   checkAddSvc "SVCD_ADMINER=adminer,adminer,primary,admin,Adminer,adminer,hshq"
-  checkAddSvc "SVCD_AISTACK_MINDSDB_APP=aistack,mindsdb,primary,admin,MindsDB,mindsdb,hshq"
-  checkAddSvc "SVCD_AISTACK_LANGFUSE=aistack,langfuse,primary,admin,Langfuse,langfuse,hshq"
-  checkAddSvc "SVCD_AISTACK_OPENWEBUI=aistack,openwebui,primary,user,OpenWebUI,openwebui,hshq"
   checkAddSvc "SVCD_AUDIOBOOKSHELF=audiobookshelf,audiobookshelf,other,user,Audiobookshelf,audiobookshelf,le"
   checkAddSvc "SVCD_AUTHELIA=authelia,authelia,other,user,Authelia,authelia,hshq"
   checkAddSvc "SVCD_AUTOMATISCH_APP=automatisch,automatisch,primary,admin,Automatisch,automatisch,hshq"
@@ -34196,6 +34636,16 @@ function initServiceVars()
   checkAddSvc "SVCD_LOCALAI_RECALL=localai,localrecall,primary,user,LocalRecall,localrecall,hshq"
   checkAddSvc "SVCD_LOCALAI_AGI=localai,localagi,primary,user,LocalAGI,localagi,hshq"
   checkAddSvc "SVCD_COMFYUI_APP=comfyui,comfyui,primary,user,ComfyUI,comfyui,hshq"
+  checkAddSvc "SVCD_LANGFLOW_APP=langflow,langflow,primary,user,Langflow,langflow,hshq"
+  checkAddSvc "SVCD_ANYTHINGLLM_APP=anythingllm,anythingllm,primary,user,AnythingLLM,anythingllm,hshq"
+  checkAddSvc "SVCD_PERPLEXICA_APP=perplexica,perplexica,primary,user,Perplexica,perplexica,hshq"
+  checkAddSvc "SVCD_FIRECRAWL_API=firecrawl,firecrawl,primary,user,Firecrawl,firecrawl,hshq"
+  checkAddSvc "SVCD_LIBRECHAT_APP=librechat,librechat,primary,user,LibreChat,librechat,hshq"
+  checkAddSvc "SVCD_CRAWL4AI_APP=crawl4ai,crawl4ai,primary,user,Crawl4AI,crawl4ai,hshq"
+  checkAddSvc "SVCD_OLLAMA_SERVER=ollama,ollama,home,admin,Ollama,ollama,hshq"
+  checkAddSvc "SVCD_OPENWEBUI_APP=openwebui,openwebui,primary,user,Open WebUI,openwebui,hshq"
+  checkAddSvc "SVCD_KHOJ_SERVER=khoj,khoj,primary,user,Khoj,khoj,hshq"
+  checkAddSvc "SVCD_LOBECHAT_APP=lobechat,lobechat,primary,user,LobeChat,lobechat,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -34442,6 +34892,26 @@ function installStackByName()
       installLocalAI $is_integrate ;;
     comfyui)
       installComfyUI $is_integrate ;;
+    langflow)
+      installLangflow $is_integrate ;;
+    anythingllm)
+      installAnythingLLM $is_integrate ;;
+    perplexica)
+      installPerplexica $is_integrate ;;
+    firecrawl)
+      installFirecrawl $is_integrate ;;
+    librechat)
+      installLibreChat $is_integrate ;;
+    crawl4ai)
+      installCrawl4AI $is_integrate ;;
+    ollama)
+      installOllama $is_integrate ;;
+    openwebui)
+      installOpenWebUI $is_integrate ;;
+    khoj)
+      installKhoj $is_integrate ;;
+    lobechat)
+      installLobeChat $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -34702,6 +35172,26 @@ function performUpdateStackByName()
       performUpdateLocalAI ;;
     comfyui)
       performUpdateComfyUI ;;
+    langflow)
+      performUpdateLangflow ;;
+    anythingllm)
+      performUpdateAnythingLLM ;;
+    perplexica)
+      performUpdatePerplexica ;;
+    firecrawl)
+      performUpdateFirecrawl ;;
+    librechat)
+      performUpdateLibreChat ;;
+    crawl4ai)
+      performUpdateCrawl4AI ;;
+    ollama)
+      performUpdateOllama ;;
+    openwebui)
+      performUpdateOpenWebUI ;;
+    khoj)
+      performUpdateKhoj ;;
+    lobechat)
+      performUpdateLobeChat ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -34791,6 +35281,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CONTROLR_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_AKAUNTING_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_OLLAMA_SERVER.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_BYPASS_HERE
   retval="${retval}# Authelia bypass END\n"
   retval="${retval}      policy: bypass\n"
@@ -34832,6 +35323,15 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_LOCALAI_RECALL.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LOCALAI_AGI.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_COMFYUI_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_LANGFLOW_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_ANYTHINGLLM_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_PERPLEXICA_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_FIRECRAWL_API.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_CRAWL4AI_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_PRIMARY_HERE
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -34960,9 +35460,6 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HOMARR}-Admin" https://$SUB_HOMARR.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $HOMARR_ADMIN_USERNAME $HOMARR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MATOMO}-Admin" https://$SUB_MATOMO.$HOMESERVER_DOMAIN/index.php $HOMESERVER_ABBREV $MATOMO_ADMIN_USERNAME $MATOMO_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PASTEFY}-Admin" https://$SUB_PASTEFY.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $PASTEFY_ADMIN_USERNAME $PASTEFY_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_MINDSDB_APP}-Admin" https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_MINDSDB_ADMIN_USERNAME $AISTACK_MINDSDB_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_LANGFUSE}-Admin" https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN/auth/sign-in $HOMESERVER_ABBREV $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS $AISTACK_LANGFUSE_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_OPENWEBUI}-Admin" https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/auth $HOMESERVER_ABBREV $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PIXELFED}-Admin" "\"https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/i/auth/sudo\"" $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_YAMTRACK}-Admin" https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN/accounts/login $HOMESERVER_ABBREV $YAMTRACK_ADMIN_USERNAME $YAMTRACK_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_SONARR}-Admin" https://$SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SONARR_ADMIN_USERNAME $SONARR_ADMIN_PASSWORD)"\n"
@@ -35013,6 +35510,12 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KOPIA_APP}-Admin" https://$SUB_KOPIA_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KOPIA_ADMIN_USERNAME $KOPIA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LOCALAI_SERVER}-Admin" https://$SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOCALAI_ADMIN_USERNAME $LOCALAI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_COMFYUI_APP}-Admin" https://$SUB_COMFYUI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $COMFYUI_ADMIN_USERNAME $COMFYUI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LANGFLOW_APP}-Admin" https://$SUB_LANGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LANGFLOW_ADMIN_USERNAME $LANGFLOW_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ANYTHINGLLM_APP}-Admin" https://$SUB_ANYTHINGLLM_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $ANYTHINGLLM_ADMIN_USERNAME $ANYTHINGLLM_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LIBRECHAT_APP}-Admin" https://$SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LIBRECHAT_ADMIN_EMAIL_ADDRESS $LIBRECHAT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENWEBUI_APP}-Admin" https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENWEBUI_ADMIN_USERNAME $OPENWEBUI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
 #ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
@@ -35116,9 +35619,6 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HOMARR}-Admin" https://$SUB_HOMARR.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $HOMARR_ADMIN_USERNAME $HOMARR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MATOMO}-Admin" https://$SUB_MATOMO.$HOMESERVER_DOMAIN/index.php $HOMESERVER_ABBREV $MATOMO_ADMIN_USERNAME $MATOMO_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PASTEFY}-Admin" https://$SUB_PASTEFY.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $PASTEFY_ADMIN_USERNAME $PASTEFY_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_MINDSDB_APP}-Admin" https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_MINDSDB_ADMIN_USERNAME $AISTACK_MINDSDB_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_LANGFUSE}-Admin" https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN/auth/sign-in $HOMESERVER_ABBREV $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS $AISTACK_LANGFUSE_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_OPENWEBUI}-Admin" https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/auth $HOMESERVER_ABBREV $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PIXELFED}-Admin" "\"https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/i/auth/sudo\"" $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_YAMTRACK}-Admin" https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN/accounts/login $HOMESERVER_ABBREV $YAMTRACK_ADMIN_USERNAME $YAMTRACK_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SERVARR_SONARR}-Admin" https://$SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SONARR_ADMIN_USERNAME $SONARR_ADMIN_PASSWORD)"\n"
@@ -35169,6 +35669,12 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KOPIA_APP}-Admin" https://$SUB_KOPIA_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KOPIA_ADMIN_USERNAME $KOPIA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LOCALAI_SERVER}-Admin" https://$SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOCALAI_ADMIN_USERNAME $LOCALAI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_COMFYUI_APP}-Admin" https://$SUB_COMFYUI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $COMFYUI_ADMIN_USERNAME $COMFYUI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LANGFLOW_APP}-Admin" https://$SUB_LANGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LANGFLOW_ADMIN_USERNAME $LANGFLOW_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ANYTHINGLLM_APP}-Admin" https://$SUB_ANYTHINGLLM_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $ANYTHINGLLM_ADMIN_USERNAME $ANYTHINGLLM_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LIBRECHAT_APP}-Admin" https://$SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LIBRECHAT_ADMIN_EMAIL_ADDRESS $LIBRECHAT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENWEBUI_APP}-Admin" https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENWEBUI_ADMIN_USERNAME $OPENWEBUI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
 #ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
@@ -35638,17 +36144,47 @@ function getHeimdallOrderFromSub()
     "$SUB_KOPIA_APP")
       order_num=133
       ;;
-    "$SUB_LOCALAI_SERVER")
+    "$SUB_OLLAMA_SERVER")
       order_num=134
       ;;
-    "$SUB_LOCALAI_RECALL")
+    "$SUB_OPENWEBUI_APP")
       order_num=135
       ;;
-    "$SUB_LOCALAI_AGI")
+    "$SUB_LOCALAI_SERVER")
       order_num=136
       ;;
-    "$SUB_COMFYUI_APP")
+    "$SUB_LOCALAI_RECALL")
       order_num=137
+      ;;
+    "$SUB_LOCALAI_AGI")
+      order_num=138
+      ;;
+    "$SUB_COMFYUI_APP")
+      order_num=139
+      ;;
+    "$SUB_LANGFLOW_APP")
+      order_num=140
+      ;;
+    "$SUB_ANYTHINGLLM_APP")
+      order_num=141
+      ;;
+    "$SUB_PERPLEXICA_APP")
+      order_num=142
+      ;;
+    "$SUB_FIRECRAWL_API")
+      order_num=143
+      ;;
+    "$SUB_LIBRECHAT_APP")
+      order_num=144
+      ;;
+    "$SUB_CRAWL4AI_APP")
+      order_num=145
+      ;;
+    "$SUB_KHOJ_SERVER")
+      order_num=146
+      ;;
+    "$SUB_LOBECHAT_APP")
+      order_num=147
       ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
@@ -35700,22 +36236,22 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,comfyui
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,aistack,khoj,lobechat
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
-  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
-  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
-  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
+  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
+  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
+  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
 #INIT_SERVICE_DEFAULTS_END
 }
 
-getScriptImageByContainerName()
+function getScriptImageByContainerName()
 {
   case "$1" in
     "portainer")
@@ -36294,9 +36830,6 @@ getScriptImageByContainerName()
     "aistack-langfuse")
       container_image=$IMG_AISTACK_LANGFUSE
       ;;
-    "aistack-ollama-server")
-      container_image=$IMG_AISTACK_OLLAMA_SERVER
-      ;;
     "aistack-openwebui")
       container_image=$IMG_AISTACK_OPENWEBUI
       ;;
@@ -36798,6 +37331,93 @@ getScriptImageByContainerName()
     "comfyui-app")
       container_image=$IMG_COMFYUI_APP
       ;;
+    "langflow-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "langflow-app")
+      container_image=$IMG_LANGFLOW_APP
+      ;;
+    "anythingllm-app")
+      container_image=$IMG_ANYTHINGLLM_APP
+      ;;
+    "perplexica-app")
+      container_image=$IMG_PERPLEXICA_APP
+      ;;
+    "firecrawl-db")
+      container_image=$IMG_FIRECRAWL_DB
+      ;;
+    "firecrawl-playwright")
+      container_image=$IMG_FIRECRAWL_PLAYWRIGHT
+      ;;
+    "firecrawl-api")
+      container_image=$IMG_FIRECRAWL_API
+      ;;
+    "firecrawl-rabbitmq")
+      container_image=mirror.gcr.io/rabbitmq:4.1.4-management-alpine
+      ;;
+    "firecrawl-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "librechat-db")
+      container_image=mirror.gcr.io/pgvector/pgvector:0.8.0-pg15-trixie
+      ;;
+    "librechat-mongodb")
+      container_image=mirror.gcr.io/mongo:8.0.17
+      ;;
+    "librechat-app")
+      container_image=$IMG_LIBRECHAT_APP
+      ;;
+    "librechat-meilisearch")
+      container_image=mirror.gcr.io/getmeili/meilisearch:v1.31.0
+      ;;
+    "librechat-ragapi")
+      container_image=$IMG_LIBRECHAT_RAGAPI
+      ;;
+    "librechat-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "crawl4ai-app")
+      container_image=$IMG_CRAWL4AI_APP
+      ;;
+    "crawl4ai-proxy")
+      container_image=$IMG_CRAWL4AI_PROXY
+      ;;
+    "ollama-server")
+      container_image=$IMG_OLLAMA_SERVER
+      ;;
+    "openwebui-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "openwebui-app")
+      container_image=$IMG_OPENWEBUI_APP
+      ;;
+    "openwebui-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "khoj-db")
+      container_image=mirror.gcr.io/pgvector/pgvector:0.8.1-pg16-bookworm
+      ;;
+    "khoj-sandbox")
+      container_image=$IMG_KHOJ_SANDBOX
+      ;;
+    "khoj-computer")
+      container_image=$IMG_KHOJ_COMPUTER
+      ;;
+    "khoj-server")
+      container_image=$IMG_KHOJ_SERVER
+      ;;
+    "lobechat-db")
+      container_image=mirror.gcr.io/pgvector/pgvector:pg17
+      ;;
+    "lobechat-app")
+      container_image=$IMG_LOBECHAT_APP
+      ;;
+    "lobechat-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "lobechat-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
@@ -36892,8 +37512,14 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Kopia" "KOPIA_INIT_ENV=false,KOPIA_ADMIN_USERNAME=,KOPIA_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "LocalAI" "LOCALAI_INIT_ENV=false,LOCALAI_ADMIN_USERNAME=,LOCALAI_ADMIN_EMAIL_ADDRESS=,LOCALAI_ADMIN_PASSWORD=,LOCALAI_API_KEY=,LOCALAI_SSHBOX_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "ComfyUI" "COMFYUI_INIT_ENV=false,COMFYUI_ADMIN_USERNAME=,COMFYUI_ADMIN_EMAIL_ADDRESS=,COMFYUI_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Langflow" "LANGFLOW_INIT_ENV=false,LANGFLOW_ADMIN_USERNAME=,LANGFLOW_ADMIN_EMAIL_ADDRESS=,LANGFLOW_ADMIN_PASSWORD=,LANGFLOW_DATABASE_NAME=,LANGFLOW_DATABASE_USER=,LANGFLOW_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "AnythingLLM" "ANYTHINGLLM_INIT_ENV=false,ANYTHINGLLM_ADMIN_USERNAME=,ANYTHINGLLM_ADMIN_EMAIL_ADDRESS=,ANYTHINGLLM_ADMIN_PASSWORD=,ANYTHINGLLM_SIG_KEY=,ANYTHINGLLM_SIG_SALT=,ANYTHINGLLM_JWT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Firecrawl" "FIRECRAWL_INIT_ENV=false,FIRECRAWL_DATABASE_NAME=,FIRECRAWL_DATABASE_USER=,FIRECRAWL_DATABASE_USER_PASSWORD=,FIRECRAWL_REDIS_PASSWORD=,FIRECRAWL_BULL_AUTH_KEY=,FIRECRAWL_API_KEY=,FIRECRAWL_RABBITMQ_USERNAME=,FIRECRAWL_RABBITMQ_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "LibreChat" "LIBRECHAT_INIT_ENV=false,LIBRECHAT_ADMIN_USERNAME=,LIBRECHAT_ADMIN_EMAIL_ADDRESS=,LIBRECHAT_ADMIN_PASSWORD=,LIBRECHAT_DATABASE_NAME=,LIBRECHAT_DATABASE_USER=,LIBRECHAT_DATABASE_USER_PASSWORD=,LIBRECHAT_REDIS_PASSWORD=,LIBRECHAT_MONGODB_DATABASE=,LIBRECHAT_MONGODB_USER=,LIBRECHAT_MONGODB_USER_PASSWORD=,LIBRECHAT_CREDS_KEY=,LIBRECHAT_CREDS_IV=,LIBRECHAT_JWT_SECRET=,LIBRECHAT_JWT_REFRESH_SECRET=,LIBRECHAT_MEILI_MASTER_KEY=,LIBRECHAT_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "OpenWebUI" "OPENWEBUI_INIT_ENV=false,OPENWEBUI_ADMIN_USERNAME=,OPENWEBUI_ADMIN_EMAIL_ADDRESS=,OPENWEBUI_ADMIN_PASSWORD=,OPENWEBUI_DATABASE_NAME=,OPENWEBUI_DATABASE_USER=,OPENWEBUI_DATABASE_USER_PASSWORD=,OPENWEBUI_REDIS_PASSWORD=,OPENWEBUI_OIDC_CLIENT_ID=,OPENWEBUI_OIDC_CLIENT_SECRET=,OPENWEBUI_SECRET_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "Khoj" "KHOJ_INIT_ENV=false,KHOJ_ADMIN_USERNAME=,KHOJ_ADMIN_EMAIL_ADDRESS=,KHOJ_ADMIN_PASSWORD=,KHOJ_DATABASE_NAME=,KHOJ_DATABASE_USER=,KHOJ_DATABASE_USER_PASSWORD=,KHOJ_DJANGO_SECRET_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "LobeChat" "LOBECHAT_INIT_ENV=false,LOBECHAT_ADMIN_USERNAME=,LOBECHAT_ADMIN_EMAIL_ADDRESS=,LOBECHAT_ADMIN_PASSWORD=,LOBECHAT_DATABASE_NAME=,LOBECHAT_DATABASE_USER=,LOBECHAT_DATABASE_USER_PASSWORD=,LOBECHAT_REDIS_PASSWORD=,LOBECHAT_NEXTAUTH_SECRET=,LOBECHAT_KEYVAULTS_SECRET=,LOBECHAT_MINIO_LOBE_BUCKET=,LOBECHAT_MINIO_ROOT_USER=,LOBECHAT_MINIO_ROOT_PASSWORD=,LOBECHAT_OIDC_CLIENT_ID=,LOBECHAT_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
 #ADD_NEW_ADD_SVC_CONFIG_HERE
-
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_USERNAME=" $CONFIG_FILE false
@@ -36929,7 +37555,7 @@ function importDBs()
 
 function getHomeServerPortsList()
 {
-  portsList="$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$COTURN_COMMS_MIN_PORT:$COTURN_COMMS_MAX_PORT,$JELLYFIN_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$PEERTUBE_RDP_PORT,$QBITTORRENT_PORT,$SYNCTHING_DISC_PORT,$SYNCTHING_SYNC_PORT,$UPNP_PORT,$VNC_SERVER_PORT,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5"
+  portsList="$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$COTURN_COMMS_MIN_PORT:$COTURN_COMMS_MAX_PORT,$JELLYFIN_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT,$KHOJ_VNC_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$PEERTUBE_RDP_PORT,$QBITTORRENT_PORT,$SYNCTHING_DISC_PORT,$SYNCTHING_SYNC_PORT,$UPNP_PORT,$VNC_SERVER_PORT,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5"
   echo "$portsList"
 }
 
@@ -36979,6 +37605,12 @@ function checkIsCustomImage()
       echo "true"
       ;;
     "hshq/mindsdb:v2")
+      echo "true"
+      ;;
+    "hshq/sshbox:v1")
+      echo "true"
+      ;;
+    "hshq/firecrawl-db:v1")
       echo "true"
       ;;
     *)
@@ -42301,6 +42933,7 @@ function mfMailuFixRedisCompose()
   replaceText=$replaceText">>>>security_opt:\n"
   replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
   replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>>>--appendonly yes\n"
   replaceText=$replaceText">>>>networks:\n"
   replaceText=$replaceText">>>>>>- dock-mailu-ext-net\n"
   replaceText=$replaceText">>>>volumes:\n"
@@ -47702,6 +48335,7 @@ services:
     networks:
       - int-searxng-net
       - dock-ext-net
+      - dock-aipriv-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -47746,6 +48380,9 @@ networks:
     external: true
   dock-ext-net:
     name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
     external: true
   int-searxng-net:
     driver: bridge
@@ -62793,6 +63430,10 @@ function performUpdateSnippetBox()
 function installAIStack()
 {
   set +e
+  if true; then
+    echo "ERROR: This stack is deprecated, returning..."
+    return 1
+  fi
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory aistack "AIStack"
   cdRes=$?
@@ -62815,14 +63456,6 @@ function installAIStack()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName aistack-ollama-server)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
-  pullImage $(getScriptImageByContainerName aistack-openwebui)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
   pullImage $(getScriptImageByContainerName aistack-redis)
   if [ $? -ne 0 ]; then
     return 1
@@ -62839,10 +63472,6 @@ function installAIStack()
   mkdir $HSHQ_STACKS_DIR/aistack/mindsdb/dbexport
   mkdir $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport
   mkdir $HSHQ_STACKS_DIR/aistack/otel
-  mkdir $HSHQ_STACKS_DIR/aistack/ollama
-  mkdir $HSHQ_STACKS_DIR/aistack/ollama/code
-  mkdir $HSHQ_STACKS_DIR/aistack/ollama/root
-  mkdir $HSHQ_STACKS_DIR/aistack/openwebui
   mkdir $HSHQ_NONBACKUP_DIR/aistack
   mkdir $HSHQ_NONBACKUP_DIR/aistack/redis
   chmod 777 $HSHQ_STACKS_DIR/aistack/mindsdb/dbexport
@@ -62850,11 +63479,7 @@ function installAIStack()
   set +e
   addUserMailu alias $AISTACK_MINDSDB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   addUserMailu alias $AISTACK_LANGFUSE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-  addUserMailu alias $AISTACK_OPENWEBUI_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigAIStack
-  oidcBlock=$(cat $HOME/openwebui.oidc)
-  rm -f $HOME/openwebui.oidc
-  insertOIDCClientAuthelia aistack-openwebui "$oidcBlock"
   cd ~
   docker compose -f $HOME/aistack-compose-tmp.yml up -d
   echo "Waiting at least 5 seconds before continuing..."
@@ -62899,7 +63524,7 @@ function installAIStack()
     return $retVal
   fi
   if ! [ "$AISTACK_INIT_ENV" = "true" ]; then
-    sendEmail -s "AIStack Login Info" -b "MindsDB Admin Username: $AISTACK_MINDSDB_ADMIN_USERNAME\nMindsDB Admin Password: $AISTACK_MINDSDB_ADMIN_PASSWORD\nLangfuse Admin Username: $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS\nLangfuse Admin Password: $AISTACK_LANGFUSE_ADMIN_PASSWORD\nOpenWebUI Admin Username: $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS\nOpenWebUI Admin Password: $AISTACK_OPENWEBUI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "AIStack Login Info" -b "MindsDB Admin Username: $AISTACK_MINDSDB_ADMIN_USERNAME\nMindsDB Admin Password: $AISTACK_MINDSDB_ADMIN_PASSWORD\nLangfuse Admin Username: $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS\nLangfuse Admin Password: $AISTACK_LANGFUSE_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     AISTACK_INIT_ENV=true
     updateConfigVar AISTACK_INIT_ENV $AISTACK_INIT_ENV
   fi
@@ -62937,26 +63562,9 @@ function installAIStack()
   updateCaddyBlocks $SUB_AISTACK_LANGFUSE $MANAGETLS_AISTACK_LANGFUSE "$is_integrate_hshq" $NETDEFAULT_AISTACK_LANGFUSE "$inner_block"
   insertSubAuthelia $SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
-  inner_block=""
-  inner_block=$inner_block">>https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN {\n"
-  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
-  inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://aistack-openwebui:8080 {\n"
-  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
-  inner_block=$inner_block">>>>>>}\n"
-  inner_block=$inner_block">>>>}\n"
-  inner_block=$inner_block">>>>respond 404\n"
-  inner_block=$inner_block">>}"
-  updateCaddyBlocks $SUB_AISTACK_OPENWEBUI $MANAGETLS_AISTACK_OPENWEBUI "$is_integrate_hshq" $NETDEFAULT_AISTACK_OPENWEBUI "$inner_block"
-  insertSubAuthelia $SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
-
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll aistack "$FMLNAME_AISTACK_MINDSDB_APP" $USERTYPE_AISTACK_MINDSDB_APP "https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN" "mindsdb.png" "$(getHeimdallOrderFromSub $SUB_AISTACK_MINDSDB_APP $USERTYPE_AISTACK_MINDSDB_APP)"
     insertEnableSvcAll aistack "$FMLNAME_AISTACK_LANGFUSE" $USERTYPE_AISTACK_LANGFUSE "https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN" "langfuse.png" "$(getHeimdallOrderFromSub $SUB_AISTACK_LANGFUSE $USERTYPE_AISTACK_LANGFUSE)"
-    insertEnableSvcAll aistack "$FMLNAME_AISTACK_OPENWEBUI" $USERTYPE_AISTACK_OPENWEBUI "https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN" "openwebui.png" "$(getHeimdallOrderFromSub $SUB_AISTACK_OPENWEBUI $USERTYPE_AISTACK_OPENWEBUI)"
     restartAllCaddyContainers
     checkAddDBConnection false aistack-mindsdb "$FMLNAME_AISTACK_MINDSDB_APP" postgres aistack-mindsdb-db $AISTACK_MINDSDB_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
     checkAddDBConnection false aistack-langfuse "$FMLNAME_AISTACK_LANGFUSE" postgres aistack-mindsdb-db $AISTACK_LANGFUSE_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
@@ -62980,8 +63588,6 @@ function outputConfigAIStack()
 {
   AISTACK_LANGFUSE_PUBKEY=$(pwgen -c -n 32 1)
   AISTACK_LANGFUSE_SECRETKEY=$(pwgen -c -n 32 1)
-  AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET | tr -d ':\n')
-  randuid=$(uuidgen)
   cat <<EOFMT > $HOME/aistack-compose-tmp.yml
 $STACK_VERSION_PREFIX aistack $(getScriptStackVersion aistack)
 
@@ -63075,52 +63681,6 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-
-  aistack-ollama-server:
-    image: $(getScriptImageByContainerName aistack-ollama-server)
-    container_name: aistack-ollama-server
-    hostname: aistack-ollama-server
-    restart: unless-stopped
-    env_file: aistack.env
-    tty: true
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - aistack-mindsdb-db
-    networks:
-      - int-aistack-net
-      - dock-ext-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - ${HSHQ_STACKS_DIR}/aistack/ollama/code:/code
-      - ${HSHQ_STACKS_DIR}/aistack/ollama/root:/root/.ollama
-
-  aistack-openwebui:
-    image: $(getScriptImageByContainerName aistack-openwebui)
-    container_name: aistack-openwebui
-    hostname: aistack-openwebui
-    restart: unless-stopped
-    env_file: aistack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - aistack-mindsdb-db
-      - aistack-ollama-server
-    networks:
-      - int-aistack-net
-      - dock-ext-net
-      - dock-proxy-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - ${HSHQ_STACKS_DIR}/aistack/openwebui:/app/backend/data
 
   aistack-redis:
     image: $(getScriptImageByContainerName aistack-redis)
@@ -63291,50 +63851,6 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 
-  aistack-ollama-server:
-    image: $(getScriptImageByContainerName aistack-ollama-server)
-    container_name: aistack-ollama-server
-    hostname: aistack-ollama-server
-    restart: unless-stopped
-    env_file: stack.env
-    tty: true
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - int-aistack-net
-      - dock-ext-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/aistack/ollama/code:/code
-      - \${PORTAINER_HSHQ_STACKS_DIR}/aistack/ollama/root:/root/.ollama
-
-  aistack-openwebui:
-    image: $(getScriptImageByContainerName aistack-openwebui)
-    container_name: aistack-openwebui
-    hostname: aistack-openwebui
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - aistack-ollama-server
-    networks:
-      - int-aistack-net
-      - dock-ext-net
-      - dock-proxy-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/aistack/openwebui:/app/backend/data
-
   aistack-redis:
     image: $(getScriptImageByContainerName aistack-redis)
     container_name: aistack-redis
@@ -63427,48 +63943,7 @@ LANGFUSE_INIT_USER_PASSWORD=$AISTACK_LANGFUSE_ADMIN_PASSWORD
 POSTGRES_USER=$AISTACK_MINDSDB_DATABASE_USER
 POSTGRES_PASSWORD=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
 POSTGRES_DB=$AISTACK_MINDSDB_DATABASE_NAME
-OLLAMA_BASE_URL=http://aistack-ollama-server:11434
-OLLAMA_HOST=0.0.0.0
-WEBUI_AUTH=True
-ENABLE_SIGNUP=False
-ENABLE_LOGIN_FORM=True
-DEFAULT_USER_ROLE=user
-WEBUI_URL=https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN
-WEBUI_SECRET_KEY=$(pwgen -c -n 32 1)
-ENABLE_OAUTH_SIGNUP=true
-ADMIN_EMAIL=$AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS
-ENV=prod
-OAUTH_MERGE_ACCOUNTS_BY_EMAIL=true
-OAUTH_PROVIDER_NAME=Authelia
-OPENID_PROVIDER_URL=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/.well-known/openid-configuration
-OAUTH_CLIENT_ID=$AISTACK_OPENWEBUI_OIDC_CLIENT_ID
-OAUTH_CLIENT_SECRET=$AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET
-OAUTH_SCOPES=openid groups email profile
-OPENID_REDIRECT_URI=https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/oauth/oidc/callback
-REDIS_HOST=aistack-redis
-REDIS_PORT=6379
-REDIS_PASSWORD=$AISTACK_REDIS_PASSWORD
-REDIS_CONNECTION_STRING=redis://:$AISTACK_REDIS_PASSWORD@aistack-redis:6379/0
-PYTHON_VER=python3.11
 EOFMT
-  cat <<EOFIM > $HOME/openwebui.oidc
-# Authelia OIDC Client aistack-openwebui BEGIN
-      - client_id: $AISTACK_OPENWEBUI_OIDC_CLIENT_ID
-        client_name: OpenWebUI
-        client_secret: '$AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET_HASH'
-        public: false
-        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
-        redirect_uris:
-          - https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/oauth/oidc/callback
-        scopes:
-          - openid
-          - profile
-          - email
-          - groups
-        userinfo_signed_response_alg: none
-        token_endpoint_auth_method: client_secret_basic
-# Authelia OIDC Client aistack-openwebui END
-EOFIM
   cat <<EOFOT > $HSHQ_STACKS_DIR/aistack/otel/otel-collector-config.yaml
 receivers:
   otlp:
@@ -63578,6 +64053,12 @@ EOFOT
 "ControlR" postgres controlr-db $CONTROLR_DATABASE_NAME $CONTROLR_DATABASE_USER $CONTROLR_DATABASE_USER_PASSWORD
 "Akaunting" mysql akaunting-db $AKAUNTING_DATABASE_NAME $AKAUNTING_DATABASE_USER $AKAUNTING_DATABASE_USER_PASSWORD
 "Axelor" postgres axelor-db $AXELOR_DATABASE_NAME $AXELOR_DATABASE_USER $AXELOR_DATABASE_USER_PASSWORD
+"Langflow" postgres langflow-db $LANGFLOW_DATABASE_NAME $LANGFLOW_DATABASE_USER $LANGFLOW_DATABASE_USER_PASSWORD
+"Firecrawl" postgres firecrawl-db $FIRECRAWL_DATABASE_NAME $FIRECRAWL_DATABASE_USER $FIRECRAWL_DATABASE_USER_PASSWORD
+"LibreChat" postgres librechat-db $LIBRECHAT_DATABASE_NAME $LIBRECHAT_DATABASE_USER $LIBRECHAT_DATABASE_USER_PASSWORD
+"OpenWebUI" postgres openwebui-db $OPENWEBUI_DATABASE_NAME $OPENWEBUI_DATABASE_USER $OPENWEBUI_DATABASE_USER_PASSWORD
+"Khoj" postgres khoj-db $KHOJ_DATABASE_NAME $KHOJ_DATABASE_USER $KHOJ_DATABASE_USER_PASSWORD
+"LobeChat" postgres lobechat-db $LOBECHAT_DATABASE_NAME $LOBECHAT_DATABASE_USER $LOBECHAT_DATABASE_USER_PASSWORD
 #ADD_NEW_AISTACK_DB_IMPORT_HERE
 EOFAS
   cat <<EOFIM > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/importConnections.sh
@@ -63632,25 +64113,6 @@ function main()
 main
 EOFIM
   chmod 755 $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/importConnections.sh
-  cat <<EOFIM > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/insertAdmin.sh
-#!/bin/bash
-
-AISTACK_LANGFUSE_DATABASE_NAME=$AISTACK_LANGFUSE_DATABASE_NAME
-AISTACK_MINDSDB_DATABASE_USER=$AISTACK_MINDSDB_DATABASE_USER
-PGPASSWORD=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
-curdt=\$(date '+%s')
-AISTACK_OPENWEBUI_ADMIN_PASSWORD_HASH="$(htpasswd -bnBC 10 "" $AISTACK_OPENWEBUI_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/' | sed 's/\$/\\\$/g')"
-function main()
-{
-  sqlcmd="insert into \"user\"(id,name,email,role,profile_image_url,created_at,updated_at,last_active_at) values ('$randuid', '$(getAdminEmailName) OpenWebUI', '$AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS', 'admin','data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAJSElEQVR4Xu1aaZBV1RH+3r66gLIYETUogiITGUBwArKIEAeMDLgBLok/NNGykqqYyqrZrLjFMokmJiHEqmQkRirioAyIooihCCqCBLFQwyKiqKPCzNuXm+775t3HG+fNe/fO3DunKt2/YF6fvt/p7/Q5fbqPq33pQA0iynjAJYQow4UORAhRiw8hRDE+hBAhRDUPKIZHzhAhRDEPKAZHIkQIUcwDisGRCBFCFPOAYnAkQoQQxTygGByJECFEMQ8oBkciRAhRzAOKwZEIEUIU84BicCRChBDFPKAYHIkQIUQxDygGRyJECFHMA4rBkQgRQhTzgGJwJEKEEMU8oBgciRAhRDEPKAanXyPEPage3tMa4TmxDu7jRsLlPxbwBoF0B/LJj5D/5A3k3t+I7J4WaMm2PnWd56QGhC5pMWzGV81G/sNX+vQbVoz1CyGeYRchMOF2uAeeUxvmfAaZNx9Beus90FKf1DamilZwym/gHbnY0MrsWobUptv6xHZvjDhLiNuHwOS74Bt1fQlzNo7s/jXIvvsstNhBaOnDcIUGwX3s6fCefik8Qy8gXZeur8UPIrH+BuQPbenNnAFPENHFbwK+Yww7THSseTR9JNs7270c7RwhLi+CM/8C76mXGJBz7z2P5IaboSUOVZyGZ+hkBKf9Aa7IyQUdIjDxzFW0lf3L8tS9IxaQzT8C+TTg9ht2EusWI0eLoz/FMUICE38G37k3l8g4uAGJ1gW87qvO3xU9BZH5GwD/cQXd1GeIPTFFjygrEprzODwnz0DmP7+Hb8w3DBPZPU8iuf7rVkz22RhHCOHDO3zpWmPrQaYdsX/UmzqovSMW6pFSlNyB55BYe4VpR7hCQxC5egftgh7E/9lAUfsIJRRnFuzkkuhoHgXG11/iCCGhOStoRU435pjZ8SBSW+4wN2eXG5ErXoUrOry0xaz+Km1dL5my4zv3FgQm/pTOo/cRWz4GgUl3wnfOTYaN5MZbkd3dbMpmXyrbTojrmNN0Rx4tsccnQDvyX9Pz8J93G/zjvlfaYvY9jeSz15qyE256Ce4Bo5HZ+TBSm38I95CJCM9tLUUepdmJ1ZeZstmXyrYT4q/7Nvzjf2Rg1tr30XY1ztIc3IPGd259ncMpHe5oPovuLYdrsuc+YSzClz2v68ZbZiH/0Vb935ErXytFnpZH7O91ekbXH2I7IV23q+xby5F88RZrc6VtK3rdu3raWhSOkCxFSi1S3J44OjlKi+If/2P4675l/D/18k+Qef23tZjscx3bCYleQ1tTMTsi+OlXfo709gcsTyS8YBPcx1NUdErN5xEd4pFFO+EKDqIL5l1Iv3avYcM9YBTCTaU0Ov/pG3TgT7GMsTcD7SUkMADRJW+X4eO0ktNLqxKa1QzP8DnG8Oz+ViTXLalqzjN8NkKzHiU9DbHHxkHr2F82Jty0kc6Ws42/MSFMjNNiKyFcGgnPf7FsTonWJuToDmJVghf+Dt4zrjSG59t2IL5yWlVzwRnL6OZPWdkHm5B4et7n9P1jb4V/Qinz4y2Lty6nxV5CumQwPLn4qjlUxHvZ8jwDF9wH3+ivGeO1I3voPBjfsz0qWkYXUanEE0CltJYrAZGrtpOdUpkmtnysHlFOiq2EeE76MlVUy7en+MrpyLe9bnmOgfN/UXa7Lt4nejLoG3UdAg3308UvQVkZ1asqXPxCjU9R7WyyYYrTX642Oym2EuIeTGnqPL6hl6Q/IiQ8bw3cgycg+84KJF+4saJ/uegZaPiV8TtfEDminBR7CemSvfDEnD5DXFQ1jlxe6HMk1lyO3HvrK/uXk5BFu6jg6CvoUCTppRQqqTglthLC5e3otXvL5pKk8nl2z0rL8wtdvByeUy4ureJ9q+m2fk1Fe3yz5xu+VektXrPftZcQQhNZvJty/xMMXOlX70R6G+3nFiW8cHOpGMiLuEo2VHYLt/DN3P61SKxbZGGktSG2E/K5Ff32Y9QD+aZFtB5Erz9Q1sPgOwjfRboTbm6FGlfpP3FlN//ZW9W/6w3RtkX3D2+koEvlmdijZ/dZp7IaANsJ4X4DZ0ZF0ToO0MWsrhqu7h085HyE5q4u/UYNpkIt60i3+oEpv4Zv5BLqze9E/ImpNX8zOP1P8H6xydBPbfouMrv+XPP43ijaTogr8gXK7znNLeT3+mpdMQn5wzWs1i4z63oeZPe2IPlc6U5Spn5Um9ZsuYa7msGL/mqY48cP/AjCCbGdEJ5EcNbf4B3+FWM+3KlL/btUAa5polyL4qpssZVLgxJPNSJ3aHO3w402Lf3K1WWuMtcs1NaNLtld1nPXG2rte2s2YVXREULcA8dQ2ZvSTXKqLpkOvdqqJT6sGbf3zKsRnPqgoc+9b+6BV5LQbGrTDpuB/MfbEH9yZs3fKSp2LdGkt95NBcl7TNsxO8ARQhiUv/778H/pOyWHUqcv0TqfKhP5qpj1Jtf8F4wVqyU/pkN6asXHEa4wb5Pb9AVQczW4Cwo+Q/gsKYp25B1aRBOrYu2tgmOEgHoZwelL9QJfUbjIyBmXFv+g4jz4QVtw2sNgJxeiqx3xNQt7fNTGDTFujLFwmZ3L7WaFo4uj7GjhoiQXJ+0U5wjhWdBToMDkX1Jx8KiXHfwua18rvctap3fptHQ7vcs6kd5ljdDJ8wydxAN1H3DJPEGHOG9DlUSvMFOpBN6wrsLJQ3wVnV+pT0340YXghQ+VVZV1W9RhjHN7NxszYcucqrOEdGLzDJtJLxfvqP3lYi6lp50pbipVSHH99T/QH9V5BteX3VMKUdWBXNt2uksc7uzBd1/B5XPKR4uAG1b89KhboSdIubZt1JNfWvH+Y46Ccu1+IaQIgYuPvlPnws1ve48/g9720rsrbs+SA/PxQ/r9gbe1zF663JEjepJQYwsR0lDVFx3LBlOo5brV6/p2rCdjqS230/n0UNXvmVXoV0LMgv1/0BdCFGNZCBFCFPOAYnAkQoQQxTygGByJECFEMQ8oBkciRAhRzAOKwZEIEUIU84BicCRChBDFPKAYHIkQIUQxDygGRyJECFHMA4rBkQgRQhTzgGJwJEKEEMU8oBgciRAhRDEPKAZHIkQIUcwDisGRCBFCFPOAYnAkQoQQxTygGByJECFEMQ8oBkciRAhRzAOKwZEIEUIU84BicCRChBDFPKAYHIkQxQj5H8Wj5BIH8hVZAAAAAElFTkSuQmCC', \$curdt, \$curdt, \$curdt);"
-  echo "\$sqlcmd" | psql -U \$AISTACK_MINDSDB_DATABASE_USER \$AISTACK_LANGFUSE_DATABASE_NAME > /dev/null 2>&1
-
-  psql -U \$AISTACK_MINDSDB_DATABASE_USER \$AISTACK_LANGFUSE_DATABASE_NAME -c "insert into auth(id,email,password,active) values('$randuid','$AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS','\$AISTACK_OPENWEBUI_ADMIN_PASSWORD_HASH',true);" > /dev/null 2>&1
-}
-
-main
-EOFIM
-  chmod 755 $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/insertAdmin.sh
 }
 
 function importDBConnectionsAIStack()
@@ -69187,7 +69649,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    command: mongod --logpath /dev/null --oplogSize 128 --quiet --auth
+    command: mongod --oplogSize 128 --quiet --auth
     networks:
       - int-wekan-net
       - dock-dbs-net
@@ -69468,7 +69930,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    command: mongod --logpath /dev/null --oplogSize 128 --quiet --auth
+    command: mongod --oplogSize 128 --quiet --auth
     networks:
       - int-revolt-net
       - dock-dbs-net
@@ -78322,7 +78784,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    command: mongod --logpath /dev/null --oplogSize 128 --quiet --auth
+    command: mongod --oplogSize 128 --quiet --auth
     networks:
       - int-opensign-net
       - dock-dbs-net
@@ -79721,7 +80183,9 @@ function installLocalAI()
   mkdir $HSHQ_STACKS_DIR/localai/agi
   mkdir $HSHQ_STACKS_DIR/localai/assets
   mkdir $HSHQ_STACKS_DIR/localai/backends
+  mkdir $HSHQ_STACKS_DIR/localai/config
   mkdir $HSHQ_STACKS_DIR/localai/db
+  mkdir $HSHQ_STACKS_DIR/localai/dind
   mkdir $HSHQ_STACKS_DIR/localai/images
   mkdir -p $HSHQ_NONBACKUP_DIR/aimodels
   initServicesCredentials
@@ -79816,6 +80280,12 @@ services:
       - int-localai-net
       - dock-proxy-net
       - dock-ext-net
+      - dock-aipriv-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-H", "Authorization: Bearer $LOCALAI_API_KEY", "http://localhost:8080/readyz"]
+      interval: 60s
+      timeout: 10m
+      retries: 120
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -79824,6 +80294,7 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/localai:/models
       - \${PORTAINER_HSHQ_STACKS_DIR}/localai/backends:/backends
+      - \${PORTAINER_HSHQ_STACKS_DIR}/localai/config:/configuration
       - \${PORTAINER_HSHQ_STACKS_DIR}/localai/images:/tmp/generated/images
 
   localai-recall:
@@ -79837,6 +80308,7 @@ services:
     networks:
       - int-localai-net
       - dock-proxy-net
+      - dock-aipriv-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -79874,6 +80346,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/localai/dind:/var/lib/docker
     environment:
       - DOCKER_TLS_CERTDIR=""
 
@@ -79889,6 +80362,7 @@ services:
       - int-localai-net
       - dock-proxy-net
       - dock-ext-net
+      - dock-aipriv-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -79909,6 +80383,9 @@ networks:
     external: true
   dock-privateip-net:
     name: dock-privateip
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
     external: true
   int-localai-net:
     driver: bridge
@@ -80115,6 +80592,7 @@ services:
     networks:
       - dock-proxy-net
       - dock-ext-net
+      - dock-aipriv-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -80135,7 +80613,9 @@ networks:
   dock-ext-net:
     name: dock-ext
     external: true
-
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
 EOFMT
   cat <<EOFMT > $HOME/comfyui.env
 TZ=\${PORTAINER_TZ}
@@ -80156,6 +80636,2636 @@ function performUpdateComfyUI()
       newVer=v1
       curImageList=mirror.gcr.io/corundex/comfyui-rocm:comfyui_0.3.43__rocm6.4.1_ubuntu24.04_py3.12_pytorch_2.6.0
       image_update_map[0]="mirror.gcr.io/corundex/comfyui-rocm:comfyui_0.3.43__rocm6.4.1_ubuntu24.04_py3.12_pytorch_2.6.0,mirror.gcr.io/corundex/comfyui-rocm:comfyui_0.3.43__rocm6.4.1_ubuntu24.04_py3.12_pytorch_2.6.0"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Langflow
+function installLangflow()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory langflow "Langflow"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName langflow-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName langflow-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/langflow
+  mkdir $HSHQ_STACKS_DIR/langflow/config
+  mkdir $HSHQ_STACKS_DIR/langflow/data
+  mkdir $HSHQ_STACKS_DIR/langflow/db
+  mkdir $HSHQ_STACKS_DIR/langflow/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/langflow/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $LANGFLOW_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  LANGFLOW_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $LANGFLOW_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigLangflow
+  installStack langflow langflow-app "" $HOME/langflow.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$LANGFLOW_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_LANGFLOW_APP Admin Login Info" -b "$FMLNAME_LANGFLOW_APP Admin Username: $LANGFLOW_ADMIN_USERNAME\n$FMLNAME_LANGFLOW_APP Admin Email: $LANGFLOW_ADMIN_EMAIL_ADDRESS\n$FMLNAME_LANGFLOW_APP Admin Password: $LANGFLOW_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    LANGFLOW_INIT_ENV=true
+    updateConfigVar LANGFLOW_INIT_ENV $LANGFLOW_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_LANGFLOW_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_LANGFLOW_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://langflow-app:7860 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_LANGFLOW_APP $MANAGETLS_LANGFLOW_APP "$is_integrate_hshq" $NETDEFAULT_LANGFLOW_APP "$inner_block"
+  insertSubAuthelia $SUB_LANGFLOW_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll langflow "$FMLNAME_LANGFLOW_APP" $USERTYPE_LANGFLOW_APP "https://$SUB_LANGFLOW_APP.$HOMESERVER_DOMAIN" "langflow.png" "$(getHeimdallOrderFromSub $SUB_LANGFLOW_APP $USERTYPE_LANGFLOW_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true langflow "$FMLNAME_LANGFLOW_APP" postgres langflow-db $LANGFLOW_DATABASE_NAME $LANGFLOW_DATABASE_USER $LANGFLOW_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigLangflow()
+{
+  cat <<EOFMT > $HOME/langflow-compose.yml
+$STACK_VERSION_PREFIX langflow $(getScriptStackVersion langflow)
+
+services:
+  langflow-db:
+    image: $(getScriptImageByContainerName langflow-db)
+    container_name: langflow-db
+    hostname: langflow-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-langflow-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/langflow/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/langflow/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.langflow-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.langflow-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.langflow-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.langflow-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.langflow-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.langflow-hourly-db.email-from=Langflow Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.langflow-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.langflow-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.langflow-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.langflow-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.langflow-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.langflow-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.langflow-monthly-db.email-from=Langflow Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.langflow-monthly-db.mail-only-on-error=false"
+
+  langflow-app:
+    image: $(getScriptImageByContainerName langflow-app)
+    container_name: langflow-app
+    hostname: langflow-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - langflow-db
+    networks:
+      - int-langflow-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-langflow-data:/app/langflow
+
+volumes:
+  v-langflow-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/langflow/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-langflow-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/langflow.env
+TZ=\${PORTAINER_TZ}
+DO_NOT_TRACK=true
+POSTGRES_DB=$LANGFLOW_DATABASE_NAME
+POSTGRES_USER=$LANGFLOW_DATABASE_USER
+POSTGRES_PASSWORD=$LANGFLOW_DATABASE_USER_PASSWORD
+LANGFLOW_CONFIG_DIR=/app/langflow
+LANGFLOW_DATABASE_URL=postgresql://$LANGFLOW_DATABASE_USER:$LANGFLOW_DATABASE_USER_PASSWORD@langflow-db:5432/$LANGFLOW_DATABASE_NAME
+OPENAI_API_BASE=https://localai.homeserverbox.com/v1
+LANGFLOW_AUTO_LOGIN=False
+LANGFLOW_SUPERUSER=$LANGFLOW_ADMIN_USERNAME
+LANGFLOW_SUPERUSER_PASSWORD=$LANGFLOW_ADMIN_PASSWORD
+EOFMT
+}
+
+function performUpdateLangflow()
+{
+  perform_stack_name=langflow
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/langflowai/langflow:1.7.1
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/langflowai/langflow:1.7.1,mirror.gcr.io/langflowai/langflow:1.7.1"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# AnythingLLM
+function installAnythingLLM()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory anythingllm "AnythingLLM"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName anythingllm-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/anythingllm
+  mkdir $HSHQ_STACKS_DIR/anythingllm/data
+  initServicesCredentials
+  set +e
+  addUserMailu alias $ANYTHINGLLM_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  ANYTHINGLLM_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $ANYTHINGLLM_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigAnythingLLM
+  installStack anythingllm anythingllm-app "" $HOME/anythingllm.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$ANYTHINGLLM_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_ANYTHINGLLM_APP Admin Login Info" -b "$FMLNAME_ANYTHINGLLM_APP Admin Username: $ANYTHINGLLM_ADMIN_USERNAME\n$FMLNAME_ANYTHINGLLM_APP Admin Email: $ANYTHINGLLM_ADMIN_EMAIL_ADDRESS\n$FMLNAME_ANYTHINGLLM_APP Admin Password: $ANYTHINGLLM_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    ANYTHINGLLM_INIT_ENV=true
+    updateConfigVar ANYTHINGLLM_INIT_ENV $ANYTHINGLLM_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_ANYTHINGLLM_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_ANYTHINGLLM_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://anythingllm-app:3001 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_ANYTHINGLLM_APP $MANAGETLS_ANYTHINGLLM_APP "$is_integrate_hshq" $NETDEFAULT_ANYTHINGLLM_APP "$inner_block"
+  insertSubAuthelia $SUB_ANYTHINGLLM_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll anythingllm "$FMLNAME_ANYTHINGLLM_APP" $USERTYPE_ANYTHINGLLM_APP "https://$SUB_ANYTHINGLLM_APP.$HOMESERVER_DOMAIN" "anythingllm.png" "$(getHeimdallOrderFromSub $SUB_ANYTHINGLLM_APP $USERTYPE_ANYTHINGLLM_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigAnythingLLM()
+{
+  touch $HSHQ_STACKS_DIR/anythingllm/.env
+  cat <<EOFMT > $HOME/anythingllm-compose.yml
+$STACK_VERSION_PREFIX anythingllm $(getScriptStackVersion anythingllm)
+
+services:
+  anythingllm-app:
+    image: $(getScriptImageByContainerName anythingllm-app)
+    container_name: anythingllm-app
+    hostname: anythingllm-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-anythingllm-data:/app/server/storage
+      - \${PORTAINER_HSHQ_STACKS_DIR}/anythingllm/.env:/app/server/.env
+
+volumes:
+  v-anythingllm-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/anythingllm/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/anythingllm.env
+TZ=\${PORTAINER_TZ}
+DISABLE_TELEMETRY=true
+STORAGE_DIR=/app/server/storage
+SIG_KEY=$ANYTHINGLLM_SIG_KEY
+SIG_SALT=$ANYTHINGLLM_SIG_SALT
+JWT_SECRET=$ANYTHINGLLM_JWT_SECRET
+EOFMT
+}
+
+function performUpdateAnythingLLM()
+{
+  perform_stack_name=anythingllm
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/mintplexlabs/anythingllm:1.9.1
+      image_update_map[0]="mirror.gcr.io/mintplexlabs/anythingllm:1.9.1,mirror.gcr.io/mintplexlabs/anythingllm:1.9.1"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Perplexica
+function installPerplexica()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory perplexica "Perplexica"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName perplexica-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/perplexica
+  mkdir $HSHQ_STACKS_DIR/perplexica/data
+  set +e
+  outputConfigPerplexica
+  installStack perplexica perplexica-app "" $HOME/perplexica.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_PERPLEXICA_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_PERPLEXICA_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://perplexica-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_PERPLEXICA_APP $MANAGETLS_PERPLEXICA_APP "$is_integrate_hshq" $NETDEFAULT_PERPLEXICA_APP "$inner_block"
+  insertSubAuthelia $SUB_PERPLEXICA_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll perplexica "$FMLNAME_PERPLEXICA_APP" $USERTYPE_PERPLEXICA_APP "https://$SUB_PERPLEXICA_APP.$HOMESERVER_DOMAIN" "perplexica.png" "$(getHeimdallOrderFromSub $SUB_PERPLEXICA_APP $USERTYPE_PERPLEXICA_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigPerplexica()
+{
+  cat <<EOFMT > $HOME/perplexica-compose.yml
+$STACK_VERSION_PREFIX perplexica $(getScriptStackVersion perplexica)
+
+services:
+  perplexica-app:
+    image: $(getScriptImageByContainerName perplexica-app)
+    container_name: perplexica-app
+    hostname: perplexica-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-perplexica-data:/home/perplexica/data
+
+volumes:
+  v-perplexica-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/perplexica/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/perplexica.env
+TZ=\${PORTAINER_TZ}
+SEARXNG_API_URL=http://searxng-app:8080
+EOFMT
+}
+
+function performUpdatePerplexica()
+{
+  perform_stack_name=perplexica
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/itzcrazykns1337/perplexica:slim-v1.12.0
+      image_update_map[0]="mirror.gcr.io/itzcrazykns1337/perplexica:slim-v1.12.0,mirror.gcr.io/itzcrazykns1337/perplexica:slim-v1.12.0"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Firecrawl
+function installFirecrawl()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory firecrawl "Firecrawl"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  buildImageFirecrawlDBV1
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName firecrawl-playwright)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName firecrawl-api)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName firecrawl-rabbitmq)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName firecrawl-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/firecrawl
+  mkdir $HSHQ_STACKS_DIR/firecrawl/config
+  mkdir $HSHQ_STACKS_DIR/firecrawl/data
+  mkdir $HSHQ_STACKS_DIR/firecrawl/rabbitmq
+  mkdir $HSHQ_STACKS_DIR/firecrawl/db
+  mkdir $HSHQ_STACKS_DIR/firecrawl/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/firecrawl/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/firecrawl
+  mkdir $HSHQ_NONBACKUP_DIR/firecrawl/redis
+  initServicesCredentials
+  set +e
+  outputConfigFirecrawl
+  installStack firecrawl firecrawl-api "" $HOME/firecrawl.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$FIRECRAWL_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_FIRECRAWL_API Admin Login Info" -b "$FMLNAME_FIRECRAWL_API Admin Password: $FIRECRAWL_BULL_AUTH_KEY\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    FIRECRAWL_INIT_ENV=true
+    updateConfigVar FIRECRAWL_INIT_ENV $FIRECRAWL_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_FIRECRAWL_API" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_FIRECRAWL_API.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://firecrawl-api:3002 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_FIRECRAWL_API $MANAGETLS_FIRECRAWL_API "$is_integrate_hshq" $NETDEFAULT_FIRECRAWL_API "$inner_block"
+  insertSubAuthelia $SUB_FIRECRAWL_API.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll firecrawl "$FMLNAME_FIRECRAWL_API" admin "https://$SUB_FIRECRAWL_API.$HOMESERVER_DOMAIN" "firecrawl.png" "$(getHeimdallOrderFromSub $SUB_FIRECRAWL_API admin)"
+    restartAllCaddyContainers
+    checkAddDBConnection true firecrawl "$FMLNAME_FIRECRAWL_API" postgres firecrawl-db $FIRECRAWL_DATABASE_NAME $FIRECRAWL_DATABASE_USER $FIRECRAWL_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigFirecrawl()
+{
+  cat <<EOFMT > $HOME/firecrawl-compose.yml
+$STACK_VERSION_PREFIX firecrawl $(getScriptStackVersion firecrawl)
+
+services:
+  firecrawl-db:
+    image: $(getScriptImageByContainerName firecrawl-db)
+    container_name: firecrawl-db
+    hostname: firecrawl-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-firecrawl-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  firecrawl-playwright:
+    image: $(getScriptImageByContainerName firecrawl-playwright)
+    container_name: firecrawl-playwright
+    hostname: firecrawl-playwright
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 4G
+    memswap_limit: 4G
+    tmpfs:
+      - /tmp/.cache:noexec,nosuid,size=1g
+    networks:
+      - int-firecrawl-net
+      - dock-aipriv-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    environment:
+      - PORT=3000
+
+  firecrawl-api:
+    image: $(getScriptImageByContainerName firecrawl-api)
+    container_name: firecrawl-api
+    hostname: firecrawl-api
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 4G
+    memswap_limit: 4G
+    depends_on:
+      - firecrawl-db
+      - firecrawl-playwright
+      - firecrawl-redis
+      - firecrawl-rabbitmq
+    networks:
+      - int-firecrawl-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3002
+
+  firecrawl-rabbitmq:
+    image: $(getScriptImageByContainerName firecrawl-rabbitmq)
+    container_name: firecrawl-rabbitmq
+    hostname: firecrawl-rabbitmq
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-firecrawl-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  firecrawl-redis:
+    image: $(getScriptImageByContainerName firecrawl-redis)
+    container_name: firecrawl-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $FIRECRAWL_REDIS_PASSWORD
+      --appendonly no
+    networks:
+      - int-firecrawl-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-firecrawl-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/firecrawl.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$FIRECRAWL_DATABASE_NAME
+POSTGRES_USER=$FIRECRAWL_DATABASE_USER
+POSTGRES_PASSWORD=$FIRECRAWL_DATABASE_USER_PASSWORD
+REDIS_URL=redis://:$FIRECRAWL_REDIS_PASSWORD@firecrawl-redis:6379
+REDIS_RATE_LIMIT_URL=redis://:$FIRECRAWL_REDIS_PASSWORD@firecrawl-redis:6379
+PLAYWRIGHT_MICROSERVICE_URL=http://firecrawl-playwright:3000/scrape
+POSTGRES_HOST=firecrawl-db
+POSTGRES_PORT=5432
+USE_DB_AUTHENTICATION=false
+NUM_WORKERS_PER_QUEUE=8
+CRAWL_CONCURRENT_REQUESTS=10
+MAX_CONCURRENT_JOBS=5
+BROWSER_POOL_SIZE=5
+MAX_CONCURRENT_PAGES=10
+OPENAI_API_KEY=
+OPENAI_BASE_URL=
+MODEL_NAME=
+MODEL_EMBEDDING_NAME=
+OLLAMA_BASE_URL=
+SLACK_WEBHOOK_URL=
+BULL_AUTH_KEY=$FIRECRAWL_BULL_AUTH_KEY
+TEST_API_KEY=$FIRECRAWL_API_KEY
+ALLOW_LOCAL_WEBHOOKS=true
+SEARXNG_ENDPOINT=http://searxng-app:8080
+EXTRACT_WORKER_PORT=3004
+WORKER_PORT=3005
+RABBITMQ_DEFAULT_USER=$FIRECRAWL_RABBITMQ_USERNAME
+RABBITMQ_DEFAULT_PASS=$FIRECRAWL_RABBITMQ_PASSWORD
+NUQ_RABBITMQ_URL=amqp://$FIRECRAWL_RABBITMQ_USERNAME:$FIRECRAWL_RABBITMQ_PASSWORD@firecrawl-rabbitmq:5672
+ENV=local
+EOFMT
+}
+
+function performUpdateFirecrawl()
+{
+  perform_stack_name=firecrawl
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=hshq/firecrawl-db:v1,ghcr.io/firecrawl/playwright-service:latest,ghcr.io/firecrawl/firecrawl:latest,mirror.gcr.io/rabbitmq:4.1.4-management-alpine,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="hshq/firecrawl-db:v1,hshq/firecrawl-db:v1"
+      image_update_map[1]="ghcr.io/firecrawl/playwright-service:latest,ghcr.io/firecrawl/playwright-service:latest"
+      image_update_map[2]="ghcr.io/firecrawl/firecrawl:latest,ghcr.io/firecrawl/firecrawl:latest"
+      image_update_map[3]="mirror.gcr.io/rabbitmq:4.1.4-management-alpine,mirror.gcr.io/rabbitmq:4.1.4-management-alpine"
+      image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function buildImageFirecrawlDBV1()
+{
+  set +e
+  sudo rm -fr $HSHQ_BUILD_DIR/firecrawldb
+  mkdir $HSHQ_BUILD_DIR/firecrawldb
+  cd $HSHQ_BUILD_DIR/firecrawldb
+  # This Dockerfile is copied directly from https://github.com/firecrawl/firecrawl/blob/main/apps/nuq-postgres/Dockerfile
+  # Since it is so small and unlikely to change, we'll just
+  # avoid the git clone and thus decrease pof.
+  cat <<EOFMT > $HSHQ_BUILD_DIR/firecrawldb/Dockerfile
+# Build a Postgres image that runs nuq.sql during initdb
+
+ARG PG_MAJOR=17
+FROM postgres:\${PG_MAJOR}
+
+# Install pg_cron for the specified Postgres major version
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        postgresql-\${PG_MAJOR}-cron; \
+    rm -rf /var/lib/apt/lists/*
+
+# Ensure pg_cron is preloaded on first startup by modifying the initdb template
+# This must be set before the first server start (init scripts run after start)
+RUN set -eux; \
+    conf_sample="/usr/share/postgresql/\${PG_MAJOR}/postgresql.conf.sample"; \
+    sed -ri "s/^#?shared_preload_libraries\s*=.*/shared_preload_libraries = 'pg_cron'/" "\$conf_sample"; \
+    printf "\n# Added for pg_cron\ncron.database_name = '$FIRECRAWL_DATABASE_NAME'\n" >> "\$conf_sample"
+
+# Copy nuq.sql so it is executed as part of the initdb sequence
+COPY nuq.sql /docker-entrypoint-initdb.d/010-nuq.sql
+EOFMT
+  cat <<EOFMT > $HSHQ_BUILD_DIR/firecrawldb/nuq.sql
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+CREATE SCHEMA IF NOT EXISTS nuq;
+
+DO \$\$ BEGIN
+  CREATE TYPE nuq.job_status AS ENUM ('queued', 'active', 'completed', 'failed');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END \$\$;
+
+DO \$\$ BEGIN
+  CREATE TYPE nuq.group_status AS ENUM ('active', 'completed', 'cancelled');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END \$\$;
+
+CREATE TABLE IF NOT EXISTS nuq.queue_scrape (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  status nuq.job_status NOT NULL DEFAULT 'queued'::nuq.job_status,
+  data jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  priority int NOT NULL DEFAULT 0,
+  lock uuid,
+  locked_at timestamp with time zone,
+  stalls integer,
+  finished_at timestamp with time zone,
+  listen_channel_id text, -- for listenable jobs over rabbitmq
+  returnvalue jsonb, -- only for selfhost
+  failedreason text, -- only for selfhost
+  owner_id uuid,
+  group_id uuid,
+  CONSTRAINT queue_scrape_pkey PRIMARY KEY (id)
+);
+
+ALTER TABLE nuq.queue_scrape
+SET (autovacuum_vacuum_scale_factor = 0.01,
+     autovacuum_analyze_scale_factor = 0.01,
+     autovacuum_vacuum_cost_limit = 2000,
+     autovacuum_vacuum_cost_delay = 2);
+
+CREATE INDEX IF NOT EXISTS queue_scrape_active_locked_at_idx ON nuq.queue_scrape USING btree (locked_at) WHERE (status = 'active'::nuq.job_status);
+CREATE INDEX IF NOT EXISTS nuq_queue_scrape_queued_optimal_2_idx ON nuq.queue_scrape (priority ASC, created_at ASC, id) WHERE (status = 'queued'::nuq.job_status);
+CREATE INDEX IF NOT EXISTS nuq_queue_scrape_failed_created_at_idx ON nuq.queue_scrape USING btree (created_at) WHERE (status = 'failed'::nuq.job_status);
+CREATE INDEX IF NOT EXISTS nuq_queue_scrape_completed_created_at_idx ON nuq.queue_scrape USING btree (created_at) WHERE (status = 'completed'::nuq.job_status);
+
+-- Indexes for crawl-status.ts queries
+-- For getGroupAnyJob: query by group_id, owner_id, and data->>'mode' = 'single_urls'
+CREATE INDEX IF NOT EXISTS nuq_queue_scrape_group_owner_mode_idx ON nuq.queue_scrape (group_id, owner_id) WHERE ((data->>'mode') = 'single_urls');
+
+-- For getGroupNumericStats: query by group_id and data->>'mode', grouped by status
+CREATE INDEX IF NOT EXISTS nuq_queue_scrape_group_mode_status_idx ON nuq.queue_scrape (group_id, status) WHERE ((data->>'mode') = 'single_urls');
+
+-- For getCrawlJobsForListing: query by group_id, status='completed', data->>'mode', ordered by finished_at, created_at
+CREATE INDEX IF NOT EXISTS nuq_queue_scrape_group_completed_listing_idx ON nuq.queue_scrape (group_id, finished_at ASC, created_at ASC) WHERE (status = 'completed'::nuq.job_status AND (data->>'mode') = 'single_urls');
+
+-- For group finish cron
+CREATE INDEX IF NOT EXISTS idx_queue_scrape_group_status ON nuq.queue_scrape (group_id, status) WHERE status IN ('active', 'queued');
+
+CREATE TABLE IF NOT EXISTS nuq.queue_scrape_backlog (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  data jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  priority int NOT NULL DEFAULT 0,
+  listen_channel_id text, -- for listenable jobs over rabbitmq
+  owner_id uuid,
+  group_id uuid,
+  times_out_at timestamptz,
+  CONSTRAINT queue_scrape_backlog_pkey PRIMARY KEY (id)
+);
+
+-- For getGroupNumericStats backlog query: query by group_id and data->>'mode' on backlog table
+CREATE INDEX IF NOT EXISTS nuq_queue_scrape_backlog_group_mode_idx ON nuq.queue_scrape_backlog (group_id) WHERE ((data->>'mode') = 'single_urls');
+
+SELECT cron.schedule('nuq_queue_scrape_clean_completed', '*/5 * * * *', \$\$
+  DELETE FROM nuq.queue_scrape WHERE nuq.queue_scrape.status = 'completed'::nuq.job_status AND nuq.queue_scrape.created_at < now() - interval '1 hour' AND group_id IS NULL;
+\$\$);
+
+SELECT cron.schedule('nuq_queue_scrape_clean_failed', '*/5 * * * *', \$\$
+  DELETE FROM nuq.queue_scrape WHERE nuq.queue_scrape.status = 'failed'::nuq.job_status AND nuq.queue_scrape.created_at < now() - interval '6 hours' AND group_id IS NULL;
+\$\$);
+
+SELECT cron.schedule('nuq_queue_scrape_lock_reaper', '15 seconds', \$\$
+  UPDATE nuq.queue_scrape SET status = 'queued'::nuq.job_status, lock = null, locked_at = null, stalls = COALESCE(stalls, 0) + 1 WHERE nuq.queue_scrape.locked_at <= now() - interval '1 minute' AND nuq.queue_scrape.status = 'active'::nuq.job_status AND COALESCE(nuq.queue_scrape.stalls, 0) < 9;
+  WITH stallfail AS (UPDATE nuq.queue_scrape SET status = 'failed'::nuq.job_status, lock = null, locked_at = null, stalls = COALESCE(stalls, 0) + 1 WHERE nuq.queue_scrape.locked_at <= now() - interval '1 minute' AND nuq.queue_scrape.status = 'active'::nuq.job_status AND COALESCE(nuq.queue_scrape.stalls, 0) >= 9 RETURNING id)
+  SELECT pg_notify('nuq.queue_scrape', (id::text || '|' || 'failed'::text)) FROM stallfail;
+\$\$);
+
+SELECT cron.schedule('nuq_queue_scrape_backlog_reaper', '* * * * *', \$\$
+  DELETE FROM nuq.queue_scrape_backlog
+  WHERE nuq.queue_scrape_backlog.times_out_at < now();
+\$\$);
+
+SELECT cron.schedule('nuq_queue_scrape_reindex', '0 9 * * *', \$\$
+  REINDEX TABLE CONCURRENTLY nuq.queue_scrape;
+\$\$);
+
+CREATE TABLE IF NOT EXISTS nuq.queue_crawl_finished (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  status nuq.job_status NOT NULL DEFAULT 'queued'::nuq.job_status,
+  data jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  priority int NOT NULL DEFAULT 0,
+  lock uuid,
+  locked_at timestamp with time zone,
+  stalls integer,
+  finished_at timestamp with time zone,
+  listen_channel_id text, -- for listenable jobs over rabbitmq
+  returnvalue jsonb, -- only for selfhost
+  failedreason text, -- only for selfhost
+  owner_id uuid,
+  group_id uuid,
+  CONSTRAINT queue_crawl_finished_pkey PRIMARY KEY (id)
+);
+
+ALTER TABLE nuq.queue_crawl_finished
+SET (autovacuum_vacuum_scale_factor = 0.01,
+     autovacuum_analyze_scale_factor = 0.01,
+     autovacuum_vacuum_cost_limit = 2000,
+     autovacuum_vacuum_cost_delay = 2);
+
+CREATE INDEX IF NOT EXISTS queue_crawl_finished_active_locked_at_idx ON nuq.queue_crawl_finished USING btree (locked_at) WHERE (status = 'active'::nuq.job_status);
+CREATE INDEX IF NOT EXISTS nuq_queue_crawl_finished_queued_optimal_2_idx ON nuq.queue_crawl_finished (priority ASC, created_at ASC, id) WHERE (status = 'queued'::nuq.job_status);
+CREATE INDEX IF NOT EXISTS nuq_queue_crawl_finished_failed_created_at_idx ON nuq.queue_crawl_finished USING btree (created_at) WHERE (status = 'failed'::nuq.job_status);
+CREATE INDEX IF NOT EXISTS nuq_queue_crawl_finished_completed_created_at_idx ON nuq.queue_crawl_finished USING btree (created_at) WHERE (status = 'completed'::nuq.job_status);
+
+SELECT cron.schedule('nuq_queue_crawl_finished_clean_completed', '*/5 * * * *', \$\$
+  DELETE FROM nuq.queue_crawl_finished WHERE nuq.queue_crawl_finished.status = 'completed'::nuq.job_status AND nuq.queue_crawl_finished.created_at < now() - interval '1 hour' AND group_id IS NULL;
+\$\$);
+
+SELECT cron.schedule('nuq_queue_crawl_finished_clean_failed', '*/5 * * * *', \$\$
+  DELETE FROM nuq.queue_crawl_finished WHERE nuq.queue_crawl_finished.status = 'failed'::nuq.job_status AND nuq.queue_crawl_finished.created_at < now() - interval '6 hours' AND group_id IS NULL;
+\$\$);
+
+SELECT cron.schedule('nuq_queue_crawl_finished_lock_reaper', '15 seconds', \$\$
+  UPDATE nuq.queue_crawl_finished SET status = 'queued'::nuq.job_status, lock = null, locked_at = null, stalls = COALESCE(stalls, 0) + 1 WHERE nuq.queue_crawl_finished.locked_at <= now() - interval '1 minute' AND nuq.queue_crawl_finished.status = 'active'::nuq.job_status AND COALESCE(nuq.queue_crawl_finished.stalls, 0) < 9;
+  WITH stallfail AS (UPDATE nuq.queue_crawl_finished SET status = 'failed'::nuq.job_status, lock = null, locked_at = null, stalls = COALESCE(stalls, 0) + 1 WHERE nuq.queue_crawl_finished.locked_at <= now() - interval '1 minute' AND nuq.queue_crawl_finished.status = 'active'::nuq.job_status AND COALESCE(nuq.queue_crawl_finished.stalls, 0) >= 9 RETURNING id)
+  SELECT pg_notify('nuq.queue_crawl_finished', (id::text || '|' || 'failed'::text)) FROM stallfail;
+\$\$);
+
+SELECT cron.schedule('nuq_queue_crawl_finished_reindex', '0 9 * * *', \$\$
+  REINDEX TABLE CONCURRENTLY nuq.queue_crawl_finished;
+\$\$);
+
+CREATE TABLE IF NOT EXISTS nuq.group_crawl (
+  id uuid NOT NULL,
+  status nuq.group_status NOT NULL DEFAULT 'active'::nuq.group_status,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  owner_id uuid NOT NULL,
+  ttl int8 NOT NULL DEFAULT 86400000,
+  expires_at timestamptz,
+  CONSTRAINT group_crawl_pkey PRIMARY KEY (id)
+);
+
+-- Index for group finish cron to find active groups
+CREATE INDEX IF NOT EXISTS idx_group_crawl_status ON nuq.group_crawl (status) WHERE status = 'active'::nuq.group_status;
+
+-- Index for backlog group_id lookups
+CREATE INDEX IF NOT EXISTS idx_queue_scrape_backlog_group_id ON nuq.queue_scrape_backlog (group_id);
+
+SELECT cron.schedule('nuq_group_crawl_finished', '15 seconds', \$\$
+  WITH finished_groups AS (
+    UPDATE nuq.group_crawl
+    SET status = 'completed'::nuq.group_status,
+        expires_at = now() + MAKE_INTERVAL(secs => nuq.group_crawl.ttl / 1000)
+    WHERE status = 'active'::nuq.group_status
+      AND NOT EXISTS (
+        SELECT 1 FROM nuq.queue_scrape
+        WHERE nuq.queue_scrape.status IN ('active', 'queued')
+          AND nuq.queue_scrape.group_id = nuq.group_crawl.id
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM nuq.queue_scrape_backlog
+        WHERE nuq.queue_scrape_backlog.group_id = nuq.group_crawl.id
+      )
+    RETURNING id, owner_id
+  )
+  INSERT INTO nuq.queue_crawl_finished (data, owner_id, group_id)
+  SELECT '{}'::jsonb, finished_groups.owner_id, finished_groups.id
+  FROM finished_groups;
+\$\$);
+
+SELECT cron.schedule('nuq_group_crawl_clean', '*/5 * * * *', \$\$
+  WITH cleaned_groups AS (
+    DELETE FROM nuq.group_crawl
+    WHERE nuq.group_crawl.status = 'completed'::nuq.group_status
+      AND nuq.group_crawl.expires_at < now()
+    RETURNING *
+  ), cleaned_jobs_queue_scrape AS (
+    DELETE FROM nuq.queue_scrape
+    WHERE nuq.queue_scrape.group_id IN (SELECT id FROM cleaned_groups)
+  ), cleaned_jobs_queue_scrape_backlog AS (
+    DELETE FROM nuq.queue_scrape_backlog
+    WHERE nuq.queue_scrape_backlog.group_id IN (SELECT id FROM cleaned_groups)
+  ), cleaned_jobs_crawl_finished AS (
+    DELETE FROM nuq.queue_crawl_finished
+    WHERE nuq.queue_crawl_finished.group_id IN (SELECT id FROM cleaned_groups)
+  )
+  SELECT 1;
+\$\$);
+EOFMT
+  docker build -t hshq/firecrawl-db:v1 $HSHQ_BUILD_DIR/firecrawldb
+  retVal=$?
+  cd
+  return $retVal
+}
+
+# LibreChat
+function installLibreChat()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory librechat "LibreChat"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName librechat-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName librechat-mongodb)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName librechat-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName librechat-meilisearch)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName librechat-ragapi)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName librechat-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/librechat
+  mkdir $HSHQ_STACKS_DIR/librechat/config
+  mkdir $HSHQ_STACKS_DIR/librechat/data
+  mkdir $HSHQ_STACKS_DIR/librechat/images
+  mkdir $HSHQ_STACKS_DIR/librechat/uploads
+  mkdir $HSHQ_STACKS_DIR/librechat/logs
+  mkdir $HSHQ_STACKS_DIR/librechat/mongodata
+  mkdir $HSHQ_STACKS_DIR/librechat/mongoexport
+  mkdir $HSHQ_STACKS_DIR/librechat/db
+  mkdir $HSHQ_STACKS_DIR/librechat/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/librechat/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/librechat
+  mkdir $HSHQ_NONBACKUP_DIR/librechat/redis
+  initServicesCredentials
+  set +e
+  addUserMailu alias $LIBRECHAT_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  LIBRECHAT_OIDC_CLIENT_SECRET_HASH=$(docker run --rm $IMG_AUTHELIA authelia crypto hash generate pbkdf2 --variant sha512 --password $LIBRECHAT_OIDC_CLIENT_SECRET | cut -d" " -f2)
+  outputConfigLibreChat
+  oidcBlock=$(cat $HOME/librechat.oidc)
+  rm -f $HOME/librechat.oidc
+  insertOIDCClientAuthelia librechat "$oidcBlock"
+  installStack librechat librechat-app "Server listening on all interfaces" $HOME/librechat.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$LIBRECHAT_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_LIBRECHAT_APP Admin Login Info" -b "$FMLNAME_LIBRECHAT_APP Admin Email: $LIBRECHAT_ADMIN_EMAIL_ADDRESS\n$FMLNAME_LIBRECHAT_APP Admin Password: $LIBRECHAT_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    LIBRECHAT_INIT_ENV=true
+    updateConfigVar LIBRECHAT_INIT_ENV $LIBRECHAT_INIT_ENV
+  fi
+  sleep 3
+  docker exec librechat-app sh -c "yes | npm run create-user $LIBRECHAT_ADMIN_EMAIL_ADDRESS \"LibreChat HSHQ Admin\" $LIBRECHAT_ADMIN_USERNAME $LIBRECHAT_ADMIN_PASSWORD --email-verified=true" > /dev/null 2>&1
+  if [ -z "$FMLNAME_LIBRECHAT_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://librechat-app:3080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_LIBRECHAT_APP $MANAGETLS_LIBRECHAT_APP "$is_integrate_hshq" $NETDEFAULT_LIBRECHAT_APP "$inner_block"
+  insertSubAuthelia $SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll librechat "$FMLNAME_LIBRECHAT_APP" $USERTYPE_LIBRECHAT_APP "https://$SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN" "librechat.png" "$(getHeimdallOrderFromSub $SUB_LIBRECHAT_APP $USERTYPE_LIBRECHAT_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true librechat "$FMLNAME_LIBRECHAT_APP" postgres librechat-db $LIBRECHAT_DATABASE_NAME $LIBRECHAT_DATABASE_USER $LIBRECHAT_DATABASE_USER_PASSWORD
+    checkAddDBConnection true librechat-mongodb "${FMLNAME_LIBRECHAT_APP}-MongoDB" mongo librechat-mongodb $LIBRECHAT_MONGODB_DATABASE $LIBRECHAT_MONGODB_USER $LIBRECHAT_MONGODB_USER_PASSWORD
+  fi
+}
+
+function outputConfigLibreChat()
+{
+  cat <<EOFMT > $HOME/librechat-compose.yml
+$STACK_VERSION_PREFIX librechat $(getScriptStackVersion librechat)
+
+services:
+  librechat-db:
+    image: $(getScriptImageByContainerName librechat-db)
+    container_name: librechat-db
+    hostname: librechat-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-librechat-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/librechat/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/librechat/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.librechat-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.librechat-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.librechat-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.librechat-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.librechat-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.librechat-hourly-db.email-from=LibreChat Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.librechat-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.librechat-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.librechat-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.librechat-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.librechat-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.librechat-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.librechat-monthly-db.email-from=LibreChat Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.librechat-monthly-db.mail-only-on-error=false"
+
+  librechat-mongodb:
+    image: $(getScriptImageByContainerName librechat-mongodb)
+    container_name: librechat-mongodb
+    hostname: librechat-mongodb
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mongod --oplogSize 128 --quiet --auth
+    networks:
+      - int-librechat-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-librechat-mongodata:/data/db
+      - v-librechat-mongoexport:/dump
+
+  librechat-app:
+    image: $(getScriptImageByContainerName librechat-app)
+    container_name: librechat-app
+    hostname: librechat-app
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - librechat-db
+      - librechat-mongodb
+      - librechat-ragapi
+      - librechat-redis
+    networks:
+      - int-librechat-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/librechat/config/env:/app/.env
+      - \${PORTAINER_HSHQ_STACKS_DIR}/librechat/config/librechat.yaml:/app/librechat.yaml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/librechat/images:/app/client/public/images
+      - \${PORTAINER_HSHQ_STACKS_DIR}/librechat/uploads:/app/uploads
+      - \${PORTAINER_HSHQ_STACKS_DIR}/librechat/logs:/app/logs
+
+  librechat-meilisearch:
+    image: $(getScriptImageByContainerName librechat-meilisearch)
+    container_name: librechat-meilisearch
+    hostname: librechat-meilisearch
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-librechat-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/librechat/meilidata:/meili_data
+
+  librechat-ragapi:
+    image: $(getScriptImageByContainerName librechat-ragapi)
+    container_name: librechat-ragapi
+    hostname: librechat-ragapi
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - librechat-db
+    networks:
+      - int-librechat-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  librechat-redis:
+    image: $(getScriptImageByContainerName librechat-redis)
+    container_name: librechat-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $LIBRECHAT_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-librechat-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-librechat-redis:/data
+
+volumes:
+  v-librechat-mongodata:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/librechat/mongodata
+  v-librechat-mongoexport:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/librechat/mongoexport
+  v-librechat-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/librechat/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-librechat-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/librechat.env
+TZ=\${PORTAINER_TZ}
+PYTHON_VER=python3.12
+UID=$USERID
+GID=$GROUPID
+POSTGRES_DB=$LIBRECHAT_DATABASE_NAME
+POSTGRES_USER=$LIBRECHAT_DATABASE_USER
+POSTGRES_PASSWORD=$LIBRECHAT_DATABASE_USER_PASSWORD
+HOST=0.0.0.0
+PORT=3080
+MONGO_INITDB_ROOT_USERNAME=$LIBRECHAT_MONGODB_USER
+MONGO_INITDB_ROOT_PASSWORD=$LIBRECHAT_MONGODB_USER_PASSWORD
+MONGO_URI=mongodb://$LIBRECHAT_MONGODB_USER:$LIBRECHAT_MONGODB_USER_PASSWORD@librechat-mongodb:27017/${LIBRECHAT_MONGODB_DATABASE}?authSource=admin
+MEILI_HOST=http://librechat-meilisearch:7700
+MEILI_NO_ANALYTICS=true
+MEILI_MASTER_KEY=$LIBRECHAT_MEILI_MASTER_KEY
+SEARCH=true
+RAG_PORT=8000
+RAG_API_URL=http://librechat-ragapi:8000
+DB_HOST=librechat-db
+CREDS_KEY=$LIBRECHAT_CREDS_KEY
+CREDS_IV=$LIBRECHAT_CREDS_IV
+DOMAIN_CLIENT=https://$SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN
+DOMAIN_SERVER=https://$SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN
+CONFIG_BYPASS_VALIDATION=false
+TITLE_CONVO=true
+ALLOW_SOCIAL_LOGIN=true
+OPENID_BUTTON_LABEL=Log in with Authelia
+OPENID_ISSUER=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/.well-known/openid-configuration
+OPENID_CLIENT_ID=librechat
+OPENID_CLIENT_SECRET=$LIBRECHAT_OIDC_CLIENT_SECRET
+OPENID_SESSION_SECRET=$(pwgen -c -n 32 1)
+OPENID_CALLBACK_URL=/oauth/openid/callback
+OPENID_SCOPE=openid profile email
+OPENID_IMAGE_URL=https://www.authelia.com/images/branding/logo-cropped.png
+OPENID_USE_END_SESSION_ENDPOINT=true 
+JWT_SECRET=$LIBRECHAT_JWT_SECRET
+JWT_REFRESH_SECRET=$LIBRECHAT_JWT_REFRESH_SECRET
+EMAIL_HOST=$SMTP_HOSTNAME
+EMAIL_PORT=$SMTP_HOSTPORT
+EMAIL_ENCRYPTION=starttls
+EMAIL_ALLOW_SELFSIGNED=true
+EMAIL_FROM_NAME=LibreChat $(getAdminEmailName)
+EMAIL_FROM=$EMAIL_ADMIN_EMAIL_ADDRESS
+APP_TITLE=LibreChat
+USE_REDIS=true
+REDIS_URI=redis://:$LIBRECHAT_REDIS_PASSWORD@librechat-redis:6379
+ENDPOINTS=custom,agents
+OPENAI_API_KEY=user_provided
+RAG_OPENAI_API_KEY=$LOCALAI_API_KEY
+RAG_OPENAI_BASEURL=http://localai-server:8080
+EMBEDDINGS_PROVIDER=openai
+EMBEDDINGS_MODEL=text-embedding-ada-002
+NODE_ENV=production
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+SEARXNG_INSTANCE_URL=http://searxng-app:8080
+SEARXNG_API_KEY=nokey
+FIRECRAWL_API_URL=http://firecrawl-api:3002
+FIRECRAWL_API_KEY=$FIRECRAWL_API_KEY
+FIRECRAWL_VERSION=v2
+JINA_API_KEY=$LOCALAI_API_KEY
+JINA_API_URL=http://localai-server:8080/v1/rerank
+EOFMT
+  cp $HOME/librechat.env $HSHQ_STACKS_DIR/librechat/config/env
+  cat <<EOFIM > $HOME/librechat.oidc
+# Authelia OIDC Client librechat BEGIN
+      - client_id: librechat
+        client_name: LibreChat
+        client_secret: $LIBRECHAT_OIDC_CLIENT_SECRET_HASH
+        public: false
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
+        redirect_uris:
+          - https://$SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN/oauth/openid/callback
+        scopes:
+          - openid
+          - profile
+          - email
+          - offline_access
+        response_types:
+          - code
+        grant_types:
+          - authorization_code
+          - refresh_token
+        access_token_signed_response_alg: none
+        userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_post
+# Authelia OIDC Client librechat END
+EOFIM
+  cat <<EOFIM > $HSHQ_STACKS_DIR/librechat/config/librechat.yaml
+version: 1.2.8
+cache: true
+interface:
+  mcpServers:
+    placeholder: "MCP Servers"
+    use: true
+    create: true
+    share: true
+    trustCheckbox:
+      label: "I trust this server"
+      subLabel: "Only enable servers you trust"
+  modelSelect: true
+  parameters: true
+  sidePanel: true
+  presets: true
+  prompts: true
+  bookmarks: true
+  multiConvo: true
+  agents: true
+  customWelcome: "Hey {{user.name}}! Welcome to LibreChat"
+  runCode: true
+  webSearch: true
+  fileSearch: true
+  fileCitations: true
+  peoplePicker:
+    users: true
+    groups: true
+    roles: true
+  marketplace:
+    use: true
+endpoints:
+  custom:
+    - name: "Ollama"
+      apiKey: "ollama"
+      baseURL: "http://ollama-server:11434/v1/"
+      models:
+        default:
+          - "mistral-nemo:12b"
+          - "mixtral:8x7b"
+          - "phi4:14b"
+          - "qwen3:8b"
+        fetch: true
+      titleConvo: true
+      titleModel: "current_model"
+      summarize: true
+      summaryModel: "current_model"
+      forcePrompt: false
+      modelDisplayLabel: "Ollama"
+    - name: "LocalAI"
+      apiKey: "$LOCALAI_API_KEY"
+      baseURL: "http://localai-server:8080/v1"
+      models:
+        default:
+          - "gpt-4"
+          - "gpt-4o"
+          - "gemma-3-12b-it"
+          - "mistral-7b-instruct-v0.3"
+          - "mistral-small-24b-instruct-2501"
+          - "qwen3-vl-30b-a3b-instruct"
+        fetch: true
+      titleConvo: true
+      titleModel: "current_model"
+      summarize: true
+      forcePrompt: false
+      modelDisplayLabel: "LocalAI"
+webSearch:
+  searxngInstanceUrl: "\${SEARXNG_INSTANCE_URL}"
+  searxngApiKey: "\${SEARXNG_API_KEY}"
+  searchProvider: "searxng"
+  firecrawlApiKey: "\${FIRECRAWL_API_KEY}"
+  firecrawlApiUrl: "\${FIRECRAWL_API_URL}"
+  firecrawlVersion: "\${FIRECRAWL_VERSION}"
+  scraperProvider: "firecrawl"
+  jinaApiKey: "\${JINA_API_KEY}"
+  jinaApiUrl: "\${JINA_API_URL}"
+  rerankerType: "jina"
+  scraperTimeout: 5000
+  safeSearch: 1
+EOFIM
+}
+
+function performUpdateLibreChat()
+{
+  perform_stack_name=librechat
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/pgvector/pgvector:0.8.0-pg15-trixie,mirror.gcr.io/mongo:8.0.17,ghcr.io/danny-avila/librechat:v0.8.1,mirror.gcr.io/getmeili/meilisearch:v1.31.0,ghcr.io/danny-avila/librechat-rag-api-dev-lite:v0.7.0,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/pgvector/pgvector:0.8.0-pg15-trixie,mirror.gcr.io/pgvector/pgvector:0.8.0-pg15-trixie"
+      image_update_map[1]="mirror.gcr.io/mongo:8.0.17,mirror.gcr.io/mongo:8.0.17"
+      image_update_map[2]="ghcr.io/danny-avila/librechat:v0.8.1,ghcr.io/danny-avila/librechat:v0.8.1"
+      image_update_map[3]="mirror.gcr.io/getmeili/meilisearch:v1.31.0,mirror.gcr.io/getmeili/meilisearch:v1.31.0"
+      image_update_map[4]="ghcr.io/danny-avila/librechat-rag-api-dev-lite:v0.7.0,ghcr.io/danny-avila/librechat-rag-api-dev-lite:v0.7.0"
+      image_update_map[5]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Crawl4AI
+function installCrawl4AI()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory crawl4ai "Crawl4AI"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName crawl4ai-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName crawl4ai-proxy)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/crawl4ai
+  initServicesCredentials
+  set +e
+  outputConfigCrawl4AI
+  installStack crawl4ai crawl4ai-app "" $HOME/crawl4ai.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_CRAWL4AI_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_CRAWL4AI_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://crawl4ai-app:11235 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_CRAWL4AI_APP $MANAGETLS_CRAWL4AI_APP "$is_integrate_hshq" $NETDEFAULT_CRAWL4AI_APP "$inner_block"
+  insertSubAuthelia $SUB_CRAWL4AI_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll crawl4ai "$FMLNAME_CRAWL4AI_APP" $USERTYPE_CRAWL4AI_APP "https://$SUB_CRAWL4AI_APP.$HOMESERVER_DOMAIN" "crawl4ai.png" "$(getHeimdallOrderFromSub $SUB_CRAWL4AI_APP $USERTYPE_CRAWL4AI_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigCrawl4AI()
+{
+  cat <<EOFMT > $HOME/crawl4ai-compose.yml
+$STACK_VERSION_PREFIX crawl4ai $(getScriptStackVersion crawl4ai)
+
+services:
+  crawl4ai-app:
+    image: $(getScriptImageByContainerName crawl4ai-app)
+    container_name: crawl4ai-app
+    hostname: crawl4ai-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11235/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /dev/shm:/dev/shm
+
+  crawl4ai-proxy:
+    image: $(getScriptImageByContainerName crawl4ai-proxy)
+    container_name: crawl4ai-proxy
+    hostname: crawl4ai-proxy
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/crawl4ai.env
+TZ=\${PORTAINER_TZ}
+LLM_BASE_URL=http://ollama-server:11434
+LLM_PROVIDER=ollama/mistral-nemo:12b
+LLM_TEMPERATURE=0.5
+LISTEN_PORT=8000
+CRAWL4AI_ENDPOINT=http://crawl4ai-app:11235/crawl
+EOFMT
+}
+
+function performUpdateCrawl4AI()
+{
+  perform_stack_name=crawl4ai
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/unclecode/crawl4ai:0.7.8,ghcr.io/lennyerik/crawl4ai-proxy:latest
+      image_update_map[0]="mirror.gcr.io/unclecode/crawl4ai:0.7.8,mirror.gcr.io/unclecode/crawl4ai:0.7.8"
+      image_update_map[1]="ghcr.io/lennyerik/crawl4ai-proxy:latest,ghcr.io/lennyerik/crawl4ai-proxy:latest"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Ollama
+function installOllama()
+{
+  set +e
+  if [ -d $HSHQ_STACKS_DIR/aistack ]; then
+    echo "ERROR: You must uninstall the aistack in order to continue. It has been deprecated and will cause conflicts with this stack."
+    return 1
+  fi
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory ollama "Ollama"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ollama-server)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/ollama
+  mkdir $HSHQ_STACKS_DIR/ollama/code
+  mkdir -p $HSHQ_NONBACKUP_DIR/aimodels/ollama
+  initServicesCredentials
+  set +e
+  outputConfigOllama
+  installStack ollama ollama-server "" $HOME/ollama.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_OLLAMA_SERVER" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_OLLAMA_SERVER.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://ollama-server:11434 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_OLLAMA_SERVER $MANAGETLS_OLLAMA_SERVER "$is_integrate_hshq" $NETDEFAULT_OLLAMA_SERVER "$inner_block"
+  insertSubAuthelia $SUB_OLLAMA_SERVER.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcUptimeKuma ollama "$FMLNAME_OLLAMA_SERVER" $USERTYPE_OLLAMA_SERVER "https://$SUB_OLLAMA_SERVER.$HOMESERVER_DOMAIN" true
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigOllama()
+{
+  cat <<EOFMT > $HOME/ollama-compose.yml
+$STACK_VERSION_PREFIX ollama $(getScriptStackVersion ollama)
+
+services:
+  ollama-server:
+    image: $(getScriptImageByContainerName ollama-server)
+    container_name: ollama-server
+    hostname: ollama-server
+    restart: unless-stopped
+    env_file: stack.env
+    tty: true
+    security_opt:
+      - seccomp:unconfined
+    cap_add:
+      - SYS_PTRACE
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ollama/code:/code
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/ollama:/root/.ollama
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/ollama.env
+TZ=\${PORTAINER_TZ}
+OLLAMA_HOST=0.0.0.0
+EOFMT
+}
+
+function performUpdateOllama()
+{
+  perform_stack_name=ollama
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/ollama/ollama:0.13.5-rocm
+      image_update_map[0]="mirror.gcr.io/ollama/ollama:0.13.5-rocm,mirror.gcr.io/ollama/ollama:0.13.5-rocm"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# OpenWebUI
+function installOpenWebUI()
+{
+  set +e
+  if [ -d $HSHQ_STACKS_DIR/aistack ]; then
+    echo "ERROR: You must uninstall the aistack in order to continue. It has been deprecated and will cause conflicts with this stack."
+    return 1
+  fi
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory openwebui "OpenWebUI"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName openwebui-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName openwebui-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName openwebui-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/openwebui
+  mkdir $HSHQ_STACKS_DIR/openwebui/config
+  mkdir $HSHQ_STACKS_DIR/openwebui/data
+  mkdir $HSHQ_STACKS_DIR/openwebui/db
+  mkdir $HSHQ_STACKS_DIR/openwebui/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/openwebui/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/openwebui
+  mkdir $HSHQ_NONBACKUP_DIR/openwebui/redis
+  initServicesCredentials
+  set +e
+  addUserMailu alias $OPENWEBUI_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  OPENWEBUI_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $OPENWEBUI_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigOpenWebUI
+  oidcBlock=$(cat $HOME/openwebui.oidc)
+  rm -f $HOME/openwebui.oidc
+  insertOIDCClientAuthelia openwebui "$oidcBlock"
+  installStack openwebui openwebui-app "building the best AI user interface" $HOME/openwebui.env 3
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$OPENWEBUI_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_OPENWEBUI_APP Admin Login Info" -b "$FMLNAME_OPENWEBUI_APP Admin Username: $OPENWEBUI_ADMIN_USERNAME\n$FMLNAME_OPENWEBUI_APP Admin Email: $OPENWEBUI_ADMIN_EMAIL_ADDRESS\n$FMLNAME_OPENWEBUI_APP Admin Password: $OPENWEBUI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    OPENWEBUI_INIT_ENV=true
+    updateConfigVar OPENWEBUI_INIT_ENV $OPENWEBUI_INIT_ENV
+  fi
+  sleep 3
+  set +e
+  docker exec openwebui-db bash /dbexport/insertAdmin.sh
+  rm -f $HSHQ_STACKS_DIR/openwebui/dbexport/insertAdmin.sh
+  if [ -z "$FMLNAME_OPENWEBUI_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://openwebui-app:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_OPENWEBUI_APP $MANAGETLS_OPENWEBUI_APP "$is_integrate_hshq" $NETDEFAULT_OPENWEBUI_APP "$inner_block"
+  insertSubAuthelia $SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll openwebui "$FMLNAME_OPENWEBUI_APP" $USERTYPE_OPENWEBUI_APP "https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN" "openwebui.png" "$(getHeimdallOrderFromSub $SUB_OPENWEBUI_APP $USERTYPE_OPENWEBUI_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true openwebui "$FMLNAME_OPENWEBUI_APP" postgres openwebui-db $OPENWEBUI_DATABASE_NAME $OPENWEBUI_DATABASE_USER $OPENWEBUI_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigOpenWebUI()
+{
+  cat <<EOFMT > $HOME/openwebui-compose.yml
+$STACK_VERSION_PREFIX openwebui $(getScriptStackVersion openwebui)
+
+services:
+  openwebui-db:
+    image: $(getScriptImageByContainerName openwebui-db)
+    container_name: openwebui-db
+    hostname: openwebui-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-openwebui-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.openwebui-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.openwebui-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.openwebui-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.openwebui-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.openwebui-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.openwebui-hourly-db.email-from=OpenWebUI Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.openwebui-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.openwebui-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.openwebui-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.openwebui-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.openwebui-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.openwebui-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.openwebui-monthly-db.email-from=OpenWebUI Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.openwebui-monthly-db.mail-only-on-error=false"
+
+  openwebui-app:
+    image: $(getScriptImageByContainerName openwebui-app)
+    container_name: openwebui-app
+    hostname: openwebui-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - openwebui-db
+    networks:
+      - int-openwebui-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/data:/app/backend/data
+
+  openwebui-redis:
+    image: $(getScriptImageByContainerName openwebui-redis)
+    container_name: openwebui-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $OPENWEBUI_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-openwebui-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-openwebui-redis:/data
+
+volumes:
+  v-openwebui-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/openwebui/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-openwebui-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/openwebui.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$OPENWEBUI_DATABASE_NAME
+POSTGRES_USER=$OPENWEBUI_DATABASE_USER
+POSTGRES_PASSWORD=$OPENWEBUI_DATABASE_USER_PASSWORD
+OLLAMA_BASE_URL=http://ollama-server:11434
+DATABASE_URL=postgresql://$OPENWEBUI_DATABASE_USER:$OPENWEBUI_DATABASE_USER_PASSWORD@openwebui-db:5432/$OPENWEBUI_DATABASE_NAME
+WEBUI_AUTH=True
+ENABLE_SIGNUP=False
+ENABLE_LOGIN_FORM=True
+DEFAULT_USER_ROLE=user
+WEBUI_URL=https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN
+WEBUI_SECRET_KEY=$OPENWEBUI_SECRET_KEY
+ENABLE_OAUTH_SIGNUP=true
+ADMIN_EMAIL=$OPENWEBUI_ADMIN_EMAIL_ADDRESS
+ENV=prod
+OPENAI_API_BASE=http://localai-server:8080/v1
+OPENAI_API_KEY=$LOCALAI_API_KEY
+OAUTH_MERGE_ACCOUNTS_BY_EMAIL=true
+OAUTH_PROVIDER_NAME=Authelia
+OPENID_PROVIDER_URL=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/.well-known/openid-configuration
+OAUTH_CLIENT_ID=$OPENWEBUI_OIDC_CLIENT_ID
+OAUTH_CLIENT_SECRET=$OPENWEBUI_OIDC_CLIENT_SECRET
+OAUTH_SCOPES=openid groups email profile
+OPENID_REDIRECT_URI=https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/oauth/oidc/callback
+REDIS_HOST=openwebui-redis
+REDIS_PORT=6379
+REDIS_PASSWORD=$OPENWEBUI_REDIS_PASSWORD
+REDIS_CONNECTION_STRING=redis://:$OPENWEBUI_REDIS_PASSWORD@openwebui-redis:6379/0
+PYTHON_VER=python3.11
+DEFAULT_LOCALE=en
+DEFAULT_MODEL=mistral-nemo:12b
+DEFAULT_PINNED_MODELS=mistral-nemo:12b
+EOFMT
+  OPENWEBUI_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $OPENWEBUI_OIDC_CLIENT_SECRET | tr -d ':\n')
+  randuid=$(uuidgen)
+  cat <<EOFIM > $HOME/openwebui.oidc
+# Authelia OIDC Client openwebui BEGIN
+      - client_id: $OPENWEBUI_OIDC_CLIENT_ID
+        client_name: OpenWebUI
+        client_secret: '$OPENWEBUI_OIDC_CLIENT_SECRET_HASH'
+        public: false
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
+        redirect_uris:
+          - https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/oauth/oidc/callback
+        scopes:
+          - openid
+          - profile
+          - email
+          - groups
+        userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_basic
+# Authelia OIDC Client openwebui END
+EOFIM
+  cat <<EOFIM > $HSHQ_STACKS_DIR/openwebui/dbexport/insertAdmin.sh
+#!/bin/bash
+OPENWEBUI_DATABASE_NAME=$OPENWEBUI_DATABASE_NAME
+OPENWEBUI_DATABASE_USER=$OPENWEBUI_DATABASE_USER
+PGPASSWORD=$OPENWEBUI_DATABASE_USER_PASSWORD
+curdt=\$(date '+%s')
+OPENWEBUI_ADMIN_PASSWORD_HASH="$(htpasswd -bnBC 10 "" $OPENWEBUI_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/' | sed 's/\$/\\\$/g')"
+function main()
+{
+  sqlcmd="insert into \"user\"(id,name,email,role,profile_image_url,created_at,updated_at,last_active_at) values ('$randuid', '$(getAdminEmailName) OpenWebUI', '$OPENWEBUI_ADMIN_EMAIL_ADDRESS', 'admin','data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAJSElEQVR4Xu1aaZBV1RH+3r66gLIYETUogiITGUBwArKIEAeMDLgBLok/NNGykqqYyqrZrLjFMokmJiHEqmQkRirioAyIooihCCqCBLFQwyKiqKPCzNuXm+775t3HG+fNe/fO3DunKt2/YF6fvt/p7/Q5fbqPq33pQA0iynjAJYQow4UORAhRiw8hRDE+hBAhRDUPKIZHzhAhRDEPKAZHIkQIUcwDisGRCBFCFPOAYnAkQoQQxTygGByJECFEMQ8oBkciRAhRzAOKwZEIEUIU84BicCRChBDFPKAYHIkQIUQxDygGRyJECFHMA4rBkQgRQhTzgGJwJEKEEMU8oBgciRAhRDEPKAanXyPEPage3tMa4TmxDu7jRsLlPxbwBoF0B/LJj5D/5A3k3t+I7J4WaMm2PnWd56QGhC5pMWzGV81G/sNX+vQbVoz1CyGeYRchMOF2uAeeUxvmfAaZNx9Beus90FKf1DamilZwym/gHbnY0MrsWobUptv6xHZvjDhLiNuHwOS74Bt1fQlzNo7s/jXIvvsstNhBaOnDcIUGwX3s6fCefik8Qy8gXZeur8UPIrH+BuQPbenNnAFPENHFbwK+Yww7THSseTR9JNs7270c7RwhLi+CM/8C76mXGJBz7z2P5IaboSUOVZyGZ+hkBKf9Aa7IyQUdIjDxzFW0lf3L8tS9IxaQzT8C+TTg9ht2EusWI0eLoz/FMUICE38G37k3l8g4uAGJ1gW87qvO3xU9BZH5GwD/cQXd1GeIPTFFjygrEprzODwnz0DmP7+Hb8w3DBPZPU8iuf7rVkz22RhHCOHDO3zpWmPrQaYdsX/UmzqovSMW6pFSlNyB55BYe4VpR7hCQxC5egftgh7E/9lAUfsIJRRnFuzkkuhoHgXG11/iCCGhOStoRU435pjZ8SBSW+4wN2eXG5ErXoUrOry0xaz+Km1dL5my4zv3FgQm/pTOo/cRWz4GgUl3wnfOTYaN5MZbkd3dbMpmXyrbTojrmNN0Rx4tsccnQDvyX9Pz8J93G/zjvlfaYvY9jeSz15qyE256Ce4Bo5HZ+TBSm38I95CJCM9tLUUepdmJ1ZeZstmXyrYT4q/7Nvzjf2Rg1tr30XY1ztIc3IPGd259ncMpHe5oPovuLYdrsuc+YSzClz2v68ZbZiH/0Vb935ErXytFnpZH7O91ekbXH2I7IV23q+xby5F88RZrc6VtK3rdu3raWhSOkCxFSi1S3J44OjlKi+If/2P4675l/D/18k+Qef23tZjscx3bCYleQ1tTMTsi+OlXfo709gcsTyS8YBPcx1NUdErN5xEd4pFFO+EKDqIL5l1Iv3avYcM9YBTCTaU0Ov/pG3TgT7GMsTcD7SUkMADRJW+X4eO0ktNLqxKa1QzP8DnG8Oz+ViTXLalqzjN8NkKzHiU9DbHHxkHr2F82Jty0kc6Ws42/MSFMjNNiKyFcGgnPf7FsTonWJuToDmJVghf+Dt4zrjSG59t2IL5yWlVzwRnL6OZPWdkHm5B4et7n9P1jb4V/Qinz4y2Lty6nxV5CumQwPLn4qjlUxHvZ8jwDF9wH3+ivGeO1I3voPBjfsz0qWkYXUanEE0CltJYrAZGrtpOdUpkmtnysHlFOiq2EeE76MlVUy7en+MrpyLe9bnmOgfN/UXa7Lt4nejLoG3UdAg3308UvQVkZ1asqXPxCjU9R7WyyYYrTX642Oym2EuIeTGnqPL6hl6Q/IiQ8bw3cgycg+84KJF+4saJ/uegZaPiV8TtfEDminBR7CemSvfDEnD5DXFQ1jlxe6HMk1lyO3HvrK/uXk5BFu6jg6CvoUCTppRQqqTglthLC5e3otXvL5pKk8nl2z0rL8wtdvByeUy4ureJ9q+m2fk1Fe3yz5xu+VektXrPftZcQQhNZvJty/xMMXOlX70R6G+3nFiW8cHOpGMiLuEo2VHYLt/DN3P61SKxbZGGktSG2E/K5Ff32Y9QD+aZFtB5Erz9Q1sPgOwjfRboTbm6FGlfpP3FlN//ZW9W/6w3RtkX3D2+koEvlmdijZ/dZp7IaANsJ4X4DZ0ZF0ToO0MWsrhqu7h085HyE5q4u/UYNpkIt60i3+oEpv4Zv5BLqze9E/ImpNX8zOP1P8H6xydBPbfouMrv+XPP43ijaTogr8gXK7znNLeT3+mpdMQn5wzWs1i4z63oeZPe2IPlc6U5Spn5Um9ZsuYa7msGL/mqY48cP/AjCCbGdEJ5EcNbf4B3+FWM+3KlL/btUAa5polyL4qpssZVLgxJPNSJ3aHO3w402Lf3K1WWuMtcs1NaNLtld1nPXG2rte2s2YVXREULcA8dQ2ZvSTXKqLpkOvdqqJT6sGbf3zKsRnPqgoc+9b+6BV5LQbGrTDpuB/MfbEH9yZs3fKSp2LdGkt95NBcl7TNsxO8ARQhiUv/778H/pOyWHUqcv0TqfKhP5qpj1Jtf8F4wVqyU/pkN6asXHEa4wb5Pb9AVQczW4Cwo+Q/gsKYp25B1aRBOrYu2tgmOEgHoZwelL9QJfUbjIyBmXFv+g4jz4QVtw2sNgJxeiqx3xNQt7fNTGDTFujLFwmZ3L7WaFo4uj7GjhoiQXJ+0U5wjhWdBToMDkX1Jx8KiXHfwua18rvctap3fptHQ7vcs6kd5ljdDJ8wydxAN1H3DJPEGHOG9DlUSvMFOpBN6wrsLJQ3wVnV+pT0340YXghQ+VVZV1W9RhjHN7NxszYcucqrOEdGLzDJtJLxfvqP3lYi6lp50pbipVSHH99T/QH9V5BteX3VMKUdWBXNt2uksc7uzBd1/B5XPKR4uAG1b89KhboSdIubZt1JNfWvH+Y46Ccu1+IaQIgYuPvlPnws1ve48/g9720rsrbs+SA/PxQ/r9gbe1zF663JEjepJQYwsR0lDVFx3LBlOo5brV6/p2rCdjqS230/n0UNXvmVXoV0LMgv1/0BdCFGNZCBFCFPOAYnAkQoQQxTygGByJECFEMQ8oBkciRAhRzAOKwZEIEUIU84BicCRChBDFPKAYHIkQIUQxDygGRyJECFHMA4rBkQgRQhTzgGJwJEKEEMU8oBgciRAhRDEPKAZHIkQIUcwDisGRCBFCFPOAYnAkQoQQxTygGByJECFEMQ8oBkciRAhRzAOKwZEIEUIU84BicCRChBDFPKAYHIkQxQj5H8Wj5BIH8hVZAAAAAElFTkSuQmCC', \$curdt, \$curdt, \$curdt);"
+  echo "\$sqlcmd" | psql -U \$OPENWEBUI_DATABASE_USER \$OPENWEBUI_DATABASE_NAME > /dev/null 2>&1
+
+  psql -U \$OPENWEBUI_DATABASE_USER \$OPENWEBUI_DATABASE_NAME -c "insert into auth(id,email,password,active) values('$randuid','$OPENWEBUI_ADMIN_EMAIL_ADDRESS','\$OPENWEBUI_ADMIN_PASSWORD_HASH',true);" > /dev/null 2>&1
+}
+
+main
+EOFIM
+  chmod 755 $HSHQ_STACKS_DIR/openwebui/dbexport/insertAdmin.sh
+}
+
+function performUpdateOpenWebUI()
+{
+  perform_stack_name=openwebui
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/open-webui/open-webui:0.6.43,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="ghcr.io/open-webui/open-webui:0.6.43,ghcr.io/open-webui/open-webui:0.6.43"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Khoj
+function installKhoj()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory khoj "Khoj"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName khoj-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName khoj-sandbox)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName khoj-computer)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName khoj-server)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/khoj
+  mkdir $HSHQ_STACKS_DIR/khoj/config
+  mkdir $HSHQ_STACKS_DIR/khoj/computer
+  mkdir $HSHQ_STACKS_DIR/khoj/db
+  mkdir $HSHQ_STACKS_DIR/khoj/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/khoj/dbexport
+  sudo chown 1001:1001 $HSHQ_STACKS_DIR/khoj/computer
+  mkdir -p $HSHQ_NONBACKUP_DIR/aimodels/khoj
+  initServicesCredentials
+  set +e
+  addUserMailu alias $KHOJ_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigKhoj
+  installStack khoj khoj-server "" $HOME/khoj.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$KHOJ_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_KHOJ_SERVER Admin Login Info" -b "$FMLNAME_KHOJ_SERVER Admin Email: $KHOJ_ADMIN_EMAIL_ADDRESS\n$FMLNAME_KHOJ_SERVER Admin Password: $KHOJ_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    KHOJ_INIT_ENV=true
+    updateConfigVar KHOJ_INIT_ENV $KHOJ_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_KHOJ_SERVER" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://khoj-server:42110 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_KHOJ_SERVER $MANAGETLS_KHOJ_SERVER "$is_integrate_hshq" $NETDEFAULT_KHOJ_SERVER "$inner_block"
+  insertSubAuthelia $SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll khoj "$FMLNAME_KHOJ_SERVER" $USERTYPE_KHOJ_SERVER "https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN" "khoj.png" "$(getHeimdallOrderFromSub $SUB_KHOJ_SERVER $USERTYPE_KHOJ_SERVER)"
+    restartAllCaddyContainers
+    checkAddDBConnection true khoj "$FMLNAME_KHOJ_SERVER" postgres khoj-db $KHOJ_DATABASE_NAME $KHOJ_DATABASE_USER $KHOJ_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigKhoj()
+{
+  cat <<EOFMT > $HOME/khoj-compose.yml
+$STACK_VERSION_PREFIX khoj $(getScriptStackVersion khoj)
+
+services:
+  khoj-db:
+    image: $(getScriptImageByContainerName khoj-db)
+    container_name: khoj-db
+    hostname: khoj-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-khoj-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/khoj/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/khoj/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.khoj-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.khoj-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.khoj-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.khoj-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.khoj-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.khoj-hourly-db.email-from=Khoj Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.khoj-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.khoj-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.khoj-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.khoj-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.khoj-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.khoj-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.khoj-monthly-db.email-from=Khoj Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.khoj-monthly-db.mail-only-on-error=false"
+
+  khoj-sandbox:
+    image: $(getScriptImageByContainerName khoj-sandbox)
+    container_name: khoj-sandbox
+    hostname: khoj-sandbox
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - khoj-db
+    networks:
+      - int-khoj-net
+      - dock-aipriv-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  khoj-computer:
+    image: $(getScriptImageByContainerName khoj-computer)
+    container_name: khoj-computer
+    hostname: khoj-computer
+    user: "1001:1001"
+    restart: unless-stopped
+    env_file: stack.env
+    privileged: true
+    depends_on:
+      - khoj-db
+    ports:
+      - $KHOJ_VNC_PORT:5900
+    networks:
+      - int-khoj-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-khoj-computer:/home/operator
+
+  khoj-server:
+    image: $(getScriptImageByContainerName khoj-server)
+    container_name: khoj-server
+    hostname: khoj-server
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    working_dir: /app
+    command: --host="0.0.0.0" --port=42110 -vv --anonymous-mode --non-interactive
+    depends_on:
+      - khoj-db
+    networks:
+      - int-khoj-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      # Not sure about this. User can enable if they want.
+      #- /var/run/docker.sock:/var/run/docker.sock
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/khoj:/root/.cache
+      - v-khoj-config:/root/.khoj
+
+volumes:
+  v-khoj-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/khoj/config
+  v-khoj-computer:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/khoj/computer
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-khoj-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/khoj.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$KHOJ_DATABASE_NAME
+POSTGRES_USER=$KHOJ_DATABASE_USER
+POSTGRES_PASSWORD=$KHOJ_DATABASE_USER_PASSWORD
+POSTGRES_HOST=khoj-db
+POSTGRES_PORT=5432
+KHOJ_DJANGO_SECRET_KEY=$KHOJ_DJANGO_SECRET_KEY
+SEARXNG_BASE_URL=http://searxng-app:8080/
+KHOJ_DEBUG=False
+KHOJ_ADMIN_EMAIL=$KHOJ_ADMIN_EMAIL_ADDRESS
+KHOJ_ADMIN_PASSWORD=$KHOJ_ADMIN_PASSWORD
+KHOJ_TERRARIUM_URL=http://khoj-sandbox:8080
+OPENAI_BASE_URL=http://ollama-server:11434/v1/
+KHOJ_DEFAULT_CHAT_MODEL=mistral-nemo:12b
+KHOJ_OPERATOR_ENABLED=True
+KHOJ_NO_HTTPS=True
+KHOJ_DOMAIN=$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN
+KHOJ_ALLOWED_DOMAIN=$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN
+KHOJ_TELEMETRY_DISABLE=True
+EOFMT
+}
+
+function performUpdateKhoj()
+{
+  perform_stack_name=khoj
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/pgvector/pgvector:0.8.1-pg16-bookworm,ghcr.io/khoj-ai/terrarium:latest,ghcr.io/khoj-ai/khoj-computer:1.42.0,ghcr.io/khoj-ai/khoj:1.42.10
+      image_update_map[0]="mirror.gcr.io/pgvector/pgvector:0.8.1-pg16-bookworm,mirror.gcr.io/pgvector/pgvector:0.8.1-pg16-bookworm"
+      image_update_map[1]="ghcr.io/khoj-ai/terrarium:latest,ghcr.io/khoj-ai/terrarium:latest"
+      image_update_map[2]="ghcr.io/khoj-ai/khoj-computer:1.42.0,ghcr.io/khoj-ai/khoj-computer:1.42.0"
+      image_update_map[3]="ghcr.io/khoj-ai/khoj:1.42.10,ghcr.io/khoj-ai/khoj:1.42.10"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# LobeChat
+function installLobeChat()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory lobechat "LobeChat"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName lobechat-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName lobechat-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName lobechat-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName lobechat-minio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/lobechat
+  mkdir $HSHQ_STACKS_DIR/lobechat/minio
+  mkdir $HSHQ_STACKS_DIR/lobechat/db
+  mkdir $HSHQ_STACKS_DIR/lobechat/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/lobechat/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/lobechat
+  mkdir $HSHQ_NONBACKUP_DIR/lobechat/redis
+  initServicesCredentials
+  set +e
+  addUserMailu alias $LOBECHAT_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  LOBECHAT_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $LOBECHAT_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigLobeChat
+  oidcBlock=$(cat $HOME/lobechat.oidc)
+  rm -f $HOME/lobechat.oidc
+  insertOIDCClientAuthelia lobechat "$oidcBlock"
+  installStack lobechat lobechat-app "" $HOME/lobechat.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$LOBECHAT_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_LOBECHAT_APP Admin Login Info" -b "$FMLNAME_LOBECHAT_APP Admin Username: $LOBECHAT_ADMIN_USERNAME\n$FMLNAME_LOBECHAT_APP Admin Email: $LOBECHAT_ADMIN_EMAIL_ADDRESS\n$FMLNAME_LOBECHAT_APP Admin Password: $LOBECHAT_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    LOBECHAT_INIT_ENV=true
+    updateConfigVar LOBECHAT_INIT_ENV $LOBECHAT_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_LOBECHAT_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://lobechat-app:3210 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_LOBECHAT_APP $MANAGETLS_LOBECHAT_APP "$is_integrate_hshq" $NETDEFAULT_LOBECHAT_APP "$inner_block"
+  insertSubAuthelia $SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll lobechat "$FMLNAME_LOBECHAT_APP" $USERTYPE_LOBECHAT_APP "https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN" "lobechat.png" "$(getHeimdallOrderFromSub $SUB_LOBECHAT_APP $USERTYPE_LOBECHAT_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true lobechat "$FMLNAME_LOBECHAT_APP" postgres lobechat-db $LOBECHAT_DATABASE_NAME $LOBECHAT_DATABASE_USER $LOBECHAT_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigLobeChat()
+{
+  cat <<EOFMT > $HOME/lobechat-compose.yml
+$STACK_VERSION_PREFIX lobechat $(getScriptStackVersion lobechat)
+
+services:
+  lobechat-db:
+    image: $(getScriptImageByContainerName lobechat-db)
+    container_name: lobechat-db
+    hostname: lobechat-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-lobechat-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/lobechat/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/lobechat/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.lobechat-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.lobechat-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.lobechat-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.lobechat-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.lobechat-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.lobechat-hourly-db.email-from=LobeChat Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.lobechat-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.lobechat-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.lobechat-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.lobechat-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.lobechat-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.lobechat-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.lobechat-monthly-db.email-from=LobeChat Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.lobechat-monthly-db.mail-only-on-error=false"
+
+  lobechat-app:
+    image: $(getScriptImageByContainerName lobechat-app)
+    container_name: lobechat-app
+    hostname: lobechat-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - lobechat-db
+      - lobechat-minio
+      - lobechat-redis
+    networks:
+      - int-lobechat-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    entrypoint: >
+      /bin/sh -c "
+        /bin/node /app/startServer.js &
+        LOBE_PID=\\\$!
+        sleep 3
+        wait \\\$LOBE_PID
+      "
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  lobechat-redis:
+    image: $(getScriptImageByContainerName lobechat-redis)
+    container_name: lobechat-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $LOBECHAT_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-lobechat-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-lobechat-redis:/data
+
+  lobechat-minio:
+    image: $(getScriptImageByContainerName lobechat-minio)
+    container_name: lobechat-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-lobechat-net
+    entrypoint: >
+      /bin/sh -c "
+        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\\\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        mc alias set myminio http://localhost:9000 ${LOBECHAT_MINIO_ROOT_USER} ${LOBECHAT_MINIO_ROOT_PASSWORD}
+        echo 'Creating bucket ${LOBECHAT_MINIO_LOBE_BUCKET}'
+        mc mb myminio/${LOBECHAT_MINIO_LOBE_BUCKET}
+        wait \\\$MINIO_PID
+      "
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/lobechat/minio:/data:/etc/minio/data
+
+volumes:
+  v-lobechat-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/lobechat/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-lobechat-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/lobechat.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$LOBECHAT_DATABASE_NAME
+POSTGRES_USER=$LOBECHAT_DATABASE_USER
+POSTGRES_PASSWORD=$LOBECHAT_DATABASE_USER_PASSWORD
+APP_URL=https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN
+AUTH_URL=https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/api/auth
+LOBE_DB_NAME=$LOBECHAT_DATABASE_NAME
+MINIO_ROOT_USER=$LOBECHAT_MINIO_ROOT_USER
+MINIO_ROOT_PASSWORD=$LOBECHAT_MINIO_ROOT_PASSWORD
+S3_PUBLIC_DOMAIN=http://lobechat-minio:9000
+S3_ENDPOINT=http://lobechat-minio:9000
+MINIO_LOBE_BUCKET=lobechat
+OPENAI_API_KEY=$LOCALAI_API_KEY
+OPENAI_PROXY_URL=http://localai-server:8080/v1
+KEY_VAULTS_SECRET=$LOBECHAT_KEYVAULTS_SECRET
+NEXT_AUTH_SECRET=$LOBECHAT_NEXTAUTH_SECRET
+NEXT_AUTH_SSO_PROVIDERS=authelia
+AUTH_AUTHELIA_ID=$LOBECHAT_OIDC_CLIENT_ID
+AUTH_AUTHELIA_SECRET=$LOBECHAT_OIDC_CLIENT_SECRET
+AUTH_AUTHELIA_ISSUER=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN
+NEXTAUTH_URL=https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/api/auth
+NODE_ENV=production
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+DATABASE_URL=postgresql://$LOBECHAT_DATABASE_USER:$LOBECHAT_DATABASE_USER_PASSWORD@lobechat-db:5432/$LOBECHAT_DATABASE_NAME
+S3_BUCKET=$LOBECHAT_MINIO_LOBE_BUCKET
+S3_ENABLE_PATH_STYLE=1
+S3_ACCESS_KEY=$LOBECHAT_MINIO_ROOT_USER
+S3_ACCESS_KEY_ID=$LOBECHAT_MINIO_ROOT_USER
+S3_SECRET_ACCESS_KEY=$LOBECHAT_MINIO_ROOT_PASSWORD
+LLM_VISION_IMAGE_USE_BASE64=1
+S3_SET_ACL=0
+SEARXNG_URL=http://searxng-app:8080
+REDIS_URL=redis://:$LOBECHAT_REDIS_PASSWORD@lobechat-redis:6379/0
+REDIS_PREFIX=lobechat
+REDIS_TLS=0
+EOFMT
+  LOBECHAT_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $LOBECHAT_OIDC_CLIENT_SECRET | tr -d ':\n')
+  cat <<EOFIM > $HOME/lobechat.oidc
+# Authelia OIDC Client lobechat BEGIN
+      - client_id: $LOBECHAT_OIDC_CLIENT_ID
+        client_name: LobeChat
+        client_secret: '$LOBECHAT_OIDC_CLIENT_SECRET_HASH'
+        public: false
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
+        redirect_uris:
+          - https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/api/auth/callback/authelia
+        scopes:
+          - openid
+          - profile
+          - email
+          - groups
+        userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_basic
+# Authelia OIDC Client lobechat END
+EOFIM
+}
+
+function performUpdateLobeChat()
+{
+  perform_stack_name=lobechat
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/lobehub/lobe-chat-database:1.143.2,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
+      image_update_map[1]="mirror.gcr.io/lobehub/lobe-chat-database:1.143.2,mirror.gcr.io/lobehub/lobe-chat-database:1.143.2"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
     ;;
     *)
       is_upgrade_error=true
@@ -80333,7 +83443,6 @@ networks:
 EOFMT
   cat <<EOFMT > $HOME/exampleservice.env
 TZ=\${PORTAINER_TZ}
-
 EOFMT
 }
 
@@ -81899,7 +85008,6 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
-echo "Service: \$(getScriptImageByContainerName localai-server)"
 services=\$(getArgumentValue services "\$@")
 
 set +e
@@ -88906,7 +92014,7 @@ EOFMT
 TZ=\${PORTAINER_TZ}
 LOGIN=$DBGATE_ADMIN_USERNAME
 PASSWORD=$DBGATE_ADMIN_PASSWORD
-CONNECTIONS=ActivePieces,Adminer,Automatisch,Budibase,Calcom,Discourse,Dolibarr,EasyAppointments,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,InvoiceNinja,InvoiceShelf,Kanboard,Keila,KillBill,KillBillAPI,Langfuse,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MindsDB,MintHCM,n8n,Nextcloud,Odoo,Ombi,OpenProject,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Rallly,Revolt,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Twenty,Vaultwarden,Wallabag,Wekan,Wikijs,WordPress,Yamtrack,Zammad,Zulip,Taiga,OpenSign,DocuSeal,ControlR,Akaunting,Axelor
+CONNECTIONS=ActivePieces,Adminer,Automatisch,Budibase,Calcom,Discourse,Dolibarr,EasyAppointments,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,InvoiceNinja,InvoiceShelf,Kanboard,Keila,KillBill,KillBillAPI,Langfuse,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MindsDB,MintHCM,n8n,Nextcloud,Odoo,Ombi,OpenProject,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Rallly,Revolt,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Twenty,Vaultwarden,Wallabag,Wekan,Wikijs,WordPress,Yamtrack,Zammad,Zulip,Taiga,OpenSign,DocuSeal,ControlR,Akaunting,Axelor,Langflow,Firecrawl,LibreChat,OpenWebUI,Khoj,LobeChat
 LABEL_ActivePieces=ActivePieces
 ENGINE_ActivePieces=postgres@dbgate-plugin-postgres
 SERVER_ActivePieces=activepieces-db
@@ -89390,6 +92498,48 @@ DATABASE_Axelor=AXELOR_DATABASE_NAME
 USER_Axelor=AXELOR_DATABASE_USER
 PASSWORD_Axelor=AXELOR_DATABASE_USER_PASSWORD
 PORT_Axelor=5432
+LABEL_Langflow=Langflow
+ENGINE_Langflow=postgres@dbgate-plugin-postgres
+SERVER_Langflow=langflow-db
+DATABASE_Langflow=LANGFLOW_DATABASE_NAME
+USER_Langflow=LANGFLOW_DATABASE_USER
+PASSWORD_Langflow=LANGFLOW_DATABASE_USER_PASSWORD
+PORT_Langflow=5432
+LABEL_Firecrawl=Firecrawl
+ENGINE_Firecrawl=postgres@dbgate-plugin-postgres
+SERVER_Firecrawl=firecrawl-db
+DATABASE_Firecrawl=FIRECRAWL_DATABASE_NAME
+USER_Firecrawl=FIRECRAWL_DATABASE_USER
+PASSWORD_Firecrawl=FIRECRAWL_DATABASE_USER_PASSWORD
+PORT_Firecrawl=5432
+LABEL_LibreChat=LibreChat
+ENGINE_LibreChat=postgres@dbgate-plugin-postgres
+SERVER_LibreChat=librechat-db
+DATABASE_LibreChat=LIBRECHAT_DATABASE_NAME
+USER_LibreChat=LIBRECHAT_DATABASE_USER
+PASSWORD_LibreChat=LIBRECHAT_DATABASE_USER_PASSWORD
+PORT_LibreChat=5432
+LABEL_OpenWebUI=OpenWebUI
+ENGINE_OpenWebUI=postgres@dbgate-plugin-postgres
+SERVER_OpenWebUI=openwebui-db
+DATABASE_OpenWebUI=OPENWEBUI_DATABASE_NAME
+USER_OpenWebUI=OPENWEBUI_DATABASE_USER
+PASSWORD_OpenWebUI=OPENWEBUI_DATABASE_USER_PASSWORD
+PORT_OpenWebUI=5432
+LABEL_Khoj=Khoj
+ENGINE_Khoj=postgres@dbgate-plugin-postgres
+SERVER_Khoj=khoj-db
+DATABASE_Khoj=KHOJ_DATABASE_NAME
+USER_Khoj=KHOJ_DATABASE_USER
+PASSWORD_Khoj=KHOJ_DATABASE_USER_PASSWORD
+PORT_Khoj=5432
+LABEL_LobeChat=LobeChat
+ENGINE_LobeChat=postgres@dbgate-plugin-postgres
+SERVER_LobeChat=lobechat-db
+DATABASE_LobeChat=LOBECHAT_DATABASE_NAME
+USER_LobeChat=LOBECHAT_DATABASE_USER
+PASSWORD_LobeChat=LOBECHAT_DATABASE_USER_PASSWORD
+PORT_LobeChat=5432
 EOFMT
 #DBGATE_OUTPUT_CONFIG_ENV_END
 }
@@ -90075,6 +93225,54 @@ SQLPAD_CONNECTIONS__axelor__username=$AXELOR_DATABASE_USER
 SQLPAD_CONNECTIONS__axelor__password=$AXELOR_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__axelor__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__axelor__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__langflow__name=Langflow
+SQLPAD_CONNECTIONS__langflow__driver=postgres
+SQLPAD_CONNECTIONS__langflow__host=langflow-db
+SQLPAD_CONNECTIONS__langflow__database=$LANGFLOW_DATABASE_NAME
+SQLPAD_CONNECTIONS__langflow__username=$LANGFLOW_DATABASE_USER
+SQLPAD_CONNECTIONS__langflow__password=$LANGFLOW_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__langflow__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__langflow__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__firecrawl__name=Firecrawl
+SQLPAD_CONNECTIONS__firecrawl__driver=postgres
+SQLPAD_CONNECTIONS__firecrawl__host=firecrawl-db
+SQLPAD_CONNECTIONS__firecrawl__database=$FIRECRAWL_DATABASE_NAME
+SQLPAD_CONNECTIONS__firecrawl__username=$FIRECRAWL_DATABASE_USER
+SQLPAD_CONNECTIONS__firecrawl__password=$FIRECRAWL_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__firecrawl__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__firecrawl__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__librechat__name=LibreChat
+SQLPAD_CONNECTIONS__librechat__driver=postgres
+SQLPAD_CONNECTIONS__librechat__host=librechat-db
+SQLPAD_CONNECTIONS__librechat__database=$LIBRECHAT_DATABASE_NAME
+SQLPAD_CONNECTIONS__librechat__username=$LIBRECHAT_DATABASE_USER
+SQLPAD_CONNECTIONS__librechat__password=$LIBRECHAT_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__librechat__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__librechat__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__openwebui__name=OpenWebUI
+SQLPAD_CONNECTIONS__openwebui__driver=postgres
+SQLPAD_CONNECTIONS__openwebui__host=openwebui-db
+SQLPAD_CONNECTIONS__openwebui__database=$OPENWEBUI_DATABASE_NAME
+SQLPAD_CONNECTIONS__openwebui__username=$OPENWEBUI_DATABASE_USER
+SQLPAD_CONNECTIONS__openwebui__password=$OPENWEBUI_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__openwebui__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__openwebui__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__khoj__name=Khoj
+SQLPAD_CONNECTIONS__khoj__driver=postgres
+SQLPAD_CONNECTIONS__khoj__host=khoj-db
+SQLPAD_CONNECTIONS__khoj__database=$KHOJ_DATABASE_NAME
+SQLPAD_CONNECTIONS__khoj__username=$KHOJ_DATABASE_USER
+SQLPAD_CONNECTIONS__khoj__password=$KHOJ_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__khoj__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__khoj__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__lobechat__name=LobeChat
+SQLPAD_CONNECTIONS__lobechat__driver=postgres
+SQLPAD_CONNECTIONS__lobechat__host=lobechat-db
+SQLPAD_CONNECTIONS__lobechat__database=$LOBECHAT_DATABASE_NAME
+SQLPAD_CONNECTIONS__lobechat__username=$LOBECHAT_DATABASE_USER
+SQLPAD_CONNECTIONS__lobechat__password=$LOBECHAT_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__lobechat__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__lobechat__idleTimeoutSeconds=900
 EOFSP
 #SQLPAD_OUTPUT_CONFIG_ENV_END
 }
