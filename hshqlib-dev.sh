@@ -1,7 +1,7 @@
 #!/bin/bash
 HSHQ_LIB_SCRIPT_VERSION=220
 LOG_LEVEL=info
-#
+
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -29574,6 +29574,7 @@ function loadPinnedDockerImages()
   IMG_KHOJ_COMPUTER=ghcr.io/khoj-ai/khoj-computer:1.42.0
   IMG_KHOJ_SERVER=ghcr.io/khoj-ai/khoj:1.42.10
   IMG_LOBECHAT_APP=mirror.gcr.io/lobehub/lobe-chat-database:1.143.2
+  IMG_INVOKEAI_APP=ghcr.io/invoke-ai/invokeai:6.10.0rc2-rocm
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -29841,6 +29842,8 @@ function getScriptStackVersion()
       echo "v1" ;;
     lobechat)
       echo "v1" ;;
+    invokeai)
+      echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
 }
@@ -30068,6 +30071,7 @@ function pullDockerImages()
   pullImage $IMG_KHOJ_COMPUTER
   pullImage $IMG_KHOJ_SERVER
   pullImage $IMG_LOBECHAT_APP
+  pullImage $IMG_INVOKEAI_APP
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -34639,13 +34643,14 @@ function initServiceVars()
   checkAddSvc "SVCD_LANGFLOW_APP=langflow,langflow,primary,user,Langflow,langflow,hshq"
   checkAddSvc "SVCD_ANYTHINGLLM_APP=anythingllm,anythingllm,primary,user,AnythingLLM,anythingllm,hshq"
   checkAddSvc "SVCD_PERPLEXICA_APP=perplexica,perplexica,primary,user,Perplexica,perplexica,hshq"
-  checkAddSvc "SVCD_FIRECRAWL_API=firecrawl,firecrawl,primary,user,Firecrawl,firecrawl,hshq"
+  checkAddSvc "SVCD_FIRECRAWL_API=firecrawl,firecrawl,primary,admin,Firecrawl,firecrawl,hshq"
   checkAddSvc "SVCD_LIBRECHAT_APP=librechat,librechat,primary,user,LibreChat,librechat,hshq"
-  checkAddSvc "SVCD_CRAWL4AI_APP=crawl4ai,crawl4ai,primary,user,Crawl4AI,crawl4ai,hshq"
+  checkAddSvc "SVCD_CRAWL4AI_APP=crawl4ai,crawl4ai,primary,admin,Crawl4AI,crawl4ai,hshq"
   checkAddSvc "SVCD_OLLAMA_SERVER=ollama,ollama,home,admin,Ollama,ollama,hshq"
   checkAddSvc "SVCD_OPENWEBUI_APP=openwebui,openwebui,primary,user,Open WebUI,openwebui,hshq"
   checkAddSvc "SVCD_KHOJ_SERVER=khoj,khoj,primary,user,Khoj,khoj,hshq"
   checkAddSvc "SVCD_LOBECHAT_APP=lobechat,lobechat,primary,user,LobeChat,lobechat,hshq"
+  checkAddSvc "SVCD_INVOKEAI_APP=invokeai,invokeai,primary,user,InvokeAI,invokeai,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -34912,6 +34917,8 @@ function installStackByName()
       installKhoj $is_integrate ;;
     lobechat)
       installLobeChat $is_integrate ;;
+    invokeai)
+      installInvokeAI $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -35192,6 +35199,8 @@ function performUpdateStackByName()
       performUpdateKhoj ;;
     lobechat)
       performUpdateLobeChat ;;
+    invokeai)
+      performUpdateInvokeAI ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -35332,6 +35341,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_INVOKEAI_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_PRIMARY_HERE
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -36186,6 +36196,9 @@ function getHeimdallOrderFromSub()
     "$SUB_LOBECHAT_APP")
       order_num=147
       ;;
+    "$SUB_INVOKEAI_APP")
+      order_num=148
+      ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=900
@@ -36236,18 +36249,18 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,aistack,khoj,lobechat
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,aistack,khoj,lobechat,invokeai
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
-  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
-  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
-  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
+  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
+  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
+  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
 #INIT_SERVICE_DEFAULTS_END
 }
 
@@ -37417,6 +37430,9 @@ function getScriptImageByContainerName()
       ;;
     "lobechat-minio")
       container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      ;;
+    "invokeai-app")
+      container_image=$IMG_INVOKEAI_APP
       ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
@@ -77929,6 +77945,7 @@ AP_REDIS_PORT=6379
 AP_REDIS_PASSWORD=$ACTIVEPIECES_REDIS_PASSWORD
 AP_FLOW_TIMEOUT_SECONDS=600
 AP_TELEMETRY_ENABLED=false
+AP_SIGN_UP_ENABLED=false
 AP_TEMPLATES_SOURCE_URL="https://cloud.activepieces.com/api/v1/flow-templates"
 AP_SMTP_HOST=$SMTP_HOSTNAME
 AP_SMTP_PORT=465
@@ -78038,7 +78055,7 @@ function installBeszel()
     BESZEL_INIT_ENV=true
     updateConfigVar BESZEL_INIT_ENV $BESZEL_INIT_ENV
   fi
-  sendEmail -s "$FMLNAME_BESZEL_APP Install Instructions" -b "There is one extra action that you must perform manually to enable the Beszel agent on your local system. Here are the steps:\n\n\t1. Log in to the Beszel web UI using the admin credentials (https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN).\n\t2. Go to Settings (press the gear button on top right of window), then to Tokens & Fingerprints.\n\t3. Under the Universal token section, move the toggle button to the right. You should see a UUID for the token, i.e. something like 9df4ceb0-af96-413a-ab2b-7246cca7422c, etc.\n\t4. Select this generated value and copy it to the clipboard.\n\t5. Go to Portainer (https://$SUB_PORTAINER.$HOMESERVER_DOMAIN), and open up the beszel stack.\n\t6. Select the Editor tab, then in the docker-compose area scoll halfway down to the beszel-agent container.\n\t7. At the end of that block is an environment section with a single variable, TOKEN. It should be assigned to nothing, i.e. - TOKEN=. Paste the generated token from the clipboard on the RHS, i.e. it should then look like this: - TOKEN=9df4ceb0-af96-413a-ab2b-7246cca7422c\n\t8. After pasting the value, scroll down and press the Update the stack button. Your local system should not be connected to the hub. Go back to Beszel and refresh the page (click the word Beszel on top left corner of window to go to the home landing page)." -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  sendEmail -s "$FMLNAME_BESZEL_APP Install Instructions" -b "There is one extra action that you must perform manually to enable the Beszel agent on your local system. Here are the steps:\n\n\t1. Log in to the Beszel web UI using the admin credentials (https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN).\n\t2. Go to Settings (press the gear button on top right of window), then to Tokens & Fingerprints.\n\t3. Under the Universal token section, move the toggle button to the right. You should see a UUID for the token, i.e. something like 9df4ceb0-af96-413a-ab2b-7246cca7422c, etc.\n\t4. Select this generated value and copy it to the clipboard.\n\t5. Go to Portainer (https://$SUB_PORTAINER.$HOMESERVER_DOMAIN), and open up the beszel stack.\n\t6. Select the Editor tab, then in the docker-compose area scoll halfway down to the beszel-agent container.\n\t7. At the end of that block is an environment section with a single variable, TOKEN. It should be assigned to nothing, i.e. - TOKEN=. Paste the generated token from the clipboard on the RHS, i.e. it should then look like this: - TOKEN=9df4ceb0-af96-413a-ab2b-7246cca7422c\n\t8. After pasting the value, scroll down and press the Update the stack button. Your local system should now be connected to the hub. Go back to Beszel and refresh the page (click the word Beszel on top left corner of window to go to the home landing page)." -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
   sleep 3
   beszel_app_key=$(sudo ssh-keygen -y -f $HSHQ_STACKS_DIR/beszel/hubdata/id_ed25519)
   #beszel_app_token=$(sqlite3 $HSHQ_STACKS_DIR/beszel/hubdata/data.db "select token from fingerprints limit 1;")
@@ -80528,7 +80545,7 @@ function installComfyUI()
   mkdir $HSHQ_STACKS_DIR/comfyui/output
   mkdir $HSHQ_STACKS_DIR/comfyui/custom_nodes
   mkdir $HSHQ_STACKS_DIR/comfyui/user
-  mkdir $HSHQ_STACKS_DIR/comfyui/temp
+  mkdir -p $HSHQ_NONBACKUP_DIR/comfyui/cache
   initServicesCredentials
   set +e
   outputConfigComfyUI
@@ -80584,11 +80601,6 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    devices:
-      - /dev/dri
-      - /dev/kfd
-    group_add:
-      - video
     networks:
       - dock-proxy-net
       - dock-ext-net
@@ -80599,12 +80611,51 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/models:/workspace/ComfyUI/models
-      - \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/input:/workspace/ComfyUI/input
-      - \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/output:/workspace/ComfyUI/output
-      - \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/custom_nodes:/workspace/ComfyUI/custom_nodes
-      - \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/user:/workspace/ComfyUI/user
-      - \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/temp:/workspace/ComfyUI/temp
+      - /opt/amdgpu/share/libdrm/amdgpu.ids:/opt/amdgpu/share/libdrm/amdgpu.ids:ro
+      - v-comfyui-models:/opt/ComfyUI/models
+      - v-comfyui-input:/opt/ComfyUI/input
+      - v-comfyui-output:/opt/ComfyUI/output
+      - v-comfyui-user:/opt/ComfyUI/user
+      - v-comfyui-custom_nodes:/opt/ComfyUI/custom_nodes
+      - v-comfyui-cache:/opt/ComfyUI/.cache
+
+volumes:
+  v-comfyui-models:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/comfyui
+  v-comfyui-input:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/input
+  v-comfyui-output:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/output
+  v-comfyui-user:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/user
+  v-comfyui-custom_nodes:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/custom_nodes
+  v-comfyui-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/comfyui/cache
 
 networks:
   dock-proxy-net:
@@ -80616,12 +80667,10 @@ networks:
   dock-aipriv-net:
     name: dock-aipriv
     external: true
+
 EOFMT
   cat <<EOFMT > $HOME/comfyui.env
 TZ=\${PORTAINER_TZ}
-MODEL_DOWNLOAD=default
-HIP_VISIBLE_DEVICES=0
-CUDA_VISIBLE_DEVICES=""
 EOFMT
 }
 
@@ -81193,7 +81242,7 @@ function installFirecrawl()
   updateCaddyBlocks $SUB_FIRECRAWL_API $MANAGETLS_FIRECRAWL_API "$is_integrate_hshq" $NETDEFAULT_FIRECRAWL_API "$inner_block"
   insertSubAuthelia $SUB_FIRECRAWL_API.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll firecrawl "$FMLNAME_FIRECRAWL_API" admin "https://$SUB_FIRECRAWL_API.$HOMESERVER_DOMAIN" "firecrawl.png" "$(getHeimdallOrderFromSub $SUB_FIRECRAWL_API admin)"
+    insertEnableSvcUptimeKuma firecrawl "$FMLNAME_FIRECRAWL_API" admin "https://$SUB_FIRECRAWL_API.$HOMESERVER_DOMAIN" true
     restartAllCaddyContainers
     checkAddDBConnection true firecrawl "$FMLNAME_FIRECRAWL_API" postgres firecrawl-db $FIRECRAWL_DATABASE_NAME $FIRECRAWL_DATABASE_USER $FIRECRAWL_DATABASE_USER_PASSWORD
   fi
@@ -82370,6 +82419,7 @@ EOFMT
   cat <<EOFMT > $HOME/ollama.env
 TZ=\${PORTAINER_TZ}
 OLLAMA_HOST=0.0.0.0
+OLLAMA_NUM_GPU=999
 EOFMT
 }
 
@@ -83266,6 +83316,134 @@ function performUpdateLobeChat()
       image_update_map[1]="mirror.gcr.io/lobehub/lobe-chat-database:1.143.2,mirror.gcr.io/lobehub/lobe-chat-database:1.143.2"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# InvokeAI
+function installInvokeAI()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory invokeai "InvokeAI"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName invokeai-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/invokeai
+  mkdir $HSHQ_STACKS_DIR/invokeai/data
+  mkdir -p $HSHQ_NONBACKUP_DIR/aimodels/invokeai/models
+  mkdir -p $HSHQ_NONBACKUP_DIR/aimodels/invokeai/cache/{download,convert}
+  initServicesCredentials
+  set +e
+  outputConfigInvokeAI
+  installStack invokeai invokeai-app "" $HOME/invokeai.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_INVOKEAI_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_INVOKEAI_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://invokeai-app:9090 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_INVOKEAI_APP $MANAGETLS_INVOKEAI_APP "$is_integrate_hshq" $NETDEFAULT_INVOKEAI_APP "$inner_block"
+  insertSubAuthelia $SUB_INVOKEAI_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll invokeai "$FMLNAME_INVOKEAI_APP" $USERTYPE_INVOKEAI_APP "https://$SUB_INVOKEAI_APP.$HOMESERVER_DOMAIN" "invokeai.png" "$(getHeimdallOrderFromSub $SUB_INVOKEAI_APP $USERTYPE_INVOKEAI_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigInvokeAI()
+{
+  cat <<EOFMT > $HOME/invokeai-compose.yml
+$STACK_VERSION_PREFIX invokeai $(getScriptStackVersion invokeai)
+
+services:
+  invokeai-app:
+    image: $(getScriptImageByContainerName invokeai-app)
+    container_name: invokeai-app
+    hostname: invokeai-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-invokeai-data:/invokeai
+
+volumes:
+  v-invokeai-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/invokeai/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/invokeai.env
+TZ=\${PORTAINER_TZ}
+EOFMT
+}
+
+function performUpdateInvokeAI()
+{
+  perform_stack_name=invokeai
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=ghcr.io/invoke-ai/invokeai:6.10.0rc2-rocm
+      image_update_map[0]="ghcr.io/invoke-ai/invokeai:6.10.0rc2-rocm,ghcr.io/invoke-ai/invokeai:6.10.0rc2-rocm"
     ;;
     *)
       is_upgrade_error=true
