@@ -23804,9 +23804,14 @@ function version220Update()
     docker network rm dock-aipriv > /dev/null 2>&1
     docker network create -o com.docker.network.bridge.name=$NET_AIPRIVATE_BRIDGE_NAME --driver=bridge --subnet $docker_subnet --internal dock-aipriv > /dev/null
   fi
-  sudo sed -i "/^SVCD_AISTACK_MINDSDB_APP=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/^SVCD_AISTACK_LANGFUSE=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/^SVCD_AISTACK_OPENWEBUI=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^SVCD_AISTACK_MINDSDB_APP=/d" $CONFIG_FILE > /dev/null 2>&1
+  sudo sed -i "/^SVCD_AISTACK_LANGFUSE=/d" $CONFIG_FILE > /dev/null 2>&1
+  sudo sed -i "/^SVCD_AISTACK_OPENWEBUI=/d" $CONFIG_FILE > /dev/null 2>&1
+  performAptInstall python3-werkzeug > /dev/null 2>&1
+  curl -fsSL https://gvisor.dev/archive.key | sudo gpg --yes --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | sudo tee /etc/apt/sources.list.d/gvisor.list > /dev/null 2>&1
+  sudo apt-get update > /dev/null 2>&1
+  performAptInstall runsc > /dev/null 2>&1
 }
 
 function updateRelayServerWithScript()
@@ -29575,6 +29580,19 @@ function loadPinnedDockerImages()
   IMG_KHOJ_SERVER=ghcr.io/khoj-ai/khoj:1.42.10
   IMG_LOBECHAT_APP=mirror.gcr.io/lobehub/lobe-chat-database:1.143.2
   IMG_INVOKEAI_APP=ghcr.io/invoke-ai/invokeai:6.10.0rc2-rocm
+  IMG_RAGFLOW_INFINITY=mirror.gcr.io/infiniflow/infinity:v0.6.15
+  IMG_RAGFLOW_APP=mirror.gcr.io/infiniflow/ragflow:v0.23.1
+  IMG_RAGFLOW_SANDBOX=mirror.gcr.io/infiniflow/sandbox-executor-manager:latest
+  IMG_RAGFLOW_SB_NODEJS=mirror.gcr.io/infiniflow/sandbox-base-nodejs:latest
+  IMG_RAGFLOW_SB_PYTHON=mirror.gcr.io/infiniflow/sandbox-base-python:latest
+  IMG_TABBYML_APP=mirror.gcr.io/tabbyml/tabby:0.31.2
+  IMG_DEEPWIKIOPEN_APP=ghcr.io/asyncfuncai/deepwiki-open:sha-d48f5bc
+  IMG_DOCLING_APP=ghcr.io/docling-project/docling-serve-rocm:main
+  IMG_DIFY_SSRF=mirror.gcr.io/ubuntu/squid:latest
+  IMG_DIFY_API=mirror.gcr.io/langgenius/dify-api:1.11.2
+  IMG_DIFY_PLUGIND=mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local
+  IMG_DIFY_SANDBOX=mirror.gcr.io/langgenius/dify-sandbox:0.2.12
+  IMG_DIFY_WEB=mirror.gcr.io/langgenius/dify-web:1.11.2
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -29844,6 +29862,16 @@ function getScriptStackVersion()
       echo "v1" ;;
     invokeai)
       echo "v1" ;;
+    ragflow)
+      echo "v1" ;;
+    tabbyml)
+      echo "v1" ;;
+    deepwikiopen)
+      echo "v1" ;;
+    docling)
+      echo "v1" ;;
+    dify)
+      echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
 }
@@ -30072,6 +30100,19 @@ function pullDockerImages()
   pullImage $IMG_KHOJ_SERVER
   pullImage $IMG_LOBECHAT_APP
   pullImage $IMG_INVOKEAI_APP
+  pullImage $IMG_RAGFLOW_INFINITY
+  pullImage $IMG_RAGFLOW_APP
+  pullImage $IMG_RAGFLOW_SANDBOX
+  pullImage $IMG_RAGFLOW_SB_NODEJS
+  pullImage $IMG_RAGFLOW_SB_PYTHON
+  pullImage $IMG_TABBYML_APP
+  pullImage $IMG_DEEPWIKIOPEN_APP
+  pullImage $IMG_DOCLING_APP
+  pullImage $IMG_DIFY_SSRF
+  pullImage $IMG_DIFY_API
+  pullImage $IMG_DIFY_PLUGIND
+  pullImage $IMG_DIFY_SANDBOX
+  pullImage $IMG_DIFY_WEB
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -31461,12 +31502,68 @@ LOBECHAT_DATABASE_USER_PASSWORD=
 LOBECHAT_REDIS_PASSWORD=
 LOBECHAT_NEXTAUTH_SECRET=
 LOBECHAT_KEYVAULTS_SECRET=
-LOBECHAT_MINIO_LOBE_BUCKET=
-LOBECHAT_MINIO_ROOT_USER=
-LOBECHAT_MINIO_ROOT_PASSWORD=
+LOBECHAT_MINIO_BUCKET=
+LOBECHAT_MINIO_KEY=
+LOBECHAT_MINIO_SECRET=
 LOBECHAT_OIDC_CLIENT_ID=
 LOBECHAT_OIDC_CLIENT_SECRET=
 # LobeChat (Service Details) END
+
+# RAGFlow (Service Details) BEGIN
+RAGFLOW_INIT_ENV=true
+RAGFLOW_ADMIN_USERNAME=
+RAGFLOW_ADMIN_EMAIL_ADDRESS=
+RAGFLOW_ADMIN_PASSWORD=
+RAGFLOW_DATABASE_NAME=
+RAGFLOW_DATABASE_USER=
+RAGFLOW_DATABASE_USER_PASSWORD=
+RAGFLOW_REDIS_PASSWORD=
+RAGFLOW_MINIO_KEY=
+RAGFLOW_MINIO_SECRET=
+RAGFLOW_MINIO_BUCKET=
+RAGFLOW_OIDC_CLIENT_ID=
+RAGFLOW_OIDC_CLIENT_SECRET=
+RAGFLOW_MCPSERVER_API_KEY=
+# RAGFlow (Service Details) END
+
+# TabbyML (Service Details) BEGIN
+TABBYML_INIT_ENV=true
+TABBYML_ADMIN_USERNAME=
+TABBYML_ADMIN_EMAIL_ADDRESS=
+TABBYML_ADMIN_PASSWORD=
+TABBYML_JWT_SECRET=
+# TabbyML (Service Details) END
+
+# DeepWikiOpen (Service Details) BEGIN
+DEEPWIKI_OPEN_INIT_ENV=true
+DEEPWIKI_OPEN_AUTH_CODE=
+# DeepWikiOpen (Service Details) END
+
+# Docling (Service Details) BEGIN
+DOCLING_INIT_ENV=true
+DOCLING_REDIS_PASSWORD=
+DOCLING_API_KEY=
+# Docling (Service Details) END
+
+# Dify (Service Details) BEGIN
+DIFY_INIT_ENV=true
+DIFY_ADMIN_USERNAME=
+DIFY_ADMIN_EMAIL_ADDRESS=
+DIFY_ADMIN_PASSWORD=
+DIFY_DATABASE_NAME=
+DIFY_DATABASE_USER=
+DIFY_DATABASE_USER_PASSWORD=
+DIFY_REDIS_PASSWORD=
+DIFY_SECRET_KEY=
+DIFY_MINIO_KEY=
+DIFY_MINIO_SECRET=
+DIFY_MINIO_BUCKET=
+DIFY_QDRANT_API_KEY=
+DIFY_CODE_EXECUTION_API_KEY=
+DIFY_SANDBOX_API_KEY=
+DIFY_PLUGIN_DAEMON_KEY=
+DIFY_PLUGIN_DIFY_INNER_API_KEY=
+# Dify (Service Details) END
 
 # Service Details END
 EOFCF
@@ -34198,17 +34295,17 @@ function initServicesCredentials()
     LOBECHAT_KEYVAULTS_SECRET=$(pwgen -c -n 32 1)
     updateConfigVar LOBECHAT_KEYVAULTS_SECRET $LOBECHAT_KEYVAULTS_SECRET
   fi
-  if [ -z "$LOBECHAT_MINIO_LOBE_BUCKET" ]; then
-    LOBECHAT_MINIO_LOBE_BUCKET=lobechat
-    updateConfigVar LOBECHAT_MINIO_LOBE_BUCKET $LOBECHAT_MINIO_LOBE_BUCKET
+  if [ -z "$LOBECHAT_MINIO_BUCKET" ]; then
+    LOBECHAT_MINIO_BUCKET=lobechat
+    updateConfigVar LOBECHAT_MINIO_BUCKET $LOBECHAT_MINIO_BUCKET
   fi
-  if [ -z "$LOBECHAT_MINIO_ROOT_USER" ]; then
-    LOBECHAT_MINIO_ROOT_USER=lobechatadmin
-    updateConfigVar LOBECHAT_MINIO_ROOT_USER $LOBECHAT_MINIO_ROOT_USER
+  if [ -z "$LOBECHAT_MINIO_KEY" ]; then
+    LOBECHAT_MINIO_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar LOBECHAT_MINIO_KEY $LOBECHAT_MINIO_KEY
   fi
-  if [ -z "$LOBECHAT_MINIO_ROOT_PASSWORD" ]; then
-    LOBECHAT_MINIO_ROOT_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar LOBECHAT_MINIO_ROOT_PASSWORD $LOBECHAT_MINIO_ROOT_PASSWORD
+  if [ -z "$LOBECHAT_MINIO_SECRET" ]; then
+    LOBECHAT_MINIO_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar LOBECHAT_MINIO_SECRET $LOBECHAT_MINIO_SECRET
   fi
   if [ -z "$LOBECHAT_OIDC_CLIENT_ID" ]; then
     LOBECHAT_OIDC_CLIENT_ID=lobechat
@@ -34217,6 +34314,150 @@ function initServicesCredentials()
   if [ -z "$LOBECHAT_OIDC_CLIENT_SECRET" ]; then
     LOBECHAT_OIDC_CLIENT_SECRET=$(pwgen -c -n 64 1)
     updateConfigVar LOBECHAT_OIDC_CLIENT_SECRET $LOBECHAT_OIDC_CLIENT_SECRET
+  fi
+  if [ -z "$RAGFLOW_ADMIN_USERNAME" ]; then
+    RAGFLOW_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_ragflow"
+    updateConfigVar RAGFLOW_ADMIN_USERNAME $RAGFLOW_ADMIN_USERNAME
+  fi
+  if [ -z "$RAGFLOW_ADMIN_EMAIL_ADDRESS" ]; then
+    RAGFLOW_ADMIN_EMAIL_ADDRESS=$RAGFLOW_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$RAGFLOW_ADMIN_PASSWORD" ]; then
+    RAGFLOW_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RAGFLOW_ADMIN_PASSWORD $RAGFLOW_ADMIN_PASSWORD
+  fi
+  if [ -z "$RAGFLOW_DATABASE_NAME" ]; then
+    RAGFLOW_DATABASE_NAME=ragflowdb
+    updateConfigVar RAGFLOW_DATABASE_NAME $RAGFLOW_DATABASE_NAME
+  fi
+  if [ -z "$RAGFLOW_DATABASE_USER" ]; then
+    RAGFLOW_DATABASE_USER=ragflow-user
+    updateConfigVar RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_USER
+  fi
+  if [ -z "$RAGFLOW_DATABASE_USER_PASSWORD" ]; then
+    RAGFLOW_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RAGFLOW_DATABASE_USER_PASSWORD $RAGFLOW_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$RAGFLOW_REDIS_PASSWORD" ]; then
+    RAGFLOW_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RAGFLOW_REDIS_PASSWORD $RAGFLOW_REDIS_PASSWORD
+  fi
+  if [ -z "$RAGFLOW_MINIO_KEY" ]; then
+    RAGFLOW_MINIO_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_KEY
+  fi
+  if [ -z "$RAGFLOW_MINIO_SECRET" ]; then
+    RAGFLOW_MINIO_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar RAGFLOW_MINIO_SECRET $RAGFLOW_MINIO_SECRET
+  fi
+  if [ -z "$RAGFLOW_MINIO_BUCKET" ]; then
+    RAGFLOW_MINIO_BUCKET=ragflow
+    updateConfigVar RAGFLOW_MINIO_BUCKET $RAGFLOW_MINIO_BUCKET
+  fi
+  if [ -z "$RAGFLOW_OIDC_CLIENT_ID" ]; then
+    RAGFLOW_OIDC_CLIENT_ID=ragflow
+    updateConfigVar RAGFLOW_OIDC_CLIENT_ID $RAGFLOW_OIDC_CLIENT_ID
+  fi
+  if [ -z "$RAGFLOW_OIDC_CLIENT_SECRET" ]; then
+    RAGFLOW_OIDC_CLIENT_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar RAGFLOW_OIDC_CLIENT_SECRET $RAGFLOW_OIDC_CLIENT_SECRET
+  fi
+  if [ -z "$RAGFLOW_MCPSERVER_API_KEY" ]; then
+    RAGFLOW_MCPSERVER_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar RAGFLOW_MCPSERVER_API_KEY $RAGFLOW_MCPSERVER_API_KEY
+  fi
+  if [ -z "$TABBYML_ADMIN_USERNAME" ]; then
+    TABBYML_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_tabbyml"
+    updateConfigVar TABBYML_ADMIN_USERNAME $TABBYML_ADMIN_USERNAME
+  fi
+  if [ -z "$TABBYML_ADMIN_EMAIL_ADDRESS" ]; then
+    TABBYML_ADMIN_EMAIL_ADDRESS=$TABBYML_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar TABBYML_ADMIN_EMAIL_ADDRESS $TABBYML_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$TABBYML_ADMIN_PASSWORD" ]; then
+    TABBYML_ADMIN_PASSWORD=$(getPasswordWithSymbol 16)
+    updateConfigVar TABBYML_ADMIN_PASSWORD $TABBYML_ADMIN_PASSWORD
+  fi
+  if [ -z "$TABBYML_JWT_SECRET" ]; then
+    TABBYML_JWT_SECRET=$(uuidgen)
+    updateConfigVar TABBYML_JWT_SECRET $TABBYML_JWT_SECRET
+  fi
+  if [ -z "$DEEPWIKI_OPEN_AUTH_CODE" ]; then
+    DEEPWIKI_OPEN_AUTH_CODE=$(pwgen -c -n 32 1)
+    updateConfigVar DEEPWIKI_OPEN_AUTH_CODE $DEEPWIKI_OPEN_AUTH_CODE
+  fi
+  if [ -z "$DOCLING_REDIS_PASSWORD" ]; then
+    DOCLING_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar DOCLING_REDIS_PASSWORD $DOCLING_REDIS_PASSWORD
+  fi
+  if [ -z "$DOCLING_API_KEY" ]; then
+    DOCLING_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar DOCLING_API_KEY $DOCLING_API_KEY
+  fi
+  if [ -z "$DIFY_ADMIN_USERNAME" ]; then
+    DIFY_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_dify"
+    updateConfigVar DIFY_ADMIN_USERNAME $DIFY_ADMIN_USERNAME
+  fi
+  if [ -z "$DIFY_ADMIN_EMAIL_ADDRESS" ]; then
+    DIFY_ADMIN_EMAIL_ADDRESS=$DIFY_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar DIFY_ADMIN_EMAIL_ADDRESS $DIFY_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$DIFY_ADMIN_PASSWORD" ]; then
+    DIFY_ADMIN_PASSWORD=$(pwgen -c -n 24 1)
+    updateConfigVar DIFY_ADMIN_PASSWORD $DIFY_ADMIN_PASSWORD
+  fi
+  if [ -z "$DIFY_DATABASE_NAME" ]; then
+    DIFY_DATABASE_NAME=difydb
+    updateConfigVar DIFY_DATABASE_NAME $DIFY_DATABASE_NAME
+  fi
+  if [ -z "$DIFY_DATABASE_USER" ]; then
+    DIFY_DATABASE_USER=dify-user
+    updateConfigVar DIFY_DATABASE_USER $DIFY_DATABASE_USER
+  fi
+  if [ -z "$DIFY_DATABASE_USER_PASSWORD" ]; then
+    DIFY_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar DIFY_DATABASE_USER_PASSWORD $DIFY_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$DIFY_REDIS_PASSWORD" ]; then
+    DIFY_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar DIFY_REDIS_PASSWORD $DIFY_REDIS_PASSWORD
+  fi
+  if [ -z "$DIFY_SECRET_KEY" ]; then
+    DIFY_SECRET_KEY=$(openssl rand -base64 42)
+    updateConfigVar DIFY_SECRET_KEY $DIFY_SECRET_KEY
+  fi
+  if [ -z "$DIFY_MINIO_KEY" ]; then
+    DIFY_MINIO_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar DIFY_MINIO_KEY $DIFY_MINIO_KEY
+  fi
+  if [ -z "$DIFY_MINIO_SECRET" ]; then
+    DIFY_MINIO_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar DIFY_MINIO_SECRET $DIFY_MINIO_SECRET
+  fi
+  if [ -z "$DIFY_MINIO_BUCKET" ]; then
+    DIFY_MINIO_BUCKET=dify
+    updateConfigVar DIFY_MINIO_BUCKET $DIFY_MINIO_BUCKET
+  fi
+  if [ -z "$DIFY_QDRANT_API_KEY" ]; then
+    DIFY_QDRANT_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar DIFY_QDRANT_API_KEY $DIFY_QDRANT_API_KEY
+  fi
+  if [ -z "$DIFY_CODE_EXECUTION_API_KEY" ]; then
+    DIFY_CODE_EXECUTION_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar DIFY_CODE_EXECUTION_API_KEY $DIFY_CODE_EXECUTION_API_KEY
+  fi
+  if [ -z "$DIFY_SANDBOX_API_KEY" ]; then
+    DIFY_SANDBOX_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar DIFY_SANDBOX_API_KEY $DIFY_SANDBOX_API_KEY
+  fi
+  if [ -z "$DIFY_PLUGIN_DAEMON_KEY" ]; then
+    DIFY_PLUGIN_DAEMON_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar DIFY_PLUGIN_DAEMON_KEY $DIFY_PLUGIN_DAEMON_KEY
+  fi
+  if [ -z "$DIFY_PLUGIN_DIFY_INNER_API_KEY" ]; then
+    DIFY_PLUGIN_DIFY_INNER_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar DIFY_PLUGIN_DIFY_INNER_API_KEY $DIFY_PLUGIN_DIFY_INNER_API_KEY
   fi
 #ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
@@ -34441,6 +34682,15 @@ function checkCreateNonbackupDirByStack()
     "lobechat")
       mkdir -p $HSHQ_NONBACKUP_DIR/lobechat/redis
       ;;
+    "ragflow")
+      mkdir -p $HSHQ_NONBACKUP_DIR/ragflow/redis
+      ;;
+    "docling")
+      mkdir -p $HSHQ_NONBACKUP_DIR/docling/redis
+      ;;
+    "dify")
+      mkdir -p $HSHQ_NONBACKUP_DIR/dify/redis
+      ;;
 #ADD_NEW_NONBACKUP_DIRS_HERE
     *)
       ;;
@@ -34651,6 +34901,16 @@ function initServiceVars()
   checkAddSvc "SVCD_KHOJ_SERVER=khoj,khoj,primary,user,Khoj,khoj,hshq"
   checkAddSvc "SVCD_LOBECHAT_APP=lobechat,lobechat,primary,user,LobeChat,lobechat,hshq"
   checkAddSvc "SVCD_INVOKEAI_APP=invokeai,invokeai,primary,user,InvokeAI,invokeai,hshq"
+  checkAddSvc "SVCD_RAGFLOW_APP=ragflow,ragflow,primary,user,RAGFlow,ragflow,hshq"
+  checkAddSvc "SVCD_RAGFLOW_API=ragflow,ragflow-api,primary,user,RAGFlow API,ragflow-api,hshq"
+  checkAddSvc "SVCD_RAGFLOW_ADMIN=ragflow,ragflow-admin,primary,admin,RAGFlow Admin,ragflow-admin,hshq"
+  checkAddSvc "SVCD_RAGFLOW_MCP=ragflow,ragflow-mcp,primary,user,RAGFlow MCP,ragflow-mcp,hshq"
+  checkAddSvc "SVCD_RAGFLOW_INFINITY_WEB=ragflow,ragflow-infinity,primary,admin,RAGFlow Infinity,ragflow-infinity,hshq"
+  checkAddSvc "SVCD_TABBYML_APP=tabbyml,tabbyml,primary,admin,TabbyML,tabbyml,hshq"
+  checkAddSvc "SVCD_DEEPWIKI_OPEN_APP=deepwikiopen,deepwikiopen,primary,admin,DeepWiki-Open,deepwikiopen,hshq"
+  checkAddSvc "SVCD_DEEPWIKI_OPEN_API=deepwikiopen,deepwikiopen-api,primary,admin,DeepWiki-Open API,deepwikiopen-api,hshq"
+  checkAddSvc "SVCD_DOCLING_APP=docling,docling,primary,admin,Docling,docling,hshq"
+  checkAddSvc "SVCD_DIFY_APP=dify,dify,primary,user,Dify,dify,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -34919,6 +35179,16 @@ function installStackByName()
       installLobeChat $is_integrate ;;
     invokeai)
       installInvokeAI $is_integrate ;;
+    ragflow)
+      installRAGFlow $is_integrate ;;
+    tabbyml)
+      installTabbyML $is_integrate ;;
+    deepwikiopen)
+      installDeepWikiOpen $is_integrate ;;
+    docling)
+      installDocling $is_integrate ;;
+    dify)
+      installDify $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -35201,6 +35471,16 @@ function performUpdateStackByName()
       performUpdateLobeChat ;;
     invokeai)
       performUpdateInvokeAI ;;
+    ragflow)
+      performUpdateRAGFlow ;;
+    tabbyml)
+      performUpdateTabbyML ;;
+    deepwikiopen)
+      performUpdateDeepWikiOpen ;;
+    docling)
+      performUpdateDocling ;;
+    dify)
+      performUpdateDify ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -35290,7 +35570,12 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CONTROLR_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_AKAUNTING_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_RAGFLOW_API.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_RAGFLOW_MCP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OLLAMA_SERVER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_DEEPWIKI_OPEN_API.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_DOCLING_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_BYPASS_HERE
   retval="${retval}# Authelia bypass END\n"
   retval="${retval}      policy: bypass\n"
@@ -35328,7 +35613,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_AXELOR_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_AXELOR_GOOVEE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CONVERTX_APP.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LOCALAI_RECALL.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LOCALAI_AGI.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_COMFYUI_APP.$HOMESERVER_DOMAIN\n"
@@ -35342,6 +35626,8 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_INVOKEAI_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_DIFY_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_PRIMARY_HERE
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -35396,6 +35682,8 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_BESZEL_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KOPIA_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_TABBYML_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_DEEPWIKI_OPEN_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_ADMIN_HERE
   retval="${retval}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -35526,6 +35814,9 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENWEBUI_APP}-Admin" https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENWEBUI_ADMIN_USERNAME $OPENWEBUI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TABBYML_APP}-Admin" https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN/auth/signin $HOMESERVER_ABBREV $TABBYML_ADMIN_EMAIL_ADDRESS $TABBYML_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DIFY_APP}-Admin" https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $DIFY_ADMIN_EMAIL_ADDRESS $DIFY_ADMIN_PASSWORD)"\n"
 #ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
@@ -35685,6 +35976,9 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENWEBUI_APP}-Admin" https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENWEBUI_ADMIN_USERNAME $OPENWEBUI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TABBYML_APP}-Admin" https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN/auth/signin $HOMESERVER_ABBREV $TABBYML_ADMIN_EMAIL_ADDRESS $TABBYML_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DIFY_APP}-Admin" https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $DIFY_ADMIN_EMAIL_ADDRESS $DIFY_ADMIN_PASSWORD)"\n"
 #ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
@@ -36199,6 +36493,21 @@ function getHeimdallOrderFromSub()
     "$SUB_INVOKEAI_APP")
       order_num=148
       ;;
+    "$SUB_RAGFLOW_APP")
+      order_num=149
+      ;;
+    "$SUB_TABBYML_APP")
+      order_num=150
+      ;;
+    "$SUB_DEEPWIKI_OPEN_APP")
+      order_num=151
+      ;;
+    "$SUB_DOCLING_APP")
+      order_num=152
+      ;;
+    "$SUB_DIFY_APP")
+      order_num=153
+      ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=900
@@ -36249,18 +36558,18 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,aistack,khoj,lobechat,invokeai
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,aistack,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
-  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
-  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
-  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify
+  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify
+  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify
+  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify
 #INIT_SERVICE_DEFAULTS_END
 }
 
@@ -37434,6 +37743,78 @@ function getScriptImageByContainerName()
     "invokeai-app")
       container_image=$IMG_INVOKEAI_APP
       ;;
+    "ragflow-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "ragflow-infinity")
+      container_image=$IMG_RAGFLOW_INFINITY
+      ;;
+    "ragflow-app")
+      container_image=$IMG_RAGFLOW_APP
+      ;;
+    "ragflow-sandbox")
+      container_image=$IMG_RAGFLOW_SANDBOX
+      ;;
+    "ragflow-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      ;;
+    "ragflow-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "ragflow-sandbox-nodejs")
+      container_image=$IMG_RAGFLOW_SB_NODEJS
+      ;;
+    "ragflow-sandbox-python")
+      container_image=$IMG_RAGFLOW_SB_PYTHON
+      ;;
+    "tabbyml-app")
+      container_image=$IMG_TABBYML_APP
+      ;;
+    "deepwikiopen-app")
+      container_image=$IMG_DEEPWIKIOPEN_APP
+      ;;
+    "docling-app")
+      container_image=$IMG_DOCLING_APP
+      ;;
+    "docling-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "dify-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "dify-vectordb")
+      container_image=mirror.gcr.io/langgenius/qdrant:v1.8.3
+      ;;
+    "dify-ssrf")
+      container_image=$IMG_DIFY_SSRF
+      ;;
+    "dify-api")
+      container_image=$IMG_DIFY_API
+      ;;
+    "dify-worker")
+      container_image=$IMG_DIFY_API
+      ;;
+    "dify-beat")
+      container_image=$IMG_DIFY_API
+      ;;
+    "dify-plugind")
+      container_image=$IMG_DIFY_PLUGIND
+      ;;
+    "dify-sandbox")
+      container_image=$IMG_DIFY_SANDBOX
+      ;;
+    "dify-web")
+      container_image=$IMG_DIFY_WEB
+      ;;
+    "dify-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "dify-nginx")
+      container_image=mirror.gcr.io/nginx:1.29.4-trixie
+      ;;
+    "dify-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
@@ -37534,7 +37915,12 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "LibreChat" "LIBRECHAT_INIT_ENV=false,LIBRECHAT_ADMIN_USERNAME=,LIBRECHAT_ADMIN_EMAIL_ADDRESS=,LIBRECHAT_ADMIN_PASSWORD=,LIBRECHAT_DATABASE_NAME=,LIBRECHAT_DATABASE_USER=,LIBRECHAT_DATABASE_USER_PASSWORD=,LIBRECHAT_REDIS_PASSWORD=,LIBRECHAT_MONGODB_DATABASE=,LIBRECHAT_MONGODB_USER=,LIBRECHAT_MONGODB_USER_PASSWORD=,LIBRECHAT_CREDS_KEY=,LIBRECHAT_CREDS_IV=,LIBRECHAT_JWT_SECRET=,LIBRECHAT_JWT_REFRESH_SECRET=,LIBRECHAT_MEILI_MASTER_KEY=,LIBRECHAT_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "OpenWebUI" "OPENWEBUI_INIT_ENV=false,OPENWEBUI_ADMIN_USERNAME=,OPENWEBUI_ADMIN_EMAIL_ADDRESS=,OPENWEBUI_ADMIN_PASSWORD=,OPENWEBUI_DATABASE_NAME=,OPENWEBUI_DATABASE_USER=,OPENWEBUI_DATABASE_USER_PASSWORD=,OPENWEBUI_REDIS_PASSWORD=,OPENWEBUI_OIDC_CLIENT_ID=,OPENWEBUI_OIDC_CLIENT_SECRET=,OPENWEBUI_SECRET_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "Khoj" "KHOJ_INIT_ENV=false,KHOJ_ADMIN_USERNAME=,KHOJ_ADMIN_EMAIL_ADDRESS=,KHOJ_ADMIN_PASSWORD=,KHOJ_DATABASE_NAME=,KHOJ_DATABASE_USER=,KHOJ_DATABASE_USER_PASSWORD=,KHOJ_DJANGO_SECRET_KEY=" $CONFIG_FILE false
-  checkAddServiceToConfig "LobeChat" "LOBECHAT_INIT_ENV=false,LOBECHAT_ADMIN_USERNAME=,LOBECHAT_ADMIN_EMAIL_ADDRESS=,LOBECHAT_ADMIN_PASSWORD=,LOBECHAT_DATABASE_NAME=,LOBECHAT_DATABASE_USER=,LOBECHAT_DATABASE_USER_PASSWORD=,LOBECHAT_REDIS_PASSWORD=,LOBECHAT_NEXTAUTH_SECRET=,LOBECHAT_KEYVAULTS_SECRET=,LOBECHAT_MINIO_LOBE_BUCKET=,LOBECHAT_MINIO_ROOT_USER=,LOBECHAT_MINIO_ROOT_PASSWORD=,LOBECHAT_OIDC_CLIENT_ID=,LOBECHAT_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "LobeChat" "LOBECHAT_INIT_ENV=false,LOBECHAT_ADMIN_USERNAME=,LOBECHAT_ADMIN_EMAIL_ADDRESS=,LOBECHAT_ADMIN_PASSWORD=,LOBECHAT_DATABASE_NAME=,LOBECHAT_DATABASE_USER=,LOBECHAT_DATABASE_USER_PASSWORD=,LOBECHAT_REDIS_PASSWORD=,LOBECHAT_NEXTAUTH_SECRET=,LOBECHAT_KEYVAULTS_SECRET=,LOBECHAT_MINIO_BUCKET=,LOBECHAT_MINIO_KEY=,LOBECHAT_MINIO_SECRET=,LOBECHAT_OIDC_CLIENT_ID=,LOBECHAT_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "RAGFlow" "RAGFLOW_INIT_ENV=false,RAGFLOW_ADMIN_USERNAME=,RAGFLOW_ADMIN_EMAIL_ADDRESS=,RAGFLOW_ADMIN_PASSWORD=,RAGFLOW_DATABASE_NAME=,RAGFLOW_DATABASE_USER=,RAGFLOW_DATABASE_USER_PASSWORD=,RAGFLOW_REDIS_PASSWORD=,RAGFLOW_MINIO_KEY=,RAGFLOW_MINIO_SECRET=,RAGFLOW_MINIO_BUCKET=,RAGFLOW_OIDC_CLIENT_ID=,RAGFLOW_OIDC_CLIENT_SECRET=,RAGFLOW_MCPSERVER_API_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "TabbyML" "TABBYML_INIT_ENV=false,TABBYML_ADMIN_USERNAME=,TABBYML_ADMIN_EMAIL_ADDRESS=,TABBYML_ADMIN_PASSWORD=,TABBYML_JWT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "DeepWikiOpen" "DEEPWIKI_OPEN_INIT_ENV=false,DEEPWIKI_OPEN_AUTH_CODE=" $CONFIG_FILE false
+  checkAddServiceToConfig "Docling" "DOCLING_INIT_ENV=false,DOCLING_REDIS_PASSWORD=,DOCLING_API_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "Dify" "DIFY_INIT_ENV=false,DIFY_ADMIN_USERNAME=,DIFY_ADMIN_EMAIL_ADDRESS=,DIFY_ADMIN_PASSWORD=,DIFY_DATABASE_NAME=,DIFY_DATABASE_USER=,DIFY_DATABASE_USER_PASSWORD=,DIFY_REDIS_PASSWORD=,DIFY_SECRET_KEY=,DIFY_MINIO_KEY=,DIFY_MINIO_SECRET=,DIFY_MINIO_BUCKET=,DIFY_QDRANT_API_KEY=,DIFY_CODE_EXECUTION_API_KEY=,DIFY_SANDBOX_API_KEY=,DIFY_PLUGIN_DAEMON_KEY=,DIFY_PLUGIN_DIFY_INNER_API_KEY=" $CONFIG_FILE false
 #ADD_NEW_ADD_SVC_CONFIG_HERE
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -64075,6 +64461,8 @@ EOFOT
 "OpenWebUI" postgres openwebui-db $OPENWEBUI_DATABASE_NAME $OPENWEBUI_DATABASE_USER $OPENWEBUI_DATABASE_USER_PASSWORD
 "Khoj" postgres khoj-db $KHOJ_DATABASE_NAME $KHOJ_DATABASE_USER $KHOJ_DATABASE_USER_PASSWORD
 "LobeChat" postgres lobechat-db $LOBECHAT_DATABASE_NAME $LOBECHAT_DATABASE_USER $LOBECHAT_DATABASE_USER_PASSWORD
+"RAGFlow" postgres ragflow-db $RAGFLOW_DATABASE_NAME $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_USER_PASSWORD
+"Dify" postgres dify-db $DIFY_DATABASE_NAME $DIFY_DATABASE_USER $DIFY_DATABASE_USER_PASSWORD
 #ADD_NEW_AISTACK_DB_IMPORT_HERE
 EOFAS
   cat <<EOFIM > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/importConnections.sh
@@ -80239,7 +80627,7 @@ function installLocalAI()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_LOCALAI_SERVER $MANAGETLS_LOCALAI_SERVER "$is_integrate_hshq" $NETDEFAULT_LOCALAI_SERVER "$inner_block"
-  insertSubAuthelia $SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN bypass
   inner_block=""
   inner_block=$inner_block">>https://$SUB_LOCALAI_RECALL.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -82214,7 +82602,7 @@ function installCrawl4AI()
   updateCaddyBlocks $SUB_CRAWL4AI_APP $MANAGETLS_CRAWL4AI_APP "$is_integrate_hshq" $NETDEFAULT_CRAWL4AI_APP "$inner_block"
   insertSubAuthelia $SUB_CRAWL4AI_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll crawl4ai "$FMLNAME_CRAWL4AI_APP" $USERTYPE_CRAWL4AI_APP "https://$SUB_CRAWL4AI_APP.$HOMESERVER_DOMAIN" "crawl4ai.png" "$(getHeimdallOrderFromSub $SUB_CRAWL4AI_APP $USERTYPE_CRAWL4AI_APP)"
+    insertEnableSvcAll crawl4ai "$FMLNAME_CRAWL4AI_APP" $USERTYPE_CRAWL4AI_APP "https://$SUB_CRAWL4AI_APP.$HOMESERVER_DOMAIN/playground" "crawl4ai.png" "$(getHeimdallOrderFromSub $SUB_CRAWL4AI_APP $USERTYPE_CRAWL4AI_APP)"
     restartAllCaddyContainers
   fi
 }
@@ -83206,9 +83594,9 @@ services:
           sleep 1
         done
         sleep 5
-        mc alias set myminio http://localhost:9000 ${LOBECHAT_MINIO_ROOT_USER} ${LOBECHAT_MINIO_ROOT_PASSWORD}
-        echo 'Creating bucket ${LOBECHAT_MINIO_LOBE_BUCKET}'
-        mc mb myminio/${LOBECHAT_MINIO_LOBE_BUCKET}
+        mc alias set myminio http://localhost:9000 ${LOBECHAT_MINIO_KEY} ${LOBECHAT_MINIO_SECRET}
+        echo 'Creating bucket ${LOBECHAT_MINIO_BUCKET}'
+        mc mb myminio/${LOBECHAT_MINIO_BUCKET}
         wait \\\$MINIO_PID
       "
     volumes:
@@ -83252,8 +83640,8 @@ POSTGRES_PASSWORD=$LOBECHAT_DATABASE_USER_PASSWORD
 APP_URL=https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN
 AUTH_URL=https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/api/auth
 LOBE_DB_NAME=$LOBECHAT_DATABASE_NAME
-MINIO_ROOT_USER=$LOBECHAT_MINIO_ROOT_USER
-MINIO_ROOT_PASSWORD=$LOBECHAT_MINIO_ROOT_PASSWORD
+MINIO_ROOT_USER=$LOBECHAT_MINIO_KEY
+MINIO_ROOT_PASSWORD=$LOBECHAT_MINIO_SECRET
 S3_PUBLIC_DOMAIN=http://lobechat-minio:9000
 S3_ENDPOINT=http://lobechat-minio:9000
 MINIO_LOBE_BUCKET=lobechat
@@ -83269,11 +83657,11 @@ NEXTAUTH_URL=https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/api/auth
 NODE_ENV=production
 NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 DATABASE_URL=postgresql://$LOBECHAT_DATABASE_USER:$LOBECHAT_DATABASE_USER_PASSWORD@lobechat-db:5432/$LOBECHAT_DATABASE_NAME
-S3_BUCKET=$LOBECHAT_MINIO_LOBE_BUCKET
+S3_BUCKET=$LOBECHAT_MINIO_BUCKET
 S3_ENABLE_PATH_STYLE=1
-S3_ACCESS_KEY=$LOBECHAT_MINIO_ROOT_USER
-S3_ACCESS_KEY_ID=$LOBECHAT_MINIO_ROOT_USER
-S3_SECRET_ACCESS_KEY=$LOBECHAT_MINIO_ROOT_PASSWORD
+S3_ACCESS_KEY=$LOBECHAT_MINIO_KEY
+S3_ACCESS_KEY_ID=$LOBECHAT_MINIO_KEY
+S3_SECRET_ACCESS_KEY=$LOBECHAT_MINIO_SECRET
 LLM_VISION_IMAGE_USE_BASE64=1
 S3_SET_ACL=0
 SEARXNG_URL=http://searxng-app:8080
@@ -83444,6 +83832,2764 @@ function performUpdateInvokeAI()
       newVer=v1
       curImageList=ghcr.io/invoke-ai/invokeai:6.10.0rc2-rocm
       image_update_map[0]="ghcr.io/invoke-ai/invokeai:6.10.0rc2-rocm,ghcr.io/invoke-ai/invokeai:6.10.0rc2-rocm"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# RAGFlow
+function installRAGFlow()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory ragflow "RAGFlow"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-infinity)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-sandbox)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-minio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-sandbox-nodejs)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-sandbox-python)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/ragflow
+  mkdir $HSHQ_STACKS_DIR/ragflow/config
+  mkdir $HSHQ_STACKS_DIR/ragflow/logs
+  mkdir $HSHQ_STACKS_DIR/ragflow/nginx
+  mkdir $HSHQ_STACKS_DIR/ragflow/infinity
+  mkdir $HSHQ_STACKS_DIR/ragflow/minio
+  mkdir $HSHQ_STACKS_DIR/ragflow/db
+  mkdir $HSHQ_STACKS_DIR/ragflow/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/ragflow/dbexport
+  mkdir -p $HSHQ_NONBACKUP_DIR/ragflow/redis
+  initServicesCredentials
+  set +e
+  addUserMailu alias $RAGFLOW_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigRAGFlow
+  oidcBlock=$(cat $HOME/ragflow.oidc)
+  rm -f $HOME/ragflow.oidc
+  insertOIDCClientAuthelia ragflow "$oidcBlock"
+  installStack ragflow ragflow-app "Running on all addresses" $HOME/ragflow.env 10
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$RAGFLOW_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_RAGFLOW_APP Admin Login Info" -b "$FMLNAME_RAGFLOW_APP Admin Username: $RAGFLOW_ADMIN_EMAIL_ADDRESS\n$FMLNAME_RAGFLOW_APP Admin Password: $RAGFLOW_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    RAGFLOW_INIT_ENV=true
+    updateConfigVar RAGFLOW_INIT_ENV $RAGFLOW_INIT_ENV
+  fi
+  sleep 3
+  docker exec ragflow-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/ragflow/dbexport/setupDBSettings.sh
+  if [ -z "$FMLNAME_RAGFLOW_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://ragflow-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_RAGFLOW_APP $MANAGETLS_RAGFLOW_APP "$is_integrate_hshq" $NETDEFAULT_RAGFLOW_APP "$inner_block"
+  insertSubAuthelia $SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_RAGFLOW_API.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://ragflow-app:9380 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_RAGFLOW_API $MANAGETLS_RAGFLOW_API "$is_integrate_hshq" $NETDEFAULT_RAGFLOW_API "$inner_block"
+  insertSubAuthelia $SUB_RAGFLOW_API.$HOMESERVER_DOMAIN bypass
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_RAGFLOW_MCP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://ragflow-app:9382 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_RAGFLOW_MCP $MANAGETLS_RAGFLOW_MCP "$is_integrate_hshq" $NETDEFAULT_RAGFLOW_MCP "$inner_block"
+  insertSubAuthelia $SUB_RAGFLOW_MCP.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll ragflow "$FMLNAME_RAGFLOW_APP" $USERTYPE_RAGFLOW_APP "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN" "ragflow.png" "$(getHeimdallOrderFromSub $SUB_RAGFLOW_APP $USERTYPE_RAGFLOW_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true ragflow "$FMLNAME_RAGFLOW_APP" postgres ragflow-db $RAGFLOW_DATABASE_NAME $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigRAGFlow()
+{
+  cat <<EOFMT > $HOME/ragflow-compose.yml
+$STACK_VERSION_PREFIX ragflow $(getScriptStackVersion ragflow)
+
+services:
+  ragflow-db:
+    image: $(getScriptImageByContainerName ragflow-db)
+    container_name: ragflow-db
+    hostname: ragflow-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-ragflow-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.ragflow-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.ragflow-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.ragflow-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.ragflow-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.ragflow-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.ragflow-hourly-db.email-from=RAGFlow Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.ragflow-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.ragflow-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.ragflow-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.ragflow-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.ragflow-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.ragflow-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.ragflow-monthly-db.email-from=RAGFlow Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.ragflow-monthly-db.mail-only-on-error=false"
+
+  ragflow-infinity:
+    image: $(getScriptImageByContainerName ragflow-infinity)
+    container_name: ragflow-infinity
+    hostname: ragflow-infinity
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ragflow-db
+    command: ["-f", "/infinity_conf.toml"]
+    mem_limit: 8g
+    ulimits:
+      nofile:
+        soft: 500000
+        hard: 500000
+    networks:
+      - int-ragflow-net
+      - dock-dbs-net
+      - dock-proxy-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-ragflow-infinity:/var/infinity
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/config/infinity_conf.toml:/infinity_conf.toml
+
+  ragflow-app:
+    image: $(getScriptImageByContainerName ragflow-app)
+    container_name: ragflow-app
+    hostname: ragflow-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ragflow-db
+    command:
+      - --enable-adminserver
+    # command:
+    #   - --enable-mcpserver
+    #   - --mcp-host=0.0.0.0
+    #   - --mcp-port=9382
+    #   - --mcp-base-url=http://127.0.0.1:9380
+    #   - --mcp-script-path=/ragflow/mcp/server/server.py
+    #   - --mcp-mode=self-host
+    #   - --mcp-host-api-key=ragflow-$RAGFLOW_MCPSERVER_API_KEY
+    networks:
+      - int-ragflow-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/logs:/ragflow/logs
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nginx/ragflow.conf:/etc/nginx/conf.d/ragflow.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nginx/proxy.conf:/etc/nginx/proxy.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/config/service_conf.yaml.template:/ragflow/conf/service_conf.yaml.template
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/config/entrypoint.sh:/ragflow/entrypoint.sh
+      - /etc/ssl/certs/ca-certificates.crt:/ragflow/.venv/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+
+  ragflow-sandbox:
+    image: $(getScriptImageByContainerName ragflow-sandbox)
+    container_name: ragflow-sandbox
+    hostname: ragflow-sandbox
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    privileged: true
+    depends_on:
+      - ragflow-db
+    networks:
+      - int-ragflow-net
+      - dock-ext-net
+      - dock-aipriv-net
+    healthcheck:
+      test: ["CMD", "curl", "http://localhost:9385/healthz"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  ragflow-executor:
+    image: $(getScriptImageByContainerName ragflow-app)
+    container_name: ragflow-executor
+    hostname: ragflow-executor
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ragflow-db
+    entrypoint: "/ragflow/entrypoint.sh --disable-webserver --workers=1"
+    networks:
+      - int-ragflow-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/logs:/ragflow/logs
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nginx/ragflow.conf:/etc/nginx/conf.d/ragflow.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/config/service_conf.yaml.template:/ragflow/conf/service_conf.yaml.template
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/config/entrypoint.sh:/ragflow/entrypoint.sh
+
+  ragflow-minio:
+    image: $(getScriptImageByContainerName ragflow-minio)
+    container_name: ragflow-minio
+    hostname: ragflow-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ragflow-db
+    command: server /data
+    networks:
+      - int-ragflow-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-ragflow-minio:/data
+
+  ragflow-redis:
+    image: $(getScriptImageByContainerName ragflow-redis)
+    container_name: ragflow-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $RAGFLOW_REDIS_PASSWORD
+      --appendonly yes
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+    networks:
+      - int-ragflow-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-ragflow-redis:/data
+
+volumes:
+  v-ragflow-infinity:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/infinity
+  v-ragflow-minio:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/minio
+  v-ragflow-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/ragflow/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-ragflow-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/ragflow.env
+TZ=\${PORTAINER_TZ}
+TIMEZONE='UTC-6\tAmerica/Chicago'
+POSTGRES_DB=$RAGFLOW_DATABASE_NAME
+POSTGRES_USER=$RAGFLOW_DATABASE_USER
+POSTGRES_PASSWORD=$RAGFLOW_DATABASE_USER_PASSWORD
+POSTGRES_HOST=ragflow-db
+POSTGRES_DBNAME=$RAGFLOW_DATABASE_NAME
+DB_TYPE=postgres
+DOC_ENGINE=infinity
+DEVICE=cpu
+COMPOSE_PROFILES=infinity,cpu,sandbox
+MEM_LIMIT=8589934592
+INFINITY_HOST=ragflow-infinity
+INFINITY_THRIFT_PORT=23817
+INFINITY_HTTP_PORT=23820
+INFINITY_PSQL_PORT=5432
+MINIO_HOST=ragflow-minio
+MINIO_CONSOLE_PORT=9001
+MINIO_PORT=9000
+MINIO_USER=$RAGFLOW_MINIO_KEY
+MINIO_PASSWORD=$RAGFLOW_MINIO_SECRET
+MINIO_ROOT_USER=$RAGFLOW_MINIO_KEY
+MINIO_ROOT_PASSWORD=$RAGFLOW_MINIO_SECRET
+REDIS_HOST=ragflow-redis
+REDIS_PORT=6379
+REDIS_PASSWORD=$RAGFLOW_REDIS_PASSWORD
+SVR_WEB_HTTP_PORT=80
+SVR_WEB_HTTPS_PORT=443
+SVR_HTTP_PORT=9380
+ADMIN_SVR_HTTP_PORT=9381
+SVR_MCP_PORT=9382
+MAX_CONTENT_LENGTH=1073741824
+DOC_BULK_SIZE=4
+EMBEDDING_BATCH_SIZE=16
+REGISTER_ENABLED=1
+SANDBOX_ENABLED=1
+SANDBOX_HOST=ragflow-sandbox
+SANDBOX_EXECUTOR_MANAGER_POOL_SIZE=3
+SANDBOX_BASE_PYTHON_IMAGE=mirror.gcr.io/infiniflow/sandbox-base-python:latest
+SANDBOX_BASE_NODEJS_IMAGE=mirror.gcr.io/infiniflow/sandbox-base-nodejs:latest
+SANDBOX_EXECUTOR_MANAGER_PORT=9385
+SANDBOX_ENABLE_SECCOMP=false
+SANDBOX_MAX_MEMORY=256m
+SANDBOX_TIMEOUT=10s
+USE_DOCLING=false
+DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+PYTHON_VER=python3.12
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/nginx/nginx.conf
+user  root;
+worker_processes  auto;
+error_log  /var/log/nginx/error.log notice;
+pid        /var/run/nginx.pid;
+events {
+    worker_connections  1024;
+}
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+    log_format  main  '\$remote_addr - \$remote_user [\$time_local] "\$request" '
+                      '\$status \$body_bytes_sent "\$http_referer" '
+                      '"\$http_user_agent" "\$http_x_forwarded_for"';
+    access_log  /var/log/nginx/access.log  main;
+    sendfile        on;
+    #tcp_nopush     on;
+    keepalive_timeout  65;
+    #gzip  on;
+    client_max_body_size 1024M;
+    include /etc/nginx/conf.d/ragflow.conf;
+}
+
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/nginx/proxy.conf
+proxy_set_header Host \$host;
+proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto \$scheme;
+proxy_http_version 1.1;
+proxy_set_header Connection "";
+proxy_buffering off;
+proxy_read_timeout 3600s;
+proxy_send_timeout 3600s;
+proxy_buffer_size 1024k;
+proxy_buffers 16 1024k;
+proxy_busy_buffers_size 2048k;
+proxy_temp_file_write_size 2048k;
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/nginx/ragflow.conf
+server {
+    listen 80;
+    server_name _;
+    root /ragflow/web/dist;
+
+    gzip on;
+    gzip_min_length 1k;
+    gzip_comp_level 9;
+    gzip_types text/plain application/javascript application/x-javascript text/css application/xml text/javascript application/x-httpd-php image/jpeg image/gif image/png;
+    gzip_vary on;
+    gzip_disable "MSIE [1-6]\.";
+
+    location ~ ^/api/v1/admin {
+        proxy_pass http://localhost:9381;
+        include proxy.conf;
+    }
+
+    location ~ ^/(v1|api) {
+        proxy_pass http://localhost:9380;
+        include proxy.conf;
+    }
+
+
+    location / {
+        index index.html;
+        try_files \$uri \$uri/ /index.html;
+    }
+
+    # Cache-Control: max-age~@~AExpires
+    location ~ ^/static/(css|js|media)/ {
+        expires 10y;
+        access_log off;
+    }
+}
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/config/entrypoint.sh
+#!/usr/bin/env bash
+
+set -e
+
+# -----------------------------------------------------------------------------
+# Usage and command-line argument parsing
+# -----------------------------------------------------------------------------
+function usage() {
+    echo "Usage: \$0 [--disable-webserver] [--disable-taskexecutor] [--disable-datasync] [--consumer-no-beg=<num>] [--consumer-no-end=<num>] [--workers=<num>] [--host-id=<string>]"
+    echo
+    echo "  --disable-webserver             Disables the web server (nginx + ragflow_server)."
+    echo "  --disable-taskexecutor          Disables task executor workers."
+    echo "  --disable-datasync              Disables synchronization of datasource workers."
+    echo "  --enable-mcpserver              Enables the MCP server."
+    echo "  --enable-adminserver            Enables the Admin server."
+    echo "  --init-superuser                Initializes the superuser."
+    echo "  --consumer-no-beg=<num>         Start range for consumers (if using range-based)."
+    echo "  --consumer-no-end=<num>         End range for consumers (if using range-based)."
+    echo "  --workers=<num>                 Number of task executors to run (if range is not used)."
+    echo "  --host-id=<string>              Unique ID for the host (defaults to hostname)."
+    echo
+    echo "Examples:"
+    echo "  \$0 --disable-taskexecutor"
+    echo "  \$0 --disable-webserver --consumer-no-beg=0 --consumer-no-end=5"
+    echo "  \$0 --disable-webserver --workers=2 --host-id=myhost123"
+    echo "  \$0 --enable-mcpserver"
+    echo "  \$0 --enable-adminserver"
+    echo "  \$0 --init-superuser"
+    exit 1
+}
+
+ENABLE_WEBSERVER=1 # Default to enable web server
+ENABLE_TASKEXECUTOR=1  # Default to enable task executor
+ENABLE_DATASYNC=1
+ENABLE_MCP_SERVER=0
+ENABLE_ADMIN_SERVER=0 # Default close admin server
+INIT_SUPERUSER_ARGS="" # Default to not initialize superuser
+CONSUMER_NO_BEG=0
+CONSUMER_NO_END=0
+WORKERS=1
+
+MCP_HOST="127.0.0.1"
+MCP_PORT=9382
+MCP_BASE_URL="http://127.0.0.1:9380"
+MCP_SCRIPT_PATH="/ragflow/mcp/server/server.py"
+MCP_MODE="self-host"
+MCP_HOST_API_KEY="$RAGFLOW_MCPSERVER_API_KEY"
+MCP_TRANSPORT_SSE_FLAG="--transport-sse-enabled"
+MCP_TRANSPORT_STREAMABLE_HTTP_FLAG="--transport-streamable-http-enabled"
+MCP_JSON_RESPONSE_FLAG="--json-response"
+
+# -----------------------------------------------------------------------------
+# Host ID logic:
+#   1. By default, use the system hostname if length <= 32
+#   2. Otherwise, use the full MD5 hash of the hostname (32 hex chars)
+# -----------------------------------------------------------------------------
+CURRENT_HOSTNAME="\$(hostname)"
+if [ \${#CURRENT_HOSTNAME} -le 32 ]; then
+  DEFAULT_HOST_ID="\$CURRENT_HOSTNAME"
+else
+  DEFAULT_HOST_ID="\$(echo -n "\$CURRENT_HOSTNAME" | md5sum | cut -d ' ' -f 1)"
+fi
+
+HOST_ID="\$DEFAULT_HOST_ID"
+
+# Parse arguments
+for arg in "\$@"; do
+  case \$arg in
+    --disable-webserver)
+      ENABLE_WEBSERVER=0
+      shift
+      ;;
+    --disable-taskexecutor)
+      ENABLE_TASKEXECUTOR=0
+      shift
+      ;;
+    --disable-datasync)
+      ENABLE_DATASYNC=0
+      shift
+      ;;
+    --enable-mcpserver)
+      ENABLE_MCP_SERVER=1
+      shift
+      ;;
+    --enable-adminserver)
+      ENABLE_ADMIN_SERVER=1
+      shift
+      ;;
+    --init-superuser)
+      INIT_SUPERUSER_ARGS="--init-superuser"
+      shift
+      ;;
+    --mcp-host=*)
+      MCP_HOST="\${arg#*=}"
+      shift
+      ;;
+    --mcp-port=*)
+      MCP_PORT="\${arg#*=}"
+      shift
+      ;;
+    --mcp-base-url=*)
+      MCP_BASE_URL="\${arg#*=}"
+      shift
+      ;;
+    --mcp-mode=*)
+      MCP_MODE="\${arg#*=}"
+      shift
+      ;;
+    --mcp-host-api-key=*)
+      MCP_HOST_API_KEY="\${arg#*=}"
+      shift
+      ;;
+    --mcp-script-path=*)
+      MCP_SCRIPT_PATH="\${arg#*=}"
+      shift
+      ;;
+    --no-transport-sse-enabled)
+      MCP_TRANSPORT_SSE_FLAG="--no-transport-sse-enabled"
+      shift
+      ;;
+    --no-transport-streamable-http-enabled)
+      MCP_TRANSPORT_STREAMABLE_HTTP_FLAG="--no-transport-streamable-http-enabled"
+      shift
+      ;;
+    --no-json-response)
+      MCP_JSON_RESPONSE_FLAG="--no-json-response"
+      shift
+      ;;
+    --consumer-no-beg=*)
+      CONSUMER_NO_BEG="\${arg#*=}"
+      shift
+      ;;
+    --consumer-no-end=*)
+      CONSUMER_NO_END="\${arg#*=}"
+      shift
+      ;;
+    --workers=*)
+      WORKERS="\${arg#*=}"
+      shift
+      ;;
+    --host-id=*)
+      HOST_ID="\${arg#*=}"
+      shift
+      ;;
+    *)
+      usage
+      ;;
+  esac
+done
+
+# -----------------------------------------------------------------------------
+# Replace env variables in the service_conf.yaml file
+# -----------------------------------------------------------------------------
+CONF_DIR="/ragflow/conf"
+TEMPLATE_FILE="\${CONF_DIR}/service_conf.yaml.template"
+CONF_FILE="\${CONF_DIR}/service_conf.yaml"
+
+rm -f "\${CONF_FILE}"
+while IFS= read -r line || [[ -n "\$line" ]]; do
+    eval "echo \"\$line\"" >> "\${CONF_FILE}"
+done < "\${TEMPLATE_FILE}"
+
+export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu/"
+PY=python3
+
+# -----------------------------------------------------------------------------
+# Function(s)
+# -----------------------------------------------------------------------------
+
+function task_exe() {
+    local consumer_id="\$1"
+    local host_id="\$2"
+
+    JEMALLOC_PATH="\$(pkg-config --variable=libdir jemalloc)/libjemalloc.so"
+    while true; do
+        LD_PRELOAD="\$JEMALLOC_PATH" \
+        "\$PY" rag/svr/task_executor.py "\${host_id}_\${consumer_id}"  &
+        wait;
+        sleep 1;
+    done
+}
+
+function start_mcp_server() {
+    echo "Starting MCP Server on \${MCP_HOST}:\${MCP_PORT} with base URL \${MCP_BASE_URL}..."
+    "\$PY" "\${MCP_SCRIPT_PATH}" \
+        --host="\${MCP_HOST}" \
+        --port="\${MCP_PORT}" \
+        --base-url="\${MCP_BASE_URL}" \
+        --mode="\${MCP_MODE}" \
+        --api-key="\${MCP_HOST_API_KEY}" \
+        "\${MCP_TRANSPORT_SSE_FLAG}" \
+        "\${MCP_TRANSPORT_STREAMABLE_HTTP_FLAG}" \
+        "\${MCP_JSON_RESPONSE_FLAG}" &
+}
+
+function ensure_docling() {
+    [[ "\${USE_DOCLING}" == "true" ]] || { echo "[docling] disabled by USE_DOCLING"; return 0; }
+    DOCLING_PIN="\${DOCLING_VERSION:-==2.58.0}"
+    "\$PY" -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('docling') else 1)" \
+      || uv pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --extra-index-url https://pypi.org/simple --no-cache-dir "docling\${DOCLING_PIN}"
+}
+
+# -----------------------------------------------------------------------------
+# Start components based on flags
+# -----------------------------------------------------------------------------
+ensure_docling
+
+if [[ "\${ENABLE_WEBSERVER}" -eq 1 ]]; then
+    echo "Starting nginx..."
+    /usr/sbin/nginx
+
+    echo "Starting ragflow_server..."
+    while true; do
+        "\$PY" api/ragflow_server.py \${INIT_SUPERUSER_ARGS} &
+        wait;
+        sleep 1;
+    done &
+fi
+
+if [[ "\${ENABLE_DATASYNC}" -eq 1 ]]; then
+    echo "Starting data sync..."
+    while true; do
+        "\$PY" rag/svr/sync_data_source.py &
+        wait;
+        sleep 1;
+    done &
+fi
+
+if [[ "\${ENABLE_ADMIN_SERVER}" -eq 1 ]]; then
+    echo "Starting admin_server..."
+    while true; do
+        "\$PY" admin/server/admin_server.py &
+        wait;
+        sleep 1;
+    done &
+fi
+
+if [[ "\${ENABLE_MCP_SERVER}" -eq 1 ]]; then
+    start_mcp_server
+fi
+
+
+if [[ "\${ENABLE_TASKEXECUTOR}" -eq 1 ]]; then
+    if [[ "\${CONSUMER_NO_END}" -gt "\${CONSUMER_NO_BEG}" ]]; then
+        echo "Starting task executors on host '\${HOST_ID}' for IDs in [\${CONSUMER_NO_BEG}, \${CONSUMER_NO_END})..."
+        for (( i=CONSUMER_NO_BEG; i<CONSUMER_NO_END; i++ ))
+        do
+          task_exe "\${i}" "\${HOST_ID}" &
+        done
+    else
+        # Otherwise, start a fixed number of workers
+        echo "Starting \${WORKERS} task executor(s) on host '\${HOST_ID}'..."
+        for (( i=0; i<WORKERS; i++ ))
+        do
+          task_exe "\${i}" "\${HOST_ID}" &
+        done
+    fi
+fi
+
+wait
+EOFMT
+  chmod 755 $HSHQ_STACKS_DIR/ragflow/config/entrypoint.sh
+  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/config/infinity_conf.toml
+[general]
+version                  = "0.6.15"
+time_zone                = "utc-8"
+
+[network]
+server_address           = "0.0.0.0"
+postgres_port            = 5432
+http_port                = 23820
+client_port              = 23817
+connection_pool_size     = 128
+
+[log]
+log_filename             = "infinity.log"
+log_dir                  = "/var/infinity/log"
+log_to_stdout            = true
+log_file_max_size        = "100MB"
+log_file_rotate_count    = 10
+
+# trace/debug/info/warning/error/critical 6 log levels, default: info
+log_level               = "info"
+
+[storage]
+persistence_dir         = "/var/infinity/persistence"
+data_dir                = "/var/infinity/data"
+# periodically activates garbage collection:
+# 0 means real-time,
+# s means seconds, for example "60s", 60 seconds
+# m means minutes, for example "60m", 60 minutes
+# h means hours, for example "1h", 1 hour
+optimize_interval        = "10s"
+cleanup_interval         = "60s"
+compact_interval         = "120s"
+storage_type             = "local"
+
+# dump memory index entry when it reachs the capacity
+mem_index_capacity       = 65536
+
+# S3 storage config example:
+# [storage.object_storage]
+# url                      = "127.0.0.1:9000"
+# bucket_name              = "infinity"
+# access_key               = "minioadmin"
+# secret_key               = "minioadmin"
+# enable_https             = false
+
+[buffer]
+buffer_manager_size      = "8GB"
+lru_num                  = 7
+temp_dir                 = "/var/infinity/tmp"
+result_cache             = "off"
+memindex_memory_quota    = "1GB"
+
+[wal]
+wal_dir                       = "/var/infinity/wal"
+
+[resource]
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/config/service_conf.yaml.template
+ragflow:
+  host: 0.0.0.0
+  http_port: 9380
+admin:
+  host: 0.0.0.0
+  http_port: 9381
+minio:
+  user: '$RAGFLOW_MINIO_KEY'
+  password: '$RAGFLOW_MINIO_SECRET'
+  host: 'ragflow-minio:9000'
+  bucket: '$RAGFLOW_MINIO_BUCKET'
+  prefix_path: ''
+infinity:
+  uri: 'ragflow-infinity:23817'
+  db_name: 'ragflow_db'
+redis:
+  db: 1
+  username: ''
+  password: '$RAGFLOW_REDIS_PASSWORD'
+  host: 'ragflow-redis:6379'
+postgres:
+  name: '$RAGFLOW_DATABASE_NAME'
+  user: '$RAGFLOW_DATABASE_USER'
+  password: '$RAGFLOW_DATABASE_USER_PASSWORD'
+  host: 'ragflow-db'
+  port: 5432
+  max_connections: 100
+  stale_timeout: 30
+user_default_llm:
+  factory: 'Ollama'
+  base_url: 'http://ollama-server:11434'
+  default_models:
+    chat_model:
+      name: 'mistral-nemo:12b'
+    embedding_model:
+      name: 'bge-m3'
+      factory: 'OpenAI'
+      api_key: '$LOCALAI_API_KEY'
+      base_url: 'http://localai-server:8080'
+    rerank_model:
+      name: 'bge-reranker-v2'
+      factory: 'OpenAI'
+      api_key: '$LOCALAI_API_KEY'
+      base_url: 'http://localai-server:8080'
+    asr_model:
+      model: 'whisper-large-v3'
+    image2text_model: ''
+oauth:
+  oidc:
+    display_name: "Authelia"
+    client_id: "$RAGFLOW_OIDC_CLIENT_ID"
+    client_secret: "$RAGFLOW_OIDC_CLIENT_SECRET"
+    issuer: "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN"
+    scope: "openid email profile"
+    redirect_uri: "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/v1/user/oauth/callback/oidc"
+smtp:
+  mail_server: $SMTP_HOSTNAME
+  mail_port: $SMTP_HOSTPORT
+  mail_use_ssl: false
+  mail_use_tls: false
+  mail_username: ""
+  mail_password: ""
+  mail_default_sender:
+    - "RAGFlow $(getAdminEmailName)"
+    - "$EMAIL_ADMIN_EMAIL_ADDRESS"
+  mail_frontend_url: "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN"
+EOFMT
+  RAGFLOW_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $RAGFLOW_OIDC_CLIENT_SECRET | tr -d ':\n')
+  cat <<EOFIM > $HOME/ragflow.oidc
+# Authelia OIDC Client ragflow BEGIN
+      - client_id: $RAGFLOW_OIDC_CLIENT_ID
+        client_name: RAGFlow
+        client_secret: '$RAGFLOW_OIDC_CLIENT_SECRET_HASH'
+        public: false
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
+        redirect_uris:
+          - https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/v1/user/oauth/callback/oidc
+        scopes:
+          - openid
+          - profile
+          - email
+          - groups
+        userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_post
+# Authelia OIDC Client ragflow END
+EOFIM
+  cat <<EOFSQ > $HOME/genhash.py
+import base64
+from werkzeug.security import generate_password_hash
+password="$RAGFLOW_ADMIN_PASSWORD"
+encode_password = base64.b64encode(password.encode('utf-8')).decode('utf-8')
+password_hash = generate_password_hash(encode_password)
+print(password_hash)
+EOFSQ
+  RAGFLOW_ADMIN_PASSWORD_HASH=$(python3 $HOME/genhash.py | sed 's/\$/\\$/g')
+  rm -f $HOME/genhash.py
+  useruuid=$(uuidgen | sed 's/-//g')
+  dtnowseconds=$(date +%s%3N)
+  dtnow=$(date -d "@$(($dtnowseconds / 1000))" +"%Y-%m-%d %H:%M:%S")
+  cat <<EOFDS > $HSHQ_STACKS_DIR/ragflow/dbexport/setupDBSettings.sh
+#!/bin/bash
+
+PGPASSWORD=$RAGFLOW_DATABASE_USER_PASSWORD
+curSeconds=0
+maxSeconds=300
+while [ \$curSeconds -lt \$maxSeconds ]
+do
+  admUser=\$(echo "select id from \"user\" limit 1;" | psql -t -A -U $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_NAME 2> /dev/null)
+  if ! [ -z "\$admUser" ]; then
+    break
+  fi
+  echo "Database not ready, sleeping 5 seconds, total wait=\$curSeconds seconds..."
+  sleep 5
+  curSeconds=\$((curSeconds+5))
+done
+echo "insert into \"user\"(id, create_time, create_date, update_time, update_date, access_token, nickname, password, email, avatar, language, color_schema, timezone, last_login_time, is_authenticated, is_active, is_anonymous, login_channel, status, is_superuser) values('$useruuid',$dtnowseconds,'$dtnow',$dtnowseconds,'$dtnow','$useruuid','RAGFlow HSHQ Admin','$RAGFLOW_ADMIN_PASSWORD_HASH','$RAGFLOW_ADMIN_EMAIL_ADDRESS',NULL,'English','Bright','UTC-6' || chr(9) || 'America/Chicago','$dtnow',1,1,0,'password',1,'f');"  | psql -U $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_NAME
+
+echo "insert into \"file\"(id, create_time, create_date, update_time, update_date, parent_id, tenant_id, created_by, name, location, size, type, source_type) values('$useruuid',$dtnowseconds,'$dtnow',$dtnowseconds,'$dtnow','$useruuid','$useruuid','$useruuid','/','',0,'folder','');"  | psql -U $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_NAME
+
+echo "insert into \"tenant\"(id, create_time, create_date, update_time, update_date, name, public_key, llm_id, embd_id, asr_id, img2txt_id, rerank_id, tts_id, parser_ids, credit, status) values('$useruuid',$dtnowseconds,'$dtnow',$dtnowseconds,'$dtnow','RAGFlow HSHQ Admin‘s Kingdom',NULL,'mistral-nemo:12b@Ollama','bge-m3@OpenAI','whisper-large-v3@Ollama','','bge-reranker-v2@OpenAI',NULL,'naive:General,qa:Q&A,resume:Resume,manual:Manual,table:Table,paper:Paper,book:Book,laws:Laws,presentation:Presentation,picture:Picture,one:One,audio:Audio,email:Email,tag:Tag',512,1);"  | psql -U $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_NAME
+
+echo "insert into \"user_tenant\"(id, create_time, create_date, update_time, update_date, user_id, tenant_id, role, invited_by, status) values('$useruuid',$dtnowseconds,'$dtnow',$dtnowseconds,'$dtnow','$useruuid','$useruuid','owner','$useruuid',1);"  | psql -U $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_NAME
+
+echo "update \"user\" set timezone='UTC-6' || chr(9) || 'America/Chicago';"  | psql -U $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_NAME
+
+EOFDS
+  chmod +x $HSHQ_STACKS_DIR/ragflow/dbexport/setupDBSettings.sh
+}
+
+function performUpdateRAGFlow()
+{
+  perform_stack_name=ragflow
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/infiniflow/infinity:v0.6.15,mirror.gcr.io/infiniflow/ragflow:v0.23.1,mirror.gcr.io/infiniflow/sandbox-executor-manager:latest,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/infiniflow/sandbox-base-nodejs:latest,mirror.gcr.io/infiniflow/sandbox-base-python:latest
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.6.15,mirror.gcr.io/infiniflow/infinity:v0.6.15"
+      image_update_map[2]="mirror.gcr.io/infiniflow/ragflow:v0.23.1,mirror.gcr.io/infiniflow/ragflow:v0.23.1"
+      image_update_map[3]="mirror.gcr.io/infiniflow/sandbox-executor-manager:latest,mirror.gcr.io/infiniflow/sandbox-executor-manager:latest"
+      image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[5]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[6]="mirror.gcr.io/infiniflow/sandbox-base-nodejs:latest,mirror.gcr.io/infiniflow/sandbox-base-nodejs:latest"
+      image_update_map[7]="mirror.gcr.io/infiniflow/sandbox-base-python:latest,mirror.gcr.io/infiniflow/sandbox-base-python:latest"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# TabbyML
+function installTabbyML()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory tabbyml "TabbyML"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName tabbyml-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/tabbyml
+  mkdir $HSHQ_STACKS_DIR/tabbyml/data
+  initServicesCredentials
+  set +e
+  addUserMailu alias $TABBYML_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigTabbyML
+  installStack tabbyml tabbyml-app "Listening at http" $HOME/tabbyml.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$TABBYML_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_TABBYML_APP Admin Login Info" -b "$FMLNAME_TABBYML_APP Admin Email: $TABBYML_ADMIN_EMAIL_ADDRESS\n$FMLNAME_TABBYML_APP Admin Password: $TABBYML_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    TABBYML_INIT_ENV=true
+    updateConfigVar TABBYML_INIT_ENV $TABBYML_INIT_ENV
+  fi
+  sleep 3
+  bash $HOME/setupDBSettings.sh
+  rm -f $HOME/setupDBSettings.sh
+  docker container restart tabbyml-app > /dev/null 2>&1
+  if [ -z "$FMLNAME_TABBYML_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://tabbyml-app:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_TABBYML_APP $MANAGETLS_TABBYML_APP "$is_integrate_hshq" $NETDEFAULT_TABBYML_APP "$inner_block"
+  insertSubAuthelia $SUB_TABBYML_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll tabbyml "$FMLNAME_TABBYML_APP" $USERTYPE_TABBYML_APP "https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN" "tabbyml.png" "$(getHeimdallOrderFromSub $SUB_TABBYML_APP $USERTYPE_TABBYML_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigTabbyML()
+{
+  cat <<EOFMT > $HOME/tabbyml-compose.yml
+$STACK_VERSION_PREFIX tabbyml $(getScriptStackVersion tabbyml)
+
+services:
+  tabbyml-app:
+    image: $(getScriptImageByContainerName tabbyml-app)
+    container_name: tabbyml-app
+    hostname: tabbyml-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: serve
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/tabbyml/data:/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/tabbyml.env
+TZ=\${PORTAINER_TZ}
+TABBY_WEBSERVER_JWT_TOKEN_SECRET=$TABBYML_JWT_SECRET
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/tabbyml/data/config.toml
+[model.completion.http]
+kind = "ollama/completion"
+model_name = "danielsheep/Qwen3-Coder-30B-A3B-Instruct-1M-Unsloth:UD-Q6_K_XL"
+api_endpoint = "http://ollama-server:11434"
+prompt_template = "<PRE> {prefix} <SUF>{suffix} <MID>"
+
+[model.chat.http]
+kind = "openai/chat"
+model_name = "mistral-nemo:12b"
+api_endpoint = "http://ollama-server:11434/v1"
+chat_template = "<s>{% for message in messages %}{% if (message['role'] == 'user') != (loop.index0 % 2 == 0) %}{{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}{% endif %}{% if message['role'] == 'user' %}{{ '[INST] ' + message['content'] + ' [/INST]' }}{% elif message['role'] == 'assistant' %}{{ message['content'] + '</s> ' }}{% else %}{{ raise_exception('Only user and assistant roles are supported!') }}{% endif %}{% endfor %}"
+
+[model.embedding.http]
+kind = "ollama/embedding"
+model_name = "nomic-embed-text:latest"
+api_endpoint = "http://ollama-server:11434"
+EOFMT
+  cat <<EOFDS > $HOME/setupDBSettings.sh
+#!/bin/bash
+tabbyml_db=$HSHQ_STACKS_DIR/tabbyml/data/ee/db.sqlite
+uuid=\$(uuidgen | tr -d '-')
+uuid2=\$(uuidgen | tr -d '-')
+encoded_id=\$(echo -n "0" | md5sum | cut -d' ' -f1 | cut -c1-6)
+token="\${encoded_id}\${uuid}"
+dtnow=\$(date -u '+%Y-%m-%d %H:%M:%S')
+TABBYML_ADMIN_PASSWORD_HASH=\$(echo -n "$TABBYML_ADMIN_PASSWORD" | argon2 \$(pwgen -c -n 16 1) -id -e -t 2 -m 15 -p 1 -l 32)
+sudo sqlite3 \$tabbyml_db "INSERT INTO users(id,email,is_admin,created_at,updated_at,auth_token,active,password_encrypted,avatar,name) VALUES(1,'$TABBYML_ADMIN_EMAIL_ADDRESS',1,'\$dtnow','\$dtnow','auth_\$uuid2',1,'\$TABBYML_ADMIN_PASSWORD_HASH',NULL,'TabbyML HSHQ Admin');"
+sudo sqlite3 \$tabbyml_db "INSERT INTO refresh_tokens(id,user_id,token,expires_at,created_at) VALUES(1,1,'\$token','\$dtnow','\$dtnow');"
+sudo sqlite3 \$tabbyml_db "INSERT INTO sqlite_sequence(name,seq) VALUES('users',1);"
+sudo sqlite3 \$tabbyml_db "INSERT INTO sqlite_sequence(name,seq) VALUES('refresh_tokens',1);"
+sudo sqlite3 \$tabbyml_db "INSERT INTO server_setting(id,security_allowed_register_domain_list,security_disable_client_side_telemetry,network_external_url,billing_enterprise_license,security_disable_password_login,branding_logo,branding_icon) VALUES(1,NULL,0,'http://localhost:8080',NULL,0,NULL,NULL);"
+
+EOFDS
+}
+
+function performUpdateTabbyML()
+{
+  perform_stack_name=tabbyml
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/tabbyml/tabby:0.31.2
+      image_update_map[0]="mirror.gcr.io/tabbyml/tabby:0.31.2,mirror.gcr.io/tabbyml/tabby:0.31.2"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# DeepWikiOpen
+function installDeepWikiOpen()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory deepwikiopen "DeepWikiOpen"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName deepwikiopen-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/deepwikiopen
+  mkdir $HSHQ_STACKS_DIR/deepwikiopen/config
+  mkdir $HSHQ_STACKS_DIR/deepwikiopen/adalflow
+  initServicesCredentials
+  set +e
+  outputConfigDeepWikiOpen
+  installStack deepwikiopen deepwikiopen-app "" $HOME/deepwikiopen.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$DEEPWIKI_OPEN_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_DEEPWIKI_OPEN_APP Auth Code" -b "$FMLNAME_DEEPWIKI_OPEN_APP Auth Code: $DEEPWIKI_OPEN_AUTH_CODE\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    DEEPWIKI_OPEN_INIT_ENV=true
+    updateConfigVar DEEPWIKI_OPEN_INIT_ENV $DEEPWIKI_OPEN_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_DEEPWIKI_OPEN_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_DEEPWIKI_OPEN_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://deepwikiopen-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_DEEPWIKI_OPEN_APP $MANAGETLS_DEEPWIKI_OPEN_APP "$is_integrate_hshq" $NETDEFAULT_DEEPWIKI_OPEN_APP "$inner_block"
+  insertSubAuthelia $SUB_DEEPWIKI_OPEN_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_DEEPWIKI_OPEN_API.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://deepwikiopen-app:8001 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_DEEPWIKI_OPEN_API $MANAGETLS_DEEPWIKI_OPEN_API "$is_integrate_hshq" $NETDEFAULT_DEEPWIKI_OPEN_API "$inner_block"
+  insertSubAuthelia $SUB_DEEPWIKI_OPEN_API.$HOMESERVER_DOMAIN bypass
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll deepwikiopen "$FMLNAME_DEEPWIKI_OPEN_APP" $USERTYPE_DEEPWIKI_OPEN_APP "https://$SUB_DEEPWIKI_OPEN_APP.$HOMESERVER_DOMAIN" "deepwikiopen.png" "$(getHeimdallOrderFromSub $SUB_DEEPWIKI_OPEN_APP $USERTYPE_DEEPWIKI_OPEN_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigDeepWikiOpen()
+{
+  cat <<EOFMT > $HOME/deepwikiopen-compose.yml
+$STACK_VERSION_PREFIX deepwikiopen $(getScriptStackVersion deepwikiopen)
+
+services:
+  deepwikiopen-app:
+    image: $(getScriptImageByContainerName deepwikiopen-app)
+    container_name: deepwikiopen-app
+    hostname: deepwikiopen-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/deepwikiopen/adalflow:/root/.adalflow
+      - \${PORTAINER_HSHQ_STACKS_DIR}/deepwikiopen/config/embedder.json:/app/api/config/embedder.json
+      - \${PORTAINER_HSHQ_STACKS_DIR}/deepwikiopen/config/generator.json:/app/api/config/generator.json
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/deepwikiopen.env
+TZ=\${PORTAINER_TZ}
+SERVER_BASE_URL=https://$SUB_DEEPWIKI_OPEN_API.$HOMESERVER_DOMAIN
+DEEPWIKI_AUTH_MODE=1
+DEEPWIKI_AUTH_CODE=$DEEPWIKI_OPEN_AUTH_CODE
+OLLAMA_HOST=http://ollama-server:11434
+NODE_ENV=production
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/deepwikiopen/config/embedder.json
+{
+  "embedder": {
+    "client_class": "OllamaClient",
+    "model_kwargs": {
+      "model": "nomic-embed-text:latest"
+    }
+  },
+  "retriever": {
+    "top_k": 20
+  },
+  "text_splitter": {
+    "split_by": "word",
+    "chunk_size": 350,
+    "chunk_overlap": 100
+  }
+}
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/deepwikiopen/config/generator.json
+{
+  "default_provider": "ollama",
+  "providers": {
+    "ollama": {
+      "default_model": "qwen3:4b",
+      "supportsCustomModel": true,
+      "models": {
+        "qwen3:4b": {
+          "options": {
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "num_ctx": 32000
+          }
+        },
+        "llama3.1:8b": {
+          "options": {
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "num_ctx": 8000
+          }
+        },
+        "qwen3:8b": {
+          "options": {
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "num_ctx": 32000
+          }
+        }
+      }
+    }
+  }
+}
+EOFMT
+}
+
+function performUpdateDeepWikiOpen()
+{
+  perform_stack_name=deepwikiopen
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=ghcr.io/asyncfuncai/deepwiki-open:sha-d48f5bc
+      image_update_map[0]="ghcr.io/asyncfuncai/deepwiki-open:sha-d48f5bc,ghcr.io/asyncfuncai/deepwiki-open:sha-d48f5bc"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Docling
+function installDocling()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory docling "Docling"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  buildImageDoclingV1
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName docling-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/docling
+  mkdir $HSHQ_STACKS_DIR/docling/config
+  mkdir $HSHQ_STACKS_DIR/docling/data
+  mkdir $HSHQ_NONBACKUP_DIR/docling
+  mkdir $HSHQ_NONBACKUP_DIR/docling/redis
+  initServicesCredentials
+  set +e
+  outputConfigDocling
+  installStack docling docling-app "" $HOME/docling.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_DOCLING_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_DOCLING_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://docling-app:5001 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_DOCLING_APP $MANAGETLS_DOCLING_APP "$is_integrate_hshq" $NETDEFAULT_DOCLING_APP "$inner_block"
+  insertSubAuthelia $SUB_DOCLING_APP.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll docling "$FMLNAME_DOCLING_APP" $USERTYPE_DOCLING_APP "https://$SUB_DOCLING_APP.$HOMESERVER_DOMAIN/ui/" "docling.png" "$(getHeimdallOrderFromSub $SUB_DOCLING_APP $USERTYPE_DOCLING_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigDocling()
+{
+  cat <<EOFMT > $HOME/docling-compose.yml
+$STACK_VERSION_PREFIX docling $(getScriptStackVersion docling)
+
+services:
+  docling-app:
+    image: $(getScriptImageByContainerName docling-app)
+    container_name: docling-app
+    hostname: docling-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-docling-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  docling-redis:
+    image: $(getScriptImageByContainerName docling-redis)
+    container_name: docling-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $DOCLING_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-docling-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-docling-redis:/data
+
+volumes:
+  v-docling-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/docling/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  int-docling-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/docling.env
+TZ=\${PORTAINER_TZ}
+DOCLING_SERVE_ENABLE_UI=true
+DOCLING_SERVE_API_KEY=$DOCLING_API_KEY
+DOCLING_SERVE_ENG_RQ_REDIS_URL=redis://:$DOCLING_REDIS_PASSWORD@docling-redis:6379
+EOFMT
+}
+
+function performUpdateDocling()
+{
+  perform_stack_name=docling
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=ghcr.io/docling-project/docling-serve-rocm:main,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="ghcr.io/docling-project/docling-serve-rocm:main,ghcr.io/docling-project/docling-serve-rocm:main"
+      image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function buildImageDoclingV1()
+{
+  set +e
+  sudo rm -fr $HSHQ_BUILD_DIR/docling
+  cd $HSHQ_BUILD_DIR
+  git clone https://github.com/docling-project/docling-serve.git
+  cd docling-serve
+  make docling-serve-rocm-image
+  rtval=$?
+  cd
+  sudo rm -fr $HSHQ_BUILD_DIR/docling
+  return $rtval
+}
+
+# Dify
+function installDify()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory dify "Dify"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-vectordb)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-ssrf)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-api)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-plugind)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-sandbox)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-nginx)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-minio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/dify
+  mkdir $HSHQ_STACKS_DIR/dify/config
+  mkdir $HSHQ_STACKS_DIR/dify/qdrant
+  mkdir $HSHQ_STACKS_DIR/dify/storage
+  mkdir $HSHQ_STACKS_DIR/dify/storage/privkeys
+  mkdir $HSHQ_STACKS_DIR/dify/sandbox
+  mkdir $HSHQ_STACKS_DIR/dify/sandbox/conf
+  mkdir $HSHQ_STACKS_DIR/dify/sandbox/dependencies
+  mkdir $HSHQ_STACKS_DIR/dify/nginx
+  mkdir $HSHQ_STACKS_DIR/dify/nginx/conf.d
+  mkdir $HSHQ_STACKS_DIR/dify/minio
+  mkdir $HSHQ_STACKS_DIR/dify/db
+  mkdir $HSHQ_STACKS_DIR/dify/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/dify/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/dify
+  mkdir $HSHQ_NONBACKUP_DIR/dify/redis
+  initServicesCredentials
+  set +e
+  addUserMailu alias $DIFY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigDify
+  installStack dify dify-api "Listening at" $HOME/dify.env 3
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString dify-beat 1 300 "beat: Starting..."
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString dify-db 1 300 "database system is ready to accept connections"
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString dify-plugind 1 300 "listening on: tcp://0.0.0.0:5003"
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString dify-sandbox 1 300 "python dependencies sandbox initialized"
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString dify-ssrf 1 300 "Accepting HTTP Socket connections at "
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString dify-vectordb 1 300 "Qdrant HTTP listening on"
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString dify-worker 1 300 "celery@dify-worker ready"
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$DIFY_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_DIFY_APP Admin Login Info" -b "$FMLNAME_DIFY_APP Admin Email: $DIFY_ADMIN_EMAIL_ADDRESS\n$FMLNAME_DIFY_APP Admin Password: $DIFY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    DIFY_INIT_ENV=true
+    updateConfigVar DIFY_INIT_ENV $DIFY_INIT_ENV
+  fi
+  sleep 5
+  docker exec dify-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/dify/dbexport/setupDBSettings.sh
+  sleep 1
+  startStopStack dify stop
+  sleep 1
+  startStopStack dify start
+  if [ -z "$FMLNAME_DIFY_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://dify-nginx {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_DIFY_APP $MANAGETLS_DIFY_APP "$is_integrate_hshq" $NETDEFAULT_DIFY_APP "$inner_block"
+  insertSubAuthelia $SUB_DIFY_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll dify "$FMLNAME_DIFY_APP" $USERTYPE_DIFY_APP "https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN" "dify.png" "$(getHeimdallOrderFromSub $SUB_DIFY_APP $USERTYPE_DIFY_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true dify "$FMLNAME_DIFY_APP" postgres dify-db $DIFY_DATABASE_NAME $DIFY_DATABASE_USER $DIFY_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigDify()
+{
+  cat <<EOFMT > $HOME/dify-compose.yml
+$STACK_VERSION_PREFIX dify $(getScriptStackVersion dify)
+
+services:
+  dify-db:
+    image: $(getScriptImageByContainerName dify-db)
+    container_name: dify-db
+    hostname: dify-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 512mb
+    networks:
+      - int-dify-net
+      - dock-dbs-net
+    command: >
+      postgres -c 'max_connections=100'
+               -c 'shared_buffers=128MB'
+               -c 'work_mem=4MB'
+               -c 'maintenance_work_mem=64MB'
+               -c 'effective_cache_size=4096MB'
+               -c 'statement_timeout=0'
+               -c 'idle_in_transaction_session_timeout=0'
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.dify-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.dify-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.dify-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.dify-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.dify-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.dify-hourly-db.email-from=Dify Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.dify-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.dify-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.dify-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.dify-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.dify-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.dify-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.dify-monthly-db.email-from=Dify Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.dify-monthly-db.mail-only-on-error=false"
+
+  dify-vectordb:
+    image: $(getScriptImageByContainerName dify-vectordb)
+    container_name: dify-vectordb
+    hostname: dify-vectordb
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-dify-net
+      - dock-dbs-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/qdrant:/qdrant/storage
+
+  dify-ssrf:
+    image: $(getScriptImageByContainerName dify-ssrf)
+    container_name: dify-ssrf
+    hostname: dify-ssrf
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-dify-net
+      - dock-aipriv-net
+    entrypoint:
+      [
+        "sh",
+        "-c",
+        "cp /docker-entrypoint-mount.sh /docker-entrypoint.sh && sed -i 's/\r\$\$//' /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh && /docker-entrypoint.sh",
+      ]
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/config/squid.conf.template:/etc/squid/squid.conf.template
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/config/docker-entrypoint.sh:/docker-entrypoint-mount.sh
+    environment:
+      - HTTP_PORT=3128
+      - COREDUMP_DIR=/var/spool/squid
+      - REVERSE_PROXY_PORT=8194
+      - SANDBOX_HOST=dify-sandbox
+      - SANDBOX_PORT=8194
+
+  dify-api:
+    image: $(getScriptImageByContainerName dify-api)
+    container_name: dify-api
+    hostname: dify-api
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - dify-db
+      - dify-vectordb
+      - dify-redis
+    networks:
+      - int-dify-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/storage:/app/api/storage
+    environment:
+      - MODE=api
+
+  dify-worker:
+    image: $(getScriptImageByContainerName dify-worker)
+    container_name: dify-worker
+    hostname: dify-worker
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - dify-db
+      - dify-vectordb
+      - dify-redis
+    networks:
+      - int-dify-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/storage:/app/api/storage
+    environment:
+      - MODE=worker
+      - PLUGIN_MAX_PACKAGE_SIZE=52428800
+      - INNER_API_KEY_FOR_PLUGIN=$DIFY_PLUGIN_DIFY_INNER_API_KEY
+
+  dify-beat:
+    image: $(getScriptImageByContainerName dify-beat)
+    container_name: dify-beat
+    hostname: dify-beat
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - dify-db
+      - dify-vectordb
+      - dify-redis
+    networks:
+      - int-dify-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    environment:
+      - MODE=beat
+
+  dify-plugind:
+    image: $(getScriptImageByContainerName dify-plugind)
+    container_name: dify-plugind
+    hostname: dify-plugind
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - dify-db
+      - dify-vectordb
+    networks:
+      - int-dify-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    environment:
+      - DB_DATABASE=dify_plugindb
+      - SERVER_PORT=5002
+      - SERVER_KEY=$DIFY_PLUGIN_DAEMON_KEY
+      - MAX_PLUGIN_PACKAGE_SIZE=52428800
+      - PPROF_ENABLED=false
+      - DIFY_INNER_API_URL=http://dify-api:5001
+      - DIFY_INNER_API_KEY=$DIFY_PLUGIN_DIFY_INNER_API_KEY
+      - PLUGIN_REMOTE_INSTALLING_HOST=0.0.0.0
+      - PLUGIN_REMOTE_INSTALLING_PORT=5003
+      - PLUGIN_WORKING_PATH=/app/storage/cwd
+      - FORCE_VERIFYING_SIGNATURE=true
+      - PYTHON_ENV_INIT_TIMEOUT=120
+      - PLUGIN_MAX_EXECUTION_TIMEOUT=600
+      - PLUGIN_STDIO_BUFFER_SIZE=1024
+      - PLUGIN_STDIO_MAX_BUFFER_SIZE=5242880
+      - PLUGIN_STORAGE_TYPE=local
+      - PLUGIN_STORAGE_LOCAL_ROOT=/app/storage
+      - PLUGIN_INSTALLED_PATH=plugin
+      - PLUGIN_PACKAGE_CACHE_PATH=plugin_packages
+      - PLUGIN_MEDIA_CACHE_PATH=assets
+      - S3_USE_AWS_MANAGED_IAM=false
+      - S3_USE_AWS=false
+
+  dify-sandbox:
+    image: $(getScriptImageByContainerName dify-sandbox)
+    container_name: dify-sandbox
+    hostname: dify-sandbox
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-dify-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/sandbox/conf:/conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/sandbox/dependencies:/dependencies
+    environment:
+      - API_KEY=$DIFY_SANDBOX_API_KEY
+      - GIN_MODE=release
+      - WORKER_TIMEOUT=15
+      - ENABLE_NETWORK=true
+      - HTTP_PROXY=http://dify-ssrf:3128
+      - HTTPS_PROXY=http://dify-ssrf:3128
+      - SANDBOX_PORT=8194
+
+  dify-web:
+    image: $(getScriptImageByContainerName dify-web)
+    container_name: dify-web
+    hostname: dify-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - dify-db
+      - dify-vectordb
+      - dify-redis
+      - dify-api
+    networks:
+      - int-dify-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  dify-redis:
+    image: $(getScriptImageByContainerName dify-redis)
+    container_name: dify-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $DIFY_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-dify-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-dify-redis:/data
+
+  dify-nginx:
+    image: $(getScriptImageByContainerName dify-nginx)
+    container_name: dify-nginx
+    hostname: dify-nginx
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - dify-api
+      - dify-web
+    networks:
+      - int-dify-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/nginx/nginx.conf.template:/etc/nginx/nginx.conf.template
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/nginx/proxy.conf.template:/etc/nginx/proxy.conf.template
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/nginx/https.conf.template:/etc/nginx/https.conf.template
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/nginx/conf.d:/etc/nginx/conf.d
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/nginx/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+
+  dify-minio:
+    image: $(getScriptImageByContainerName dify-minio)
+    container_name: dify-minio
+    hostname: dify-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - dify-db
+    command: server /data
+    networks:
+      - int-dify-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-dify-minio:/data
+
+volumes:
+  v-dify-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/dify/redis
+  v-dify-minio:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/dify/minio
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-dify-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/dify.env
+TZ=\${PORTAINER_TZ}
+LOG_TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$DIFY_DATABASE_NAME
+POSTGRES_USER=$DIFY_DATABASE_USER
+POSTGRES_PASSWORD=$DIFY_DATABASE_USER_PASSWORD
+CONSOLE_API_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+CONSOLE_WEB_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+SERVICE_API_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+TRIGGER_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+APP_API_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+APP_WEB_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+FILES_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+INTERNAL_FILES_URL=http://dify-api:5001
+SECRET_KEY=$DIFY_SECRET_KEY
+INIT_PASSWORD=
+DEPLOY_ENV=PRODUCTION
+OPENAI_API_BASE=http://localai-server:8080/v1
+ENABLE_WEBSITE_JINAREADER=true
+ENABLE_WEBSITE_FIRECRAWL=true
+ENABLE_WEBSITE_WATERCRAWL=true
+DB_TYPE=postgresql
+DB_USERNAME=$DIFY_DATABASE_USER
+DB_PASSWORD=$DIFY_DATABASE_USER_PASSWORD
+DB_HOST=dify-db
+DB_PORT=5432
+DB_DATABASE=$DIFY_DATABASE_NAME
+SQLALCHEMY_POOL_SIZE=30
+SQLALCHEMY_MAX_OVERFLOW=10
+SQLALCHEMY_POOL_RECYCLE=3600
+SQLALCHEMY_ECHO=false
+SQLALCHEMY_POOL_PRE_PING=false
+SQLALCHEMY_POOL_USE_LIFO=false
+SQLALCHEMY_POOL_TIMEOUT=30
+REDIS_HOST=dify-redis
+REDIS_PASSWORD=$DIFY_REDIS_PASSWORD
+CELERY_BROKER_URL=redis://:$DIFY_REDIS_PASSWORD@dify-redis:6379/1
+CELERY_BACKEND=redis
+BROKER_USE_SSL=false
+STORAGE_TYPE=local
+VECTOR_STORE=qdrant
+QDRANT_URL=http://dify-vectordb:6333
+QDRANT_API_KEY=$DIFY_QDRANT_API_KEY
+MAIL_TYPE=smtp
+MAIL_DEFAULT_SEND_FROM=Dify $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>
+SMTP_SERVER=$SMTP_HOSTNAME
+SMTP_PORT=$SMTP_HOSTPORT
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_USE_TLS=true
+SMTP_OPPORTUNISTIC_TLS=true
+SANDBOX_HOST=dify-sandbox
+CODE_EXECUTION_ENDPOINT=http://dify-sandbox:8194
+CODE_EXECUTION_API_KEY=$DIFY_CODE_EXECUTION_API_KEY
+SSRF_PROXY_HTTP_URL=http://dify-ssrf:3128
+SSRF_PROXY_HTTPS_URL=http://dify-ssrf:3128
+SANDBOX_API_KEY=$DIFY_SANDBOX_API_KEY
+SANDBOX_HTTP_PROXY=http://dify-ssrf:3128
+SANDBOX_HTTPS_PROXY=http://dify-ssrf:3128
+SSRF_SANDBOX_HOST=dify-sandbox
+PLUGIN_DAEMON_KEY=$DIFY_PLUGIN_DAEMON_KEY
+PLUGIN_DAEMON_URL=http://dify-plugind:5002
+PLUGIN_DIFY_INNER_API_KEY=$DIFY_PLUGIN_DIFY_INNER_API_KEY
+PLUGIN_DIFY_INNER_API_URL=http://dify-api:5001
+INNER_API_KEY_FOR_PLUGIN=$DIFY_PLUGIN_DIFY_INNER_API_KEY
+NEXT_TELEMETRY_DISABLED=1
+NUMEXPR_MAX_THREADS=16
+LANG=C.UTF-8
+LC_ALL=C.UTF-8
+PYTHONIOENCODING=utf-8
+LOG_LEVEL=INFO
+LOG_OUTPUT_FORMAT=text
+LOG_FILE=/app/logs/server.log
+LOG_FILE_MAX_SIZE=20
+LOG_FILE_BACKUP_COUNT=5
+LOG_DATEFORMAT=%Y-%m-%d %H:%M:%S
+DEBUG=false
+FLASK_DEBUG=false
+ENABLE_REQUEST_LOGGING=False
+CHECK_UPDATE_URL=https://updates.dify.ai
+MIGRATION_ENABLED=true
+FILES_ACCESS_TIMEOUT=300
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+REFRESH_TOKEN_EXPIRE_DAYS=30
+APP_DEFAULT_ACTIVE_REQUESTS=0
+APP_MAX_ACTIVE_REQUESTS=0
+APP_MAX_EXECUTION_TIME=1200
+DIFY_BIND_ADDRESS=0.0.0.0
+DIFY_PORT=5001
+SERVER_WORKER_AMOUNT=1
+SERVER_WORKER_CLASS=gevent
+SERVER_WORKER_CONNECTIONS=10
+GUNICORN_TIMEOUT=360
+CELERY_AUTO_SCALE=false
+API_TOOL_DEFAULT_CONNECT_TIMEOUT=10
+API_TOOL_DEFAULT_READ_TIMEOUT=60
+NEXT_PUBLIC_ENABLE_SINGLE_DOLLAR_LATEX=false
+POSTGRES_MAX_CONNECTIONS=100
+POSTGRES_SHARED_BUFFERS=128MB
+POSTGRES_WORK_MEM=4MB
+POSTGRES_MAINTENANCE_WORK_MEM=64MB
+POSTGRES_EFFECTIVE_CACHE_SIZE=4096MB
+POSTGRES_STATEMENT_TIMEOUT=0
+POSTGRES_IDLE_IN_TRANSACTION_SESSION_TIMEOUT=0
+REDIS_PORT=6379
+REDIS_USE_SSL=false
+REDIS_DB=0
+REDIS_USE_SENTINEL=false
+REDIS_USE_CLUSTERS=false
+CELERY_USE_SENTINEL=false
+NEXT_PUBLIC_BATCH_CONCURRENCY=5
+S3_USE_AWS_MANAGED_IAM=false
+ARCHIVE_STORAGE_ENABLED=false
+VECTOR_INDEX_NAME_PREFIX=Vector_index
+QDRANT_CLIENT_TIMEOUT=20
+QDRANT_GRPC_ENABLED=false
+QDRANT_GRPC_PORT=6334
+QDRANT_REPLICATION_FACTOR=1
+UPLOAD_FILE_SIZE_LIMIT=15
+UPLOAD_FILE_BATCH_LIMIT=5
+SINGLE_CHUNK_ATTACHMENT_LIMIT=10
+IMAGE_FILE_BATCH_LIMIT=10
+ATTACHMENT_IMAGE_FILE_SIZE_LIMIT=2
+ATTACHMENT_IMAGE_DOWNLOAD_TIMEOUT=60
+ETL_TYPE=dify
+SCARF_NO_ANALYTICS=true
+PROMPT_GENERATION_MAX_TOKENS=512
+CODE_GENERATION_MAX_TOKENS=1024
+PLUGIN_BASED_TOKEN_COUNTING_ENABLED=false
+MULTIMODAL_SEND_FORMAT=base64
+UPLOAD_IMAGE_FILE_SIZE_LIMIT=10
+UPLOAD_VIDEO_FILE_SIZE_LIMIT=100
+UPLOAD_AUDIO_FILE_SIZE_LIMIT=50
+PLUGIN_SENTRY_ENABLED=false
+INDEXING_MAX_SEGMENTATION_TOKENS_LENGTH=4000
+INVITE_EXPIRY_HOURS=72
+RESET_PASSWORD_TOKEN_EXPIRY_MINUTES=5
+EMAIL_REGISTER_TOKEN_EXPIRY_MINUTES=5
+CHANGE_EMAIL_TOKEN_EXPIRY_MINUTES=5
+OWNER_TRANSFER_TOKEN_EXPIRY_MINUTES=5
+CODE_EXECUTION_SSL_VERIFY=True
+CODE_EXECUTION_POOL_MAX_CONNECTIONS=100
+CODE_EXECUTION_POOL_MAX_KEEPALIVE_CONNECTIONS=20
+CODE_EXECUTION_POOL_KEEPALIVE_EXPIRY=5.0
+CODE_MAX_NUMBER=9223372036854775807
+CODE_MIN_NUMBER=-9223372036854775808
+CODE_MAX_DEPTH=5
+CODE_MAX_PRECISION=20
+CODE_MAX_STRING_LENGTH=400000
+CODE_MAX_STRING_ARRAY_LENGTH=30
+CODE_MAX_OBJECT_ARRAY_LENGTH=30
+CODE_MAX_NUMBER_ARRAY_LENGTH=1000
+CODE_EXECUTION_CONNECT_TIMEOUT=10
+CODE_EXECUTION_READ_TIMEOUT=60
+CODE_EXECUTION_WRITE_TIMEOUT=10
+TEMPLATE_TRANSFORM_MAX_LENGTH=400000
+WORKFLOW_MAX_EXECUTION_STEPS=500
+WORKFLOW_MAX_EXECUTION_TIME=1200
+WORKFLOW_CALL_MAX_DEPTH=5
+MAX_VARIABLE_SIZE=204800
+WORKFLOW_FILE_UPLOAD_LIMIT=10
+GRAPH_ENGINE_MIN_WORKERS=1
+GRAPH_ENGINE_MAX_WORKERS=10
+GRAPH_ENGINE_SCALE_UP_THRESHOLD=3
+GRAPH_ENGINE_SCALE_DOWN_IDLE_TIME=5.0
+WORKFLOW_NODE_EXECUTION_STORAGE=rdbms
+CORE_WORKFLOW_EXECUTION_REPOSITORY=core.repositories.sqlalchemy_workflow_execution_repository.SQLAlchemyWorkflowExecutionRepository
+CORE_WORKFLOW_NODE_EXECUTION_REPOSITORY=core.repositories.sqlalchemy_workflow_node_execution_repository.SQLAlchemyWorkflowNodeExecutionRepository
+API_WORKFLOW_RUN_REPOSITORY=repositories.sqlalchemy_api_workflow_run_repository.DifyAPISQLAlchemyWorkflowRunRepository
+API_WORKFLOW_NODE_EXECUTION_REPOSITORY=repositories.sqlalchemy_api_workflow_node_execution_repository.DifyAPISQLAlchemyWorkflowNodeExecutionRepository
+WORKFLOW_LOG_CLEANUP_ENABLED=false
+WORKFLOW_LOG_RETENTION_DAYS=30
+WORKFLOW_LOG_CLEANUP_BATCH_SIZE=100
+LOGSTORE_DUAL_WRITE_ENABLED=false
+LOGSTORE_DUAL_READ_ENABLED=true
+LOGSTORE_ENABLE_PUT_GRAPH_FIELD=true
+HTTP_REQUEST_NODE_MAX_BINARY_SIZE=10485760
+HTTP_REQUEST_NODE_MAX_TEXT_SIZE=1048576
+HTTP_REQUEST_NODE_SSL_VERIFY=True
+HTTP_REQUEST_MAX_CONNECT_TIMEOUT=10
+HTTP_REQUEST_MAX_READ_TIMEOUT=600
+HTTP_REQUEST_MAX_WRITE_TIMEOUT=600
+WEBHOOK_REQUEST_BODY_MAX_SIZE=10485760
+RESPECT_XFORWARD_HEADERS_ENABLED=false
+LOOP_NODE_MAX_COUNT=100
+MAX_TOOLS_NUM=10
+MAX_PARALLEL_LIMIT=10
+MAX_ITERATIONS_NUM=99
+TEXT_GENERATION_TIMEOUT_MS=60000
+ALLOW_UNSAFE_DATA_SCHEME=false
+MAX_TREE_DEPTH=50
+PGDATA=/var/lib/postgresql/data/pgdata
+SANDBOX_GIN_MODE=release
+SANDBOX_WORKER_TIMEOUT=15
+SANDBOX_ENABLE_NETWORK=true
+SANDBOX_PORT=8194
+SSRF_HTTP_PORT=3128
+SSRF_COREDUMP_DIR=/var/spool/squid
+SSRF_REVERSE_PROXY_PORT=8194
+SSRF_DEFAULT_TIME_OUT=5
+SSRF_DEFAULT_CONNECT_TIME_OUT=5
+SSRF_DEFAULT_READ_TIME_OUT=5
+SSRF_DEFAULT_WRITE_TIME_OUT=5
+SSRF_POOL_MAX_CONNECTIONS=100
+SSRF_POOL_MAX_KEEPALIVE_CONNECTIONS=20
+SSRF_POOL_KEEPALIVE_EXPIRY=5.0
+CREATE_TIDB_SERVICE_JOB_ENABLED=false
+MAX_SUBMIT_COUNT=100
+TOP_K_MAX_VALUE=10
+EXPOSE_PLUGIN_DAEMON_PORT=5002
+PLUGIN_DAEMON_PORT=5002
+PLUGIN_MAX_PACKAGE_SIZE=52428800
+PLUGIN_PPROF_ENABLED=false
+PLUGIN_DEBUGGING_HOST=0.0.0.0
+PLUGIN_DEBUGGING_PORT=5003
+EXPOSE_PLUGIN_DEBUGGING_HOST=localhost
+EXPOSE_PLUGIN_DEBUGGING_PORT=5003
+ENDPOINT_URL_TEMPLATE=http://localhost/e/{hook_id}
+MARKETPLACE_ENABLED=true
+MARKETPLACE_API_URL=https://marketplace.dify.ai
+FORCE_VERIFYING_SIGNATURE=true
+ENFORCE_LANGGENIUS_PLUGIN_SIGNATURES=true
+PLUGIN_STDIO_BUFFER_SIZE=1024
+PLUGIN_STDIO_MAX_BUFFER_SIZE=5242880
+PLUGIN_PYTHON_ENV_INIT_TIMEOUT=120
+PLUGIN_MAX_EXECUTION_TIMEOUT=600
+PLUGIN_DAEMON_TIMEOUT=600.0
+PIP_MIRROR_URL=
+PLUGIN_STORAGE_TYPE=local
+PLUGIN_STORAGE_LOCAL_ROOT=/app/storage
+PLUGIN_WORKING_PATH=/app/storage/cwd
+PLUGIN_INSTALLED_PATH=plugin
+PLUGIN_PACKAGE_CACHE_PATH=plugin_packages
+PLUGIN_MEDIA_CACHE_PATH=assets
+PLUGIN_STORAGE_OSS_BUCKET=
+PLUGIN_S3_USE_AWS=false
+PLUGIN_S3_USE_AWS_MANAGED_IAM=false
+ENABLE_OTEL=false
+ALLOW_EMBED=false
+QUEUE_MONITOR_THRESHOLD=200
+QUEUE_MONITOR_ALERT_EMAILS=
+QUEUE_MONITOR_INTERVAL=30
+SWAGGER_UI_ENABLED=false
+SWAGGER_UI_PATH=/swagger-ui.html
+DSL_EXPORT_ENCRYPT_DATASET_ID=true
+DATASET_MAX_SEGMENTS_PER_REQUEST=0
+ENABLE_CLEAN_EMBEDDING_CACHE_TASK=false
+ENABLE_CLEAN_UNUSED_DATASETS_TASK=false
+ENABLE_CREATE_TIDB_SERVERLESS_TASK=false
+ENABLE_UPDATE_TIDB_SERVERLESS_STATUS_TASK=false
+ENABLE_CLEAN_MESSAGES=false
+ENABLE_MAIL_CLEAN_DOCUMENT_NOTIFY_TASK=false
+ENABLE_DATASETS_QUEUE_MONITOR=false
+ENABLE_CHECK_UPGRADABLE_PLUGIN_TASK=true
+ENABLE_WORKFLOW_SCHEDULE_POLLER_TASK=true
+WORKFLOW_SCHEDULE_POLLER_INTERVAL=1
+WORKFLOW_SCHEDULE_POLLER_BATCH_SIZE=100
+WORKFLOW_SCHEDULE_MAX_DISPATCH_PER_TICK=0
+TENANT_ISOLATED_TASK_CONCURRENCY=1
+ANNOTATION_IMPORT_FILE_SIZE_LIMIT=2
+ANNOTATION_IMPORT_MAX_RECORDS=10000
+ANNOTATION_IMPORT_MIN_RECORDS=1
+ANNOTATION_IMPORT_RATE_LIMIT_PER_MINUTE=5
+ANNOTATION_IMPORT_RATE_LIMIT_PER_HOUR=20
+ANNOTATION_IMPORT_MAX_CONCURRENT=5
+AMPLITUDE_API_KEY=
+SANDBOX_EXPIRED_RECORDS_CLEAN_GRACEFUL_PERIOD=21
+SANDBOX_EXPIRED_RECORDS_CLEAN_BATCH_SIZE=1000
+SANDBOX_EXPIRED_RECORDS_RETENTION_DAYS=30
+NGINX_SERVER_NAME=_
+NGINX_HTTPS_ENABLED=false
+NGINX_PORT=80
+NGINX_WORKER_PROCESSES=auto
+NGINX_CLIENT_MAX_BODY_SIZE=100M
+NGINX_KEEPALIVE_TIMEOUT=65
+NGINX_PROXY_READ_TIMEOUT=3600s
+NGINX_PROXY_SEND_TIMEOUT=3600s
+NGINX_ENABLE_CERTBOT_CHALLENGE=false
+EOFMT
+  cat <<EOFSE > $HSHQ_STACKS_DIR/dify/nginx/https.conf.template
+listen \${NGINX_SSL_PORT} ssl;
+ssl_certificate \${SSL_CERTIFICATE_PATH};
+ssl_certificate_key \${SSL_CERTIFICATE_KEY_PATH};
+ssl_protocols \${NGINX_SSL_PROTOCOLS};
+ssl_prefer_server_ciphers on;
+ssl_session_cache shared:SSL:10m;
+ssl_session_timeout 10m;
+EOFSE
+  cat <<EOFSE > $HSHQ_STACKS_DIR/dify/nginx/nginx.conf.template
+# Please do not directly edit this file. Instead, modify the .env variables related to NGINX configuration.
+
+user  nginx;
+worker_processes  \${NGINX_WORKER_PROCESSES};
+
+error_log  /var/log/nginx/error.log notice;
+pid        /var/run/nginx.pid;
+
+
+events {
+    worker_connections  1024;
+}
+
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format  main  '\$remote_addr - \$remote_user [\$time_local] "\$request" '
+                      '\$status \$body_bytes_sent "\$http_referer" '
+                      '"\$http_user_agent" "\$http_x_forwarded_for"';
+
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile        on;
+    #tcp_nopush     on;
+
+    keepalive_timeout  \${NGINX_KEEPALIVE_TIMEOUT};
+
+    #gzip  on;
+    client_max_body_size \${NGINX_CLIENT_MAX_BODY_SIZE};
+
+    include /etc/nginx/conf.d/*.conf;
+}
+EOFSE
+  cat <<EOFSE > $HSHQ_STACKS_DIR/dify/nginx/proxy.conf.template
+proxy_set_header Host \$host;
+proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto \$scheme;
+proxy_set_header X-Forwarded-Port \$server_port;
+proxy_http_version 1.1;
+proxy_set_header Connection "";
+proxy_buffering off;
+proxy_read_timeout \${NGINX_PROXY_READ_TIMEOUT};
+proxy_send_timeout \${NGINX_PROXY_SEND_TIMEOUT};
+EOFSE
+  cat <<EOFSE > $HSHQ_STACKS_DIR/dify/nginx/conf.d/default.conf.template
+# Please do not directly edit this file. Instead, modify the .env variables related to NGINX configuration.
+
+server {
+    listen \${NGINX_PORT};
+    server_name \${NGINX_SERVER_NAME};
+
+    location /console/api {
+      proxy_pass http://dify-api:5001;
+      include proxy.conf;
+    }
+
+    location /api {
+      proxy_pass http://dify-api:5001;
+      include proxy.conf;
+    }
+
+    location /v1 {
+      proxy_pass http://dify-api:5001;
+      include proxy.conf;
+    }
+
+    location /files {
+      proxy_pass http://dify-api:5001;
+      include proxy.conf;
+    }
+
+    location /explore {
+      proxy_pass http://dify-web:3000;
+      include proxy.conf;
+    }
+
+    location /e/ {
+      proxy_pass http://dify-plugind:5002;
+      proxy_set_header Dify-Hook-Url \$scheme://\$host\$request_uri;
+      include proxy.conf;
+    }
+
+    location / {
+      proxy_pass http://dify-web:3000;
+      include proxy.conf;
+    }
+
+    location /mcp {
+      proxy_pass http://dify-api:5001;
+      include proxy.conf;
+    }
+
+    location /triggers {
+      proxy_pass http://dify-api:5001;
+      include proxy.conf;
+    }
+    
+    # placeholder for acme challenge location
+    \${ACME_CHALLENGE_LOCATION}
+
+    # placeholder for https config defined in https.conf.template
+    \${HTTPS_CONFIG}
+}
+EOFSE
+  cat <<EOFSE > $HSHQ_STACKS_DIR/dify/nginx/docker-entrypoint.sh
+#!/bin/bash
+
+HTTPS_CONFIG=''
+
+if [ "\${NGINX_HTTPS_ENABLED}" = "true" ]; then
+    # Check if the certificate and key files for the specified domain exist
+    if [ -n "\${CERTBOT_DOMAIN}" ] && \
+       [ -f "/etc/letsencrypt/live/\${CERTBOT_DOMAIN}/\${NGINX_SSL_CERT_FILENAME}" ] && \
+       [ -f "/etc/letsencrypt/live/\${CERTBOT_DOMAIN}/\${NGINX_SSL_CERT_KEY_FILENAME}" ]; then
+        SSL_CERTIFICATE_PATH="/etc/letsencrypt/live/\${CERTBOT_DOMAIN}/\${NGINX_SSL_CERT_FILENAME}"
+        SSL_CERTIFICATE_KEY_PATH="/etc/letsencrypt/live/\${CERTBOT_DOMAIN}/\${NGINX_SSL_CERT_KEY_FILENAME}"
+    else
+        SSL_CERTIFICATE_PATH="/etc/ssl/\${NGINX_SSL_CERT_FILENAME}"
+        SSL_CERTIFICATE_KEY_PATH="/etc/ssl/\${NGINX_SSL_CERT_KEY_FILENAME}"
+    fi
+    export SSL_CERTIFICATE_PATH
+    export SSL_CERTIFICATE_KEY_PATH
+
+    # set the HTTPS_CONFIG environment variable to the content of the https.conf.template
+    HTTPS_CONFIG=\$(envsubst < /etc/nginx/https.conf.template)
+    export HTTPS_CONFIG
+    # Substitute the HTTPS_CONFIG in the default.conf.template with content from https.conf.template
+    envsubst '\${HTTPS_CONFIG}' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf
+fi
+export HTTPS_CONFIG
+
+if [ "\${NGINX_ENABLE_CERTBOT_CHALLENGE}" = "true" ]; then
+    ACME_CHALLENGE_LOCATION='location /.well-known/acme-challenge/ { root /var/www/html; }'
+else
+    ACME_CHALLENGE_LOCATION=''
+fi
+export ACME_CHALLENGE_LOCATION
+
+env_vars=\$(printenv | cut -d= -f1 | sed 's/^/\$/g' | paste -sd, -)
+
+envsubst "\$env_vars" < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+envsubst "\$env_vars" < /etc/nginx/proxy.conf.template > /etc/nginx/proxy.conf
+
+envsubst "\$env_vars" < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf
+
+# Start Nginx using the default entrypoint
+exec nginx -g 'daemon off;'
+EOFSE
+  chmod +x $HSHQ_STACKS_DIR/dify/nginx/docker-entrypoint.sh
+  cat <<EOFSE > $HSHQ_STACKS_DIR/dify/config/squid.conf.template
+acl localnet src 0.0.0.1-0.255.255.255	# RFC 1122 "this" network (LAN)
+acl localnet src 10.0.0.0/8		# RFC 1918 local private network (LAN)
+acl localnet src 100.64.0.0/10		# RFC 6598 shared address space (CGN)
+acl localnet src 169.254.0.0/16 	# RFC 3927 link-local (directly plugged) machines
+acl localnet src 172.16.0.0/12		# RFC 1918 local private network (LAN)
+acl localnet src 192.168.0.0/16		# RFC 1918 local private network (LAN)
+acl localnet src fc00::/7       	# RFC 4193 local private network range
+acl localnet src fe80::/10      	# RFC 4291 link-local (directly plugged) machines
+acl SSL_ports port 443
+# acl SSL_ports port 1025-65535   # Enable the configuration to resolve this issue: https://github.com/langgenius/dify/issues/12792
+acl Safe_ports port 80		# http
+acl Safe_ports port 21		# ftp
+acl Safe_ports port 443		# https
+acl Safe_ports port 70		# gopher
+acl Safe_ports port 210		# wais
+acl Safe_ports port 1025-65535	# unregistered ports
+acl Safe_ports port 280		# http-mgmt
+acl Safe_ports port 488		# gss-http
+acl Safe_ports port 591		# filemaker
+acl Safe_ports port 777		# multiling http
+acl CONNECT method CONNECT
+acl allowed_domains dstdomain .marketplace.dify.ai
+http_access allow allowed_domains
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+http_access allow localhost manager
+http_access deny manager
+http_access allow localhost
+include /etc/squid/conf.d/*.conf
+http_access deny all
+
+################################## Proxy Server ################################
+http_port \${HTTP_PORT}
+coredump_dir \${COREDUMP_DIR}
+refresh_pattern ^ftp:		1440	20%	10080
+refresh_pattern ^gopher:	1440	0%	1440
+refresh_pattern -i (/cgi-bin/|\?) 0	0%	0
+refresh_pattern \/(Packages|Sources)(|\.bz2|\.gz|\.xz)\$ 0 0% 0 refresh-ims
+refresh_pattern \/Release(|\.gpg)\$ 0 0% 0 refresh-ims
+refresh_pattern \/InRelease\$ 0 0% 0 refresh-ims
+refresh_pattern \/(Translation-.*)(|\.bz2|\.gz|\.xz)\$ 0 0% 0 refresh-ims
+refresh_pattern .		0	20%	4320
+
+
+# cache_dir ufs /var/spool/squid 100 16 256
+# upstream proxy, set to your own upstream proxy IP to avoid SSRF attacks
+# cache_peer 172.1.1.1 parent 3128 0 no-query no-digest no-netdb-exchange default
+
+################################## Reverse Proxy To Sandbox ################################
+http_port \${REVERSE_PROXY_PORT} accel vhost
+cache_peer \${SANDBOX_HOST} parent \${SANDBOX_PORT} 0 no-query originserver
+acl src_all src all
+http_access allow src_all
+
+# Unless the option's size is increased, an error will occur when uploading more than two files.
+client_request_buffer_max_size 100 MB
+
+################################## Performance & Concurrency ###############################
+# Increase file descriptor limit for high concurrency
+max_filedescriptors 65536
+
+# Timeout configurations for image requests
+connect_timeout 30 seconds
+request_timeout 2 minutes
+read_timeout 2 minutes
+client_lifetime 5 minutes
+shutdown_lifetime 30 seconds
+
+# Persistent connections - improve performance for multiple requests
+server_persistent_connections on
+client_persistent_connections on
+persistent_request_timeout 30 seconds
+pconn_timeout 1 minute
+
+# Connection pool and concurrency limits
+client_db on
+server_idle_pconn_timeout 2 minutes
+client_idle_pconn_timeout 2 minutes
+
+# Quick abort settings - don't abort requests that are mostly done
+quick_abort_min 16 KB
+quick_abort_max 16 MB
+quick_abort_pct 95
+
+# Memory and cache optimization
+memory_cache_mode disk
+cache_mem 256 MB
+maximum_object_size_in_memory 512 KB
+
+# DNS resolver settings for better performance
+dns_timeout 30 seconds
+dns_retransmit_interval 5 seconds
+# By default, Squid uses the system's configured DNS resolvers.
+# If you need to override them, set dns_nameservers to appropriate servers
+# for your environment (for example, internal/corporate DNS). The following
+# is an example using public DNS and SHOULD be customized before use:
+# dns_nameservers 8.8.8.8 8.8.4.4
+
+# Logging format for better debugging
+logformat dify_log %ts.%03tu %6tr %>a %Ss/%03>Hs %<st %rm %ru %[un %Sh/%<a %mt
+access_log daemon:/var/log/squid/access.log dify_log
+
+# Access log to track concurrent requests and timeouts
+logfile_rotate 10
+
+EOFSE
+  cat <<EOFSE > $HSHQ_STACKS_DIR/dify/config/docker-entrypoint.sh
+#!/bin/bash
+
+# Modified based on Squid OCI image entrypoint
+
+# This entrypoint aims to forward the squid logs to stdout to assist users of
+# common container related tooling (e.g., kubernetes, docker-compose, etc) to
+# access the service logs.
+
+# Moreover, it invokes the squid binary, leaving all the desired parameters to
+# be provided by the "command" passed to the spawned container. If no command
+# is provided by the user, the default behavior (as per the CMD statement in
+# the Dockerfile) will be to use Ubuntu's default configuration [1] and run
+# squid with the "-NYC" options to mimic the behavior of the Ubuntu provided
+# systemd unit.
+
+# [1] The default configuration is changed in the Dockerfile to allow local
+# network connections. See the Dockerfile for further information.
+
+echo "[ENTRYPOINT] re-create snakeoil self-signed certificate removed in the build process"
+if [ ! -f /etc/ssl/private/ssl-cert-snakeoil.key ]; then
+    /usr/sbin/make-ssl-cert generate-default-snakeoil --force-overwrite > /dev/null 2>&1
+fi
+
+tail -F /var/log/squid/access.log 2>/dev/null &
+tail -F /var/log/squid/error.log 2>/dev/null &
+tail -F /var/log/squid/store.log 2>/dev/null &
+tail -F /var/log/squid/cache.log 2>/dev/null &
+
+# Replace environment variables in the template and output to the squid.conf
+echo "[ENTRYPOINT] replacing environment variables in the template"
+awk '{
+    while(match(\$0, /\\\${[A-Za-z_][A-Za-z_0-9]*}/)) {
+        var = substr(\$0, RSTART+2, RLENGTH-3)
+        val = ENVIRON[var]
+        \$0 = substr(\$0, 1, RSTART-1) val substr(\$0, RSTART+RLENGTH)
+    }
+    print
+}' /etc/squid/squid.conf.template > /etc/squid/squid.conf
+
+/usr/sbin/squid -Nz
+echo "[ENTRYPOINT] starting squid"
+/usr/sbin/squid -f /etc/squid/squid.conf -NYC 1
+EOFSE
+  cat <<EOFSE > $HSHQ_STACKS_DIR/dify/sandbox/conf/config.yaml
+app:
+  port: 8194
+  debug: True
+  key: dify-sandbox
+max_workers: 4
+max_requests: 50
+worker_timeout: 5
+python_path: /usr/local/bin/python3
+enable_network: True
+allowed_syscalls:
+proxy:
+  socks5: ''
+  http: ''
+  https: ''
+EOFSE
+  cat <<EOFSQ > $HOME/genhash.py
+import base64
+import binascii
+import hashlib
+import re
+import secrets
+
+password_pattern = r"^(?=.*[a-zA-Z])(?=.*\d).{8,}\$"
+
+
+def valid_password(password):
+    # Define a regex pattern for password rules
+    pattern = password_pattern
+    # Check if the password matches the pattern
+    if re.match(pattern, password) is not None:
+        return password
+
+    raise ValueError("Password must contain letters and numbers, and the length must be greater than 8.")
+
+def hash_pass(password_str):
+    salt = secrets.token_bytes(16)
+    base64_salt = base64.b64encode(salt).decode()
+    password_hashed = hash_password(password_str, salt)
+    base64_password_hashed = base64.b64encode(password_hashed).decode()
+    print(base64_salt + "," + base64_password_hashed)
+
+def hash_password(password_str, salt_byte):
+    dk = hashlib.pbkdf2_hmac("sha256", password_str.encode("utf-8"), salt_byte, 10000)
+    return binascii.hexlify(dk)
+
+
+def compare_password(password_str, password_hashed_base64, salt_base64):
+    # compare password for login
+    return hash_password(password_str, base64.b64decode(salt_base64)) == base64.b64decode(password_hashed_base64)
+
+hash_pass("$DIFY_ADMIN_PASSWORD")
+EOFSQ
+  pwhash=$(python3 $HOME/genhash.py)
+  DIFY_ADMIN_PASSWORD_SALT=$(echo "$pwhash" | cut -d"," -f1)
+  DIFY_ADMIN_PASSWORD_HASH=$(echo "$pwhash" | cut -d"," -f2)
+  #rm -f $HOME/genhash.py
+  acctuuid=$(uuidgen)
+  tenantuuid=$(uuidgen)
+  taj_uuid=$(uuidgen)
+  tpaus_uuid=$(uuidgen)
+  dtnow=$(date '+%Y-%m-%d %H:%M:%S.%6N')
+  dtnow2=$(date '+%Y-%m-%d %H:%M:%S')
+  mkdir $HSHQ_STACKS_DIR/dify/storage/privkeys/$tenantuuid
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out $HSHQ_STACKS_DIR/dify/storage/privkeys/$tenantuuid/private.pem > /dev/null 2>&1
+  chmod 644 $HSHQ_STACKS_DIR/dify/storage/privkeys/$tenantuuid/private.pem
+  pubkey=$(openssl pkey -in $HSHQ_STACKS_DIR/dify/storage/privkeys/$tenantuuid/private.pem -pubout)
+  cat <<EOFDS > $HSHQ_STACKS_DIR/dify/dbexport/setupDBSettings.sh
+#!/bin/bash
+
+PGPASSWORD=$DIFY_DATABASE_USER_PASSWORD
+
+echo "insert into accounts(id, name, email, password, password_salt, avatar, interface_language, interface_theme, timezone, last_login_at, last_login_ip, status, initialized_at, created_at, updated_at, last_active_at) values('$acctuuid','$DIFY_ADMIN_USERNAME','$DIFY_ADMIN_EMAIL_ADDRESS','$DIFY_ADMIN_PASSWORD_HASH','$DIFY_ADMIN_PASSWORD_SALT',NULL,'en-US','dark','$TZ',NULL,NULL,'active','$dtnow','$dtnow2','$dtnow','$dtnow2');" | psql -U $DIFY_DATABASE_USER $DIFY_DATABASE_NAME
+
+echo "insert into dify_setups(version, setup_at) values('1.11.2','$dtnow2');" | psql -U $DIFY_DATABASE_USER $DIFY_DATABASE_NAME
+
+echo "insert into tenants(id, name, encrypt_public_key, plan, status, created_at, updated_at, custom_config) values('$tenantuuid','${DIFY_ADMIN_USERNAME}''s Workspace','$pubkey','basic','normal','$dtnow2','$dtnow',NULL);" | psql -U $DIFY_DATABASE_USER $DIFY_DATABASE_NAME
+
+echo "insert into tenant_account_joins(id, tenant_id, account_id, role, invited_by, created_at, updated_at, current) values('$taj_uuid','$tenantuuid','$acctuuid','owner',NULL,'$dtnow2','$dtnow2','f');" | psql -U $DIFY_DATABASE_USER $DIFY_DATABASE_NAME
+
+echo "insert into tenant_plugin_auto_upgrade_strategies(id, tenant_id, strategy_setting, upgrade_time_of_day, upgrade_mode, exclude_plugins, include_plugins, created_at, updated_at) values('$tpaus_uuid','$tenantuuid','fix_only',0,'exclude','[]'::json,'[]'::json,'$dtnow','$dtnow');" | psql -U $DIFY_DATABASE_USER $DIFY_DATABASE_NAME
+
+EOFDS
+  chmod +x $HSHQ_STACKS_DIR/dify/dbexport/setupDBSettings.sh
+  sudo chown 1001:1001 $HSHQ_STACKS_DIR/dify/storage
+}
+
+function performUpdateDify()
+{
+  perform_stack_name=dify
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/langgenius/qdrant:v1.8.3,mirror.gcr.io/ubuntu/squid:latest,mirror.gcr.io/langgenius/dify-api:1.11.2,mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local,mirror.gcr.io/langgenius/dify-sandbox:0.2.12,mirror.gcr.io/langgenius/dify-web:1.11.2,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/nginx:1.29.4-trixie,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/langgenius/qdrant:v1.8.3,mirror.gcr.io/langgenius/qdrant:v1.8.3"
+      image_update_map[2]="mirror.gcr.io/ubuntu/squid:latest,mirror.gcr.io/ubuntu/squid:latest"
+      image_update_map[3]="mirror.gcr.io/langgenius/dify-api:1.11.2,mirror.gcr.io/langgenius/dify-api:1.11.2"
+      image_update_map[4]="mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local,mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local"
+      image_update_map[5]="mirror.gcr.io/langgenius/dify-sandbox:0.2.12,mirror.gcr.io/langgenius/dify-sandbox:0.2.12"
+      image_update_map[6]="mirror.gcr.io/langgenius/dify-web:1.11.2,mirror.gcr.io/langgenius/dify-web:1.11.2"
+      image_update_map[7]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[8]="mirror.gcr.io/nginx:1.29.4-trixie,mirror.gcr.io/nginx:1.29.4-trixie"
+      image_update_map[9]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
     ;;
     *)
       is_upgrade_error=true
@@ -92192,7 +95338,7 @@ EOFMT
 TZ=\${PORTAINER_TZ}
 LOGIN=$DBGATE_ADMIN_USERNAME
 PASSWORD=$DBGATE_ADMIN_PASSWORD
-CONNECTIONS=ActivePieces,Adminer,Automatisch,Budibase,Calcom,Discourse,Dolibarr,EasyAppointments,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,InvoiceNinja,InvoiceShelf,Kanboard,Keila,KillBill,KillBillAPI,Langfuse,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MindsDB,MintHCM,n8n,Nextcloud,Odoo,Ombi,OpenProject,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Rallly,Revolt,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Twenty,Vaultwarden,Wallabag,Wekan,Wikijs,WordPress,Yamtrack,Zammad,Zulip,Taiga,OpenSign,DocuSeal,ControlR,Akaunting,Axelor,Langflow,Firecrawl,LibreChat,OpenWebUI,Khoj,LobeChat
+CONNECTIONS=ActivePieces,Adminer,Automatisch,Budibase,Calcom,Discourse,Dolibarr,EasyAppointments,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,InvoiceNinja,InvoiceShelf,Kanboard,Keila,KillBill,KillBillAPI,Langfuse,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MindsDB,MintHCM,n8n,Nextcloud,Odoo,Ombi,OpenProject,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Rallly,Revolt,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Twenty,Vaultwarden,Wallabag,Wekan,Wikijs,WordPress,Yamtrack,Zammad,Zulip,Taiga,OpenSign,DocuSeal,ControlR,Akaunting,Axelor,Langflow,Firecrawl,LibreChat,OpenWebUI,Khoj,LobeChat,RAGFlow,Dify
 LABEL_ActivePieces=ActivePieces
 ENGINE_ActivePieces=postgres@dbgate-plugin-postgres
 SERVER_ActivePieces=activepieces-db
@@ -92718,6 +95864,20 @@ DATABASE_LobeChat=LOBECHAT_DATABASE_NAME
 USER_LobeChat=LOBECHAT_DATABASE_USER
 PASSWORD_LobeChat=LOBECHAT_DATABASE_USER_PASSWORD
 PORT_LobeChat=5432
+LABEL_RAGFlow=RAGFlow
+ENGINE_RAGFlow=postgres@dbgate-plugin-postgres
+SERVER_RAGFlow=ragflow-db
+DATABASE_RAGFlow=RAGFLOW_DATABASE_NAME
+USER_RAGFlow=RAGFLOW_DATABASE_USER
+PASSWORD_RAGFlow=RAGFLOW_DATABASE_USER_PASSWORD
+PORT_RAGFlow=5432
+LABEL_Dify=Dify
+ENGINE_Dify=postgres@dbgate-plugin-postgres
+SERVER_Dify=dify-db
+DATABASE_Dify=DIFY_DATABASE_NAME
+USER_Dify=DIFY_DATABASE_USER
+PASSWORD_Dify=DIFY_DATABASE_USER_PASSWORD
+PORT_Dify=5432
 EOFMT
 #DBGATE_OUTPUT_CONFIG_ENV_END
 }
@@ -93451,6 +96611,22 @@ SQLPAD_CONNECTIONS__lobechat__username=$LOBECHAT_DATABASE_USER
 SQLPAD_CONNECTIONS__lobechat__password=$LOBECHAT_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__lobechat__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__lobechat__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__ragflow__name=RAGFlow
+SQLPAD_CONNECTIONS__ragflow__driver=postgres
+SQLPAD_CONNECTIONS__ragflow__host=ragflow-db
+SQLPAD_CONNECTIONS__ragflow__database=$RAGFLOW_DATABASE_NAME
+SQLPAD_CONNECTIONS__ragflow__username=$RAGFLOW_DATABASE_USER
+SQLPAD_CONNECTIONS__ragflow__password=$RAGFLOW_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__ragflow__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__ragflow__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__dify__name=Dify
+SQLPAD_CONNECTIONS__dify__driver=postgres
+SQLPAD_CONNECTIONS__dify__host=dify-db
+SQLPAD_CONNECTIONS__dify__database=$DIFY_DATABASE_NAME
+SQLPAD_CONNECTIONS__dify__username=$DIFY_DATABASE_USER
+SQLPAD_CONNECTIONS__dify__password=$DIFY_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__dify__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__dify__idleTimeoutSeconds=900
 EOFSP
 #SQLPAD_OUTPUT_CONFIG_ENV_END
 }
@@ -94313,6 +97489,10 @@ EOFCF
         body "{ \"m.homeserver\": {\"base_url\": \"https://$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN/\" } }"
         close
       }
+      header /.well-known/webfinger Access-Control-Allow-Origin "*"
+      header /.well-known/webfinger Content-Type "application/jrd+json"
+      header /.well-known/host-meta Access-Control-Allow-Origin "*"
+      header /.well-known/host-meta Content-Type "application/jrd+json"
       redir /.well-known/webfinger https://$SUB_MASTODON.$HOMESERVER_DOMAIN{uri} permanent
       redir /.well-known/host-meta https://$SUB_MASTODON.$HOMESERVER_DOMAIN{uri} permanent
       redir / https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN
