@@ -24328,7 +24328,7 @@ function addAllReadonlyDBUsers()
   addReadOnlyUserToDatabase RAGFlow postgres ragflow-db $RAGFLOW_DATABASE_NAME $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/ragflow/dbexport $RAGFLOW_DATABASE_READONLYUSER $RAGFLOW_DATABASE_READONLYUSER_PASSWORD
   addReadOnlyUserToDatabase Dify postgres dify-db $DIFY_DATABASE_NAME $DIFY_DATABASE_USER $DIFY_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/dify/dbexport $DIFY_DATABASE_READONLYUSER $DIFY_DATABASE_READONLYUSER_PASSWORD
   addReadOnlyUserToDatabase Wekan mongodb wekan-db $WEKAN_DATABASE_NAME $WEKAN_DATABASE_USER $WEKAN_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/wekan/dbexport $WEKAN_DATABASE_READONLYUSER $WEKAN_DATABASE_READONLYUSER_PASSWORD
-  addReadOnlyUserToDatabase Revolt mongodb revolt-db $REVOLT_DATABASE_NAME $REVOLT_DATABASE_USER $REVOLT_DATABASE_USER_PASSWORD $REVOLT_STACKS_DIR/revolt/dbexport $REVOLT_DATABASE_READONLYUSER $REVOLT_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Revolt mongodb revolt-db $REVOLT_DATABASE_NAME $REVOLT_DATABASE_USER $REVOLT_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/revolt/dbexport $REVOLT_DATABASE_READONLYUSER $REVOLT_DATABASE_READONLYUSER_PASSWORD
   addReadOnlyUserToDatabase OpenSign mongodb opensign-db $OPENSIGN_DATABASE_NAME $OPENSIGN_DATABASE_USER $OPENSIGN_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/opensign/dbexport $OPENSIGN_DATABASE_READONLYUSER $OPENSIGN_DATABASE_READONLYUSER_PASSWORD
   addReadOnlyUserToDatabase LibreChat mongodb librechat-mongodb $LIBRECHAT_MONGODB_DATABASE $LIBRECHAT_MONGODB_USER $LIBRECHAT_MONGODB_USER_PASSWORD $HSHQ_STACKS_DIR/librechat/mongoexport $LIBRECHAT_MONGODB_READONLYUSER $LIBRECHAT_MONGODB_READONLYUSER_PASSWORD
 }
@@ -34955,11 +34955,11 @@ function initServicesCredentials()
     updateConfigVar DIFY_SANDBOX_API_KEY $DIFY_SANDBOX_API_KEY
   fi
   if [ -z "$DIFY_PLUGIN_DAEMON_KEY" ]; then
-    DIFY_PLUGIN_DAEMON_KEY=$(pwgen -c -n 32 1)
+    DIFY_PLUGIN_DAEMON_KEY=$(dd if=/dev/urandom bs=42 count=1 2>/dev/null | base64 -w 0)
     updateConfigVar DIFY_PLUGIN_DAEMON_KEY $DIFY_PLUGIN_DAEMON_KEY
   fi
   if [ -z "$DIFY_PLUGIN_DIFY_INNER_API_KEY" ]; then
-    DIFY_PLUGIN_DIFY_INNER_API_KEY=$(pwgen -c -n 32 1)
+    DIFY_PLUGIN_DIFY_INNER_API_KEY=$(dd if=/dev/urandom bs=42 count=1 2>/dev/null | base64 -w 0)
     updateConfigVar DIFY_PLUGIN_DIFY_INNER_API_KEY $DIFY_PLUGIN_DIFY_INNER_API_KEY
   fi
   if [ -z "$ACTIVEPIECES_DATABASE_READONLYUSER" ]; then
@@ -71693,7 +71693,7 @@ function installRevolt()
     return $retVal
   fi
   sleep 3
-  addReadOnlyUserToDatabase Revolt mongodb revolt-db $REVOLT_DATABASE_NAME $REVOLT_DATABASE_USER $REVOLT_DATABASE_USER_PASSWORD $REVOLT_STACKS_DIR/revolt/dbexport $REVOLT_DATABASE_READONLYUSER $REVOLT_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Revolt mongodb revolt-db $REVOLT_DATABASE_NAME $REVOLT_DATABASE_USER $REVOLT_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/revolt/dbexport $REVOLT_DATABASE_READONLYUSER $REVOLT_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_REVOLT.$HOMESERVER_DOMAIN {\n"
@@ -86840,6 +86840,7 @@ function installDify()
   mkdir $HSHQ_STACKS_DIR/dify/qdrant
   mkdir $HSHQ_STACKS_DIR/dify/storage
   mkdir $HSHQ_STACKS_DIR/dify/storage/privkeys
+  mkdir $HSHQ_STACKS_DIR/dify/plugind
   mkdir $HSHQ_STACKS_DIR/dify/sandbox
   mkdir $HSHQ_STACKS_DIR/dify/sandbox/conf
   mkdir $HSHQ_STACKS_DIR/dify/sandbox/dependencies
@@ -87065,9 +87066,13 @@ services:
     security_opt:
       - no-new-privileges:true
     depends_on:
-      - dify-db
-      - dify-vectordb
-      - dify-redis
+      dify-db:
+        condition: service_healthy
+      dify-vectordb:
+        condition: service_healthy
+        required: false
+      dify-redis:
+        condition: service_started
     networks:
       - int-dify-net
       - dock-ext-net
@@ -87092,9 +87097,13 @@ services:
     security_opt:
       - no-new-privileges:true
     depends_on:
-      - dify-db
-      - dify-vectordb
-      - dify-redis
+      dify-db:
+        condition: service_healthy
+      dify-vectordb:
+        condition: service_healthy
+        required: false
+      dify-redis:
+        condition: service_started
     networks:
       - int-dify-net
       - dock-ext-net
@@ -87121,9 +87130,13 @@ services:
     security_opt:
       - no-new-privileges:true
     depends_on:
-      - dify-db
-      - dify-vectordb
-      - dify-redis
+      dify-db:
+        condition: service_healthy
+      dify-vectordb:
+        condition: service_healthy
+        required: false
+      dify-redis:
+        condition: service_started
     networks:
       - int-dify-net
       - dock-ext-net
@@ -87150,6 +87163,9 @@ services:
       dify-db:
         condition: service_healthy
       dify-vectordb:
+        condition: service_healthy
+        required: false
+      dify-redis:
         condition: service_started
     networks:
       - int-dify-net
@@ -87161,6 +87177,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/plugind:/app/storage
     environment:
       - DB_DATABASE=dify_plugindb
       - SERVER_PORT=5002
@@ -87217,14 +87234,22 @@ services:
     container_name: dify-web
     hostname: dify-web
     restart: unless-stopped
-    env_file: stack.env
     security_opt:
       - no-new-privileges:true
     depends_on:
-      - dify-db
-      - dify-vectordb
-      - dify-redis
-      - dify-api
+      dify-db:
+        condition: service_healthy
+      dify-vectordb:
+        condition: service_healthy
+        required: false
+      dify-redis:
+        condition: service_started
+      dify-api:
+        condition: service_healthy
+        required: false
+      dify-plugind:
+        condition: service_healthy
+        required: false
     networks:
       - int-dify-net
       - dock-ext-net
@@ -87235,6 +87260,30 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    environment:
+      - CONSOLE_API_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+      - APP_API_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+      - AMPLITUDE_API_KEY=
+      - NEXT_PUBLIC_COOKIE_DOMAIN=
+      - SENTRY_DSN=
+      - NEXT_TELEMETRY_DISABLED=1
+      - TEXT_GENERATION_TIMEOUT_MS=60000
+      - CSP_WHITELIST=
+      - ALLOW_EMBED=false
+      - ALLOW_UNSAFE_DATA_SCHEME=false
+      - MARKETPLACE_API_URL=https://marketplace.dify.ai
+      - MARKETPLACE_URL=https://marketplace.dify.ai
+      - TOP_K_MAX_VALUE=
+      - INDEXING_MAX_SEGMENTATION_TOKENS_LENGTH=
+      - PM2_INSTANCES=2
+      - LOOP_NODE_MAX_COUNT=100
+      - MAX_TOOLS_NUM=10
+      - MAX_PARALLEL_LIMIT=10
+      - MAX_ITERATIONS_NUM=99
+      - MAX_TREE_DEPTH=50
+      - ENABLE_WEBSITE_JINAREADER=true
+      - ENABLE_WEBSITE_FIRECRAWL=true
+      - ENABLE_WEBSITE_WATERCRAWL=true
 
   dify-redis:
     image: $(getScriptImageByContainerName dify-redis)
@@ -87261,8 +87310,19 @@ services:
     security_opt:
       - no-new-privileges:true
     depends_on:
-      - dify-api
-      - dify-web
+      dify-db:
+        condition: service_healthy
+      dify-vectordb:
+        condition: service_healthy
+        required: false
+      dify-redis:
+        condition: service_started
+      dify-api:
+        condition: service_healthy
+        required: false
+      dify-web:
+        condition: service_healthy
+        required: false
     networks:
       - int-dify-net
       - dock-proxy-net
@@ -87278,39 +87338,39 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/dify/nginx/conf.d:/etc/nginx/conf.d
       - \${PORTAINER_HSHQ_STACKS_DIR}/dify/nginx/docker-entrypoint.sh:/docker-entrypoint.sh:ro
 
-  dify-minio:
-    image: $(getScriptImageByContainerName dify-minio)
-    container_name: dify-minio
-    hostname: dify-minio
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - dify-db
-    networks:
-      - int-dify-net
-    entrypoint: >
-      /bin/sh -c "
-        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
-        MINIO_PID=\\\$!
-        while ! curl -s http://localhost:9000/minio/health/live; do
-          echo 'Waiting for MinIO to start...'
-          sleep 1
-        done
-        sleep 5
-        mc alias set minio http://localhost:9000 ${DIFY_MINIO_KEY} ${DIFY_MINIO_SECRET}
-        echo 'Creating bucket dify'
-        mc mb minio/dify
-        wait \\\$MINIO_PID
-      "
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/minio:/data
+#  dify-minio:
+#    image: $(getScriptImageByContainerName dify-minio)
+#    container_name: dify-minio
+#    hostname: dify-minio
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    depends_on:
+#      - dify-db
+#    networks:
+#      - int-dify-net
+#    entrypoint: >
+#      /bin/sh -c "
+#        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+#        MINIO_PID=\\\$!
+#        while ! curl -s http://localhost:9000/minio/health/live; do
+#          echo 'Waiting for MinIO to start...'
+#          sleep 1
+#        done
+#        sleep 5
+#        mc alias set minio http://localhost:9000 ${DIFY_MINIO_KEY} ${DIFY_MINIO_SECRET}
+#        echo 'Creating bucket dify'
+#        mc mb minio/dify
+#        wait \\\$MINIO_PID
+#      "
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+#      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/minio:/data
 
 volumes:
   v-dify-redis:
@@ -87343,6 +87403,15 @@ networks:
       driver: default
 
 EOFMT
+  #Set these for Minio container
+#MINIO_ROOT_USER=$DIFY_MINIO_KEY
+#MINIO_ROOT_PASSWORD=$DIFY_MINIO_SECRET
+#MINIO_REGION=us-east-1
+#S3_ENDPOINT=http://dify-minio:9000
+#S3_REGION=us-east-1
+#S3_BUCKET_NAME=dify
+#S3_ACCESS_KEY=$DIFY_MINIO_KEY
+#S3_SECRET_KEY=$DIFY_MINIO_SECRET
   cat <<EOFMT > $HOME/dify.env
 TZ=\${PORTAINER_TZ}
 LOG_TZ=\${PORTAINER_TZ}
@@ -87404,15 +87473,15 @@ SSRF_PROXY_HTTPS_URL=http://dify-ssrf:3128
 SANDBOX_API_KEY=$DIFY_SANDBOX_API_KEY
 SANDBOX_HTTP_PROXY=http://dify-ssrf:3128
 SANDBOX_HTTPS_PROXY=http://dify-ssrf:3128
-STORAGE_TYPE=s3
-MINIO_ROOT_USER=$DIFY_MINIO_KEY
-MINIO_ROOT_PASSWORD=$DIFY_MINIO_SECRET
-MINIO_REGION=us-east-1
-S3_ENDPOINT=http://dify-minio:9000
-S3_REGION=us-east-1
-S3_BUCKET_NAME=dify
-S3_ACCESS_KEY=$DIFY_MINIO_KEY
-S3_SECRET_KEY=$DIFY_MINIO_SECRET
+STORAGE_TYPE=local
+MINIO_ROOT_USER=
+MINIO_ROOT_PASSWORD=
+MINIO_REGION=
+S3_ENDPOINT=
+S3_REGION=
+S3_BUCKET_NAME=
+S3_ACCESS_KEY=
+S3_SECRET_KEY=
 SSRF_SANDBOX_HOST=dify-sandbox
 PLUGIN_DAEMON_KEY=$DIFY_PLUGIN_DAEMON_KEY
 PLUGIN_DAEMON_URL=http://dify-plugind:5002
@@ -87591,7 +87660,7 @@ PLUGIN_MEDIA_CACHE_PATH=assets
 PLUGIN_STORAGE_OSS_BUCKET=
 PLUGIN_S3_USE_AWS=false
 PLUGIN_S3_USE_AWS_MANAGED_IAM=false
-PLUGIN_S3_USE_PATH_STYLE=false
+PLUGIN_S3_USE_PATH_STYLE=true
 ENABLE_OTEL=false
 ALLOW_EMBED=false
 QUEUE_MONITOR_THRESHOLD=200
@@ -88030,6 +88099,8 @@ echo "insert into tenant_plugin_auto_upgrade_strategies(id, tenant_id, strategy_
 
 EOFDS
   chmod +x $HSHQ_STACKS_DIR/dify/dbexport/setupDBSettings.sh
+  #mv $HSHQ_STACKS_DIR/dify/storage $HSHQ_STACKS_DIR/dify/tempstore
+  #mkdir $HSHQ_STACKS_DIR/dify/storage
   sudo chown -R 1001:1001 $HSHQ_STACKS_DIR/dify/storage
 }
 
