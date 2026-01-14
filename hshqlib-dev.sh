@@ -8262,17 +8262,17 @@ EOFBS
 
 EOFBS
 
-# Special case - if RelayServer is behind a firewall and using a private IP for default route,
-# then allow traffic from the gateway, since raw table blocks all private ranges
-def_route_gate=\$(ip route | grep -e "^default" | awk '{print \$3}')
-is_def_priv=\$(checkIsIPPrivate \$def_route_gate)
-def_route_cidr_part=\$(ip route | grep \$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
-if [ "\$is_def_priv" = "true" ]; then
-  echo "Default route is in private range, adding allowance to (raw)iptables..."
-  sudo sed -i "/  # Block spoofed packets.*/a\  iptables -t raw -C PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j ACCEPT > \/dev\/null 2>&1 || iptables -t raw -I PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j ACCEPT" \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
-else
-  echo "Default route is in public range."
-fi
+  # Special case - if RelayServer is behind a firewall and using a private IP for default route,
+  # then allow traffic from the gateway, since raw table blocks all private ranges
+  def_route_gate=\$(ip route | grep -e "^default" | awk '{print \$3}')
+  is_def_priv=\$(checkIsIPPrivate \$def_route_gate)
+  def_route_cidr_part=\$(ip route | grep \$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
+  if [ "\$is_def_priv" = "true" ]; then
+    echo "Default route is in private range, adding allowance to (raw)iptables..."
+    sudo sed -i "/  # Block spoofed packets.*/a\  iptables -t raw -C PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j ACCEPT > \/dev\/null 2>&1 || iptables -t raw -I PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j ACCEPT" \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
+  else
+    echo "Default route is in public range."
+  fi
 
   sudo chmod 744 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
   sudo \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
@@ -15537,6 +15537,23 @@ function getPasswordWithSymbol()
   rand_pw=$(pwgen -c -n $pw_length 1)
   rand_pos=$(( ( RANDOM % $pw_length )  + 1 ))
   echo ${rand_pw:0:rand_pos}"@"${rand_pw:rand_pos}
+}
+
+function base64URLEncode()
+{
+  openssl enc -base64 -A | tr '+/' '-_' | tr -d '='
+}
+
+function generateFullJWTToken()
+{
+  header="$1"
+  payload="$2"
+  jwt_secret="$3"
+  header_base64=$(printf %s "$header" | base64URLEncode)
+  payload_base64=$(printf %s "$payload" | base64URLEncode)
+  signed_content="${header_base64}.${payload_base64}"
+  signature=$(printf %s "$signed_content" | openssl dgst -binary -sha256 -hmac "$jwt_secret" | base64URLEncode)
+  printf '%s' "${signed_content}.${signature}"
 }
 
 function performExitFunctions()
@@ -23819,6 +23836,11 @@ function version220Update()
   outputCaddyHeaders
 }
 
+function version221Update()
+{
+  return
+}
+
 function updateRelayServerWithScript()
 {
   isUploadUtils="$1"
@@ -29847,6 +29869,7 @@ function loadPinnedDockerImages()
   IMG_NOCODB_APP=mirror.gcr.io/nocodb/nocodb:0.265.1
   IMG_ENTE_SERVER=hshq/ente-server:v1
   IMG_ENTE_WEB=ghcr.io/ente-io/web:460ee1671b08b119b894f0ddd71b4c906fb29647
+  IMG_MORPHIC_APP=ghcr.io/miurla/morphic:6443b20c1205adf233c98b67beb34a6117e1cd7a
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -30138,6 +30161,8 @@ function getScriptStackVersion()
       echo "v1" ;;
     ente)
       echo "v1" ;;
+    morphic)
+      echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
 }
@@ -30390,6 +30415,7 @@ function pullDockerImages()
   pullImage $IMG_NOCODB_APP
   pullImage $IMG_ENTE_SERVER
   pullImage $IMG_ENTE_WEB
+  pullImage $IMG_MORPHIC_APP
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -32079,6 +32105,30 @@ ENTE_MUSEUM_KEY=
 ENTE_MUSEUM_HASH=
 ENTE_MUSEUM_JWT_SECRET=
 # Ente (Service Details) END
+
+# Morphic (Service Details) BEGIN
+MORPHIC_INIT_ENV=true
+MORPHIC_ADMIN_USERNAME=
+MORPHIC_ADMIN_EMAIL_ADDRESS=
+MORPHIC_ADMIN_PASSWORD=
+MORPHIC_DATABASE_NAME=
+MORPHIC_DATABASE_USER=
+MORPHIC_DATABASE_USER_PASSWORD=
+MORPHIC_DATABASE_READONLYUSER=
+MORPHIC_DATABASE_READONLYUSER_PASSWORD=
+MORPHIC_REDIS_PASSWORD=
+MORPHIC_SUPABASE_DASHBOARD_USERNAME=
+MORPHIC_SUPABASE_DASHBOARD_PASSWORD=
+MORPHIC_SUPABASE_ANON_KEY=
+MORPHIC_SUPABASE_JWT_SECRET=
+MORPHIC_SUPABASE_DB_ENC_KEY=
+MORPHIC_SUPABASE_PG_META_CRYPTO_KEY=
+MORPHIC_SUPABASE_SECRET_KEY_BASE=
+MORPHIC_SUPABASE_SERVICE_ROLE_KEY=
+MORPHIC_SUPABASE_VAULT_ENC_KEY=
+MORPHIC_SUPABASE_LOGFLARE_PRIVATE_ACCESS_TOKEN=
+MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN=
+# Morphic (Service Details) END
 
 # Service Details END
 EOFCF
@@ -35830,6 +35880,86 @@ function initServicesCredentials()
     ENTE_MUSEUM_JWT_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '\n' | tr '+/' '-_')
     updateConfigVar ENTE_MUSEUM_JWT_SECRET $ENTE_MUSEUM_JWT_SECRET
   fi
+  if [ -z "$MORPHIC_ADMIN_USERNAME" ]; then
+    MORPHIC_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_morphic"
+    updateConfigVar MORPHIC_ADMIN_USERNAME $MORPHIC_ADMIN_USERNAME
+  fi
+  if [ -z "$MORPHIC_ADMIN_EMAIL_ADDRESS" ]; then
+    MORPHIC_ADMIN_EMAIL_ADDRESS=$MORPHIC_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar MORPHIC_ADMIN_EMAIL_ADDRESS $MORPHIC_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$MORPHIC_ADMIN_PASSWORD" ]; then
+    MORPHIC_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MORPHIC_ADMIN_PASSWORD $MORPHIC_ADMIN_PASSWORD
+  fi
+  if [ -z "$MORPHIC_DATABASE_NAME" ]; then
+    MORPHIC_DATABASE_NAME=postgres
+    updateConfigVar MORPHIC_DATABASE_NAME $MORPHIC_DATABASE_NAME
+  fi
+  if [ -z "$MORPHIC_DATABASE_USER" ]; then
+    MORPHIC_DATABASE_USER=supabase_admin
+    updateConfigVar MORPHIC_DATABASE_USER $MORPHIC_DATABASE_USER
+  fi
+  if [ -z "$MORPHIC_DATABASE_USER_PASSWORD" ]; then
+    MORPHIC_DATABASE_USER_PASSWORD=$(openssl rand -hex 16)
+    updateConfigVar MORPHIC_DATABASE_USER_PASSWORD $MORPHIC_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$MORPHIC_DATABASE_READONLYUSER" ]; then
+    MORPHIC_DATABASE_READONLYUSER=morphic-readonly
+    updateConfigVar MORPHIC_DATABASE_READONLYUSER $MORPHIC_DATABASE_READONLYUSER
+  fi
+  if [ -z "$MORPHIC_DATABASE_READONLYUSER_PASSWORD" ]; then
+    MORPHIC_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MORPHIC_DATABASE_READONLYUSER_PASSWORD $MORPHIC_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$MORPHIC_REDIS_PASSWORD" ]; then
+    MORPHIC_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MORPHIC_REDIS_PASSWORD $MORPHIC_REDIS_PASSWORD
+  fi
+  if [ -z "$MORPHIC_SUPABASE_DASHBOARD_USERNAME" ]; then
+    MORPHIC_SUPABASE_DASHBOARD_USERNAME=$ADMIN_USERNAME_BASE"_morphic_supabase"
+    updateConfigVar MORPHIC_SUPABASE_DASHBOARD_USERNAME $MORPHIC_SUPABASE_DASHBOARD_USERNAME
+  fi
+  if [ -z "$MORPHIC_SUPABASE_DASHBOARD_PASSWORD" ]; then
+    MORPHIC_SUPABASE_DASHBOARD_PASSWORD=$(openssl rand -hex 16)
+    updateConfigVar MORPHIC_SUPABASE_DASHBOARD_PASSWORD $MORPHIC_SUPABASE_DASHBOARD_PASSWORD
+  fi
+  if [ -z "$MORPHIC_SUPABASE_JWT_SECRET" ]; then
+    MORPHIC_SUPABASE_JWT_SECRET=$(openssl rand -base64 30)
+    updateConfigVar MORPHIC_SUPABASE_JWT_SECRET $MORPHIC_SUPABASE_JWT_SECRET
+  fi
+  if [ -z "$MORPHIC_SUPABASE_ANON_KEY" ]; then
+    MORPHIC_SUPABASE_ANON_KEY=$(generateFullJWTToken "{\"alg\":\"HS256\",\"typ\":\"JWT\"}" "{\"role\":\"anon\",\"iss\":\"supabase\",\"iat\":$(date +%s),\"exp\":$(($(date +%s) + 20 * 3600 * 24 * 365))}" "$MORPHIC_SUPABASE_JWT_SECRET")
+    updateConfigVar MORPHIC_SUPABASE_ANON_KEY $MORPHIC_SUPABASE_ANON_KEY
+  fi
+  if [ -z "$MORPHIC_SUPABASE_DB_ENC_KEY" ]; then
+    MORPHIC_SUPABASE_DB_ENC_KEY=$(pwgen -c -n 16 1)
+    updateConfigVar MORPHIC_SUPABASE_DB_ENC_KEY $MORPHIC_SUPABASE_DB_ENC_KEY
+  fi
+  if [ -z "$MORPHIC_SUPABASE_PG_META_CRYPTO_KEY" ]; then
+    MORPHIC_SUPABASE_PG_META_CRYPTO_KEY=$(openssl rand -base64 24)
+    updateConfigVar MORPHIC_SUPABASE_PG_META_CRYPTO_KEY $MORPHIC_SUPABASE_PG_META_CRYPTO_KEY
+  fi
+  if [ -z "$MORPHIC_SUPABASE_SECRET_KEY_BASE" ]; then
+    MORPHIC_SUPABASE_SECRET_KEY_BASE=$(openssl rand -base64 48)
+    updateConfigVar MORPHIC_SUPABASE_SECRET_KEY_BASE $MORPHIC_SUPABASE_SECRET_KEY_BASE
+  fi
+  if [ -z "$MORPHIC_SUPABASE_SERVICE_ROLE_KEY" ]; then
+    MORPHIC_SUPABASE_SERVICE_ROLE_KEY=$(generateFullJWTToken "{\"alg\":\"HS256\",\"typ\":\"JWT\"}" "{\"role\":\"service_role\",\"iss\":\"supabase\",\"iat\":$(date +%s),\"exp\":$(($(date +%s) + 20 * 3600 * 24 * 365))}" "$MORPHIC_SUPABASE_JWT_SECRET")
+    updateConfigVar MORPHIC_SUPABASE_SERVICE_ROLE_KEY $MORPHIC_SUPABASE_SERVICE_ROLE_KEY
+  fi
+  if [ -z "$MORPHIC_SUPABASE_VAULT_ENC_KEY" ]; then
+    MORPHIC_SUPABASE_VAULT_ENC_KEY=$(openssl rand -hex 16)
+    updateConfigVar MORPHIC_SUPABASE_VAULT_ENC_KEY $MORPHIC_SUPABASE_VAULT_ENC_KEY
+  fi
+  if [ -z "$MORPHIC_SUPABASE_LOGFLARE_PRIVATE_ACCESS_TOKEN" ]; then
+    MORPHIC_SUPABASE_LOGFLARE_PRIVATE_ACCESS_TOKEN=$(openssl rand -base64 24)
+    updateConfigVar MORPHIC_SUPABASE_LOGFLARE_PRIVATE_ACCESS_TOKEN $MORPHIC_SUPABASE_LOGFLARE_PRIVATE_ACCESS_TOKEN
+  fi
+  if [ -z "$MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN" ]; then
+    MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN=$(openssl rand -base64 24)
+    updateConfigVar MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN $MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN
+  fi
 #ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
   if [ -z "$CLIENTDNS_USER1_ADMIN_USERNAME" ]; then
@@ -36074,6 +36204,9 @@ function checkCreateNonbackupDirByStack()
     "nocodb")
       mkdir -p $HSHQ_NONBACKUP_DIR/nocodb/redis
       ;;
+    "morphic")
+      mkdir -p $HSHQ_NONBACKUP_DIR/morphic/redis
+      ;;
 #ADD_NEW_NONBACKUP_DIRS_HERE
     *)
       ;;
@@ -36302,6 +36435,8 @@ function initServiceVars()
   checkAddSvc "SVCD_NOCODB_APP=nocodb,nocodb,primary,user,NocoDB,nocodb,hshq"
   checkAddSvc "SVCD_ENTE_APP=ente,ente,primary,user,Ente,ente,hshq"
   checkAddSvc "SVCD_ENTE_SERVER=ente,ente-server,primary,user,Ente Server,ente-server,hshq"
+  checkAddSvc "SVCD_MORPHIC_APP=morphic,morphic,primary,user,Morphic,morphic,hshq"
+  checkAddSvc "SVCD_MORPHIC_SUPABASE=morphic,morphic-supabase,primary,admin,Morphic Supabase,morphic-supabase,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -36592,6 +36727,8 @@ function installStackByName()
       installNocoDB $is_integrate ;;
     ente)
       installEnte $is_integrate ;;
+    morphic)
+      installMorphic $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -36896,6 +37033,8 @@ function performUpdateStackByName()
       performUpdateNocoDB ;;
     ente)
       performUpdateEnte ;;
+    morphic)
+      performUpdateMorphic ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -37050,6 +37189,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_SURFSENSE_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NOCODB_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ENTE_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_MORPHIC_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_PRIMARY_HERE
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -37246,6 +37386,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SURFSENSE_APP}-Admin" https://$SUB_SURFSENSE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SURFSENSE_ADMIN_EMAIL_ADDRESS $SURFSENSE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_NOCODB_APP}-Admin" https://$SUB_NOCODB_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $NOCODB_ADMIN_EMAIL_ADDRESS $NOCODB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ENTE_APP}-Admin" https://$SUB_ENTE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $ENTE_ADMIN_USERNAME $ENTE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MORPHIC_APP}-Admin" https://$SUB_MORPHIC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MORPHIC_ADMIN_USERNAME $MORPHIC_ADMIN_PASSWORD)"\n"
 #ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
@@ -37414,6 +37555,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SURFSENSE_APP}-Admin" https://$SUB_SURFSENSE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SURFSENSE_ADMIN_EMAIL_ADDRESS $SURFSENSE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_NOCODB_APP}-Admin" https://$SUB_NOCODB_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $NOCODB_ADMIN_EMAIL_ADDRESS $NOCODB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ENTE_APP}-Admin" https://$SUB_ENTE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $ENTE_ADMIN_USERNAME $ENTE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MORPHIC_APP}-Admin" https://$SUB_MORPHIC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MORPHIC_ADMIN_USERNAME $MORPHIC_ADMIN_PASSWORD)"\n"
 #ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
@@ -37961,6 +38103,9 @@ function getHeimdallOrderFromSub()
     "$SUB_ENTE_APP")
       order_num=159
       ;;
+    "$SUB_MORPHIC_APP")
+      order_num=160
+      ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=900
@@ -38011,18 +38156,18 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente
-  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente
-  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente
-  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
 #INIT_SERVICE_DEFAULTS_END
 }
 
@@ -39349,6 +39494,51 @@ function getScriptImageByContainerName()
     "ente-minio")
       container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
       ;;
+    "morphic-db")
+      container_image=mirror.gcr.io/supabase/postgres:15.14.1.071
+      ;;
+    "morphic-supabase-vector")
+      container_image=mirror.gcr.io/timberio/vector:0.52.0-alpine
+      ;;
+    "morphic-supabase-studio")
+      container_image=mirror.gcr.io/supabase/studio:2026.01.12-sha-4e9b718
+      ;;
+    "morphic-supabase-kong")
+      container_image=mirror.gcr.io/kong:2.8.1
+      ;;
+    "morphic-supabase-auth")
+      container_image=mirror.gcr.io/supabase/gotrue:v2.185.0
+      ;;
+    "morphic-supabase-rest")
+      container_image=mirror.gcr.io/postgrest/postgrest:v14.3
+      ;;
+    "morphic-supabase-realtime")
+      container_image=mirror.gcr.io/supabase/realtime:v2.69.2
+      ;;
+    "morphic-supabase-storage")
+      container_image=mirror.gcr.io/supabase/storage-api:v1.33.5
+      ;;
+    "morphic-supabase-imgproxy")
+      container_image=mirror.gcr.io/darthsim/imgproxy:v3.30.1
+      ;;
+    "morphic-supabase-meta")
+      container_image=mirror.gcr.io/supabase/postgres-meta:v0.95.2
+      ;;
+    "morphic-supabase-functions")
+      container_image=mirror.gcr.io/supabase/edge-runtime:v1.70.0
+      ;;
+    "morphic-supabase-analytics")
+      container_image=mirror.gcr.io/supabase/logflare:1.28.0
+      ;;
+    "morphic-supabase-supavisor")
+      container_image=mirror.gcr.io/supabase/supavisor:2.7.4
+      ;;
+    "morphic-app")
+      container_image=$IMG_MORPHIC_APP
+      ;;
+    "morphic-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
@@ -39461,6 +39651,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "SurfSense" "SURFSENSE_INIT_ENV=false,SURFSENSE_ADMIN_USERNAME=,SURFSENSE_ADMIN_EMAIL_ADDRESS=,SURFSENSE_ADMIN_PASSWORD=,SURFSENSE_SECRET_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "NocoDB" "NOCODB_INIT_ENV=false,NOCODB_ADMIN_USERNAME=,NOCODB_ADMIN_EMAIL_ADDRESS=,NOCODB_ADMIN_PASSWORD=,NOCODB_DATABASE_NAME=,NOCODB_DATABASE_USER=,NOCODB_DATABASE_USER_PASSWORD=,NOCODB_DATABASE_READONLYUSER=,NOCODB_DATABASE_READONLYUSER_PASSWORD=,NOCODB_REDIS_PASSWORD=,NOCODB_AUTH_JWT_SECRET=,NOCODB_MINIO_KEY=,NOCODB_MINIO_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "Ente" "ENTE_INIT_ENV=false,ENTE_ADMIN_USERNAME=,ENTE_ADMIN_EMAIL_ADDRESS=,ENTE_ADMIN_PASSWORD=,ENTE_DATABASE_NAME=,ENTE_DATABASE_USER=,ENTE_DATABASE_USER_PASSWORD=,ENTE_DATABASE_READONLYUSER=,ENTE_DATABASE_READONLYUSER_PASSWORD=,ENTE_MINIO_KEY=,ENTE_MINIO_SECRET=,ENTE_MUSEUM_KEY=,ENTE_MUSEUM_HASH=,ENTE_MUSEUM_JWT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Morphic" "MORPHIC_INIT_ENV=false,MORPHIC_ADMIN_USERNAME=,MORPHIC_ADMIN_EMAIL_ADDRESS=,MORPHIC_ADMIN_PASSWORD=,MORPHIC_DATABASE_NAME=,MORPHIC_DATABASE_USER=,MORPHIC_DATABASE_USER_PASSWORD=,MORPHIC_DATABASE_READONLYUSER=,MORPHIC_DATABASE_READONLYUSER_PASSWORD=,MORPHIC_REDIS_PASSWORD=,MORPHIC_SUPABASE_DASHBOARD_USERNAME=,MORPHIC_SUPABASE_DASHBOARD_PASSWORD=,MORPHIC_SUPABASE_ANON_KEY=,MORPHIC_SUPABASE_JWT_SECRET=,MORPHIC_SUPABASE_DB_ENC_KEY=,MORPHIC_SUPABASE_PG_META_CRYPTO_KEY=,MORPHIC_SUPABASE_SECRET_KEY_BASE=,MORPHIC_SUPABASE_SERVICE_ROLE_KEY=,MORPHIC_SUPABASE_VAULT_ENC_KEY=,MORPHIC_SUPABASE_LOGFLARE_PRIVATE_ACCESS_TOKEN=,MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN=" $CONFIG_FILE false
 #ADD_NEW_ADD_SVC_CONFIG_HERE
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -54233,7 +54424,6 @@ networks:
     ipam:
       driver: default
 EOFVW
-
   VAULTWARDEN_ADMIN_TOKEN_HASH=$(echo -n "$VAULTWARDEN_ADMIN_TOKEN" | argon2 $(pwgen -c -n 32 1) -id -e -m 16 | sed 's/\$/\$\$/g')
   cat <<EOFVW > $HOME/vaultwarden.env
 UID=$USERID
@@ -54244,6 +54434,7 @@ ROCKET_TLS={certs=/certs/vaultwarden-app.crt,key=/certs/vaultwarden-app.key}
 ROCKET_PORT=443
 IP_HEADER=X-Forwarded-For
 SIGNUPS_ALLOWED=false
+INVITATION_EXPIRATION_HOURS=720
 DOMAIN=https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN
 SMTP_HOST=$SMTP_HOSTNAME
 SMTP_FROM_NAME=Vaultwarden $(getAdminEmailName)
@@ -54264,9 +54455,7 @@ APP_LDAP_NO_TLS_VERIFY=true
 APP_VAULTWARDEN_ROOT_CERT_FILE=/cacert/rootca.der
 APP_LDAP_SEARCH_FILTER=(&(objectClass=person)(memberof=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
 APP_LDAP_SYNC_INTERVAL_SECONDS=300
-
 EOFVW
-
 }
 
 function performUpdateVaultwarden()
@@ -88448,6 +88637,7 @@ EOFMT
 "Flowise" postgres flowise-db $FLOWISE_DATABASE_NAME $FLOWISE_DATABASE_READONLYUSER $FLOWISE_DATABASE_READONLYUSER_PASSWORD
 "NocoDB" postgres nocodb-db $NOCODB_DATABASE_NAME $NOCODB_DATABASE_READONLYUSER $NOCODB_DATABASE_READONLYUSER_PASSWORD
 "Ente" postgres ente-db $ENTE_DATABASE_NAME $ENTE_DATABASE_READONLYUSER $ENTE_DATABASE_READONLYUSER_PASSWORD
+"Morphic" postgres morphic-db $MORPHIC_DATABASE_NAME $MORPHIC_DATABASE_READONLYUSER $MORPHIC_DATABASE_READONLYUSER_PASSWORD
 #ADD_NEW_AISTACK_DB_IMPORT_HERE
 EOFAS
   cat <<EOFIM > $HSHQ_STACKS_DIR/mindsdb/dbimport/importConnections.sh
@@ -90224,6 +90414,1852 @@ function buildImageEnteServerV1()
   cd
   sudo rm -fr $HSHQ_BUILD_DIR/ente
   return $rtval
+}
+
+# Morphic
+function installMorphic()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory morphic "Morphic"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-vector)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-studio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-kong)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-auth)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-rest)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-realtime)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-storage)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-imgproxy)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-meta)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-functions)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-analytics)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-supavisor)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/morphic
+  mkdir $HSHQ_STACKS_DIR/morphic/config
+  mkdir $HSHQ_STACKS_DIR/morphic/storage
+  mkdir $HSHQ_STACKS_DIR/morphic/functions
+  mkdir $HSHQ_STACKS_DIR/morphic/functions/hello
+  mkdir $HSHQ_STACKS_DIR/morphic/functions/main
+  mkdir $HSHQ_STACKS_DIR/morphic/dbimport
+  mkdir $HSHQ_STACKS_DIR/morphic/dbconfig
+  mkdir $HSHQ_STACKS_DIR/morphic/db
+  mkdir $HSHQ_STACKS_DIR/morphic/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/morphic/dbexport
+  mkdir $HSHQ_STACKS_DIR/morphic/redis
+  initServicesCredentials
+  set +e
+  addUserMailu alias $MORPHIC_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  MORPHIC_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $MORPHIC_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigMorphic
+  installStack morphic morphic-app "" $HOME/morphic.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$MORPHIC_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_MORPHIC_APP Admin Login Info" -b "$FMLNAME_MORPHIC_APP Admin Username: $MORPHIC_ADMIN_USERNAME\n$FMLNAME_MORPHIC_APP Admin Email: $MORPHIC_ADMIN_EMAIL_ADDRESS\n$FMLNAME_MORPHIC_APP Admin Password: $MORPHIC_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    MORPHIC_INIT_ENV=true
+    updateConfigVar MORPHIC_INIT_ENV $MORPHIC_INIT_ENV
+  fi
+  sleep 3
+  addReadOnlyUserToDatabase Morphic postgres morphic-db $MORPHIC_DATABASE_NAME $MORPHIC_DATABASE_USER $MORPHIC_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/morphic/dbexport $MORPHIC_DATABASE_READONLYUSER $MORPHIC_DATABASE_READONLYUSER_PASSWORD
+  if [ -z "$FMLNAME_MORPHIC_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_MORPHIC_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://morphic-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_MORPHIC_APP $MANAGETLS_MORPHIC_APP "$is_integrate_hshq" $NETDEFAULT_MORPHIC_APP "$inner_block"
+  insertSubAuthelia $SUB_MORPHIC_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_MORPHIC_SUPABASE.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://morphic-supabase-kong:8000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_MORPHIC_SUPABASE $MANAGETLS_MORPHIC_SUPABASE "$is_integrate_hshq" $NETDEFAULT_MORPHIC_SUPABASE "$inner_block"
+  insertSubAuthelia $SUB_MORPHIC_SUPABASE.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll morphic "$FMLNAME_MORPHIC_APP" $USERTYPE_MORPHIC_APP "https://$SUB_MORPHIC_APP.$HOMESERVER_DOMAIN" "morphic.png" "$(getHeimdallOrderFromSub $SUB_MORPHIC_APP $USERTYPE_MORPHIC_APP)"
+    insertEnableSvcAll morphic "$FMLNAME_MORPHIC_SUPABASE" $USERTYPE_MORPHIC_SUPABASE "https://$SUB_MORPHIC_SUPABASE.$HOMESERVER_DOMAIN" "supabase.png" "$(getHeimdallOrderFromSub $SUB_MORPHIC_SUPABASE $USERTYPE_MORPHIC_SUPABASE)"
+    restartAllCaddyContainers
+    checkAddDBConnection true morphic "$FMLNAME_MORPHIC_APP" postgres morphic-db $MORPHIC_DATABASE_NAME $MORPHIC_DATABASE_USER $MORPHIC_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigMorphic()
+{
+  cat <<EOFMT > $HOME/morphic-compose.yml
+$STACK_VERSION_PREFIX morphic $(getScriptStackVersion morphic)
+
+services:
+  morphic-db:
+    image: $(getScriptImageByContainerName morphic-db)
+    container_name: morphic-db
+    hostname: morphic-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-morphic-net
+      - dock-dbs-net
+    depends_on:
+      morphic-supabase-vector:
+        condition: service_started
+    command:
+      [
+        "postgres",
+        "-c",
+        "config_file=/etc/postgresql/postgresql.conf",
+        "-c",
+        "log_min_messages=fatal"
+      ]
+    healthcheck:
+      test:
+        [
+        "CMD",
+        "pg_isready",
+        "-U",
+        "postgres",
+        "-h",
+        "localhost"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/dbimport/init.sql:/docker-entrypoint-initdb.d/init-scripts/init.sql
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/dbimport/migrations.sql:/docker-entrypoint-initdb.d/migrations/migrations.sql
+      - v-morphic-dbconfig:/etc/postgresql-custom
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.morphic-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.morphic-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.morphic-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.morphic-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.morphic-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.morphic-hourly-db.email-from=Morphic Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.morphic-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.morphic-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.morphic-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.morphic-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.morphic-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.morphic-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.morphic-monthly-db.email-from=Morphic Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.morphic-monthly-db.mail-only-on-error=false"
+    environment:
+      - POSTGRES_HOST=/var/run/postgresql
+
+  morphic-supabase-vector:
+    image: $(getScriptImageByContainerName morphic-supabase-vector)
+    container_name: morphic-supabase-vector
+    hostname: morphic-supabase-vector
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - label=disable
+    networks:
+      - int-morphic-net
+      - dock-dbs-net
+    command:
+      [
+        "--config",
+        "/etc/vector/vector.yml"
+      ]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://morphic-supabase-vector:9001/health"
+        ]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/config/vector.yml:/etc/vector/vector.yml:ro,z
+      - /var/run/docker.sock:/var/run/docker.sock:ro,z
+
+  morphic-supabase-studio:
+    image: $(getScriptImageByContainerName morphic-supabase-studio)
+    container_name: morphic-supabase-studio
+    hostname: morphic-supabase-studio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-supabase-analytics:
+        condition: service_healthy
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://morphic-supabase-studio:3000/api/platform/profile').then((r) => {if (r.status !== 200) throw new Error(r.status)})"
+        ]
+      timeout: 10s
+      interval: 5s
+      retries: 3
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  morphic-supabase-kong:
+    image: $(getScriptImageByContainerName morphic-supabase-kong)
+    container_name: morphic-supabase-kong
+    hostname: morphic-supabase-kong
+    restart: unless-stopped
+    env_file: stack.env
+    depends_on:
+      morphic-supabase-analytics:
+        condition: service_healthy
+    entrypoint: bash -c 'eval "echo \"\$\$(cat ~/temp.yml)\"" > ~/kong.yml && /docker-entrypoint.sh kong docker-start'
+    networks:
+      - int-morphic-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/config/kong.yml:/home/kong/temp.yml:ro,z
+
+  morphic-supabase-auth:
+    image: $(getScriptImageByContainerName morphic-supabase-auth)
+    container_name: morphic-supabase-auth
+    hostname: morphic-supabase-auth
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-db:
+        condition: service_healthy
+      morphic-supabase-analytics:
+        condition: service_healthy
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+      - dock-internalmail-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:9999/health"
+        ]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  morphic-supabase-rest:
+    image: $(getScriptImageByContainerName morphic-supabase-rest)
+    container_name: morphic-supabase-rest
+    hostname: morphic-supabase-rest
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-db:
+        condition: service_healthy
+      morphic-supabase-analytics:
+        condition: service_healthy
+    command:
+      [
+        "postgrest"
+      ]
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  morphic-supabase-realtime:
+    image: $(getScriptImageByContainerName morphic-supabase-realtime)
+    container_name: realtime-dev.supabase-realtime
+    hostname: morphic-supabase-realtime
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-db:
+        condition: service_healthy
+      morphic-supabase-analytics:
+        condition: service_healthy
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sSfL --head -o /dev/null -H \"Authorization: Bearer \${ANON_KEY}\" http://localhost:4000/api/tenants/realtime-dev/health"
+        ]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    environment:
+      - PORT=4000
+
+  morphic-supabase-storage:
+    image: $(getScriptImageByContainerName morphic-supabase-storage)
+    container_name: morphic-supabase-storage
+    hostname: morphic-supabase-storage
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-db:
+        condition: service_healthy
+      morphic-supabase-rest:
+        condition: service_started
+      morphic-supabase-imgproxy:
+        condition: service_started
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://morphic-supabase-storage:5000/status"
+        ]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/storage:/var/lib/storage:z
+    environment:
+      - DATABASE_URL=postgres://supabase_storage_admin:\${POSTGRES_PASSWORD}@\${POSTGRES_HOST}:\${POSTGRES_PORT}/\${POSTGRES_DB}
+      - REGION=stub
+
+  morphic-supabase-imgproxy:
+    image: $(getScriptImageByContainerName morphic-supabase-imgproxy)
+    container_name: morphic-supabase-imgproxy
+    hostname: morphic-supabase-imgproxy
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "imgproxy",
+          "health"
+        ]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/storage:/var/lib/storage:z
+
+  morphic-supabase-meta:
+    image: $(getScriptImageByContainerName morphic-supabase-meta)
+    container_name: morphic-supabase-meta
+    hostname: morphic-supabase-meta
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-db:
+        condition: service_healthy
+      morphic-supabase-analytics:
+        condition: service_healthy
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  morphic-supabase-functions:
+    image: $(getScriptImageByContainerName morphic-supabase-functions)
+    container_name: morphic-supabase-functions
+    hostname: morphic-supabase-functions
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-supabase-analytics:
+        condition: service_healthy
+    command:
+      [
+        "start",
+        "--main-service",
+        "/home/deno/functions/main"
+      ]
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/functions:/home/deno/functions:Z
+
+  morphic-supabase-analytics:
+    image: $(getScriptImageByContainerName morphic-supabase-analytics)
+    container_name: morphic-supabase-analytics
+    hostname: morphic-supabase-analytics
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-db:
+        condition: service_healthy
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "http://localhost:4000/health"
+        ]
+      timeout: 5s
+      interval: 5s
+      retries: 10
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  morphic-supabase-supavisor:
+    image: $(getScriptImageByContainerName morphic-supabase-supavisor)
+    container_name: morphic-supabase-supavisor
+    hostname: morphic-supabase-supavisor
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-db:
+        condition: service_healthy
+      morphic-supabase-analytics:
+        condition: service_healthy
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-sSfL",
+          "--head",
+          "-o",
+          "/dev/null",
+          "http://127.0.0.1:4000/api/health"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command:
+      [
+        "/bin/sh",
+        "-c",
+        "/app/bin/migrate && /app/bin/supavisor eval \"\$\$(cat /etc/pooler/pooler.exs)\" && /app/bin/server"
+      ]
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/config/pooler.exs:/etc/pooler/pooler.exs:ro,z
+    environment:
+      - DATABASE_URL=ecto://supabase_admin:\${POSTGRES_PASSWORD}@\${POSTGRES_HOST}:\${POSTGRES_PORT}/_supabase
+
+  morphic-app:
+    image: $(getScriptImageByContainerName morphic-app)
+    container_name: morphic-app
+    hostname: morphic-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: bun start -H 0.0.0.0
+    depends_on:
+      morphic-db:
+        condition: service_healthy
+      morphic-redis:
+        condition: service_started
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+      - dock-proxy-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  morphic-redis:
+    image: $(getScriptImageByContainerName morphic-redis)
+    container_name: morphic-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $MORPHIC_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-morphic-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-morphic-redis:/data
+
+volumes:
+  v-morphic-dbconfig:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/morphic/dbconfig
+  v-morphic-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/morphic/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-morphic-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/morphic.env
+TZ=\${PORTAINER_TZ}
+BASE_URL=https://$SUB_MORPHIC_APP.$HOMESERVER_DOMAIN
+ENABLE_SAVE_CHAT_HISTORY=true
+USE_LOCAL_REDIS=true
+LOCAL_REDIS_URL=redis://:$MORPHIC_REDIS_PASSWORD@morphic-redis:6379
+OLLAMA_BASE_URL=http://ollama-server:11434
+OPENAI_COMPATIBLE_API_KEY=$LOCALAI_API_KEY
+OPENAI_COMPATIBLE_API_BASE_URL=http://localai-server:8080
+SEARCH_API=searxng
+SEARXNG_API_URL=http://searxng-app:8080
+SEARXNG_SECRET=$SEARXNG_SECRET_KEY
+SEARXNG_PORT=8080
+SEARXNG_BIND_ADDRESS=0.0.0.0
+SEARXNG_IMAGE_PROXY=true
+SEARXNG_LIMITER=false
+SEARXNG_DEFAULT_DEPTH=basic
+SEARXNG_MAX_RESULTS=50
+SEARXNG_ENGINES=google,startpage,wolframalpha,duckduckgo,yahoo,wikipedia
+SEARXNG_TIME_RANGE=None
+SEARXNG_SAFESEARCH=0
+NEXT_PUBLIC_ENABLE_SHARE=true
+NEXT_PUBLIC_SUPABASE_URL=http://morphic-supabase-kong:8000
+NEXT_PUBLIC_SUPABASE_ANON_KEY=$MORPHIC_SUPABASE_ANON_KEY
+POSTGRES_DB=$MORPHIC_DATABASE_NAME
+POSTGRES_USER=$MORPHIC_DATABASE_USER
+POSTGRES_PASSWORD=$MORPHIC_DATABASE_USER_PASSWORD
+ADDITIONAL_REDIRECT_URLS=
+ANON_KEY=$MORPHIC_SUPABASE_ANON_KEY
+API_EXTERNAL_URL=https://$SUB_MORPHIC_SUPABASE.$HOMESERVER_DOMAIN
+API_JWT_SECRET=\${JWT_SECRET}
+APP_NAME=realtime
+AUTH_JWT_SECRET=\${JWT_SECRET}
+CLUSTER_POSTGRES=1
+CRYPTO_KEY=\${PG_META_CRYPTO_KEY}
+DASHBOARD_PASSWORD=$MORPHIC_SUPABASE_DASHBOARD_PASSWORD
+DASHBOARD_USERNAME=$MORPHIC_SUPABASE_DASHBOARD_USERNAME
+DB_AFTER_CONNECT_QUERY='SET search_path TO _realtime'
+DB_DATABASE=_supabase
+DB_ENC_KEY=$MORPHIC_SUPABASE_DB_ENC_KEY
+DB_HOST=\${POSTGRES_HOST}
+DB_HOSTNAME=\${POSTGRES_HOST}
+DB_NAME=\${POSTGRES_DB}
+DB_PASSWORD=\${POSTGRES_PASSWORD}
+DB_POOL_SIZE=\${POOLER_DB_POOL_SIZE}
+DB_PORT=\${POSTGRES_PORT}
+DB_SCHEMA=_analytics
+DB_USER=\${POSTGRES_USER}
+DB_USERNAME=\${POSTGRES_USER}
+DEFAULT_ORGANIZATION_NAME=\${STUDIO_DEFAULT_ORGANIZATION}
+DEFAULT_PROJECT_NAME=\${STUDIO_DEFAULT_PROJECT}
+DISABLE_SIGNUP=0
+DNS_NODES=''
+DOCKER_SOCKET_LOCATION=/var/run/docker.sock
+ENABLE_ANONYMOUS_USERS=0
+ENABLE_EMAIL_AUTOCONFIRM=1
+ENABLE_EMAIL_SIGNUP=1
+ENABLE_IMAGE_TRANSFORMATION=1
+ENABLE_PHONE_AUTOCONFIRM=1
+ENABLE_PHONE_SIGNUP=1
+ERL_AFLAGS=-proto_dist inet_tcp
+FILE_SIZE_LIMIT=52428800
+FILE_STORAGE_BACKEND_PATH=/var/lib/storage
+FUNCTIONS_VERIFY_JWT=0
+GLOBAL_S3_BUCKET=stub
+GOOGLE_PROJECT_ID=
+GOOGLE_PROJECT_NUMBER=
+GOTRUE_API_HOST=0.0.0.0
+GOTRUE_API_PORT=9999
+GOTRUE_DB_DATABASE_URL=postgres://supabase_auth_admin:\${POSTGRES_PASSWORD}@\${POSTGRES_HOST}:\${POSTGRES_PORT}/\${POSTGRES_DB}
+GOTRUE_DB_DRIVER=postgres
+GOTRUE_DISABLE_SIGNUP=\${DISABLE_SIGNUP}
+GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED=\${ENABLE_ANONYMOUS_USERS}
+GOTRUE_EXTERNAL_EMAIL_ENABLED=\${ENABLE_EMAIL_SIGNUP}
+GOTRUE_EXTERNAL_PHONE_ENABLED=\${ENABLE_PHONE_SIGNUP}
+GOTRUE_JWT_ADMIN_ROLES=service_role
+GOTRUE_JWT_AUD=authenticated
+GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated
+GOTRUE_JWT_EXP=\${JWT_EXPIRY}
+GOTRUE_JWT_SECRET=\${JWT_SECRET}
+GOTRUE_MAILER_AUTOCONFIRM=\${ENABLE_EMAIL_AUTOCONFIRM}
+GOTRUE_MAILER_URLPATHS_CONFIRMATION=\${MAILER_URLPATHS_CONFIRMATION}
+GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE=\${MAILER_URLPATHS_EMAIL_CHANGE}
+GOTRUE_MAILER_URLPATHS_INVITE=\${MAILER_URLPATHS_INVITE}
+GOTRUE_MAILER_URLPATHS_RECOVERY=\${MAILER_URLPATHS_RECOVERY}
+GOTRUE_SITE_URL=\${SITE_URL}
+GOTRUE_SMS_AUTOCONFIRM=\${ENABLE_PHONE_AUTOCONFIRM}
+GOTRUE_SMTP_ADMIN_EMAIL=\${SMTP_ADMIN_EMAIL}
+GOTRUE_SMTP_HOST=\${SMTP_HOST}
+GOTRUE_SMTP_PASS=\${SMTP_PASS}
+GOTRUE_SMTP_PORT=\${SMTP_PORT}
+GOTRUE_SMTP_SENDER_NAME=\${SMTP_SENDER_NAME}
+GOTRUE_SMTP_USER=\${SMTP_USER}
+GOTRUE_URI_ALLOW_LIST=\${ADDITIONAL_REDIRECT_URLS}
+HOSTNAME=::
+IMGPROXY_BIND=:5001
+IMGPROXY_ENABLE_WEBP_DETECTION=1
+IMGPROXY_LOCAL_FILESYSTEM_ROOT=/
+IMGPROXY_URL=http://morphic-supabase-imgproxy:5001
+IMGPROXY_USE_ETAG=1
+JWT_EXP=\${JWT_EXPIRY}
+JWT_EXPIRY=3600
+JWT_SECRET=$MORPHIC_SUPABASE_JWT_SECRET
+KONG_DATABASE=off
+KONG_DECLARATIVE_CONFIG=/home/kong/kong.yml
+KONG_DNS_ORDER=LAST,A,CNAME
+KONG_HTTP_PORT=8000
+KONG_HTTPS_PORT=8443
+KONG_NGINX_PROXY_PROXY_BUFFER_SIZE=160k
+KONG_NGINX_PROXY_PROXY_BUFFERS=64 160k
+KONG_PLUGINS=request-transformer,cors,key-auth,acl,basic-auth,request-termination,ip-restriction
+LOGFLARE_API_KEY=\${LOGFLARE_PUBLIC_ACCESS_TOKEN}
+LOGFLARE_FEATURE_FLAG_OVERRIDE=multibackend=TRUE
+LOGFLARE_NODE_HOST=127.0.0.1
+LOGFLARE_PRIVATE_ACCESS_TOKEN=$MORPHIC_SUPABASE_LOGFLARE_PRIVATE_ACCESS_TOKEN
+LOGFLARE_PUBLIC_ACCESS_TOKEN=$MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN
+LOGFLARE_SINGLE_TENANT=1
+LOGFLARE_SUPABASE_MODE=1
+LOGFLARE_URL=http://morphic-supabase-analytics:4000
+MAILER_URLPATHS_CONFIRMATION=/auth/v1/verify
+MAILER_URLPATHS_EMAIL_CHANGE=/auth/v1/verify
+MAILER_URLPATHS_INVITE=/auth/v1/verify
+MAILER_URLPATHS_RECOVERY=/auth/v1/verify
+METRICS_JWT_SECRET=\${JWT_SECRET}
+NEXT_ANALYTICS_BACKEND_PROVIDER=postgres
+NEXT_PUBLIC_ENABLE_LOGS=1
+OPENAI_API_KEY=
+PG_META_CRYPTO_KEY=$MORPHIC_SUPABASE_PG_META_CRYPTO_KEY
+PG_META_DB_HOST=\${POSTGRES_HOST}
+PG_META_DB_NAME=\${POSTGRES_DB}
+PG_META_DB_PASSWORD=\${POSTGRES_PASSWORD}
+PG_META_DB_PORT=\${POSTGRES_PORT}
+PG_META_DB_USER=\${POSTGRES_USER}
+PG_META_PORT=8080
+PGDATABASE=\${POSTGRES_DB}
+PGPASSWORD=\${POSTGRES_PASSWORD}
+PGPORT=\${POSTGRES_PORT}
+PGRST_APP_SETTINGS_JWT_EXP=\${JWT_EXPIRY}
+PGRST_APP_SETTINGS_JWT_SECRET=\${JWT_SECRET}
+PGRST_DB_ANON_ROLE=anon
+PGRST_DB_SCHEMAS=public,storage,graphql_public
+PGRST_DB_URI=postgres://authenticator:\${POSTGRES_PASSWORD}@\${POSTGRES_HOST}:\${POSTGRES_PORT}/\${POSTGRES_DB}
+PGRST_DB_USE_LEGACY_GUCS=0
+PGRST_JWT_SECRET=\${JWT_SECRET}
+POOLER_DB_POOL_SIZE=5
+POOLER_DEFAULT_POOL_SIZE=20
+POOLER_MAX_CLIENT_CONN=100
+POOLER_POOL_MODE=transaction
+POOLER_PROXY_PORT_TRANSACTION=6543
+POOLER_TENANT_ID=your-tenant-id
+POSTGRES_BACKEND_SCHEMA=_analytics
+POSTGRES_BACKEND_URL=postgresql://\${POSTGRES_USER}:\${POSTGRES_PASSWORD}@\${POSTGRES_HOST}:\${POSTGRES_PORT}/\${DB_DATABASE}
+POSTGRES_HOST=morphic-db
+POSTGRES_PORT=5432
+POSTGREST_URL=http://morphic-supabase-rest:3000
+REGION=local
+REQUEST_ALLOW_X_FORWARDED_PATH=1
+RLIMIT_NOFILE=10000
+RUN_JANITOR=true
+SECRET_KEY_BASE=$MORPHIC_SUPABASE_SECRET_KEY_BASE
+SEED_SELF_HOST=true
+SERVICE_KEY=\${SERVICE_ROLE_KEY}
+SERVICE_ROLE_KEY=$MORPHIC_SUPABASE_SERVICE_ROLE_KEY
+SITE_URL=https://$SUB_MORPHIC_SUPABASE.$HOMESERVER_DOMAIN
+SMTP_ADMIN_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
+SMTP_HOST=$SMTP_HOSTNAME
+SMTP_PASS=
+SMTP_PORT=$SMTP_HOSTPORT
+SMTP_SENDER_NAME=Morphic Supabase $(getAdminEmailName)
+SMTP_USER=
+STORAGE_BACKEND=file
+STUDIO_DEFAULT_ORGANIZATION=$HOMESERVER_NAME
+STUDIO_DEFAULT_PROJECT=Morphic
+STUDIO_PG_META_URL=http://morphic-supabase-meta:8080
+SUPABASE_ANON_KEY=\${ANON_KEY}
+SUPABASE_DB_URL=postgresql://postgres:\${POSTGRES_PASSWORD}@\${POSTGRES_HOST}:\${POSTGRES_PORT}/\${POSTGRES_DB}
+SUPABASE_PUBLIC_URL=https://$SUB_MORPHIC_SUPABASE.$HOMESERVER_DOMAIN
+SUPABASE_SERVICE_KEY=\${SERVICE_ROLE_KEY}
+SUPABASE_SERVICE_ROLE_KEY=\${SERVICE_ROLE_KEY}
+SUPABASE_URL=http://morphic-supabase-kong:8000
+TENANT_ID=stub
+VAULT_ENC_KEY=$MORPHIC_SUPABASE_VAULT_ENC_KEY
+VERIFY_JWT=\${FUNCTIONS_VERIFY_JWT}
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/morphic/dbimport/init.sql
+-- webhooks.sql
+BEGIN;
+  -- Create pg_net extension
+  CREATE EXTENSION IF NOT EXISTS pg_net SCHEMA extensions;
+  -- Create supabase_functions schema
+  CREATE SCHEMA supabase_functions AUTHORIZATION supabase_admin;
+  GRANT USAGE ON SCHEMA supabase_functions TO postgres, anon, authenticated, service_role;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA supabase_functions GRANT ALL ON TABLES TO postgres, anon, authenticated, service_role;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA supabase_functions GRANT ALL ON FUNCTIONS TO postgres, anon, authenticated, service_role;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA supabase_functions GRANT ALL ON SEQUENCES TO postgres, anon, authenticated, service_role;
+  -- supabase_functions.migrations definition
+  CREATE TABLE supabase_functions.migrations (
+    version text PRIMARY KEY,
+    inserted_at timestamptz NOT NULL DEFAULT NOW()
+  );
+  -- Initial supabase_functions migration
+  INSERT INTO supabase_functions.migrations (version) VALUES ('initial');
+  -- supabase_functions.hooks definition
+  CREATE TABLE supabase_functions.hooks (
+    id bigserial PRIMARY KEY,
+    hook_table_id integer NOT NULL,
+    hook_name text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT NOW(),
+    request_id bigint
+  );
+  CREATE INDEX supabase_functions_hooks_request_id_idx ON supabase_functions.hooks USING btree (request_id);
+  CREATE INDEX supabase_functions_hooks_h_table_id_h_name_idx ON supabase_functions.hooks USING btree (hook_table_id, hook_name);
+  COMMENT ON TABLE supabase_functions.hooks IS 'Supabase Functions Hooks: Audit trail for triggered hooks.';
+  CREATE FUNCTION supabase_functions.http_request()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    AS \$function\$
+    DECLARE
+      request_id bigint;
+      payload jsonb;
+      url text := TG_ARGV[0]::text;
+      method text := TG_ARGV[1]::text;
+      headers jsonb DEFAULT '{}'::jsonb;
+      params jsonb DEFAULT '{}'::jsonb;
+      timeout_ms integer DEFAULT 1000;
+    BEGIN
+      IF url IS NULL OR url = 'null' THEN
+        RAISE EXCEPTION 'url argument is missing';
+      END IF;
+
+      IF method IS NULL OR method = 'null' THEN
+        RAISE EXCEPTION 'method argument is missing';
+      END IF;
+
+      IF TG_ARGV[2] IS NULL OR TG_ARGV[2] = 'null' THEN
+        headers = '{"Content-Type": "application/json"}'::jsonb;
+      ELSE
+        headers = TG_ARGV[2]::jsonb;
+      END IF;
+
+      IF TG_ARGV[3] IS NULL OR TG_ARGV[3] = 'null' THEN
+        params = '{}'::jsonb;
+      ELSE
+        params = TG_ARGV[3]::jsonb;
+      END IF;
+
+      IF TG_ARGV[4] IS NULL OR TG_ARGV[4] = 'null' THEN
+        timeout_ms = 1000;
+      ELSE
+        timeout_ms = TG_ARGV[4]::integer;
+      END IF;
+
+      CASE
+        WHEN method = 'GET' THEN
+          SELECT http_get INTO request_id FROM net.http_get(
+            url,
+            params,
+            headers,
+            timeout_ms
+          );
+        WHEN method = 'POST' THEN
+          payload = jsonb_build_object(
+            'old_record', OLD,
+            'record', NEW,
+            'type', TG_OP,
+            'table', TG_TABLE_NAME,
+            'schema', TG_TABLE_SCHEMA
+          );
+
+          SELECT http_post INTO request_id FROM net.http_post(
+            url,
+            payload,
+            params,
+            headers,
+            timeout_ms
+          );
+        ELSE
+          RAISE EXCEPTION 'method argument % is invalid', method;
+      END CASE;
+
+      INSERT INTO supabase_functions.hooks
+        (hook_table_id, hook_name, request_id)
+      VALUES
+        (TG_RELID, TG_NAME, request_id);
+
+      RETURN NEW;
+    END
+  \$function\$;
+  -- Supabase super admin
+  DO
+  \$\$
+  BEGIN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_roles
+      WHERE rolname = 'supabase_functions_admin'
+    )
+    THEN
+      CREATE USER supabase_functions_admin NOINHERIT CREATEROLE LOGIN NOREPLICATION;
+    END IF;
+  END
+  \$\$;
+  GRANT ALL PRIVILEGES ON SCHEMA supabase_functions TO supabase_functions_admin;
+  GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA supabase_functions TO supabase_functions_admin;
+  GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA supabase_functions TO supabase_functions_admin;
+  ALTER USER supabase_functions_admin SET search_path = "supabase_functions";
+  ALTER table "supabase_functions".migrations OWNER TO supabase_functions_admin;
+  ALTER table "supabase_functions".hooks OWNER TO supabase_functions_admin;
+  ALTER function "supabase_functions".http_request() OWNER TO supabase_functions_admin;
+  GRANT supabase_functions_admin TO postgres;
+  -- Remove unused supabase_pg_net_admin role
+  DO
+  \$\$
+  BEGIN
+    IF EXISTS (
+      SELECT 1
+      FROM pg_roles
+      WHERE rolname = 'supabase_pg_net_admin'
+    )
+    THEN
+      REASSIGN OWNED BY supabase_pg_net_admin TO supabase_admin;
+      DROP OWNED BY supabase_pg_net_admin;
+      DROP ROLE supabase_pg_net_admin;
+    END IF;
+  END
+  \$\$;
+  -- pg_net grants when extension is already enabled
+  DO
+  \$\$
+  BEGIN
+    IF EXISTS (
+      SELECT 1
+      FROM pg_extension
+      WHERE extname = 'pg_net'
+    )
+    THEN
+      GRANT USAGE ON SCHEMA net TO supabase_functions_admin, postgres, anon, authenticated, service_role;
+      ALTER function net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) SECURITY DEFINER;
+      ALTER function net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) SECURITY DEFINER;
+      ALTER function net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) SET search_path = net;
+      ALTER function net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) SET search_path = net;
+      REVOKE ALL ON FUNCTION net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) FROM PUBLIC;
+      REVOKE ALL ON FUNCTION net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) FROM PUBLIC;
+      GRANT EXECUTE ON FUNCTION net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) TO supabase_functions_admin, postgres, anon, authenticated, service_role;
+      GRANT EXECUTE ON FUNCTION net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) TO supabase_functions_admin, postgres, anon, authenticated, service_role;
+    END IF;
+  END
+  \$\$;
+  -- Event trigger for pg_net
+  CREATE OR REPLACE FUNCTION extensions.grant_pg_net_access()
+  RETURNS event_trigger
+  LANGUAGE plpgsql
+  AS \$\$
+  BEGIN
+    IF EXISTS (
+      SELECT 1
+      FROM pg_event_trigger_ddl_commands() AS ev
+      JOIN pg_extension AS ext
+      ON ev.objid = ext.oid
+      WHERE ext.extname = 'pg_net'
+    )
+    THEN
+      GRANT USAGE ON SCHEMA net TO supabase_functions_admin, postgres, anon, authenticated, service_role;
+      ALTER function net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) SECURITY DEFINER;
+      ALTER function net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) SECURITY DEFINER;
+      ALTER function net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) SET search_path = net;
+      ALTER function net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) SET search_path = net;
+      REVOKE ALL ON FUNCTION net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) FROM PUBLIC;
+      REVOKE ALL ON FUNCTION net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) FROM PUBLIC;
+      GRANT EXECUTE ON FUNCTION net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) TO supabase_functions_admin, postgres, anon, authenticated, service_role;
+      GRANT EXECUTE ON FUNCTION net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) TO supabase_functions_admin, postgres, anon, authenticated, service_role;
+    END IF;
+  END;
+  \$\$;
+  COMMENT ON FUNCTION extensions.grant_pg_net_access IS 'Grants access to pg_net';
+  DO
+  \$\$
+  BEGIN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_event_trigger
+      WHERE evtname = 'issue_pg_net_access'
+    ) THEN
+      CREATE EVENT TRIGGER issue_pg_net_access ON ddl_command_end WHEN TAG IN ('CREATE EXTENSION')
+      EXECUTE PROCEDURE extensions.grant_pg_net_access();
+    END IF;
+  END
+  \$\$;
+  INSERT INTO supabase_functions.migrations (version) VALUES ('20210809183423_update_grants');
+  ALTER function supabase_functions.http_request() SECURITY DEFINER;
+  ALTER function supabase_functions.http_request() SET search_path = supabase_functions;
+  REVOKE ALL ON FUNCTION supabase_functions.http_request() FROM PUBLIC;
+  GRANT EXECUTE ON FUNCTION supabase_functions.http_request() TO postgres, anon, authenticated, service_role;
+COMMIT;
+
+-- jwt.sql
+\set jwt_secret $MORPHIC_SUPABASE_JWT_SECRET
+\set jwt_exp 3600
+
+ALTER DATABASE postgres SET "app.settings.jwt_secret" TO :'jwt_secret';
+ALTER DATABASE postgres SET "app.settings.jwt_exp" TO :'jwt_exp';
+
+-- roles.sql
+-- NOTE: change to your own passwords for production environments
+\set pgpass $MORPHIC_DATABASE_USER_PASSWORD
+
+ALTER USER authenticator WITH PASSWORD :'pgpass';
+ALTER USER pgbouncer WITH PASSWORD :'pgpass';
+ALTER USER supabase_auth_admin WITH PASSWORD :'pgpass';
+ALTER USER supabase_functions_admin WITH PASSWORD :'pgpass';
+ALTER USER supabase_storage_admin WITH PASSWORD :'pgpass';
+
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/morphic/dbimport/migrations.sql
+-- _supabase.sql
+\set pguser $MORPHIC_DATABASE_USER
+
+CREATE DATABASE _supabase WITH OWNER :pguser;
+
+-- logs.sql
+\set pguser $MORPHIC_DATABASE_USER
+
+\c _supabase
+create schema if not exists _analytics;
+alter schema _analytics owner to :pguser;
+\c postgres
+
+-- pooler.sql
+\set pguser $MORPHIC_DATABASE_USER
+
+\c _supabase
+create schema if not exists _supavisor;
+alter schema _supavisor owner to :pguser;
+\c postgres
+
+-- realtime.sql
+\set pguser $MORPHIC_DATABASE_USER
+
+create schema if not exists _realtime;
+alter schema _realtime owner to :pguser;
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/morphic/config/vector.yml
+api:
+  enabled: true
+  address: 0.0.0.0:9001
+
+sources:
+  docker_host:
+    type: docker_logs
+    exclude_containers:
+      - morphic-supabase-vector
+
+transforms:
+  project_logs:
+    type: remap
+    inputs:
+      - docker_host
+    source: |-
+      .project = "default"
+      .event_message = del(.message)
+      .appname = del(.container_name)
+      del(.container_created_at)
+      del(.container_id)
+      del(.source_type)
+      del(.stream)
+      del(.label)
+      del(.image)
+      del(.host)
+      del(.stream)
+  router:
+    type: route
+    inputs:
+      - project_logs
+    route:
+      kong: '.appname == "morphic-supabase-kong"'
+      auth: '.appname == "morphic-supabase-auth"'
+      rest: '.appname == "morphic-supabase-rest"'
+      realtime: '.appname == "realtime-dev.supabase-realtime"'
+      storage: '.appname == "morphic-supabase-storage"'
+      functions: '.appname == "morphic-supabase-edge-functions"'
+      db: '.appname == "morphic-supabase-db"'
+  # Ignores non nginx errors since they are related with kong booting up
+  kong_logs:
+    type: remap
+    inputs:
+      - router.kong
+    source: |-
+      req, err = parse_nginx_log(.event_message, "combined")
+      if err == null {
+          .timestamp = req.timestamp
+          .metadata.request.headers.referer = req.referer
+          .metadata.request.headers.user_agent = req.agent
+          .metadata.request.headers.cf_connecting_ip = req.client
+          .metadata.request.method = req.method
+          .metadata.request.path = req.path
+          .metadata.request.protocol = req.protocol
+          .metadata.response.status_code = req.status
+      }
+      if err != null {
+        abort
+      }
+  # Ignores non nginx errors since they are related with kong booting up
+  kong_err:
+    type: remap
+    inputs:
+      - router.kong
+    source: |-
+      .metadata.request.method = "GET"
+      .metadata.response.status_code = 200
+      parsed, err = parse_nginx_log(.event_message, "error")
+      if err == null {
+          .timestamp = parsed.timestamp
+          .severity = parsed.severity
+          .metadata.request.host = parsed.host
+          .metadata.request.headers.cf_connecting_ip = parsed.client
+          url, err = split(parsed.request, " ")
+          if err == null {
+              .metadata.request.method = url[0]
+              .metadata.request.path = url[1]
+              .metadata.request.protocol = url[2]
+          }
+      }
+      if err != null {
+        abort
+      }
+  # Gotrue logs are structured json strings which frontend parses directly. But we keep metadata for consistency.
+  auth_logs:
+    type: remap
+    inputs:
+      - router.auth
+    source: |-
+      parsed, err = parse_json(.event_message)
+      if err == null {
+          .metadata.timestamp = parsed.time
+          .metadata = merge!(.metadata, parsed)
+      }
+  # PostgREST logs are structured so we separate timestamp from message using regex
+  rest_logs:
+    type: remap
+    inputs:
+      - router.rest
+    source: |-
+      parsed, err = parse_regex(.event_message, r'^(?P<time>.*): (?P<msg>.*)\$')
+      if err == null {
+          .event_message = parsed.msg
+          .timestamp = parse_timestamp(parsed.time, format: "%Y-%m-%d %H:%M:%S") ?? now()
+          .metadata.host = .project
+      }
+  # Realtime logs are structured so we parse the severity level using regex (ignore time because it has no date)
+  realtime_logs:
+    type: remap
+    inputs:
+      - router.realtime
+    source: |-
+      .metadata.project = del(.project)
+      .metadata.external_id = .metadata.project
+      parsed, err = parse_regex(.event_message, r'^(?P<time>\d+:\d+:\d+\.\d+) \[(?P<level>\w+)\] (?P<msg>.*)\$')
+      if err == null {
+          .event_message = parsed.msg
+          .metadata.level = parsed.level
+      }
+  # Function logs are unstructured messages on stderr
+  functions_logs:
+    type: remap
+    inputs:
+      - router.functions
+    source: |-
+      .metadata.project_ref = del(.project)
+  # Storage logs may contain json objects so we parse them for completeness
+  storage_logs:
+    type: remap
+    inputs:
+      - router.storage
+    source: |-
+      .metadata.project = del(.project)
+      .metadata.tenantId = .metadata.project
+      parsed, err = parse_json(.event_message)
+      if err == null {
+          .event_message = parsed.msg
+          .metadata.level = parsed.level
+          .metadata.timestamp = parsed.time
+          .metadata.context[0].host = parsed.hostname
+          .metadata.context[0].pid = parsed.pid
+      }
+  # Postgres logs some messages to stderr which we map to warning severity level
+  db_logs:
+    type: remap
+    inputs:
+      - router.db
+    source: |-
+      .metadata.host = "db-default"
+      .metadata.parsed.timestamp = .timestamp
+
+      parsed, err = parse_regex(.event_message, r'.*(?P<level>INFO|NOTICE|WARNING|ERROR|LOG|FATAL|PANIC?):.*', numeric_groups: true)
+
+      if err != null || parsed == null {
+        .metadata.parsed.error_severity = "info"
+      }
+      if parsed != null {
+       .metadata.parsed.error_severity = parsed.level
+      }
+      if .metadata.parsed.error_severity == "info" {
+          .metadata.parsed.error_severity = "log"
+      }
+      .metadata.parsed.error_severity = upcase!(.metadata.parsed.error_severity)
+
+sinks:
+  logflare_auth:
+    type: 'http'
+    inputs:
+      - auth_logs
+    encoding:
+      codec: 'json'
+    method: 'post'
+    request:
+      retry_max_duration_secs: 10
+      headers:
+        x-api-key: \${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+    uri: 'http://morphic-supabase-analytics:4000/api/logs?source_name=gotrue.logs.prod'
+  logflare_realtime:
+    type: 'http'
+    inputs:
+      - realtime_logs
+    encoding:
+      codec: 'json'
+    method: 'post'
+    request:
+      retry_max_duration_secs: 10
+      headers:
+        Authorization: "Bearer \${LOGFLARE_PUBLIC_ACCESS_TOKEN}"
+    uri: 'http://morphic-supabase-analytics:4000/api/logs?source_name=realtime.logs.prod'
+  logflare_rest:
+    type: 'http'
+    inputs:
+      - rest_logs
+    encoding:
+      codec: 'json'
+    method: 'post'
+    request:
+      retry_max_duration_secs: 10
+      headers:
+        x-api-key: \${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+    uri: 'http://morphic-supabase-analytics:4000/api/logs?source_name=postgREST.logs.prod'
+  logflare_db:
+    type: 'http'
+    inputs:
+      - db_logs
+    encoding:
+      codec: 'json'
+    method: 'post'
+    request:
+      retry_max_duration_secs: 10
+      headers:
+        x-api-key: \${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+    # We must route the sink through kong because ingesting logs before logflare is fully initialised will
+    # lead to broken queries from studio. This works by the assumption that containers are started in the
+    # following order: vector > db > logflare > kong
+    uri: 'http://morphic-supabase-kong:8000/analytics/v1/api/logs?source_name=postgres.logs'
+  logflare_functions:
+    type: 'http'
+    inputs:
+      - functions_logs
+    encoding:
+      codec: 'json'
+    method: 'post'
+    request:
+      retry_max_duration_secs: 10
+      headers:
+        x-api-key: \${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+    uri: 'http://morphic-supabase-analytics:4000/api/logs?source_name=deno-relay-logs'
+  logflare_storage:
+    type: 'http'
+    inputs:
+      - storage_logs
+    encoding:
+      codec: 'json'
+    method: 'post'
+    request:
+      retry_max_duration_secs: 10
+      headers:
+        x-api-key: \${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+    uri: 'http://morphic-supabase-analytics:4000/api/logs?source_name=storage.logs.prod.2'
+  logflare_kong:
+    type: 'http'
+    inputs:
+      - kong_logs
+      - kong_err
+    encoding:
+      codec: 'json'
+    method: 'post'
+    request:
+      retry_max_duration_secs: 10
+      headers:
+        Authorization: "Bearer \${LOGFLARE_PUBLIC_ACCESS_TOKEN}"
+    uri: 'http://morphic-supabase-analytics:4000/api/logs?source_name=cloudflare.logs.prod'
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/morphic/config/kong.yml
+_format_version: '2.1'
+_transform: true
+
+###
+### Consumers / Users
+###
+consumers:
+  - username: DASHBOARD
+  - username: anon
+    keyauth_credentials:
+      - key: \$SUPABASE_ANON_KEY
+  - username: service_role
+    keyauth_credentials:
+      - key: \$SUPABASE_SERVICE_KEY
+
+###
+### Access Control List
+###
+acls:
+  - consumer: anon
+    group: anon
+  - consumer: service_role
+    group: admin
+
+###
+### Dashboard credentials
+###
+basicauth_credentials:
+  - consumer: DASHBOARD
+    username: \$DASHBOARD_USERNAME
+    password: \$DASHBOARD_PASSWORD
+
+###
+### API Routes
+###
+services:
+  ## Open Auth routes
+  - name: auth-v1-open
+    url: http://morphic-supabase-auth:9999/verify
+    routes:
+      - name: auth-v1-open
+        strip_path: true
+        paths:
+          - /auth/v1/verify
+    plugins:
+      - name: cors
+  - name: auth-v1-open-callback
+    url: http://morphic-supabase-auth:9999/callback
+    routes:
+      - name: auth-v1-open-callback
+        strip_path: true
+        paths:
+          - /auth/v1/callback
+    plugins:
+      - name: cors
+  - name: auth-v1-open-authorize
+    url: http://morphic-supabase-auth:9999/authorize
+    routes:
+      - name: auth-v1-open-authorize
+        strip_path: true
+        paths:
+          - /auth/v1/authorize
+    plugins:
+      - name: cors
+
+  ## Secure Auth routes
+  - name: auth-v1
+    _comment: 'GoTrue: /auth/v1/* -> http://morphic-supabase-auth:9999/*'
+    url: http://morphic-supabase-auth:9999/
+    routes:
+      - name: auth-v1-all
+        strip_path: true
+        paths:
+          - /auth/v1/
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+            - anon
+
+  ## Secure REST routes
+  - name: rest-v1
+    _comment: 'PostgREST: /rest/v1/* -> http://morphic-supabase-rest:3000/*'
+    url: http://morphic-supabase-rest:3000/
+    routes:
+      - name: rest-v1-all
+        strip_path: true
+        paths:
+          - /rest/v1/
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: true
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+            - anon
+
+  ## Secure GraphQL routes
+  - name: graphql-v1
+    _comment: 'PostgREST: /graphql/v1/* -> http://morphic-supabase-rest:3000/rpc/graphql'
+    url: http://morphic-supabase-rest:3000/rpc/graphql
+    routes:
+      - name: graphql-v1-all
+        strip_path: true
+        paths:
+          - /graphql/v1
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: true
+      - name: request-transformer
+        config:
+          add:
+            headers:
+              - Content-Profile:graphql_public
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+            - anon
+
+  ## Secure Realtime routes
+  - name: realtime-v1-ws
+    _comment: 'Realtime: /realtime/v1/* -> ws://morphic-supabase-realtime:4000/socket/*'
+    url: http://realtime-dev.supabase-realtime:4000/socket
+    protocol: ws
+    routes:
+      - name: realtime-v1-ws
+        strip_path: true
+        paths:
+          - /realtime/v1/
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+            - anon
+  - name: realtime-v1-rest
+    _comment: 'Realtime: /realtime/v1/* -> ws://morphic-supabase-realtime:4000/socket/*'
+    url: http://realtime-dev.supabase-realtime:4000/api
+    protocol: http
+    routes:
+      - name: realtime-v1-rest
+        strip_path: true
+        paths:
+          - /realtime/v1/api
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+            - anon
+  ## Storage routes: the storage server manages its own auth
+  - name: storage-v1
+    _comment: 'Storage: /storage/v1/* -> http://morphic-supabase-storage:5000/*'
+    url: http://morphic-supabase-storage:5000/
+    routes:
+      - name: storage-v1-all
+        strip_path: true
+        paths:
+          - /storage/v1/
+    plugins:
+      - name: cors
+
+  ## Edge Functions routes
+  - name: functions-v1
+    _comment: 'Edge Functions: /functions/v1/* -> http://morphic-supabase-functions:9000/*'
+    url: http://morphic-supabase-functions:9000/
+    routes:
+      - name: functions-v1-all
+        strip_path: true
+        paths:
+          - /functions/v1/
+    plugins:
+      - name: cors
+
+  ## Analytics routes
+  - name: analytics-v1
+    _comment: 'Analytics: /analytics/v1/* -> http://morphic-supabase-logflare:4000/*'
+    url: http://morphic-supabase-analytics:4000/
+    routes:
+      - name: analytics-v1-all
+        strip_path: true
+        paths:
+          - /analytics/v1/
+
+  ## Secure Database routes
+  - name: meta
+    _comment: 'pg-meta: /pg/* -> http://pg-meta:8080/*'
+    url: http://morphic-supabase-meta:8080/
+    routes:
+      - name: meta-all
+        strip_path: true
+        paths:
+          - /pg/
+    plugins:
+      - name: key-auth
+        config:
+          hide_credentials: false
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+
+  ## Block access to /api/mcp
+  - name: mcp-blocker
+    _comment: 'Block direct access to /api/mcp'
+    url: http://morphic-supabase-studio:3000/api/mcp
+    routes:
+      - name: mcp-blocker-route
+        strip_path: true
+        paths:
+          - /api/mcp
+    plugins:
+      - name: request-termination
+        config:
+          status_code: 403
+          message: "Access is forbidden."
+
+  ## MCP endpoint - local access
+  - name: mcp
+    _comment: 'MCP: /mcp -> http://morphic-supabase-studio:3000/api/mcp (local access)'
+    url: http://morphic-supabase-studio:3000/api/mcp
+    routes:
+      - name: mcp
+        strip_path: true
+        paths:
+          - /mcp
+    plugins:
+      # Block access to /mcp by default
+      - name: request-termination
+        config:
+          status_code: 403
+          message: "Access is forbidden."
+      # Enable local access (danger zone!)
+      # 1. Comment out the 'request-termination' section above
+      # 2. Uncomment the entire section below, including 'deny'
+      # 3. Add your local IPs to the 'allow' list
+      #- name: cors
+      #- name: ip-restriction
+      #  config:
+      #    allow:
+      #      - 127.0.0.1
+      #      - ::1
+      #    deny: []
+
+  ## Protected Dashboard - catch all remaining routes
+  - name: dashboard
+    _comment: 'Studio: /* -> http://morphic-supabase-studio:3000/*'
+    url: http://morphic-supabase-studio:3000/
+    routes:
+      - name: dashboard-all
+        strip_path: true
+        paths:
+          - /
+    plugins:
+      - name: cors
+      - name: basic-auth
+        config:
+          hide_credentials: true
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/morphic/config/pooler.exs
+{:ok, _} = Application.ensure_all_started(:supavisor)
+
+{:ok, version} =
+  case Supavisor.Repo.query!("select version()") do
+    %{rows: [[ver]]} -> Supavisor.Helpers.parse_pg_version(ver)
+    _ -> nil
+  end
+
+params = %{
+  "external_id" => System.get_env("POOLER_TENANT_ID"),
+  "db_host" => "morphic-db",
+  "db_port" => System.get_env("POSTGRES_PORT"),
+  "db_database" => System.get_env("POSTGRES_DB"),
+  "require_user" => false,
+  "auth_query" => "SELECT * FROM pgbouncer.get_auth(\$1)",
+  "default_max_clients" => System.get_env("POOLER_MAX_CLIENT_CONN"),
+  "default_pool_size" => System.get_env("POOLER_DEFAULT_POOL_SIZE"),
+  "default_parameter_status" => %{"server_version" => version},
+  "users" => [%{
+    "db_user" => "pgbouncer",
+    "db_password" => System.get_env("POSTGRES_PASSWORD"),
+    "mode_type" => System.get_env("POOLER_POOL_MODE"),
+    "pool_size" => System.get_env("POOLER_DEFAULT_POOL_SIZE"),
+    "is_manager" => true
+  }]
+}
+
+if !Supavisor.Tenants.get_tenant_by_external_id(params["external_id"]) do
+  {:ok, _} = Supavisor.Tenants.create_tenant(params)
+end
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/morphic/functions/hello/index.ts
+// Follow this setup guide to integrate the Deno language server with your editor:
+// https://deno.land/manual/getting_started/setup_your_environment
+// This enables autocomplete, go to definition, etc.
+
+import { serve } from "https://deno.land/std@0.177.1/http/server.ts"
+
+serve(async () => {
+  return new Response(
+    \`"Hello from Edge Functions!"\`,
+    { headers: { "Content-Type": "application/json" } },
+  )
+})
+
+// To invoke:
+// curl 'http://localhost:<KONG_HTTP_PORT>/functions/v1/hello' \
+//   --header 'Authorization: Bearer <anon/service_role API key>'
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/morphic/functions/main/index.ts
+import { serve } from 'https://deno.land/std@0.131.0/http/server.ts'
+import * as jose from 'https://deno.land/x/jose@v4.14.4/index.ts'
+
+console.log('main function started')
+
+const JWT_SECRET = Deno.env.get('JWT_SECRET')
+const VERIFY_JWT = Deno.env.get('VERIFY_JWT') === 'true'
+
+function getAuthToken(req: Request) {
+  const authHeader = req.headers.get('authorization')
+  if (!authHeader) {
+    throw new Error('Missing authorization header')
+  }
+  const [bearer, token] = authHeader.split(' ')
+  if (bearer !== 'Bearer') {
+    throw new Error(\`Auth header is not 'Bearer {token}'\`)
+  }
+  return token
+}
+
+async function verifyJWT(jwt: string): Promise<boolean> {
+  const encoder = new TextEncoder()
+  const secretKey = encoder.encode(JWT_SECRET)
+  try {
+    await jose.jwtVerify(jwt, secretKey)
+  } catch (err) {
+    console.error(err)
+    return false
+  }
+  return true
+}
+
+serve(async (req: Request) => {
+  if (req.method !== 'OPTIONS' && VERIFY_JWT) {
+    try {
+      const token = getAuthToken(req)
+      const isValidJWT = await verifyJWT(token)
+
+      if (!isValidJWT) {
+        return new Response(JSON.stringify({ msg: 'Invalid JWT' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+    } catch (e) {
+      console.error(e)
+      return new Response(JSON.stringify({ msg: e.toString() }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+  }
+
+  const url = new URL(req.url)
+  const { pathname } = url
+  const path_parts = pathname.split('/')
+  const service_name = path_parts[1]
+
+  if (!service_name || service_name === '') {
+    const error = { msg: 'missing function name in request' }
+    return new Response(JSON.stringify(error), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  const servicePath = \`/home/deno/functions/\${service_name}\`
+  console.error(\`serving the request with \${servicePath}\`)
+
+  const memoryLimitMb = 150
+  const workerTimeoutMs = 1 * 60 * 1000
+  const noModuleCache = false
+  const importMapPath = null
+  const envVarsObj = Deno.env.toObject()
+  const envVars = Object.keys(envVarsObj).map((k) => [k, envVarsObj[k]])
+
+  try {
+    const worker = await EdgeRuntime.userWorkers.create({
+      servicePath,
+      memoryLimitMb,
+      workerTimeoutMs,
+      noModuleCache,
+      importMapPath,
+      envVars,
+    })
+    return await worker.fetch(req)
+  } catch (e) {
+    const error = { msg: e.toString() }
+    return new Response(JSON.stringify(error), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+})
+EOFMT
+}
+
+function performUpdateMorphic()
+{
+  perform_stack_name=morphic
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/supabase/postgres:15.14.1.071,mirror.gcr.io/timberio/vector:0.52.0-alpine,mirror.gcr.io/supabase/studio:2026.01.12-sha-4e9b718,mirror.gcr.io/kong:2.8.1,mirror.gcr.io/supabase/gotrue:v2.185.0,mirror.gcr.io/postgrest/postgrest:v14.3,mirror.gcr.io/supabase/realtime:v2.69.2,mirror.gcr.io/supabase/storage-api:v1.33.5,mirror.gcr.io/darthsim/imgproxy:v3.30.1,mirror.gcr.io/supabase/postgres-meta:v0.95.2,mirror.gcr.io/supabase/edge-runtime:v1.70.0,mirror.gcr.io/supabase/logflare:1.28.0,mirror.gcr.io/supabase/supavisor:2.7.4,ghcr.io/miurla/morphic:6443b20c1205adf233c98b67beb34a6117e1cd7a,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/supabase/postgres:15.14.1.071,mirror.gcr.io/supabase/postgres:15.14.1.071"
+      image_update_map[1]="mirror.gcr.io/timberio/vector:0.52.0-alpine,mirror.gcr.io/timberio/vector:0.52.0-alpine"
+      image_update_map[2]="mirror.gcr.io/supabase/studio:2026.01.12-sha-4e9b718,mirror.gcr.io/supabase/studio:2026.01.12-sha-4e9b718"
+      image_update_map[3]="mirror.gcr.io/kong:2.8.1,mirror.gcr.io/kong:2.8.1"
+      image_update_map[4]="mirror.gcr.io/supabase/gotrue:v2.185.0,mirror.gcr.io/supabase/gotrue:v2.185.0"
+      image_update_map[5]="mirror.gcr.io/postgrest/postgrest:v14.3,mirror.gcr.io/postgrest/postgrest:v14.3"
+      image_update_map[6]="mirror.gcr.io/supabase/realtime:v2.69.2,mirror.gcr.io/supabase/realtime:v2.69.2"
+      image_update_map[7]="mirror.gcr.io/supabase/storage-api:v1.33.5,mirror.gcr.io/supabase/storage-api:v1.33.5"
+      image_update_map[8]="mirror.gcr.io/darthsim/imgproxy:v3.30.1,mirror.gcr.io/darthsim/imgproxy:v3.30.1"
+      image_update_map[9]="mirror.gcr.io/supabase/postgres-meta:v0.95.2,mirror.gcr.io/supabase/postgres-meta:v0.95.2"
+      image_update_map[10]="mirror.gcr.io/supabase/edge-runtime:v1.70.0,mirror.gcr.io/supabase/edge-runtime:v1.70.0"
+      image_update_map[11]="mirror.gcr.io/supabase/logflare:1.28.0,mirror.gcr.io/supabase/logflare:1.28.0"
+      image_update_map[12]="mirror.gcr.io/supabase/supavisor:2.7.4,mirror.gcr.io/supabase/supavisor:2.7.4"
+      image_update_map[13]="ghcr.io/miurla/morphic:6443b20c1205adf233c98b67beb34a6117e1cd7a,ghcr.io/miurla/morphic:6443b20c1205adf233c98b67beb34a6117e1cd7a"
+      image_update_map[14]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 #ADD_NEW_SERVICE_FUNCTIONS_HERE
@@ -98963,7 +100999,7 @@ EOFMT
 TZ=\${PORTAINER_TZ}
 LOGIN=$DBGATE_ADMIN_USERNAME
 PASSWORD=$DBGATE_ADMIN_PASSWORD
-CONNECTIONS=ActivePieces,Adminer,Automatisch,Budibase,Calcom,Discourse,Dolibarr,EasyAppointments,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,InvoiceNinja,InvoiceShelf,Kanboard,Keila,KillBill,KillBillAPI,Langfuse,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MindsDB,MintHCM,n8n,Nextcloud,Odoo,Ombi,OpenProject,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Rallly,Revolt,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Twenty,Vaultwarden,Wallabag,Wekan,Wikijs,WordPress,Yamtrack,Zammad,Zulip,Taiga,OpenSign,DocuSeal,ControlR,Akaunting,Axelor,Langflow,Firecrawl,LibreChat,OpenWebUI,Khoj,LobeChat,RAGFlow,Dify,MindsDB,WaterCrawl,Flowise,NocoDB,Ente
+CONNECTIONS=ActivePieces,Adminer,Automatisch,Budibase,Calcom,Discourse,Dolibarr,EasyAppointments,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,InvoiceNinja,InvoiceShelf,Kanboard,Keila,KillBill,KillBillAPI,Langfuse,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MindsDB,MintHCM,n8n,Nextcloud,Odoo,Ombi,OpenProject,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Rallly,Revolt,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Twenty,Vaultwarden,Wallabag,Wekan,Wikijs,WordPress,Yamtrack,Zammad,Zulip,Taiga,OpenSign,DocuSeal,ControlR,Akaunting,Axelor,Langflow,Firecrawl,LibreChat,OpenWebUI,Khoj,LobeChat,RAGFlow,Dify,MindsDB,WaterCrawl,Flowise,NocoDB,Ente,Morphic
 LABEL_ActivePieces=ActivePieces
 ENGINE_ActivePieces=postgres@dbgate-plugin-postgres
 SERVER_ActivePieces=activepieces-db
@@ -99517,6 +101553,13 @@ DATABASE_Ente=ENTE_DATABASE_NAME
 USER_Ente=ENTE_DATABASE_USER
 PASSWORD_Ente=ENTE_DATABASE_USER_PASSWORD
 PORT_Ente=5432
+LABEL_Morphic=Morphic
+ENGINE_Morphic=postgres@dbgate-plugin-postgres
+SERVER_Morphic=morphic-db
+DATABASE_Morphic=MORPHIC_DATABASE_NAME
+USER_Morphic=MORPHIC_DATABASE_USER
+PASSWORD_Morphic=MORPHIC_DATABASE_USER_PASSWORD
+PORT_Morphic=5432
 EOFMT
 #DBGATE_OUTPUT_CONFIG_ENV_END
 }
@@ -100282,6 +102325,14 @@ SQLPAD_CONNECTIONS__ente__username=$ENTE_DATABASE_USER
 SQLPAD_CONNECTIONS__ente__password=$ENTE_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__ente__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__ente__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__morphic__name=Morphic
+SQLPAD_CONNECTIONS__morphic__driver=postgres
+SQLPAD_CONNECTIONS__morphic__host=morphic-db
+SQLPAD_CONNECTIONS__morphic__database=$MORPHIC_DATABASE_NAME
+SQLPAD_CONNECTIONS__morphic__username=$MORPHIC_DATABASE_USER
+SQLPAD_CONNECTIONS__morphic__password=$MORPHIC_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__morphic__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__morphic__idleTimeoutSeconds=900
 EOFSP
 #SQLPAD_OUTPUT_CONFIG_ENV_END
 }
