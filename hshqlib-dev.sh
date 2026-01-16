@@ -39774,10 +39774,8 @@ function installPortainer()
   fi
   set -e
   createDockerNetworks
-
   mkdir $HSHQ_STACKS_DIR/portainer
   mkdir $HSHQ_STACKS_DIR/portainer/certs
-
   initServicesCredentials
   outputConfigPortainer
   generateCert portainer portainer "127.0.0.1,$HOMESERVER_HOST_PRIMARY_INTERFACE_IP"
@@ -39814,26 +39812,21 @@ function installPortainer()
     echo "Portainer did not start up correctly..."
     exit 1
   fi
-
   echo "Portainer has been loaded and started..."
   echo "Sleeping 10 seconds to ensure Portainer has loaded completely."
   sleep 10
-
   PORTAINER_ADMIN_USERID=$(http --verify=no --print="b" POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/users/admin/init Username="$PORTAINER_ADMIN_USERNAME" Password="$PORTAINER_ADMIN_PASSWORD"  | jq -r .Id)
   updateConfigVar PORTAINER_ADMIN_USERID $PORTAINER_ADMIN_USERID
   PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   http -f --verify=no --timeout=300 --print="b" POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/endpoints "Authorization: Bearer $PORTAINER_TOKEN" Name="$HOMESERVER_NAME" EndpointCreationType=1 >/dev/null
-
   # Enable dark mode because it looks better
   echo "{\"theme\":{\"color\":\"dark\"}}" > $HOME/portainer-json.tmp
   http --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/users/$PORTAINER_ADMIN_USERID "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/portainer-json.tmp > /dev/null
   rm $HOME/portainer-json.tmp
-
   # Add gcr registry
   echo "{\"Name\": \"GCR\",\"Type\": 3,\"URL\": \"mirror.gcr.io\"}" > $HOME/portainer-json.tmp
   http --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/registries "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/portainer-json.tmp > /dev/null
   rm $HOME/portainer-json.tmp
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PORTAINER.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
