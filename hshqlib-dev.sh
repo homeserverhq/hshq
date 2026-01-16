@@ -77,6 +77,9 @@ function init()
   DOCKER_VERSION_UBUNTU_2204=5:29.1.1-1~ubuntu.22.04~jammy
   DOCKER_VERSION_UBUNTU_2404=5:29.1.1-1~ubuntu.24.04~noble
   DOCKER_VERSION_DEBIAN_12=5:29.1.1-1~debian.12~bookworm
+  DOCKER_VERSION_CHECK_UBUNTU_2204=29.1.1
+  DOCKER_VERSION_CHECK_UBUNTU_2404=29.1.1
+  DOCKER_VERSION_CHECK_DEBIAN_12=29.1.1
   NET_EXTERNAL_BRIDGE_NAME=brdockext
   NET_EXTERNAL_SUBNET=172.16.1.0/24
   NET_EXTERNAL_SUBNET_PREFIX=172.16.1
@@ -28418,8 +28421,7 @@ function installDocker()
   outputDockerSettings
   util="docker|docker"
   if [[ "$(isProgramInstalled $util)" = "true" ]]; then
-    sudo systemctl restart rsyslog
-    sudo systemctl restart docker
+    sudo systemctl restart rsyslog > /dev/null 2>&1
     upgradeDocker
     return 0
   fi
@@ -28562,7 +28564,6 @@ if \$programname == 'docker' then {
 }
 \$FileCreateMode 0600
 EOFRL
-
 }
 
 function outputDockerDaemonJson()
@@ -28598,7 +28599,12 @@ function installDockerUbuntu2204()
 
 function upgradeDockerUbuntu2204()
 {
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2204 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
+  docker -v | grep -q $DOCKER_VERSION_CHECK_UBUNTU_2204
+  if [ $? -eq 0 ]; then
+    sudo systemctl restart docker > /dev/null 2>&1
+  else
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2204 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
+  fi
 }
 
 function installDockerUbuntu2404()
@@ -28615,7 +28621,12 @@ function installDockerUbuntu2404()
 
 function upgradeDockerUbuntu2404()
 {
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2404 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
+  docker -v | grep -q $DOCKER_VERSION_CHECK_UBUNTU_2404
+  if [ $? -eq 0 ]; then
+    sudo systemctl restart docker > /dev/null 2>&1
+  else
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2404 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
+  fi
 }
 
 function installDockerDebian12()
@@ -28632,7 +28643,12 @@ function installDockerDebian12()
 
 function upgradeDockerDebian12()
 {
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_DEBIAN_12 docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
+  docker -v | grep -q $DOCKER_VERSION_CHECK_DEBIAN_12
+  if [ $? -eq 0 ]; then
+    sudo systemctl restart docker > /dev/null 2>&1
+  else
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_DEBIAN_12 docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
+  fi
 }
 
 function initCertificateAuthority()
