@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=24
+HSHQ_WRAPPER_SCRIPT_VERSION=25
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -334,6 +334,11 @@ EOF
     mv $HSHQ_NEW_LIB_SCRIPT $HSHQ_LIB_SCRIPT
   elif [ "$is_download_lib" = "true" ] || [ "$is_apply_pending" = "true" ]; then
     source $HSHQ_NEW_LIB_SCRIPT lib
+    for curSource in $HSHQ_SCRIPTS_DIR/source/*; do
+      if [ -f "$curSource" ]; then
+        source "$curSource"
+      fi
+    done
     set +e
     if [[ $(type -t performPreUpdateCheck) = function ]]; then
       # Aquire all locks
