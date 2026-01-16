@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=220
+HSHQ_LIB_SCRIPT_VERSION=221
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -21056,6 +21056,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=220
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 221 ]; then
+    echo "Updating to Version 221..."
+    version221Update
+    HSHQ_VERSION=221
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -29818,7 +29824,8 @@ function loadPinnedDockerImages()
   IMG_WGPORTAL=wgportal/wg-portal:1.0.19
   IMG_WIKIJS=mirror.gcr.io/requarks/wiki:2.5.308
   IMG_WIREGUARD=mirror.gcr.io/linuxserver/wireguard:1.0.20250521-r0-ls93
-  IMG_WORDPRESS=mirror.gcr.io/wordpress:php8.5-apache
+  IMG_WORDPRESS_APP=mirror.gcr.io/wordpress:php8.5-apache
+  IMG_WORDPRESS_CLI=mirror.gcr.io/wordpress:cli-php8.3
   IMG_YAMTRACK_APP=ghcr.io/fuzzygrim/yamtrack:0.24.8
   IMG_ZAMMAD=ghcr.io/zammad/zammad:6.5.2-49
   IMG_ZULIP_APP=mirror.gcr.io/zulip/docker-zulip:11.4-0
@@ -30250,7 +30257,8 @@ function pullDockerImages()
   pullImage $IMG_SYNCTHING
   pullImage $IMG_VAULTWARDEN_APP
   pullImage $IMG_VAULTWARDEN_LDAP
-  pullImage $IMG_WORDPRESS
+  pullImage $IMG_WORDPRESS_APP
+  pullImage $IMG_WORDPRESS_CLI
   pullImage $IMG_GHOST
   pullImage $IMG_PEERTUBE_APP
   pullImage $IMG_AUTHELIA
@@ -30885,6 +30893,10 @@ UPTIMEKUMA_RESEND_NOTIFY=360
 # UptimeKuma (Service Details) END
 
 # Wordpress (Service Details) BEGIN
+WORDPRESS_INIT_ENV=true
+WORDPRESS_ADMIN_USERNAME=
+WORDPRESS_ADMIN_PASSWORD=
+WORDPRESS_ADMIN_EMAIL_ADDRESS=
 WORDPRESS_DATABASE_ROOT_PASSWORD=
 WORDPRESS_DATABASE_NAME=
 WORDPRESS_DATABASE_USER=
@@ -32591,6 +32603,18 @@ function initServicesCredentials()
   if [ -z "$GUACAMOLE_DATABASE_USER_PASSWORD" ]; then
     GUACAMOLE_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar GUACAMOLE_DATABASE_USER_PASSWORD $GUACAMOLE_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$WORDPRESS_ADMIN_USERNAME" ]; then
+    WORDPRESS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_wordpress"
+    updateConfigVar WORDPRESS_ADMIN_USERNAME $WORDPRESS_ADMIN_USERNAME
+  fi
+  if [ -z "$WORDPRESS_ADMIN_PASSWORD" ]; then
+    WORDPRESS_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar WORDPRESS_ADMIN_PASSWORD $WORDPRESS_ADMIN_PASSWORD
+  fi
+  if [ -z "$WORDPRESS_ADMIN_EMAIL_ADDRESS" ]; then
+    WORDPRESS_ADMIN_EMAIL_ADDRESS=$WORDPRESS_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar WORDPRESS_ADMIN_EMAIL_ADDRESS $WORDPRESS_ADMIN_EMAIL_ADDRESS
   fi
   if [ -z "$WORDPRESS_DATABASE_NAME" ]; then
     WORDPRESS_DATABASE_NAME=wordpressdb
@@ -37136,6 +37160,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_VAULTWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WALLABAG.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WEKAN.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_WORDPRESS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_YAMTRACK.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ZULIP_APP.$HOMESERVER_DOMAIN\n"
@@ -37259,7 +37284,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WAZUH.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WIKIJS.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_WORDPRESS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_BESZEL_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KOPIA_APP.$HOMESERVER_DOMAIN\n"
@@ -37291,6 +37315,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JELLYFIN}-User" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PHOTOPRISM}-Admin" https://$SUB_PHOTOPRISM.$HOMESERVER_DOMAIN/library/login $HOMESERVER_ABBREV $PHOTOPRISM_ADMIN_USERNAME $PHOTOPRISM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GUACAMOLE}" https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN/guacamole/ $HOMESERVER_ABBREV $GUACAMOLE_DEFAULT_ADMIN_USERNAME $GUACAMOLE_DEFAULT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_WORDPRESS}" https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN/wp-login $HOMESERVER_ABBREV $WORDPRESS_ADMIN_USERNAME $WORDPRESS_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_UPTIMEKUMA}" https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $UPTIMEKUMA_USERNAME $UPTIMEKUMA_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SQLPAD}" https://$SUB_SQLPAD.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $SQLPAD_ADMIN_USERNAME $SQLPAD_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SYNCTHING}" https://$SUB_SYNCTHING.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $SYNCTHING_ADMIN_USERNAME $SYNCTHING_ADMIN_PASSWORD)"\n"
@@ -37460,6 +37485,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_JELLYFIN}-User" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PHOTOPRISM}-Admin" https://$SUB_PHOTOPRISM.$HOMESERVER_DOMAIN/library/login $HOMESERVER_ABBREV $PHOTOPRISM_ADMIN_USERNAME $PHOTOPRISM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GUACAMOLE}" https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN/guacamole/ $HOMESERVER_ABBREV $GUACAMOLE_DEFAULT_ADMIN_USERNAME $GUACAMOLE_DEFAULT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_WORDPRESS}" https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN/wp-login $HOMESERVER_ABBREV $WORDPRESS_ADMIN_USERNAME $WORDPRESS_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_UPTIMEKUMA}" https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $UPTIMEKUMA_USERNAME $UPTIMEKUMA_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SQLPAD}" https://$SUB_SQLPAD.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $SQLPAD_ADMIN_USERNAME $SQLPAD_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SYNCTHING}" https://$SUB_SYNCTHING.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $SYNCTHING_ADMIN_USERNAME $SYNCTHING_ADMIN_PASSWORD)"\n"
@@ -38404,7 +38430,10 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/mariadb:10.7.3
       ;;
     "wordpress-web")
-      container_image=$IMG_WORDPRESS
+      container_image=$IMG_WORDPRESS_APP
+      ;;
+    "wordpress-cli")
+      container_image=$IMG_WORDPRESS_CLI
       ;;
     "ghost-db")
       container_image=mirror.gcr.io/mariadb:10.7.3
@@ -39679,6 +39708,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Portainer" "PORTAINER_ENDPOINT_ID=1" $HSHQ_PLAINTEXT_ROOT_CONFIG true
   checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_HARP_PORT=8780,NEXTCLOUD_HARP_SHARED_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Caddy" "CADDY_SNIPPET_SAFEHEADERCORSPREFLIGHT=safe-header-cors-preflight" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Wordpress" "WORDPRESS_INIT_ENV=false,WORDPRESS_ADMIN_USERNAME=,WORDPRESS_ADMIN_PASSWORD=,WORDPRESS_ADMIN_EMAIL_ADDRESS=" $CONFIG_FILE false
 }
 
 function importDBs()
@@ -52411,6 +52441,10 @@ function installWordPress()
   if [ $? -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName wordpress-cli)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/wordpress
   mkdir $HSHQ_STACKS_DIR/wordpress/db
@@ -52418,12 +52452,23 @@ function installWordPress()
   mkdir $HSHQ_STACKS_DIR/wordpress/web
   chmod 777 $HSHQ_STACKS_DIR/wordpress/dbexport
   initServicesCredentials
+  set +e
+  addUserMailu alias $WORDPRESS_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  if ! [ "$WORDPRESS_INIT_ENV" = "true" ]; then
+    sendEmail -s "WordPress Admin Login Info" -b "Wordpress Admin Username: $WORDPRESS_ADMIN_USERNAME\nWordPress Admin Password: $WORDPRESS_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    WORDPRESS_INIT_ENV=true
+    updateConfigVar WORDPRESS_INIT_ENV $WORDPRESS_INIT_ENV
+  fi
   outputConfigWordPress
-  installStack wordpress wordpress-web "WordPress" $HOME/wordpress.env
+  installStack wordpress wordpress-web "apache2 -D FOREGROUND" $HOME/wordpress.env
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
   fi
+  sleep 3
+  cd ~
+  set +e
+  docker run --user www-data --rm --name wordpress-cli --hostname wordpress-cli -e TZ="$TZ" --env-file stack.env -v "/etc/localtime:/etc/localtime:ro" -v "/etc/timezone:/etc/timezone:ro" -v "/etc/ssl/certs:/etc/ssl/certs:ro" -v "/usr/share/ca-certificates:/usr/share/ca-certificates:ro" -v "/usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro" -v "$HSHQ_STACKS_DIR/wordpress/web:/var/www/html" --restart no --network dock-proxy --network dock-ext --network dock-dbs $(getScriptImageByContainerName wordpress-cli) sh -c "sleep 10; wp core install --path=\"/var/www/html\" --url=\"https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN\" --title=\"$HOMESERVER_NAME Blog\" --admin_user=$WORDPRESS_ADMIN_USERNAME --admin_password=$WORDPRESS_ADMIN_PASSWORD --admin_email=$WORDPRESS_ADMIN_EMAIL_ADDRESS --skip-email"
   sleep 3
   addReadOnlyUserToDatabase Wordpress mysql wordpress-db $WORDPRESS_DATABASE_NAME root $WORDPRESS_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/wordpress/dbexport $WORDPRESS_DATABASE_READONLYUSER $WORDPRESS_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
@@ -52542,7 +52587,6 @@ networks:
     ipam:
       driver: default
 EOFWP
-
   cat <<EOFWP > $HOME/wordpress.env
 MYSQL_ROOT_PASSWORD=$WORDPRESS_DATABASE_ROOT_PASSWORD
 MYSQL_DATABASE=$WORDPRESS_DATABASE_NAME
@@ -65257,7 +65301,7 @@ function installPastefy()
   addUserMailu alias $PASTEFY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   PASTEFY_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $PASTEFY_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigPastefy
-  installStack pastefy pastefy-app "" $HOME/pastefy.env
+  installStack pastefy pastefy-app "HTTP-Server started on port 80" $HOME/pastefy.env 3
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -69388,7 +69432,7 @@ function installMeshCentral()
   initServicesCredentials
   set +e
   outputConfigMeshCentral
-  installStack meshcentral meshcentral-app "" $HOME/meshcentral.env
+  installStack meshcentral meshcentral-app "MeshCentral HTTPS server running on" $HOME/meshcentral.env 5
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -69828,12 +69872,12 @@ function installAdminer()
   initServicesCredentials
   set +e
   outputConfigAdminer
-  installStack adminer adminer-app "" $HOME/adminer.env
+  installStack adminer adminer-app "Development Server" $HOME/adminer.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
   fi
-  sleep 3
+  sleep 10
   addReadOnlyUserToDatabase Adminer mysql adminer-db $ADMINER_DATABASE_NAME root $ADMINER_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/adminer/dbexport $ADMINER_DATABASE_READONLYUSER $ADMINER_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
@@ -70060,7 +70104,7 @@ function installBudibase()
   set +e
   addUserMailu alias $ADMIN_USERNAME_BASE"_budibase" $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigBudibase
-  installStack budibase budibase-app "" $HOME/budibase.env
+  installStack budibase budibase-app "Admin account automatically created" $HOME/budibase.env 3
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -70071,6 +70115,7 @@ function installBudibase()
     updateConfigVar BUDIBASE_INIT_ENV $BUDIBASE_INIT_ENV
   fi
   sleep 3
+  addReadOnlyUserToDatabase Budibase mysql budibase-db $BUDIBASE_DATABASE_NAME root $BUDIBASE_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/budibase/dbexport $BUDIBASE_DATABASE_READONLYUSER $BUDIBASE_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_BUDIBASE.$HOMESERVER_DOMAIN {\n"
@@ -79163,6 +79208,7 @@ function installInvoiceShelf()
   set -e
   mkdir $HSHQ_STACKS_DIR/invoiceshelf
   mkdir $HSHQ_STACKS_DIR/invoiceshelf/db
+  mkdir $HSHQ_STACKS_DIR/invoiceshelf/dbimport
   mkdir $HSHQ_STACKS_DIR/invoiceshelf/dbexport
   mkdir $HSHQ_STACKS_DIR/invoiceshelf/storage
   mkdir $HSHQ_STACKS_DIR/invoiceshelf/modules
@@ -79227,7 +79273,7 @@ EOFWZ
   updateConfigVar INVOICESHELF_INIT_ENV $INVOICESHELF_INIT_ENV
   sleep 3
   docker exec invoiceshelf-app bash -c "chmod -R 775 /var/www/html/storage;chmod -R 775 /var/www/html/bootstrap"
-  addReadOnlyUserToDatabase InvoiceShelf mysql invoiceshelf-db $INVOICESHELF_DATABASE_NAME root $INVOICESHELF_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/invoiceshelf/dbexport $INVOICESHELF_DATABASE_READONLYUSER $INVOICESHELF_DATABASE_READONLYUSER_PASSWORD
+  #addReadOnlyUserToDatabase InvoiceShelf mysql invoiceshelf-db $INVOICESHELF_DATABASE_NAME root $INVOICESHELF_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/invoiceshelf/dbexport $INVOICESHELF_DATABASE_READONLYUSER $INVOICESHELF_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN {\n"
@@ -79280,6 +79326,7 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceshelf/db:/var/lib/postgresql/data
       - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceshelf/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceshelf/dbimport/addreadonly.sql:/docker-entrypoint-initdb.d/addreadonly.sql
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.invoiceshelf-hourly-db.schedule=@every 1h"
@@ -79378,6 +79425,22 @@ SESSION_DOMAIN=$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN
 SANCTUM_STATEFUL_DOMAINS=$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN
 TRUSTED_PROXIES=172.16.0.0/15
 EOFMT
+  cat <<EOFPC > $HSHQ_STACKS_DIR/invoiceshelf/dbimport/addreadonly.sql
+DO \$do\$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'readaccess') THEN
+        CREATE ROLE readaccess LOGIN PASSWORD '$INVOICESHELF_DATABASE_READONLYUSER_PASSWORD';
+    ELSE
+        RAISE NOTICE 'Role "readaccess" already exists. Skipping.';
+    END IF;
+END
+\$do\$;
+GRANT CONNECT ON DATABASE $INVOICESHELF_DATABASE_NAME TO readaccess;
+GRANT USAGE ON SCHEMA public TO readaccess;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO readaccess;
+CREATE USER "$INVOICESHELF_DATABASE_READONLYUSER" WITH PASSWORD '$INVOICESHELF_DATABASE_READONLYUSER_PASSWORD';
+GRANT readaccess TO "$INVOICESHELF_DATABASE_READONLYUSER";
+EOFPC
 }
 
 function performUpdateInvoiceShelf()
