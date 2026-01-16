@@ -52468,8 +52468,9 @@ function installWordPress()
   sleep 3
   cd ~
   set +e
-  docker run --user www-data --rm --name wordpress-cli --hostname wordpress-cli -e TZ="$TZ" --env-file stack.env -v "/etc/localtime:/etc/localtime:ro" -v "/etc/timezone:/etc/timezone:ro" -v "/etc/ssl/certs:/etc/ssl/certs:ro" -v "/usr/share/ca-certificates:/usr/share/ca-certificates:ro" -v "/usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro" -v "$HSHQ_STACKS_DIR/wordpress/web:/var/www/html" --restart no --network dock-proxy --network dock-ext --network dock-dbs $(getScriptImageByContainerName wordpress-cli) sh -c "sleep 10; wp core install --path=\"/var/www/html\" --url=\"https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN\" --title=\"$HOMESERVER_NAME Blog\" --admin_user=$WORDPRESS_ADMIN_USERNAME --admin_password=$WORDPRESS_ADMIN_PASSWORD --admin_email=$WORDPRESS_ADMIN_EMAIL_ADDRESS --skip-email"
+  docker run --user www-data --rm --name wordpress-cli --hostname wordpress-cli -e TZ="$TZ" --env-file wpstack.env -v "/etc/localtime:/etc/localtime:ro" -v "/etc/timezone:/etc/timezone:ro" -v "/etc/ssl/certs:/etc/ssl/certs:ro" -v "/usr/share/ca-certificates:/usr/share/ca-certificates:ro" -v "/usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro" -v "$HSHQ_STACKS_DIR/wordpress/web:/var/www/html" --restart no --network dock-proxy --network dock-ext --network dock-dbs $(getScriptImageByContainerName wordpress-cli) sh -c "sleep 10; wp core install --path=\"/var/www/html\" --url=\"https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN\" --title=\"$HOMESERVER_NAME Blog\" --admin_user=$WORDPRESS_ADMIN_USERNAME --admin_password=$WORDPRESS_ADMIN_PASSWORD --admin_email=$WORDPRESS_ADMIN_EMAIL_ADDRESS --skip-email"
   sleep 3
+  rm -f $HOME/wpstack.env
   addReadOnlyUserToDatabase Wordpress mysql wordpress-db $WORDPRESS_DATABASE_NAME root $WORDPRESS_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/wordpress/dbexport $WORDPRESS_DATABASE_READONLYUSER $WORDPRESS_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN {\n"
@@ -52597,6 +52598,8 @@ WORDPRESS_DB_NAME=$WORDPRESS_DATABASE_NAME
 WORDPRESS_DB_USER=$WORDPRESS_DATABASE_USER
 WORDPRESS_DB_PASSWORD=$WORDPRESS_DATABASE_USER_PASSWORD
 EOFWP
+  rm -f $HOME/wpstack.env
+  cp $HOME/wordpress.env $HOME/wpstack.env
 }
 
 function performUpdateWordPress()
@@ -55809,7 +55812,7 @@ function installFirefly()
     updateConfigVar FIREFLY_INITIAL_API_KEY $FIREFLY_INITIAL_API_KEY
   fi
   outputConfigFirefly
-  installStack firefly firefly "" $HOME/firefly.env
+  installStack firefly firefly "ready to handle connections" $HOME/firefly.env
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -59160,7 +59163,7 @@ function installLinkwarden()
   oidcBlock=$(cat $HOME/linkwarden.oidc)
   rm -f $HOME/linkwarden.oidc
   insertOIDCClientAuthelia linkwarden "$oidcBlock"
-  installStack linkwarden linkwarden "" $HOME/linkwarden.env
+  installStack linkwarden linkwarden "ready started server on" $HOME/linkwarden.env
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -59405,7 +59408,7 @@ function installStirlingPDF()
   mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf/traindata
 
   outputConfigStirlingPDF
-  installStack stirlingpdf stirlingpdf "" $HOME/stirlingpdf.env
+  installStack stirlingpdf stirlingpdf "Server PID" $HOME/stirlingpdf.env
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -62136,7 +62139,7 @@ function installHuginn()
     updateConfigVar HUGINN_INIT_ENV $HUGINN_INIT_ENV
   fi
   outputConfigHuginn
-  installStack huginn huginn-app "" $HOME/huginn.env
+  installStack huginn huginn-app "stdout entered RUNNING state" $HOME/huginn.env
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -62368,7 +62371,7 @@ function installCoturn()
   outputConfigCoturn
   generateCert coturn "coturn,$SUB_COTURN.$HOMESERVER_DOMAIN"
   set +e
-  installStack coturn coturn "" $HOME/coturn.env
+  installStack coturn coturn "Total auth threads" $HOME/coturn.env
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -62581,7 +62584,7 @@ function installFileDrop()
   set -e
   mkdir $HSHQ_STACKS_DIR/filedrop
   outputConfigFileDrop
-  installStack filedrop filedrop "" $HOME/filedrop.env
+  installStack filedrop filedrop "Server running on" $HOME/filedrop.env
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -62742,7 +62745,7 @@ function installPiped()
   mkdir $HSHQ_NONBACKUP_DIR/piped/proxy
   initServicesCredentials
   outputConfigPiped
-  installStack piped piped-app "" $HOME/piped.env
+  installStack piped piped-api "Database connection is ready" $HOME/piped.env
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -65501,7 +65504,7 @@ function installSnippetBox()
   mkdir $HSHQ_STACKS_DIR/snippetbox/data
   set +e
   outputConfigSnippetBox
-  installStack snippetbox snippetbox-app "" $HOME/snippetbox.env
+  installStack snippetbox snippetbox-app "Server is working on port" $HOME/snippetbox.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -70660,7 +70663,7 @@ function installStandardNotes()
   initServicesCredentials
   set +e
   outputConfigStandardNotes
-  installStack standardnotes standardnotes-server "" $HOME/standardnotes.env
+  installStack standardnotes standardnotes-server "syncing-server-worker entered RUNNING state" $HOME/standardnotes.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -71174,7 +71177,7 @@ function installMetabase()
   set +e
   addUserMailu alias $METABASE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigMetabase
-  installStack metabase metabase-app "" $HOME/metabase.env 5
+  installStack metabase metabase-app "Starting listener" $HOME/metabase.env 5
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -71911,7 +71914,7 @@ function installRevolt()
   initServicesCredentials
   set +e
   outputConfigRevolt
-  installStack revolt revolt-api "" $HOME/revolt.env
+  installStack revolt revolt-api "Rocket has launched from" $HOME/revolt.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -76033,7 +76036,7 @@ function installOpenProject()
   addUserMailu alias $ADMIN_USERNAME_BASE"_openproject" $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   OPENPROJECT_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $OPENPROJECT_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigOpenProject
-  installStack openproject openproject-app "" $HOME/openproject.env
+  installStack openproject openproject-web "Listening on" $HOME/openproject.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -80875,7 +80878,7 @@ function installAutomatisch()
   addUserMailu alias $AUTOMATISCH_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   AUTOMATISCH_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $AUTOMATISCH_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/' | sed 's/\$/\\\$/g')
   outputConfigAutomatisch
-  installStack automatisch automatisch-app "" $HOME/automatisch.env
+  installStack automatisch automatisch-app "Server is listening on" $HOME/automatisch.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -82148,7 +82151,7 @@ function installOpenSign()
   addUserMailu alias $OPENSIGN_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   OPENSIGN_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $OPENSIGN_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigOpenSign
-  installStack opensign opensign-app "" $HOME/opensign.env
+  installStack opensign opensign-server "opensign-server running on port" $HOME/opensign.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -82388,7 +82391,7 @@ function installDocuSeal()
   addUserMailu alias $DOCUSEAL_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   DOCUSEAL_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $DOCUSEAL_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigDocuSeal
-  installStack docuseal docuseal-app "" $HOME/docuseal.env
+  installStack docuseal docuseal-app "Listening on" $HOME/docuseal.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -82584,7 +82587,7 @@ function installControlR()
   addUserMailu alias $CONTROLR_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   CONTROLR_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $CONTROLR_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigControlR
-  installStack controlr controlr-app "" $HOME/controlr.env
+  installStack controlr controlr-app "Adding KnownNetwork" $HOME/controlr.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -83445,7 +83448,7 @@ function installKopia()
   set +e
   generateCert kopia-app kopia-app
   outputConfigKopia
-  installStack kopia kopia-app "" $HOME/kopia.env
+  installStack kopia kopia-app "SERVER ADDRESS" $HOME/kopia.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -83619,7 +83622,7 @@ function installLocalAI()
   initServicesCredentials
   set +e
   outputConfigLocalAI
-  installStack localai localai-server "" $HOME/localai.env
+  installStack localai localai-server "http server started on" $HOME/localai.env 10
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -83825,7 +83828,7 @@ networks:
 EOFMT
   cat <<EOFMT > $HOME/localai.env
 TZ=\${PORTAINER_TZ}
-DEBUG=true
+DEBUG=false
 DOCKER_HOST=tcp://localai-dind:2375
 LOCALAI_API_KEY=$LOCALAI_API_KEY
 LOCALAI_MAX_ACTIVE_BACKENDS=4
@@ -83961,7 +83964,7 @@ function installComfyUI()
   initServicesCredentials
   set +e
   outputConfigComfyUI
-  installStack comfyui comfyui-app "" $HOME/comfyui.env
+  installStack comfyui comfyui-app "To see the GUI go to" $HOME/comfyui.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -84138,7 +84141,7 @@ function installLangflow()
   addUserMailu alias $LANGFLOW_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   LANGFLOW_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $LANGFLOW_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigLangflow
-  installStack langflow langflow-app "" $HOME/langflow.env
+  installStack langflow langflow-app "Welcome to Langflow" $HOME/langflow.env 3
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -84335,7 +84338,7 @@ function installAnythingLLM()
   addUserMailu alias $ANYTHINGLLM_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   ANYTHINGLLM_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $ANYTHINGLLM_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigAnythingLLM
-  installStack anythingllm anythingllm-app "" $HOME/anythingllm.env
+  installStack anythingllm anythingllm-app "Primary server in HTTP mode listening" $HOME/anythingllm.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -84472,7 +84475,7 @@ function installPerplexica()
   mkdir $HSHQ_STACKS_DIR/perplexica/data
   set +e
   outputConfigPerplexica
-  installStack perplexica perplexica-app "" $HOME/perplexica.env
+  installStack perplexica perplexica-app "Ready in" $HOME/perplexica.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -84622,7 +84625,7 @@ function installFirecrawl()
   initServicesCredentials
   set +e
   outputConfigFirecrawl
-  installStack firecrawl firecrawl-api "" $HOME/firecrawl.env
+  installStack firecrawl firecrawl-api "All services running" $HOME/firecrawl.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -85600,7 +85603,7 @@ function installCrawl4AI()
   initServicesCredentials
   set +e
   outputConfigCrawl4AI
-  installStack crawl4ai crawl4ai-app "" $HOME/crawl4ai.env
+  installStack crawl4ai crawl4ai-app "Application startup complete" $HOME/crawl4ai.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -85752,7 +85755,7 @@ function installOllama()
   initServicesCredentials
   set +e
   outputConfigOllama
-  installStack ollama ollama-server "" $HOME/ollama.env
+  installStack ollama ollama-server "Listening on" $HOME/ollama.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -86197,7 +86200,7 @@ function installKhoj()
   set +e
   addUserMailu alias $KHOJ_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigKhoj
-  installStack khoj khoj-server "" $HOME/khoj.env
+  installStack khoj khoj-server "Uvicorn running on" $HOME/khoj.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -86477,7 +86480,7 @@ function installLobeChat()
   oidcBlock=$(cat $HOME/lobechat.oidc)
   rm -f $HOME/lobechat.oidc
   insertOIDCClientAuthelia lobechat "$oidcBlock"
-  installStack lobechat lobechat-app "" $HOME/lobechat.env
+  installStack lobechat lobechat-app "Ready in" $HOME/lobechat.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -86767,7 +86770,7 @@ function installInvokeAI()
   initServicesCredentials
   set +e
   outputConfigInvokeAI
-  installStack invokeai invokeai-app "" $HOME/invokeai.env
+  installStack invokeai invokeai-app "Invoke running on" $HOME/invokeai.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -88034,7 +88037,7 @@ function installDeepWikiOpen()
   initServicesCredentials
   set +e
   outputConfigDeepWikiOpen
-  installStack deepwikiopen deepwikiopen-app "" $HOME/deepwikiopen.env
+  installStack deepwikiopen deepwikiopen-app "Application startup complete" $HOME/deepwikiopen.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -88241,7 +88244,7 @@ function installDocling()
   initServicesCredentials
   set +e
   outputConfigDocling
-  installStack docling docling-app "" $HOME/docling.env
+  installStack docling docling-app "Application startup complete" $HOME/docling.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -90187,7 +90190,7 @@ function installWaterCrawl()
   addUserMailu alias $WATERCRAWL_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   WATERCRAWL_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $WATERCRAWL_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigWaterCrawl
-  installStack watercrawl watercrawl-app "" $HOME/watercrawl.env
+  installStack watercrawl watercrawl-app "Listening at" $HOME/watercrawl.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -91917,7 +91920,7 @@ function installMorphic()
   addUserMailu alias $MORPHIC_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   MORPHIC_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $MORPHIC_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigMorphic
-  installStack morphic morphic-app "" $HOME/morphic.env
+  installStack morphic morphic-app "Ready in" $HOME/morphic.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
