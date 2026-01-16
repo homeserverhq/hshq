@@ -206,7 +206,7 @@ function init()
   SS_REMOVING=removing
   SS_RUNNING=running
   RESTORE_SCREEN_NAME=hshqRestore
-  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential gio|libglib2.0-bin ffmpeg|ffmpeg php|php-cli gnupg2|gnupg2 apt-transport-https|apt-transport-https software-properties-common|software-properties-common"
+  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential gio|libglib2.0-bin ffmpeg|ffmpeg php|php-cli gnupg2|gnupg2 apt-transport-https|apt-transport-https software-properties-common|software-properties-common python3-werkzeug|python3-werkzeug"
   DESKTOP_APT_LIST=""
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd needrestart bsd-mailx"
   RELAYSERVER_UTILS_LIST="curl|curl awk|gawk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils logrotate|logrotate"
@@ -3302,7 +3302,6 @@ function installDependencies()
     echo "* - nofile 65536" | sudo tee -a /etc/security/limits.conf >/dev/null
   fi
   sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target > /dev/null 2>&1
-
   if [ "$IS_DESKTOP_ENV" = "true" ]; then
     for util in $DESKTOP_APT_LIST; do
       if [[ "$(isProgramInstalled $util)" = "false" ]]; then
@@ -3313,6 +3312,10 @@ function installDependencies()
     done
   fi
   installDocker
+  curl -fsSL https://gvisor.dev/archive.key | sudo gpg --yes --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | sudo tee /etc/apt/sources.list.d/gvisor.list > /dev/null 2>&1
+  sudo apt-get update > /dev/null 2>&1
+  performAptInstall runsc > /dev/null 2>&1
   for rem_util in $APT_REMOVE_LIST; do
     sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y $rem_util
   done
@@ -23824,13 +23827,13 @@ function version220Update()
   sudo sed -i "/^SVCD_AISTACK_MINDSDB_APP=/d" $CONFIG_FILE > /dev/null 2>&1
   sudo sed -i "/^SVCD_AISTACK_LANGFUSE=/d" $CONFIG_FILE > /dev/null 2>&1
   sudo sed -i "/^SVCD_AISTACK_OPENWEBUI=/d" $CONFIG_FILE > /dev/null 2>&1
-  performAptInstall python3-werkzeug > /dev/null 2>&1
   curl -fsSL https://gvisor.dev/archive.key | sudo gpg --yes --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | sudo tee /etc/apt/sources.list.d/gvisor.list > /dev/null 2>&1
   sudo apt-get update > /dev/null 2>&1
   performAptInstall runsc > /dev/null 2>&1
+  performAptInstall python3-werkzeug > /dev/null 2>&1
   echo "Adding readonly users to all running databases..."
-  addAllReadonlyDBUsers > /dev/null 2>&1
+  addAllReadonlyDBUsers
   echo "All readonly users added succesfully!"
   CADDY_SNIPPET_SAFEHEADERCORSPREFLIGHT=safe-header-cors-preflight
   outputCaddyHeaders
