@@ -30042,7 +30042,7 @@ function getScriptStackVersion()
     wekan)
       echo "v2" ;;
     revolt)
-      echo "v1" ;;
+      echo "v2" ;;
     frappe-hr)
       echo "v1" ;;
     minthcm)
@@ -30050,19 +30050,19 @@ function getScriptStackVersion()
     cloudbeaver)
       echo "v2" ;;
     twenty)
-      echo "v2" ;;
+      echo "v3" ;;
     odoo)
       echo "v2" ;;
     calcom)
       echo "v2" ;;
     rallly)
-      echo "v2" ;;
+      echo "v3" ;;
     easyappointments)
       echo "v1" ;;
     openproject)
-      echo "v2" ;;
+      echo "v3" ;;
     zammad)
-      echo "v2" ;;
+      echo "v3" ;;
     zulip)
       echo "v2" ;;
     killbill)
@@ -30070,7 +30070,7 @@ function getScriptStackVersion()
     invoiceshelf)
       echo "v1" ;;
     invoiceninja)
-      echo "v2" ;;
+      echo "v3" ;;
     dolibarr)
       echo "v2" ;;
     n8n)
@@ -38918,9 +38918,6 @@ function getScriptImageByContainerName()
     "revolt-pushd")
       container_image=$IMG_REVOLT_PUSHD
       ;;
-    "revolt-createbuckets")
-      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
-      ;;
     "frappe-hr-db")
       container_image=mirror.gcr.io/mariadb:10.8.8
       ;;
@@ -38960,9 +38957,6 @@ function getScriptImageByContainerName()
     "twenty-minio")
       container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
       ;;
-    "twenty-createbuckets")
-      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
-      ;;
     "odoo-db")
       container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
@@ -38986,9 +38980,6 @@ function getScriptImageByContainerName()
       ;;
     "rallly-minio")
       container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
-      ;;
-    "rallly-createbuckets")
-      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       ;;
     "easyappointments-db")
       container_image=mirror.gcr.io/mariadb:10.7.3
@@ -39016,9 +39007,6 @@ function getScriptImageByContainerName()
       ;;
     "openproject-minio")
       container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
-      ;;
-    "openproject-createbuckets")
-      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       ;;
     "zammad-db")
       container_image=mirror.gcr.io/postgres:16.9-bookworm
@@ -39052,9 +39040,6 @@ function getScriptImageByContainerName()
       ;;
     "zammad-minio")
       container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
-      ;;
-    "zammad-createbuckets")
-      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       ;;
     "zulip-db")
       container_image=$IMG_ZULIP_DB
@@ -39103,9 +39088,6 @@ function getScriptImageByContainerName()
       ;;
     "invoiceninja-minio")
       container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
-      ;;
-    "invoiceninja-createbuckets")
-      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       ;;
     "dolibarr-db")
       container_image=mirror.gcr.io/mariadb:10.7.3
@@ -71857,10 +71839,6 @@ function installRevolt()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName revolt-createbuckets)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/revolt
   mkdir $HSHQ_STACKS_DIR/revolt/config
@@ -71985,6 +71963,26 @@ services:
           - icons.minio
           - banners.minio
           - emojis.minio
+    entrypoint: >
+      /bin/sh -c "
+        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\\\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        /usr/bin/mc alias set minio http://revolt-minio:9000 ${REVOLT_MINIO_KEY} ${REVOLT_MINIO_SECRET}
+        echo 'Creating buckets revolt'
+        /usr/bin/mc mb minio/attachments
+        /usr/bin/mc mb minio/avatars
+        /usr/bin/mc mb minio/backgrounds
+        /usr/bin/mc mb minio/icons
+        /usr/bin/mc mb minio/banners
+        /usr/bin/mc mb minio/emojis
+        /usr/bin/mc mb minio/revolt-uploads
+        wait \\\$MINIO_PID
+      "
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -72090,7 +72088,6 @@ services:
       - no-new-privileges:true
     depends_on:
       - revolt-db
-      - revolt-createbuckets
     networks:
       - dock-proxy-net
       - dock-internalmail-net
@@ -72168,40 +72165,6 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
-
-  revolt-createbuckets:
-    image: $(getScriptImageByContainerName revolt-createbuckets)
-    container_name: revolt-createbuckets
-    hostname: revolt-createbuckets
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - minio
-    networks:
-      - int-revolt-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-    entrypoint: >
-      /bin/sh -c "
-      while ! /usr/bin/mc ready minio;
-      do
-        /usr/bin/mc alias set minio http://minio:9000 $REVOLT_MINIO_KEY $REVOLT_MINIO_SECRET;
-        echo 'Waiting minio...' && sleep 1;
-      done;
-      /usr/bin/mc mb minio/attachments;
-      /usr/bin/mc mb minio/avatars;
-      /usr/bin/mc mb minio/backgrounds;
-      /usr/bin/mc mb minio/icons;
-      /usr/bin/mc mb minio/banners;
-      /usr/bin/mc mb minio/emojis;
-      /usr/bin/mc mb minio/revolt-uploads;
-      exit 0;
-      "
 
 volumes:
   v-revolt-db:
@@ -72585,7 +72548,7 @@ function performUpdateRevolt()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=mirror.gcr.io/mongo:8.0.13,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/rabbitmq:4.1.4,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/caddy:2.10.0,ghcr.io/revoltchat/server:20250807-1,ghcr.io/revoltchat/bonfire:20250807-1,ghcr.io/revoltchat/client:master,ghcr.io/revoltchat/autumn:20250807-1,ghcr.io/revoltchat/january:20250807-1,ghcr.io/revoltchat/crond:20250807-1,ghcr.io/revoltchat/pushd:20250807-1,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       image_update_map[0]="mirror.gcr.io/mongo:8.0.13,mirror.gcr.io/mongo:8.0.13"
       image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
@@ -72600,6 +72563,28 @@ function performUpdateRevolt()
       image_update_map[10]="ghcr.io/revoltchat/crond:20250807-1,ghcr.io/revoltchat/crond:20250807-1"
       image_update_map[11]="ghcr.io/revoltchat/pushd:20250807-1,ghcr.io/revoltchat/pushd:20250807-1"
       image_update_map[12]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true fixV2ComposeRevolt
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      startStopStack revolt stop
+      sleep 2
+      startStopStack revolt start
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/mongo:8.0.13,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/rabbitmq:4.1.4,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/caddy:2.10.0,ghcr.io/revoltchat/server:20250807-1,ghcr.io/revoltchat/bonfire:20250807-1,ghcr.io/revoltchat/client:master,ghcr.io/revoltchat/autumn:20250807-1,ghcr.io/revoltchat/january:20250807-1,ghcr.io/revoltchat/crond:20250807-1,ghcr.io/revoltchat/pushd:20250807-1
+      image_update_map[0]="mirror.gcr.io/mongo:8.0.13,mirror.gcr.io/mongo:8.0.13"
+      image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[2]="mirror.gcr.io/rabbitmq:4.1.4,mirror.gcr.io/rabbitmq:4.1.4"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z"
+      image_update_map[4]="mirror.gcr.io/caddy:2.10.0,mirror.gcr.io/caddy:2.10.0"
+      image_update_map[5]="ghcr.io/revoltchat/server:20250807-1,ghcr.io/revoltchat/server:20250807-1"
+      image_update_map[6]="ghcr.io/revoltchat/bonfire:20250807-1,ghcr.io/revoltchat/bonfire:20250807-1"
+      image_update_map[7]="ghcr.io/revoltchat/client:master,ghcr.io/revoltchat/client:master"
+      image_update_map[8]="ghcr.io/revoltchat/autumn:20250807-1,ghcr.io/revoltchat/autumn:20250807-1"
+      image_update_map[9]="ghcr.io/revoltchat/january:20250807-1,ghcr.io/revoltchat/january:20250807-1"
+      image_update_map[10]="ghcr.io/revoltchat/crond:20250807-1,ghcr.io/revoltchat/crond:20250807-1"
+      image_update_map[11]="ghcr.io/revoltchat/pushd:20250807-1,ghcr.io/revoltchat/pushd:20250807-1"
     ;;
     *)
       is_upgrade_error=true
@@ -72609,6 +72594,332 @@ function performUpdateRevolt()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function fixV2ComposeRevolt()
+{
+  rm -f $HOME/revolt-compose.yml
+  cat <<EOFMT > $HOME/revolt-compose.yml
+$STACK_VERSION_PREFIX revolt v3
+
+services:
+  revolt-db:
+    image: mirror.gcr.io/mongo:8.0.13
+    container_name: revolt-db
+    hostname: revolt-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mongod --oplogSize 128 --quiet --auth
+    networks:
+      - int-revolt-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-revolt-db:/data/db
+      - v-revolt-dbexport:/dump
+
+  revolt-redis:
+    image: mirror.gcr.io/redis:8.2.0-bookworm
+    container_name: revolt-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $REVOLT_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-revolt-redis:/data
+
+  revolt-rabbitmq:
+    image: mirror.gcr.io/rabbitmq:4.1.4
+    container_name: revolt-rabbitmq
+    hostname: revolt-rabbitmq
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/rabbitmq:/var/lib/rabbitmq
+
+  minio:
+    image: mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+    container_name: revolt-minio
+    hostname: revolt-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: server /data
+    networks:
+      dock-proxy-net:
+      int-revolt-net:
+        aliases:
+          - revolt-uploads.minio
+          - attachments.minio
+          - avatars.minio
+          - backgrounds.minio
+          - icons.minio
+          - banners.minio
+          - emojis.minio
+    entrypoint: >
+      /bin/sh -c "
+        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\\\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        /usr/bin/mc alias set minio http://revolt-minio:9000 ${REVOLT_MINIO_KEY} ${REVOLT_MINIO_SECRET}
+        echo 'Creating buckets revolt'
+        /usr/bin/mc mb minio/attachments
+        /usr/bin/mc mb minio/avatars
+        /usr/bin/mc mb minio/backgrounds
+        /usr/bin/mc mb minio/icons
+        /usr/bin/mc mb minio/banners
+        /usr/bin/mc mb minio/emojis
+        /usr/bin/mc mb minio/revolt-uploads
+        wait \\\$MINIO_PID
+      "
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/minio:/data
+
+  revolt-caddy:
+    image: mirror.gcr.io/caddy:2.10.0
+    container_name: revolt-caddy
+    hostname: revolt-caddy
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/caddy/data:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/caddy/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/caddy/Caddyfile:/etc/caddy/Caddyfile
+
+  revolt-api:
+    image: ghcr.io/revoltchat/server:20250807-1
+    container_name: revolt-api
+    hostname: revolt-api
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - revolt-db
+      - revolt-redis
+      - revolt-rabbitmq
+    networks:
+      - dock-proxy-net
+      - dock-internalmail-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+  revolt-events:
+    image: ghcr.io/revoltchat/bonfire:20250807-1
+    container_name: revolt-events
+    hostname: revolt-events
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - revolt-db
+      - revolt-redis
+    networks:
+      - dock-proxy-net
+      - dock-internalmail-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+  revolt-web:
+    image: ghcr.io/revoltchat/client:master
+    container_name: revolt-web
+    hostname: revolt-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  revolt-autumn:
+    image: ghcr.io/revoltchat/autumn:20250807-1
+    container_name: revolt-autumn
+    hostname: revolt-autumn
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - revolt-db
+    networks:
+      - dock-proxy-net
+      - dock-internalmail-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+  revolt-january:
+    image: ghcr.io/revoltchat/january:20250807-1
+    container_name: revolt-january
+    hostname: revolt-january
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-internalmail-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+  revolt-crond:
+    image: ghcr.io/revoltchat/crond:20250807-1
+    container_name: revolt-crond
+    hostname: revolt-crond
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - revolt-db
+      - minio
+    networks:
+      - int-revolt-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+  revolt-pushd:
+    image: ghcr.io/revoltchat/pushd:20250807-1
+    container_name: revolt-pushd
+    hostname: revolt-pushd
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - revolt-db
+      - revolt-redis
+      - revolt-rabbitmq
+    networks:
+      - int-revolt-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+volumes:
+  v-revolt-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/revolt/db
+  v-revolt-dbexport:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/revolt/dbexport
+  v-revolt-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/revolt/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-revolt-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  
 }
 
 # FrappeHR
@@ -73297,10 +73608,6 @@ function installTwenty()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName twenty-createbuckets)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/twenty
   mkdir $HSHQ_STACKS_DIR/twenty/data
@@ -73472,6 +73779,20 @@ services:
     networks:
       - dock-proxy-net
       - int-twenty-net
+    entrypoint: >
+      /bin/sh -c "
+        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\\\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        /usr/bin/mc alias set minio http://twenty-minio:9000 ${TWENTY_MINIO_KEY} ${TWENTY_MINIO_SECRET}
+        echo 'Creating bucket twenty'
+        /usr/bin/mc mb minio/bucket-twenty
+        wait \\\$MINIO_PID
+      "
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -73479,34 +73800,6 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/twenty/minio:/data
-
-  twenty-createbuckets:
-    image: $(getScriptImageByContainerName twenty-createbuckets)
-    container_name: twenty-createbuckets
-    hostname: twenty-createbuckets
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - twenty-minio
-    networks:
-      - int-twenty-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-    entrypoint: >
-      /bin/sh -c "
-      while ! /usr/bin/mc ready minio;
-      do
-        /usr/bin/mc alias set minio http://twenty-minio:9000 $TWENTY_MINIO_KEY $TWENTY_MINIO_SECRET;
-        echo 'Waiting minio...' && sleep 1;
-      done;
-      /usr/bin/mc mb minio/bucket-twenty;
-      exit 0;
-      "
 
 volumes:
   v-twenty-data:
@@ -73593,13 +73886,27 @@ function performUpdateTwenty()
       image_update_map[4]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/twentycrm/twenty:v1.12.0,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
       image_update_map[2]="mirror.gcr.io/twentycrm/twenty:v1.12.0,mirror.gcr.io/twentycrm/twenty:v1.12.0"
       image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
       image_update_map[4]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true fixV2ComposeTwenty
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      startStopStack twenty stop
+      sleep 2
+      startStopStack twenty start
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/twentycrm/twenty:v1.12.0,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
+      image_update_map[2]="mirror.gcr.io/twentycrm/twenty:v1.12.0,mirror.gcr.io/twentycrm/twenty:v1.12.0"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
     ;;
     *)
       is_upgrade_error=true
@@ -73609,6 +73916,189 @@ function performUpdateTwenty()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function fixV2ComposeTwenty()
+{
+  rm -f $HOME/twenty-compose.yml
+  cat <<EOFMT > $HOME/twenty-compose.yml
+$STACK_VERSION_PREFIX twenty v3
+
+services:
+  twenty-db:
+    image: mirror.gcr.io/postgres:16.9-bookworm
+    container_name: twenty-db
+    hostname: twenty-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-twenty-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/twenty/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/twenty/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.twenty-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.twenty-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.twenty-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.twenty-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.twenty-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.twenty-hourly-db.email-from=Twenty Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.twenty-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.twenty-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.twenty-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.twenty-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.twenty-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.twenty-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.twenty-monthly-db.email-from=Twenty Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.twenty-monthly-db.mail-only-on-error=false"
+
+  twenty-app:
+    image: mirror.gcr.io/twentycrm/twenty:v1.12.0
+    container_name: twenty-app
+    hostname: twenty-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - twenty-db
+    networks:
+      - int-twenty-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    environment:
+      - DISABLE_DB_MIGRATIONS=false
+      - DISABLE_CRON_JOBS_REGISTRATION=false
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-twenty-data:/app/packages/twenty-server/.local-storage
+
+  twenty-worker:
+    image: mirror.gcr.io/twentycrm/twenty:v1.12.0
+    container_name: twenty-worker
+    hostname: twenty-worker
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: ["yarn", "worker:prod"]
+    depends_on:
+      - twenty-db
+    networks:
+      - int-twenty-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    environment:
+      - DISABLE_DB_MIGRATIONS=true
+      - DISABLE_CRON_JOBS_REGISTRATION=true
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-twenty-data:/app/packages/twenty-server/.local-storage
+
+  twenty-redis:
+    image: mirror.gcr.io/redis:8.4.0-bookworm
+    container_name: twenty-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $TWENTY_REDIS_PASSWORD
+      --appendonly yes
+      --maxmemory-policy noeviction
+    networks:
+      - int-twenty-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-twenty-redis:/data
+
+  twenty-minio:
+    image: mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: twenty-minio
+    hostname: twenty-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: server /data
+    networks:
+      - dock-proxy-net
+      - int-twenty-net
+    entrypoint: >
+      /bin/sh -c "
+        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\\\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        /usr/bin/mc alias set minio http://twenty-minio:9000 ${TWENTY_MINIO_KEY} ${TWENTY_MINIO_SECRET}
+        echo 'Creating bucket twenty'
+        /usr/bin/mc mb minio/bucket-twenty
+        wait \\\$MINIO_PID
+      "
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/twenty/minio:/data
+
+volumes:
+  v-twenty-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/twenty/data
+  v-twenty-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/twenty/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-twenty-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
 }
 
 # Odoo
@@ -74172,10 +74662,6 @@ function installRallly()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName rallly-createbuckets)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/rallly
   mkdir $HSHQ_STACKS_DIR/rallly/db
@@ -74302,6 +74788,21 @@ services:
     networks:
       - dock-proxy-net
       - int-rallly-net
+    entrypoint: >
+      /bin/sh -c "
+        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\\\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        /usr/bin/mc alias set minio http://rallly-minio:9000 ${RALLLY_MINIO_KEY} ${RALLLY_MINIO_SECRET}
+        echo 'Creating buckets rallly'
+        /usr/bin/mc mb minio/rallly
+        /usr/bin/mc anonymous set public minio/rallly/public
+        wait \\\$MINIO_PID
+      "
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -74309,35 +74810,6 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/rallly/minio:/data
-
-  rallly-createbuckets:
-    image: $(getScriptImageByContainerName rallly-createbuckets)
-    container_name: rallly-createbuckets
-    hostname: rallly-createbuckets
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - rallly-minio
-    networks:
-      - int-rallly-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-    entrypoint: >
-      /bin/sh -c "
-      while ! /usr/bin/mc ready minio;
-      do
-        /usr/bin/mc alias set minio http://rallly-minio:9000 $RALLLY_MINIO_KEY $RALLLY_MINIO_SECRET;
-        echo 'Waiting minio...' && sleep 1;
-      done;
-      /usr/bin/mc mb minio/rallly;
-      /usr/bin/mc anonymous set public minio/rallly/public;
-      exit 0;
-      "
 
 networks:
   dock-proxy-net:
@@ -74436,12 +74908,25 @@ function performUpdateRallly()
       image_update_map[3]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/lukevella/rallly:4.5.7,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
       image_update_map[1]="mirror.gcr.io/lukevella/rallly:4.5.7,mirror.gcr.io/lukevella/rallly:4.5.7"
       image_update_map[2]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
       image_update_map[3]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true fixV2ComposeRallly
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      startStopStack rallly stop
+      sleep 2
+      startStopStack rallly start
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/lukevella/rallly:4.5.7,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
+      image_update_map[1]="mirror.gcr.io/lukevella/rallly:4.5.7,mirror.gcr.io/lukevella/rallly:4.5.7"
+      image_update_map[2]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
     ;;
     *)
       is_upgrade_error=true
@@ -74451,6 +74936,128 @@ function performUpdateRallly()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function fixV2ComposeRallly()
+{
+  rm -f $HOME/rallly-compose.yml
+  cat <<EOFMT > $HOME/rallly-compose.yml
+$STACK_VERSION_PREFIX rallly v3
+
+services:
+  rallly-db:
+    image: mirror.gcr.io/postgres:17.6
+    container_name: rallly-db
+    hostname: rallly-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-rallly-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/rallly/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/rallly/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.rallly-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.rallly-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.rallly-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.rallly-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.rallly-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.rallly-hourly-db.email-from=Rallly Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.rallly-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.rallly-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.rallly-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.rallly-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.rallly-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.rallly-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.rallly-monthly-db.email-from=Rallly Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.rallly-monthly-db.mail-only-on-error=false"
+
+  rallly-app:
+    image: mirror.gcr.io/lukevella/rallly:4.5.7
+    container_name: rallly-app
+    hostname: rallly-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - rallly-db
+    networks:
+      - int-rallly-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  rallly-minio:
+    image: mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: rallly-minio
+    hostname: rallly-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: server /data
+    networks:
+      - dock-proxy-net
+      - int-rallly-net
+    entrypoint: >
+      /bin/sh -c "
+        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\\\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        /usr/bin/mc alias set minio http://rallly-minio:9000 ${RALLLY_MINIO_KEY} ${RALLLY_MINIO_SECRET}
+        echo 'Creating buckets rallly'
+        /usr/bin/mc mb minio/rallly
+        /usr/bin/mc anonymous set public minio/rallly/public
+        wait \\\$MINIO_PID
+      "
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/rallly/minio:/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-rallly-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
 }
 
 # EasyAppointments
@@ -75357,10 +75964,6 @@ function installOpenProject()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName openproject-createbuckets)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/openproject
   mkdir $HSHQ_STACKS_DIR/openproject/db
@@ -75582,6 +76185,20 @@ services:
 #    networks:
 #      - dock-proxy-net
 #      - int-openproject-net
+#   entrypoint: >
+#     /bin/sh -c "
+#       minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+#       MINIO_PID=\\\$!
+#       while ! curl -s http://localhost:9000/minio/health/live; do
+#         echo 'Waiting for MinIO to start...'
+#         sleep 1
+#       done
+#       sleep 5
+#       /usr/bin/mc alias set minio http://openproject-minio:9000 ${OPENPROJECT_MINIO_KEY} ${OPENPROJECT_MINIO_SECRET}
+#       echo 'Creating bucket openproject'
+#       /usr/bin/mc mb minio/uploads
+#       wait \\\$MINIO_PID
+#     "
 #    volumes:
 #      - /etc/localtime:/etc/localtime:ro
 #      - /etc/timezone:/etc/timezone:ro
@@ -75589,34 +76206,6 @@ services:
 #      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
 #      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 #      - \${PORTAINER_HSHQ_STACKS_DIR}/openproject/minio:/data
-#
-#  openproject-createbuckets:
-#    image: $(getScriptImageByContainerName openproject-createbuckets)
-#    container_name: openproject-createbuckets
-#    hostname: openproject-createbuckets
-#    env_file: stack.env
-#    security_opt:
-#      - no-new-privileges:true
-#    depends_on:
-#      - openproject-minio
-#    networks:
-#      - int-openproject-net
-#    volumes:
-#      - /etc/localtime:/etc/localtime:ro
-#      - /etc/timezone:/etc/timezone:ro
-#      - /etc/ssl/certs:/etc/ssl/certs:ro
-#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-#    entrypoint: >
-#      /bin/sh -c "
-#      while ! /usr/bin/mc ready minio;
-#      do
-#        /usr/bin/mc alias set minio http://openproject-minio:9000 $OPENPROJECT_MINIO_KEY $OPENPROJECT_MINIO_SECRET;
-#        echo 'Waiting minio...' && sleep 1;
-#      done;
-#      /usr/bin/mc mb minio/uploads;
-#      exit 0;
-#      "
 
 volumes:
   v-openproject-data:
@@ -75732,13 +76321,27 @@ function performUpdateOpenProject()
       image_update_map[4]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/openproject/openproject:16.6.2-slim,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="mirror.gcr.io/openproject/openproject:16.6.2-slim,mirror.gcr.io/openproject/openproject:16.6.2-slim"
       image_update_map[2]="mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/memcached:1.6.39-alpine"
       image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
       image_update_map[4]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true fixV2ComposeOpenProject
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      startStopStack openproject stop
+      sleep 2
+      startStopStack openproject start
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/openproject/openproject:16.6.2-slim,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/openproject/openproject:16.6.2-slim,mirror.gcr.io/openproject/openproject:16.6.2-slim"
+      image_update_map[2]="mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/memcached:1.6.39-alpine"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
     ;;
     *)
       is_upgrade_error=true
@@ -75748,6 +76351,234 @@ function performUpdateOpenProject()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function fixV2ComposeOpenProject()
+{
+  rm -f $HOME/openproject-compose.yml
+  cat <<EOFMT > $HOME/openproject-compose.yml
+$STACK_VERSION_PREFIX openproject v3
+
+services:
+  openproject-db:
+    image: mirror.gcr.io/postgres:16.9-bookworm
+    container_name: openproject-db
+    hostname: openproject-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-openproject-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openproject/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openproject/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.openproject-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.openproject-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.openproject-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.openproject-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.openproject-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.openproject-hourly-db.email-from=OpenProject Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.openproject-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.openproject-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.openproject-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.openproject-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.openproject-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.openproject-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.openproject-monthly-db.email-from=OpenProject Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.openproject-monthly-db.mail-only-on-error=false"
+
+  openproject-memcache:
+    image: mirror.gcr.io/memcached:1.6.39-alpine
+    container_name: openproject-memcache
+    hostname: openproject-memcache
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-openproject-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  openproject-web:
+    image: mirror.gcr.io/openproject/openproject:16.6.2-slim
+    container_name: openproject-web
+    hostname: openproject-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: "./docker/prod/web"
+    depends_on:
+      - openproject-db
+      - openproject-memcache
+      - openproject-seeder
+    networks:
+      - int-openproject-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-openproject-data:/var/openproject/assets
+
+  openproject-worker:
+    image: mirror.gcr.io/openproject/openproject:16.6.2-slim
+    container_name: openproject-worker
+    hostname: openproject-worker
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: "./docker/prod/worker"
+    depends_on:
+      - openproject-db
+      - openproject-memcache
+      - openproject-seeder
+    networks:
+      - int-openproject-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-openproject-data:/var/openproject/assets
+
+  openproject-cron:
+    image: mirror.gcr.io/openproject/openproject:16.6.2-slim
+    container_name: openproject-cron
+    hostname: openproject-cron
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: "./docker/prod/cron"
+    depends_on:
+      - openproject-db
+      - openproject-memcache
+      - openproject-seeder
+    networks:
+      - int-openproject-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-openproject-data:/var/openproject/assets
+
+  openproject-seeder:
+    image: mirror.gcr.io/openproject/openproject:16.6.2-slim
+    container_name: openproject-seeder
+    hostname: openproject-seeder
+    restart: on-failure
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: "./docker/prod/seeder"
+    depends_on:
+      - openproject-db
+      - openproject-memcache
+    networks:
+      - int-openproject-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-openproject-data:/var/openproject/assets
+
+#  openproject-minio:
+#    image: mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+#    container_name: openproject-minio
+#    hostname: openproject-minio
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    command: server /data
+#    networks:
+#      - dock-proxy-net
+#      - int-openproject-net
+#   entrypoint: >
+#     /bin/sh -c "
+#       minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+#       MINIO_PID=\\\$!
+#       while ! curl -s http://localhost:9000/minio/health/live; do
+#         echo 'Waiting for MinIO to start...'
+#         sleep 1
+#       done
+#       sleep 5
+#       /usr/bin/mc alias set minio http://openproject-minio:9000 ${OPENPROJECT_MINIO_KEY} ${OPENPROJECT_MINIO_SECRET}
+#       echo 'Creating bucket openproject'
+#       /usr/bin/mc mb minio/uploads
+#       wait \\\$MINIO_PID
+#     "
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+#      - \${PORTAINER_HSHQ_STACKS_DIR}/openproject/minio:/data
+
+volumes:
+  v-openproject-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/openproject/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  int-openproject-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
 }
 
 # Zammad
@@ -75781,10 +76612,6 @@ function installZammad()
     return 1
   fi
   pullImage $(getScriptImageByContainerName zammad-minio)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
-  pullImage $(getScriptImageByContainerName zammad-createbuckets)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -76258,6 +77085,20 @@ services:
 #    networks:
 #      - dock-proxy-net
 #      - int-zammad-net
+#   entrypoint: >
+#     /bin/sh -c "
+#       minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+#       MINIO_PID=\\\$!
+#       while ! curl -s http://localhost:9000/minio/health/live; do
+#         echo 'Waiting for MinIO to start...'
+#         sleep 1
+#       done
+#       sleep 5
+#       /usr/bin/mc alias set minio http://zammad-minio:9000 ${ZAMMAD_MINIO_KEY} ${ZAMMAD_MINIO_SECRET}
+#       echo 'Creating bucket zammad'
+#       /usr/bin/mc mb minio/zammad
+#       wait \\\$MINIO_PID
+#     "
 #    volumes:
 #      - /etc/localtime:/etc/localtime:ro
 #      - /etc/timezone:/etc/timezone:ro
@@ -76265,34 +77106,6 @@ services:
 #      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
 #      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 #      - \${PORTAINER_HSHQ_STACKS_DIR}/zammad/minio:/data
-#
-#  zammad-createbuckets:
-#    image: $(getScriptImageByContainerName zammad-createbuckets)
-#    container_name: zammad-createbuckets
-#    hostname: zammad-createbuckets
-#    env_file: stack.env
-#    security_opt:
-#      - no-new-privileges:true
-#    depends_on:
-#      - zammad-minio
-#    networks:
-#      - int-zammad-net
-#    volumes:
-#      - /etc/localtime:/etc/localtime:ro
-#      - /etc/timezone:/etc/timezone:ro
-#      - /etc/ssl/certs:/etc/ssl/certs:ro
-#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-#    entrypoint: >
-#      /bin/sh -c "
-#      while ! /usr/bin/mc ready minio;
-#      do
-#        /usr/bin/mc alias set minio http://zammad-minio:9000 $ZAMMAD_MINIO_KEY $ZAMMAD_MINIO_SECRET;
-#        echo 'Waiting minio...' && sleep 1;
-#      done;
-#      /usr/bin/mc mb minio/zammad;
-#      exit 0;
-#      "
 
 volumes:
   v-zammad-storage:
@@ -76429,7 +77242,7 @@ function performUpdateZammad()
       image_update_map[6]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/zammad/zammad:6.5.2-49,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/elasticsearch:9.2.2,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="ghcr.io/zammad/zammad:6.5.2-49,ghcr.io/zammad/zammad:6.5.2-49"
@@ -76438,6 +77251,22 @@ function performUpdateZammad()
       image_update_map[4]="mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/memcached:1.6.39-alpine"
       image_update_map[5]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
       image_update_map[6]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true fixV2ComposeZammad
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      startStopStack zammad stop
+      sleep 2
+      startStopStack zammad start
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/zammad/zammad:6.5.2-49,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/elasticsearch:9.2.2,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="ghcr.io/zammad/zammad:6.5.2-49,ghcr.io/zammad/zammad:6.5.2-49"
+      image_update_map[2]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
+      image_update_map[3]="mirror.gcr.io/elasticsearch:9.2.2,mirror.gcr.io/elasticsearch:9.2.2"
+      image_update_map[4]="mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/memcached:1.6.39-alpine"
+      image_update_map[5]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
     ;;
     *)
       is_upgrade_error=true
@@ -76447,6 +77276,324 @@ function performUpdateZammad()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function fixV2ComposeZammad()
+{
+  rm -f $HOME/zammad-compose.yml
+  cat <<EOFMT > $HOME/zammad-compose.yml
+$STACK_VERSION_PREFIX zammad v3
+
+services:
+  zammad-db:
+    image: mirror.gcr.io/postgres:16.9-bookworm
+    container_name: zammad-db
+    hostname: zammad-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-zammad-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/zammad/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/zammad/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.zammad-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.zammad-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.zammad-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.zammad-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.zammad-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.zammad-hourly-db.email-from=Zammad Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.zammad-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.zammad-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.zammad-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.zammad-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.zammad-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.zammad-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.zammad-monthly-db.email-from=Zammad Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.zammad-monthly-db.mail-only-on-error=false"
+
+  zammad-init:
+    image: ghcr.io/zammad/zammad:6.5.2-49
+    container_name: zammad-init
+    hostname: zammad-init
+    restart: on-failure
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-init
+    depends_on:
+      - zammad-db
+    networks:
+      - int-zammad-net
+      - dock-internalmail-net
+      - dock-ldap-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-zammad-storage:/opt/zammad/storage
+
+  zammad-backup:
+    image: ghcr.io/zammad/zammad:6.5.2-49
+    container_name: zammad-backup
+    hostname: zammad-backup
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-backup
+    depends_on:
+      - zammad-db
+    networks:
+      - int-zammad-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-zammad-storage:/opt/zammad/storage
+      - v-zammad-backup:/var/tmp/zammad
+
+  zammad-nginx:
+    image: ghcr.io/zammad/zammad:6.5.2-49
+    container_name: zammad-nginx
+    hostname: zammad-nginx
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-nginx
+    depends_on:
+      - zammad-railsserver
+    networks:
+      - int-zammad-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-zammad-storage:/opt/zammad/storage
+
+  zammad-railsserver:
+    image: ghcr.io/zammad/zammad:6.5.2-49
+    container_name: zammad-railsserver
+    hostname: zammad-railsserver
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-railsserver
+    depends_on:
+      - zammad-db
+    networks:
+      - int-zammad-net
+      - dock-proxy-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/zammad/config:/config
+      - v-zammad-storage:/opt/zammad/storage
+
+  zammad-scheduler:
+    image: ghcr.io/zammad/zammad:6.5.2-49
+    container_name: zammad-scheduler
+    hostname: zammad-scheduler
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-scheduler
+    depends_on:
+      - zammad-db
+    networks:
+      - int-zammad-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-zammad-storage:/opt/zammad/storage
+
+  zammad-websocket:
+    image: ghcr.io/zammad/zammad:6.5.2-49
+    container_name: zammad-websocket
+    hostname: zammad-websocket
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-websocket
+    depends_on:
+      - zammad-db
+    networks:
+      - int-zammad-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-zammad-storage:/opt/zammad/storage
+
+  zammad-memcache:
+    image: mirror.gcr.io/memcached:1.6.39-alpine
+    container_name: zammad-memcache
+    hostname: zammad-memcache
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: memcached -m 256M
+    networks:
+      - int-zammad-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  zammad-redis:
+    image: mirror.gcr.io/redis:8.4.0-bookworm
+    container_name: zammad-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $ZAMMAD_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-zammad-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-zammad-redis:/data
+
+#  zammad-es:
+#    image: mirror.gcr.io/elasticsearch:9.2.2
+#    container_name: zammad-es
+#    hostname: zammad-es
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    mem_limit: 2g
+#    networks:
+#      - int-zammad-net
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - v-zammad-es:/usr/share/elasticsearch/data
+
+# If enabling minio, ensure to add this to environment variables:
+# S3_URL=http://$ZAMMAD_MINIO_KEY:$ZAMMAD_MINIO_SECRET@zammad-minio:9000/zammad?region=zammad&force_path_style=true
+#
+#  zammad-minio:
+#    image: mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+#    container_name: zammad-minio
+#    hostname: zammad-minio
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    command: server /data
+#    networks:
+#      - dock-proxy-net
+#      - int-zammad-net
+#   entrypoint: >
+#     /bin/sh -c "
+#       minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+#       MINIO_PID=\\\$!
+#       while ! curl -s http://localhost:9000/minio/health/live; do
+#         echo 'Waiting for MinIO to start...'
+#         sleep 1
+#       done
+#       sleep 5
+#       /usr/bin/mc alias set minio http://zammad-minio:9000 ${ZAMMAD_MINIO_KEY} ${ZAMMAD_MINIO_SECRET}
+#       echo 'Creating bucket zammad'
+#       /usr/bin/mc mb minio/zammad
+#       wait \\\$MINIO_PID
+#     "
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+#      - \${PORTAINER_HSHQ_STACKS_DIR}/zammad/minio:/data
+
+volumes:
+  v-zammad-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/zammad/storage
+  v-zammad-backup:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/zammad/backup
+  v-zammad-es:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/zammad/es
+  v-zammad-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/zammad/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  int-zammad-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
 }
 
 # Zulip
@@ -78274,10 +79421,6 @@ function installInvoiceNinja()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName invoiceninja-createbuckets)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/invoiceninja
   mkdir $HSHQ_STACKS_DIR/invoiceninja/config
@@ -78457,6 +79600,20 @@ services:
 #    networks:
 #      - dock-proxy-net
 #      - int-invoiceninja-net
+#   entrypoint: >
+#     /bin/sh -c "
+#       minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+#       MINIO_PID=\\\$!
+#       while ! curl -s http://localhost:9000/minio/health/live; do
+#         echo 'Waiting for MinIO to start...'
+#         sleep 1
+#       done
+#       sleep 5
+#       /usr/bin/mc alias set minio http://invoiceninja-minio:9000 ${INVOICENINJA_MINIO_KEY} ${INVOICENINJA_MINIO_SECRET}
+#       echo 'Creating bucket invoiceninja'
+#       /usr/bin/mc mb minio/invoiceninja
+#       wait \\\$MINIO_PID
+#     "
 #    volumes:
 #      - /etc/localtime:/etc/localtime:ro
 #      - /etc/timezone:/etc/timezone:ro
@@ -78464,34 +79621,6 @@ services:
 #      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
 #      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 #      - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/minio:/data
-#
-#  invoiceninja-createbuckets:
-#    image: $(getScriptImageByContainerName invoiceninja-createbuckets)
-#    container_name: invoiceninja-createbuckets
-#    hostname: invoiceninja-createbuckets
-#    env_file: stack.env
-#    security_opt:
-#      - no-new-privileges:true
-#    depends_on:
-#      - invoiceninja-minio
-#    networks:
-#      - int-invoiceninja-net
-#    volumes:
-#      - /etc/localtime:/etc/localtime:ro
-#      - /etc/timezone:/etc/timezone:ro
-#      - /etc/ssl/certs:/etc/ssl/certs:ro
-#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-#    entrypoint: >
-#      /bin/sh -c "
-#      while ! /usr/bin/mc ready minio;
-#      do
-#        /usr/bin/mc alias set minio http://invoiceninja-minio:9000 $INVOICENINJA_MINIO_KEY $INVOICENINJA_MINIO_SECRET;
-#        echo 'Waiting minio...' && sleep 1;
-#      done;
-#      /usr/bin/mc mb minio/invoiceninja;
-#      exit 0;
-#      "
 
 volumes:
   v-invoiceninja-db:
@@ -78669,7 +79798,7 @@ function performUpdateInvoiceNinja()
       image_update_map[5]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37,mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
       image_update_map[1]="mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37,mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37"
@@ -78677,6 +79806,21 @@ function performUpdateInvoiceNinja()
       image_update_map[3]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
       image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
       image_update_map[5]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true fixV2ComposeInvoiceNinja
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      startStopStack invoiceninja stop
+      sleep 2
+      startStopStack invoiceninja start
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37,mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37,mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37"
+      image_update_map[2]="mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
+      image_update_map[3]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
+      image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
     ;;
     *)
       is_upgrade_error=true
@@ -78686,6 +79830,200 @@ function performUpdateInvoiceNinja()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function fixV2ComposeInvoiceNinja()
+{
+  rm -f $HOME/invoiceninja-compose.yml
+  cat <<EOFMT > $HOME/invoiceninja-compose.yml
+$STACK_VERSION_PREFIX invoiceninja v3
+
+services:
+  invoiceninja-db:
+    image: mirror.gcr.io/mariadb:10.7.3
+    container_name: invoiceninja-db
+    hostname: invoiceninja-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    networks:
+      - int-invoiceninja-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-invoiceninja-db:/var/lib/mysql
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.invoiceninja-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.invoiceninja-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.invoiceninja-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.invoiceninja-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.invoiceninja-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.invoiceninja-hourly-db.email-from=InvoiceNinja Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.invoiceninja-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.invoiceninja-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.invoiceninja-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.invoiceninja-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.invoiceninja-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.invoiceninja-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.invoiceninja-monthly-db.email-from=InvoiceNinja Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.invoiceninja-monthly-db.mail-only-on-error=false"
+
+  invoiceninja-app:
+    image: mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37
+    container_name: invoiceninja-app
+    hostname: invoiceninja-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - invoiceninja-db
+    networks:
+      - int-invoiceninja-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      #- \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/config/env:/var/www/html/.env
+      #- \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/config/php.ini:/usr/local/etc/php/conf.d/invoiceninja.ini:ro
+      #- \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/config/php-fpm.conf:/usr/local/etc/php-fpm.d/invoiceninja.conf:ro
+      #- \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/config/supervisord.conf:/etc/supervisor/conf.d/supervisord.conf:ro
+      - v-invoiceninja-public:/var/www/html/public
+      - v-invoiceninja-storage:/var/www/html/storage
+
+  invoiceninja-web:
+    image: mirror.gcr.io/nginx:1.29.3-alpine
+    container_name: invoiceninja-web
+    hostname: invoiceninja-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - invoiceninja-db
+    networks:
+      - int-invoiceninja-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/nginx:/etc/nginx/conf.d:ro
+      - v-invoiceninja-public:/var/www/html/public
+      - v-invoiceninja-storage:/var/www/html/storage
+
+  invoiceninja-redis:
+    image: mirror.gcr.io/redis:8.4.0-bookworm
+    container_name: invoiceninja-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $INVOICENINJA_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-invoiceninja-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-invoiceninja-redis:/data
+
+#  To enable, set FILESYSTEM_DRIVER=s3 in environment. However,
+#  this feature is inop at the moment.
+#
+#  invoiceninja-minio:
+#    image: mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+#    container_name: invoiceninja-minio
+#    hostname: invoiceninja-minio
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    command: server /data
+#    networks:
+#      - dock-proxy-net
+#      - int-invoiceninja-net
+#   entrypoint: >
+#     /bin/sh -c "
+#       minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+#       MINIO_PID=\\\$!
+#       while ! curl -s http://localhost:9000/minio/health/live; do
+#         echo 'Waiting for MinIO to start...'
+#         sleep 1
+#       done
+#       sleep 5
+#       /usr/bin/mc alias set minio http://invoiceninja-minio:9000 ${INVOICENINJA_MINIO_KEY} ${INVOICENINJA_MINIO_SECRET}
+#       echo 'Creating bucket invoiceninja'
+#       /usr/bin/mc mb minio/invoiceninja
+#       wait \\\$MINIO_PID
+#     "
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+#      - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/minio:/data
+
+volumes:
+  v-invoiceninja-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/db
+  v-invoiceninja-public:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/public
+  v-invoiceninja-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/storage
+  v-invoiceninja-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/invoiceninja/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-invoiceninja-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
 }
 
 # Dolibarr
@@ -91121,6 +92459,7 @@ SEARXNG_SAFESEARCH=0
 NEXT_PUBLIC_ENABLE_SHARE=true
 NEXT_PUBLIC_SUPABASE_URL=http://morphic-supabase-kong:8000
 NEXT_PUBLIC_SUPABASE_ANON_KEY=$MORPHIC_SUPABASE_ANON_KEY
+KONG_NGINX_WORKER_PROCESSES=4
 POSTGRES_DB=$MORPHIC_DATABASE_NAME
 POSTGRES_USER=$MORPHIC_DATABASE_USER
 POSTGRES_PASSWORD=$MORPHIC_DATABASE_USER_PASSWORD
