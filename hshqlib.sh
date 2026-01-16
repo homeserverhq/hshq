@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=219
+HSHQ_LIB_SCRIPT_VERSION=220
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -77,6 +77,9 @@ function init()
   DOCKER_VERSION_UBUNTU_2204=5:29.1.1-1~ubuntu.22.04~jammy
   DOCKER_VERSION_UBUNTU_2404=5:29.1.1-1~ubuntu.24.04~noble
   DOCKER_VERSION_DEBIAN_12=5:29.1.1-1~debian.12~bookworm
+  DOCKER_VERSION_CHECK_UBUNTU_2204=29.1.1
+  DOCKER_VERSION_CHECK_UBUNTU_2404=29.1.1
+  DOCKER_VERSION_CHECK_DEBIAN_12=29.1.1
   NET_EXTERNAL_BRIDGE_NAME=brdockext
   NET_EXTERNAL_SUBNET=172.16.1.0/24
   NET_EXTERNAL_SUBNET_PREFIX=172.16.1
@@ -101,6 +104,9 @@ function init()
   NET_MAILU_INT_BRIDGE_NAME=brmailuint
   NET_MAILU_INT_SUBNET=172.16.8.0/24
   NET_MAILU_INT_SUBNET_PREFIX=172.16.8
+  NET_AIPRIVATE_SUBNET=172.16.9.0/24
+  NET_AIPRIVATE_SUBNET_PREFIX=172.16.9
+  NET_AIPRIVATE_BRIDGE_NAME=brdockaipriv
   ADGUARD_DNS_PORT=53
   CADDY_HTTP_PORT=80
   CADDY_HTTPS_PORT=443
@@ -112,6 +118,7 @@ function init()
   JITSI_COLIBRI_PORT=8020
   JITSI_JVB_PORT=4443
   JITSI_MEET_PORT=10000
+  KHOJ_VNC_PORT=55901
   MAILU_PORT_1=25
   MAILU_PORT_2=110
   MAILU_PORT_3=143
@@ -202,7 +209,7 @@ function init()
   SS_REMOVING=removing
   SS_RUNNING=running
   RESTORE_SCREEN_NAME=hshqRestore
-  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential gio|libglib2.0-bin ffmpeg|ffmpeg php|php-cli gnupg2|gnupg2 apt-transport-https|apt-transport-https software-properties-common|software-properties-common"
+  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential gio|libglib2.0-bin ffmpeg|ffmpeg php|php-cli gnupg2|gnupg2 apt-transport-https|apt-transport-https software-properties-common|software-properties-common python3-werkzeug|python3-werkzeug"
   DESKTOP_APT_LIST=""
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd needrestart bsd-mailx"
   RELAYSERVER_UTILS_LIST="curl|curl awk|gawk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils logrotate|logrotate"
@@ -3069,7 +3076,7 @@ net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 
 # Reserve for Coturn and any other ports above 10000
-net.ipv4.ip_local_reserved_ports = $JITSI_MEET_PORT,$COTURN_COMMS_MIN_PORT-$COTURN_COMMS_MAX_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$WAZUH_PORT_4
+net.ipv4.ip_local_reserved_ports = $JITSI_MEET_PORT,$KHOJ_VNC_PORT,$COTURN_COMMS_MIN_PORT-$COTURN_COMMS_MAX_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$WAZUH_PORT_4
 
 # See https://community.home-assistant.io/t/zeroconf-error/153883
 
@@ -3298,7 +3305,6 @@ function installDependencies()
     echo "* - nofile 65536" | sudo tee -a /etc/security/limits.conf >/dev/null
   fi
   sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target > /dev/null 2>&1
-
   if [ "$IS_DESKTOP_ENV" = "true" ]; then
     for util in $DESKTOP_APT_LIST; do
       if [[ "$(isProgramInstalled $util)" = "false" ]]; then
@@ -3309,6 +3315,10 @@ function installDependencies()
     done
   fi
   installDocker
+  curl -fsSL https://gvisor.dev/archive.key | sudo gpg --yes --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | sudo tee /etc/apt/sources.list.d/gvisor.list > /dev/null 2>&1
+  sudo apt-get update > /dev/null 2>&1
+  performAptInstall runsc > /dev/null 2>&1
   for rem_util in $APT_REMOVE_LIST; do
     sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y $rem_util
   done
@@ -8258,17 +8268,17 @@ EOFBS
 
 EOFBS
 
-# Special case - if RelayServer is behind a firewall and using a private IP for default route,
-# then allow traffic from the gateway, since raw table blocks all private ranges
-def_route_gate=\$(ip route | grep -e "^default" | awk '{print \$3}')
-is_def_priv=\$(checkIsIPPrivate \$def_route_gate)
-def_route_cidr_part=\$(ip route | grep \$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
-if [ "\$is_def_priv" = "true" ]; then
-  echo "Default route is in private range, adding allowance to (raw)iptables..."
-  sudo sed -i "/  # Block spoofed packets.*/a\  iptables -t raw -C PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j ACCEPT > \/dev\/null 2>&1 || iptables -t raw -I PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j ACCEPT" \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
-else
-  echo "Default route is in public range."
-fi
+  # Special case - if RelayServer is behind a firewall and using a private IP for default route,
+  # then allow traffic from the gateway, since raw table blocks all private ranges
+  def_route_gate=\$(ip route | grep -e "^default" | awk '{print \$3}')
+  is_def_priv=\$(checkIsIPPrivate \$def_route_gate)
+  def_route_cidr_part=\$(ip route | grep \$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
+  if [ "\$is_def_priv" = "true" ]; then
+    echo "Default route is in private range, adding allowance to (raw)iptables..."
+    sudo sed -i "/  # Block spoofed packets.*/a\  iptables -t raw -C PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j ACCEPT > \/dev\/null 2>&1 || iptables -t raw -I PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j ACCEPT" \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
+  else
+    echo "Default route is in public range."
+  fi
 
   sudo chmod 744 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
   sudo \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
@@ -15535,6 +15545,23 @@ function getPasswordWithSymbol()
   echo ${rand_pw:0:rand_pos}"@"${rand_pw:rand_pos}
 }
 
+function base64URLEncode()
+{
+  openssl enc -base64 -A | tr '+/' '-_' | tr -d '='
+}
+
+function generateFullJWTToken()
+{
+  header="$1"
+  payload="$2"
+  jwt_secret="$3"
+  header_base64=$(printf %s "$header" | base64URLEncode)
+  payload_base64=$(printf %s "$payload" | base64URLEncode)
+  signed_content="${header_base64}.${payload_base64}"
+  signature=$(printf %s "$signed_content" | openssl dgst -binary -sha256 -hmac "$jwt_secret" | base64URLEncode)
+  printf '%s' "${signed_content}.${signature}"
+}
+
 function performExitFunctions()
 {
   is_show_msgbox="$1"
@@ -16896,9 +16923,6 @@ function loadConfigVars()
     exit 9
   fi
   loadSvcVars
-  set +e
-  getAdditionalSources
-  set -e
   if ! [ "$is_chk_update" = "false" ]; then
     checkUpdateVersion
   fi
@@ -16906,15 +16930,6 @@ function loadConfigVars()
   if ! [ -z "$lcv_curE" ]; then
     set -e
   fi
-}
-
-function getAdditionalSources()
-{
-  sudo ls $HSHQ_SCRIPTS_DIR/source | while read fname
-  do
-    if ! sudo test -f "$HSHQ_SCRIPTS_DIR/source/$fname"; then continue; fi
-    source <(sudo cat $HSHQ_SCRIPTS_DIR/source/$fname)
-  done
 }
 
 function fixConfigV130()
@@ -21035,6 +21050,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=219
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 220 ]; then
+    echo "Updating to Version 220..."
+    version220Update
+    HSHQ_VERSION=220
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -23793,6 +23814,39 @@ function version219Update()
   sudo chmod 700 $HSHQ_SCRIPTS_DIR/source
 }
 
+function version220Update()
+{
+  outputPerformPostDockerBootActionsScript
+  outputUpdateIPTablesBeforeNetworkBootscript
+  outputPerformNetworkingChecks
+  set +e
+  docker network inspect dock-aipriv > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    docker network create --driver=bridge dock-aipriv > /dev/null 2>&1
+    docker_subnet=$(getDockerSubnet dock-aipriv)
+    docker network rm dock-aipriv > /dev/null 2>&1
+    docker network create -o com.docker.network.bridge.name=$NET_AIPRIVATE_BRIDGE_NAME --driver=bridge --subnet $docker_subnet --internal dock-aipriv > /dev/null
+  fi
+  sudo sed -i "/^SVCD_AISTACK_MINDSDB_APP=/d" $CONFIG_FILE > /dev/null 2>&1
+  sudo sed -i "/^SVCD_AISTACK_LANGFUSE=/d" $CONFIG_FILE > /dev/null 2>&1
+  sudo sed -i "/^SVCD_AISTACK_OPENWEBUI=/d" $CONFIG_FILE > /dev/null 2>&1
+  curl -fsSL https://gvisor.dev/archive.key | sudo gpg --yes --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | sudo tee /etc/apt/sources.list.d/gvisor.list > /dev/null 2>&1
+  sudo apt-get update > /dev/null 2>&1
+  performAptInstall runsc > /dev/null 2>&1
+  performAptInstall python3-werkzeug > /dev/null 2>&1
+  echo "Adding readonly users to all running databases..."
+  addAllReadonlyDBUsers
+  echo "All readonly users added succesfully!"
+  CADDY_SNIPPET_SAFEHEADERCORSPREFLIGHT=safe-header-cors-preflight
+  outputCaddyHeaders
+}
+
+function version221Update()
+{
+  return
+}
+
 function updateRelayServerWithScript()
 {
   isUploadUtils="$1"
@@ -24150,6 +24204,161 @@ function upgradeDockerDebian12()
 init
 EOFRS
   chmod 500 $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME
+}
+
+function addAllReadonlyDBUsers()
+{
+  checkAddVarsToServiceConfig "ActivePieces" "ACTIVEPIECES_DATABASE_READONLYUSER=,ACTIVEPIECES_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Adminer" "ADMINER_DATABASE_READONLYUSER=,ADMINER_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Automatisch" "AUTOMATISCH_DATABASE_READONLYUSER=,AUTOMATISCH_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Budibase" "BUDIBASE_DATABASE_READONLYUSER=,BUDIBASE_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Calcom" "CALCOM_DATABASE_READONLYUSER=,CALCOM_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Discourse" "DISCOURSE_DATABASE_READONLYUSER=,DISCOURSE_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Dolibarr" "DOLIBARR_DATABASE_READONLYUSER=,DOLIBARR_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "EasyAppointments" "EASYAPPOINTMENTS_DATABASE_READONLYUSER=,EASYAPPOINTMENTS_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "EspoCRM" "ESPOCRM_DATABASE_READONLYUSER=,ESPOCRM_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "FireflyIII" "FIREFLY_DATABASE_READONLYUSER=,FIREFLY_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "FrappeHR" "FRAPPE_HR_DATABASE_READONLYUSER=,FRAPPE_HR_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_DATABASE_READONLYUSER=,FRESHRSS_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Ghost" "GHOST_DATABASE_READONLYUSER=,GHOST_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Gitea" "GITEA_DATABASE_READONLYUSER=,GITEA_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Gitlab" "GITLAB_DATABASE_READONLYUSER=,GITLAB_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Guacamole" "GUACAMOLE_DATABASE_READONLYUSER=,GUACAMOLE_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "HomeAssistant" "HOMEASSISTANT_DATABASE_READONLYUSER=,HOMEASSISTANT_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Huginn" "HUGINN_DATABASE_READONLYUSER=,HUGINN_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Immich" "IMMICH_DATABASE_READONLYUSER=,IMMICH_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Invidious" "INVIDIOUS_DATABASE_READONLYUSER=,INVIDIOUS_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "InvoiceNinja" "INVOICENINJA_DATABASE_READONLYUSER=,INVOICENINJA_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "InvoiceShelf" "INVOICESHELF_DATABASE_READONLYUSER=,INVOICESHELF_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Kanboard" "KANBOARD_DATABASE_READONLYUSER=,KANBOARD_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Keila" "KEILA_DATABASE_READONLYUSER=,KEILA_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "KillBill" "KILLBILL_KB_DATABASE_READONLYUSER=,KILLBILL_KB_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "KillBill" "KILLBILL_KAUI_DATABASE_READONLYUSER=,KILLBILL_KAUI_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Linkwarden" "LINKWARDEN_DATABASE_READONLYUSER=,LINKWARDEN_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Mastodon" "MASTODON_DATABASE_READONLYUSER=,MASTODON_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Matomo" "MATOMO_DATABASE_READONLYUSER=,MATOMO_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Matrix" "MATRIX_DATABASE_READONLYUSER=,MATRIX_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Mealie" "MEALIE_DATABASE_READONLYUSER=,MEALIE_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "MeshCentral" "MESHCENTRAL_DATABASE_READONLYUSER=,MESHCENTRAL_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Metabase" "METABASE_DATABASE_READONLYUSER=,METABASE_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "MintHCM" "MINTHCM_DATABASE_READONLYUSER=,MINTHCM_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "n8n" "N8N_DATABASE_READONLYUSER=,N8N_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_DATABASE_READONLYUSER=,NEXTCLOUD_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Odoo" "ODOO_DATABASE_READONLYUSER=,ODOO_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Ombi" "OMBI_DATABASE_READONLYUSER=,OMBI_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "OpenProject" "OPENPROJECT_DATABASE_READONLYUSER=,OPENPROJECT_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Paperless" "PAPERLESS_DATABASE_READONLYUSER=,PAPERLESS_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Pastefy" "PASTEFY_DATABASE_READONLYUSER=,PASTEFY_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "PeerTube" "PEERTUBE_DATABASE_READONLYUSER=,PEERTUBE_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Penpot" "PENPOT_DATABASE_READONLYUSER=,PENPOT_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_DATABASE_READONLYUSER=,PHOTOPRISM_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Piped" "PIPED_DATABASE_READONLYUSER=,PIPED_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Pixelfed" "PIXELFED_DATABASE_READONLYUSER=,PIXELFED_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Rallly" "RALLLY_DATABASE_READONLYUSER=,RALLLY_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Shlink" "SHLINK_DATABASE_READONLYUSER=,SHLINK_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "StandardNotes" "STANDARDNOTES_DATABASE_READONLYUSER=,STANDARDNOTES_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "SpeedtestTrackerLocal" "SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER=,SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "SpeedtestTrackerVPN" "SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER=,SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Twenty" "TWENTY_DATABASE_READONLYUSER=,TWENTY_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Vaultwarden" "VAULTWARDEN_DATABASE_READONLYUSER=,VAULTWARDEN_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Wallabag" "WALLABAG_DATABASE_READONLYUSER=,WALLABAG_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Wiki.js" "WIKIJS_DATABASE_READONLYUSER=,WIKIJS_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Wordpress" "WORDPRESS_DATABASE_READONLYUSER=,WORDPRESS_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Yamtrack" "YAMTRACK_DATABASE_READONLYUSER=,YAMTRACK_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Zammad" "ZAMMAD_DATABASE_READONLYUSER=,ZAMMAD_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Zulip" "ZULIP_DATABASE_READONLYUSER=,ZULIP_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Taiga" "TAIGA_DATABASE_READONLYUSER=,TAIGA_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "DocuSeal" "DOCUSEAL_DATABASE_READONLYUSER=,DOCUSEAL_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "ControlR" "CONTROLR_DATABASE_READONLYUSER=,CONTROLR_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Akaunting" "AKAUNTING_DATABASE_READONLYUSER=,AKAUNTING_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Axelor" "AXELOR_DATABASE_READONLYUSER=,AXELOR_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Langflow" "LANGFLOW_DATABASE_READONLYUSER=,LANGFLOW_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "LibreChat" "LIBRECHAT_DATABASE_READONLYUSER=,LIBRECHAT_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "OpenWebUI" "OPENWEBUI_DATABASE_READONLYUSER=,OPENWEBUI_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Khoj" "KHOJ_DATABASE_READONLYUSER=,KHOJ_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "LobeChat" "LOBECHAT_DATABASE_READONLYUSER=,LOBECHAT_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "RAGFlow" "RAGFLOW_DATABASE_READONLYUSER=,RAGFLOW_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Dify" "DIFY_DATABASE_READONLYUSER=,DIFY_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Wekan" "WEKAN_DATABASE_READONLYUSER=,WEKAN_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Revolt" "REVOLT_DATABASE_READONLYUSER=,REVOLT_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "OpenSign" "OPENSIGN_DATABASE_READONLYUSER=,OPENSIGN_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "LibreChat" "LIBRECHAT_MONGODB_READONLYUSER=,LIBRECHAT_MONGODB_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  initServicesCredentials
+  addReadOnlyUserToDatabase ActivePieces postgres activepieces-db $ACTIVEPIECES_DATABASE_NAME $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/activepieces/dbexport $ACTIVEPIECES_DATABASE_READONLYUSER $ACTIVEPIECES_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Adminer mysql adminer-db $ADMINER_DATABASE_NAME root $ADMINER_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/adminer/dbexport $ADMINER_DATABASE_READONLYUSER $ADMINER_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Automatisch postgres automatisch-db $AUTOMATISCH_DATABASE_NAME $AUTOMATISCH_DATABASE_USER $AUTOMATISCH_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/automatisch/dbexport $AUTOMATISCH_DATABASE_READONLYUSER $AUTOMATISCH_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Budibase mysql budibase-db $BUDIBASE_DATABASE_NAME root $BUDIBASE_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/budibase/dbexport $BUDIBASE_DATABASE_READONLYUSER $BUDIBASE_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Calcom postgres calcom-db $CALCOM_DATABASE_NAME $CALCOM_DATABASE_USER $CALCOM_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/calcom/dbexport $CALCOM_DATABASE_READONLYUSER $CALCOM_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Discourse postgres discourse-db $DISCOURSE_DATABASE_NAME $DISCOURSE_DATABASE_USER $DISCOURSE_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/discourse/dbexport $DISCOURSE_DATABASE_READONLYUSER $DISCOURSE_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Dolibarr mysql dolibarr-db $DOLIBARR_DATABASE_NAME root $DOLIBARR_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/dolibarr/dbexport $DOLIBARR_DATABASE_READONLYUSER $DOLIBARR_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase EasyAppointments mysql easyappointments-db $EASYAPPOINTMENTS_DATABASE_NAME root $EASYAPPOINTMENTS_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/easyappointments/dbexport $EASYAPPOINTMENTS_DATABASE_READONLYUSER $EASYAPPOINTMENTS_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase EspoCRM mysql espocrm-db $ESPOCRM_DATABASE_NAME root $ESPOCRM_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/espocrm/dbexport $ESPOCRM_DATABASE_READONLYUSER $ESPOCRM_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase FireflyIII postgres firefly-db $FIREFLY_DATABASE_NAME $FIREFLY_DATABASE_USER $FIREFLY_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/firefly/dbexport $FIREFLY_DATABASE_READONLYUSER $FIREFLY_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase FrappeHR mysql frappe-hr-db $FRAPPE_HR_DATABASE_NAME root $FRAPPE_HR_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/frappe-hr/dbexport $FRAPPE_HR_DATABASE_READONLYUSER $FRAPPE_HR_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase FreshRSS postgres freshrss-db $FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_USER $FRESHRSS_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/freshrss/dbexport $FRESHRSS_DATABASE_READONLYUSER $FRESHRSS_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Ghost mysql ghost-db $GHOST_DATABASE_NAME root $GHOST_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/ghost/dbexport $GHOST_DATABASE_READONLYUSER $GHOST_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Gitea postgres gitea-db $GITEA_DATABASE_NAME $GITEA_DATABASE_USER $GITEA_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/gitea/dbexport $GITEA_DATABASE_READONLYUSER $GITEA_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Gitlab postgres gitlab-db $GITLAB_DATABASE_NAME $GITLAB_DATABASE_USER $GITLAB_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/gitlab/dbexport $GITLAB_DATABASE_READONLYUSER $GITLAB_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Guacamole mysql guacamole-db $GUACAMOLE_DATABASE_NAME root $GUACAMOLE_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/guacamole/dbexport $GUACAMOLE_DATABASE_READONLYUSER $GUACAMOLE_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase HomeAssistant postgres homeassistant-db $HOMEASSISTANT_DATABASE_NAME $HOMEASSISTANT_DATABASE_USER $HOMEASSISTANT_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/homeassistant/dbexport $HOMEASSISTANT_DATABASE_READONLYUSER $HOMEASSISTANT_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Huginn postgres huginn-db $HUGINN_DATABASE_NAME $HUGINN_DATABASE_USER $HUGINN_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/huginn/dbexport $HUGINN_DATABASE_READONLYUSER $HUGINN_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Immich postgres immich-db $IMMICH_DATABASE_NAME $IMMICH_DATABASE_USER $IMMICH_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/immich/dbexport $IMMICH_DATABASE_READONLYUSER $IMMICH_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Invidious postgres invidious-db $INVIDIOUS_DATABASE_NAME $INVIDIOUS_DATABASE_USER $INVIDIOUS_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/invidious/dbexport $INVIDIOUS_DATABASE_READONLYUSER $INVIDIOUS_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase InvoiceNinja mysql invoiceninja-db $INVOICENINJA_DATABASE_NAME root $INVOICENINJA_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/invoiceninja/dbexport $INVOICENINJA_DATABASE_READONLYUSER $INVOICENINJA_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase InvoiceShelf mysql invoiceshelf-db $INVOICESHELF_DATABASE_NAME root $INVOICESHELF_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/invoiceshelf/dbexport $INVOICESHELF_DATABASE_READONLYUSER $INVOICESHELF_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Kanboard postgres kanboard-db $KANBOARD_DATABASE_NAME $KANBOARD_DATABASE_USER $KANBOARD_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/kanboard/dbexport $KANBOARD_DATABASE_READONLYUSER $KANBOARD_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Keila postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/keila/dbexport $KEILA_DATABASE_READONLYUSER $KEILA_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase KillBill mysql killbill-db $KILLBILL_KB_DATABASE_NAME root $KILLBILL_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/killbill/dbexport $KILLBILL_KB_DATABASE_READONLYUSER $KILLBILL_KB_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase KillBill mysql killbill-db $KILLBILL_KAUI_DATABASE_NAME root $KILLBILL_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/killbill/dbexport $KILLBILL_KAUI_DATABASE_READONLYUSER $KILLBILL_KAUI_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Linkwarden postgres linkwarden-db $LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/linkwarden/dbexport $LINKWARDEN_DATABASE_READONLYUSER $LINKWARDEN_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Mastodon postgres mastodon-db $MASTODON_DATABASE_NAME $MASTODON_DATABASE_USER $MASTODON_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/mastodon/dbexport $MASTODON_DATABASE_READONLYUSER $MASTODON_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Matomo mysql matomo-db $MATOMO_DATABASE_NAME root $MATOMO_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/matomo/dbexport $MATOMO_DATABASE_READONLYUSER $MATOMO_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Matrix postgres matrix-db $MATRIX_DATABASE_NAME $MATRIX_DATABASE_USER $MATRIX_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/matrix/dbexport $MATRIX_DATABASE_READONLYUSER $MATRIX_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Mealie postgres mealie-db $MEALIE_DATABASE_NAME $MEALIE_DATABASE_USER $MEALIE_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/mealie/dbexport $MEALIE_DATABASE_READONLYUSER $MEALIE_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase MeshCentral mysql meshcentral-db $MESHCENTRAL_DATABASE_NAME root $MESHCENTRAL_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/meshcentral/dbexport $MESHCENTRAL_DATABASE_READONLYUSER $MESHCENTRAL_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Metabase postgres metabase-db $METABASE_DATABASE_NAME $METABASE_DATABASE_USER $METABASE_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/metabase/dbexport $METABASE_DATABASE_READONLYUSER $METABASE_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase MintHCM mysql minthcm-db $MINTHCM_DATABASE_NAME root $MINTHCM_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/minthcm/dbexport $MINTHCM_DATABASE_READONLYUSER $MINTHCM_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase n8n postgres n8n-db $N8N_DATABASE_NAME $N8N_DATABASE_USER $N8N_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/n8n/dbexport $N8N_DATABASE_READONLYUSER $N8N_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Nextcloud postgres nextcloud-db $NEXTCLOUD_DATABASE_NAME $NEXTCLOUD_DATABASE_USER $NEXTCLOUD_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/nextcloud/dbexport $NEXTCLOUD_DATABASE_READONLYUSER $NEXTCLOUD_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Odoo postgres odoo-db $ODOO_DATABASE_NAME $ODOO_DATABASE_USER $ODOO_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/odoo/dbexport $ODOO_DATABASE_READONLYUSER $ODOO_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Ombi mysql ombi-db $OMBI_DATABASE_NAME root $OMBI_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/ombi/dbexport $OMBI_DATABASE_READONLYUSER $OMBI_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase OpenProject postgres openproject-db $OPENPROJECT_DATABASE_NAME $OPENPROJECT_DATABASE_USER $OPENPROJECT_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/openproject/dbexport $OPENPROJECT_DATABASE_READONLYUSER $OPENPROJECT_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Paperless postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/paperless/dbexport $PAPERLESS_DATABASE_READONLYUSER $PAPERLESS_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Pastefy mysql pastefy-db $PASTEFY_DATABASE_NAME root $PASTEFY_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/pastefy/dbexport $PASTEFY_DATABASE_READONLYUSER $PASTEFY_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase PeerTube postgres peertube-db $PEERTUBE_DATABASE_NAME $PEERTUBE_DATABASE_USER $PEERTUBE_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/peertube/dbexport $PEERTUBE_DATABASE_READONLYUSER $PEERTUBE_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Penpot postgres penpot-db $PENPOT_DATABASE_NAME $PENPOT_DATABASE_USER $PENPOT_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/penpot/dbexport $PENPOT_DATABASE_READONLYUSER $PENPOT_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase PhotoPrism mysql photoprism-db $PHOTOPRISM_DATABASE_NAME root $PHOTOPRISM_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/photoprism/dbexport $PHOTOPRISM_DATABASE_READONLYUSER $PHOTOPRISM_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Piped postgres piped-db $PIPED_DATABASE_NAME $PIPED_DATABASE_USER $PIPED_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/piped/dbexport $PIPED_DATABASE_READONLYUSER $PIPED_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Pixelfed mysql pixelfed-db $PIXELFED_DATABASE_NAME root $PIXELFED_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/pixelfed/dbexport $PIXELFED_DATABASE_READONLYUSER $PIXELFED_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Rallly postgres rallly-db $RALLLY_DATABASE_NAME $RALLLY_DATABASE_USER $RALLLY_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/rallly/dbexport $RALLLY_DATABASE_READONLYUSER $RALLLY_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Shlink postgres shlink-db $SHLINK_DATABASE_NAME $SHLINK_DATABASE_USER $SHLINK_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/shlink/dbexport $SHLINK_DATABASE_READONLYUSER $SHLINK_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase StandardNotes mysql standardnotes-db $STANDARDNOTES_DATABASE_NAME root $STANDARDNOTES_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/standardnotes/dbexport $STANDARDNOTES_DATABASE_READONLYUSER $STANDARDNOTES_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase SpeedtestTrackerLocal postgres speedtest-tracker-local-db $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/speedtest-tracker-local/dbexport $SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER $SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase SpeedtestTrackerVPN postgres speedtest-tracker-vpn-db $SPEEDTEST_TRACKER_VPN_DATABASE_NAME $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/speedtest-tracker-vpn/dbexport $SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER $SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Twenty postgres twenty-db $TWENTY_DATABASE_NAME $TWENTY_DATABASE_USER $TWENTY_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/twenty/dbexport $TWENTY_DATABASE_READONLYUSER $TWENTY_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Vaultwarden postgres vaultwarden-db $VAULTWARDEN_DATABASE_NAME $VAULTWARDEN_DATABASE_USER $VAULTWARDEN_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/vaultwarden/dbexport $VAULTWARDEN_DATABASE_READONLYUSER $VAULTWARDEN_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Wallabag postgres wallabag-db $WALLABAG_DATABASE_NAME $WALLABAG_DATABASE_USER $WALLABAG_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/wallabag/dbexport $WALLABAG_DATABASE_READONLYUSER $WALLABAG_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Wiki.js postgres wikijs-db $WIKIJS_DATABASE_NAME $WIKIJS_DATABASE_USER $WIKIJS_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/wikijs/dbexport $WIKIJS_DATABASE_READONLYUSER $WIKIJS_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Wordpress mysql wordpress-db $WORDPRESS_DATABASE_NAME root $WORDPRESS_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/wordpress/dbexport $WORDPRESS_DATABASE_READONLYUSER $WORDPRESS_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Yamtrack postgres yamtrack-db $YAMTRACK_DATABASE_NAME $YAMTRACK_DATABASE_USER $YAMTRACK_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/yamtrack/dbexport $YAMTRACK_DATABASE_READONLYUSER $YAMTRACK_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Zammad postgres zammad-db $ZAMMAD_DATABASE_NAME $ZAMMAD_DATABASE_USER $ZAMMAD_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/zammad/dbexport $ZAMMAD_DATABASE_READONLYUSER $ZAMMAD_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Zulip postgres zulip-db $ZULIP_DATABASE_NAME $ZULIP_DATABASE_USER $ZULIP_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/zulip/dbexport $ZULIP_DATABASE_READONLYUSER $ZULIP_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Taiga postgres taiga-db $TAIGA_DATABASE_NAME $TAIGA_DATABASE_USER $TAIGA_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/taiga/dbexport $TAIGA_DATABASE_READONLYUSER $TAIGA_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase DocuSeal postgres docuseal-db $DOCUSEAL_DATABASE_NAME $DOCUSEAL_DATABASE_USER $DOCUSEAL_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/docuseal/dbexport $DOCUSEAL_DATABASE_READONLYUSER $DOCUSEAL_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase ControlR postgres controlr-db $CONTROLR_DATABASE_NAME $CONTROLR_DATABASE_USER $CONTROLR_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/controlr/dbexport $CONTROLR_DATABASE_READONLYUSER $CONTROLR_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Akaunting mysql akaunting-db $AKAUNTING_DATABASE_NAME root $AKAUNTING_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/akaunting/dbexport $AKAUNTING_DATABASE_READONLYUSER $AKAUNTING_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Axelor postgres axelor-db $AXELOR_DATABASE_NAME $AXELOR_DATABASE_USER $AXELOR_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/axelor/dbexport $AXELOR_DATABASE_READONLYUSER $AXELOR_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Langflow postgres langflow-db $LANGFLOW_DATABASE_NAME $LANGFLOW_DATABASE_USER $LANGFLOW_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/langflow/dbexport $LANGFLOW_DATABASE_READONLYUSER $LANGFLOW_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase LibreChat postgres librechat-db $LIBRECHAT_DATABASE_NAME $LIBRECHAT_DATABASE_USER $LIBRECHAT_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/librechat/dbexport $LIBRECHAT_DATABASE_READONLYUSER $LIBRECHAT_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase OpenWebUI postgres openwebui-db $OPENWEBUI_DATABASE_NAME $OPENWEBUI_DATABASE_USER $OPENWEBUI_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/openwebui/dbexport $OPENWEBUI_DATABASE_READONLYUSER $OPENWEBUI_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Khoj postgres khoj-db $KHOJ_DATABASE_NAME $KHOJ_DATABASE_USER $KHOJ_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/khoj/dbexport $KHOJ_DATABASE_READONLYUSER $KHOJ_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase LobeChat postgres lobechat-db $LOBECHAT_DATABASE_NAME $LOBECHAT_DATABASE_USER $LOBECHAT_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/lobechat/dbexport $LOBECHAT_DATABASE_READONLYUSER $LOBECHAT_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase RAGFlow postgres ragflow-db $RAGFLOW_DATABASE_NAME $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/ragflow/dbexport $RAGFLOW_DATABASE_READONLYUSER $RAGFLOW_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Dify postgres dify-db $DIFY_DATABASE_NAME $DIFY_DATABASE_USER $DIFY_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/dify/dbexport $DIFY_DATABASE_READONLYUSER $DIFY_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Wekan mongodb wekan-db $WEKAN_DATABASE_NAME $WEKAN_DATABASE_USER $WEKAN_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/wekan/dbexport $WEKAN_DATABASE_READONLYUSER $WEKAN_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase Revolt mongodb revolt-db $REVOLT_DATABASE_NAME $REVOLT_DATABASE_USER $REVOLT_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/revolt/dbexport $REVOLT_DATABASE_READONLYUSER $REVOLT_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase OpenSign mongodb opensign-db $OPENSIGN_DATABASE_NAME $OPENSIGN_DATABASE_USER $OPENSIGN_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/opensign/dbexport $OPENSIGN_DATABASE_READONLYUSER $OPENSIGN_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase LibreChat mongodb librechat-mongodb $LIBRECHAT_MONGODB_DATABASE $LIBRECHAT_MONGODB_USER $LIBRECHAT_MONGODB_USER_PASSWORD $HSHQ_STACKS_DIR/librechat/mongoexport $LIBRECHAT_MONGODB_READONLYUSER $LIBRECHAT_MONGODB_READONLYUSER_PASSWORD
 }
 
 function fixPortainerAndUpgradeDockerV188()
@@ -25894,11 +26103,11 @@ function checkUpdateAllIPTables()
   # Limit connections per source IP
   comment="HSHQ_BEGIN INPUT --connlimit-above 200 HSHQ_END"
   checkAddRule "$comment" 'sudo iptables -I INPUT -p tcp --syn -m connlimit --connlimit-above 200 -m comment --comment "$comment" -j REJECT --reject-with tcp-reset'
-
-  # Append any remaining to the bottom
   # Configure loopback
   comment="HSHQ_BEGIN INPUT allow loopback HSHQ_END"
-  checkAddRule "$comment" 'sudo iptables -A INPUT -i lo -m comment --comment "$comment" -j ACCEPT'
+  checkAddRule "$comment" 'sudo iptables -I INPUT -i lo -m comment --comment "$comment" -j ACCEPT'
+  
+  # Append any remaining to the bottom
   # Allow ICMP
   comment="HSHQ_BEGIN INPUT allow ICMP HSHQ_END"
   checkAddRule "$comment" 'sudo iptables -A INPUT -p icmp -m comment --comment "$comment" -j ACCEPT'
@@ -26562,6 +26771,7 @@ HSHQ_LOG_FILE=$HSHQ_LOG_FILE
 HSHQ_BASE_DIR=$HSHQ_BASE_DIR
 HSHQ_LIB_DIR=$HSHQ_LIB_DIR
 HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
+HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
 LOCK_UTILS_FILENAME=$LOCK_UTILS_FILENAME
 SYSTEM_STATE_FILENAME=$SYSTEM_STATE_FILENAME
 MIN_NETWORKCHECK_INTERVAL=$MIN_NETWORKCHECK_INTERVAL
@@ -26590,6 +26800,11 @@ EOFSS
     echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [debug] performNetworkingChecks.sh - BEGIN, CurState: \$SYS_STATE, LastCheck: \$(date -d @\$LAST_NETWORK_CHECK +"%Y-%m-%d %T"), IsTooSoon: \$isTooSoon" >> \$HSHQ_LOG_FILE
   fi
   source \$HSHQ_LIB_SCRIPT lib
+  for curSource in \$HSHQ_SCRIPTS_DIR/source/*; do
+    if [ -f "\$curSource" ]; then
+      source "\$curSource"
+    fi
+  done
   tgLock="\$(tryGetLock networkchecks performNetworkingChecks)"
   if ! [ "\$tgLock" = "true" ]; then
     checkRes="\$(getLockOpenMsg networkchecks)"
@@ -26654,6 +26869,7 @@ function outputUpdateIPTablesBeforeNetworkBootscript()
 HSHQ_BASE_DIR=$HSHQ_BASE_DIR
 HSHQ_LIB_DIR=$HSHQ_LIB_DIR
 HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
+HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
 
 function main()
 {
@@ -26662,6 +26878,11 @@ function main()
   forceGetLock networkchecks performPostDockerBootActions
 
   source \$HSHQ_LIB_SCRIPT lib
+  for curSource in \$HSHQ_SCRIPTS_DIR/source/*; do
+    if [ -f "\$curSource" ]; then
+      source "\$curSource"
+    fi
+  done
   source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
   notifyBootInit
   checkUpdateAllIPTables prenetwork
@@ -26683,10 +26904,16 @@ function outputPerformPostDockerBootActionsScript()
 HSHQ_BASE_DIR=$HSHQ_BASE_DIR
 HSHQ_LIB_DIR=$HSHQ_LIB_DIR
 HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
+HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
 
 function main()
 {
   source \$HSHQ_LIB_SCRIPT lib
+  for curSource in \$HSHQ_SCRIPTS_DIR/source/*; do
+    if [ -f "\$curSource" ]; then
+      source "\$curSource"
+    fi
+  done
   tgLock="\$(tryGetLock hshqopen performPostDockerBootActions)"
   if ! [ "\$tgLock" = "true" ]; then
     checkRes="\$(getLockOpenMsg hshqopen)"
@@ -28194,8 +28421,7 @@ function installDocker()
   outputDockerSettings
   util="docker|docker"
   if [[ "$(isProgramInstalled $util)" = "true" ]]; then
-    sudo systemctl restart rsyslog
-    sudo systemctl restart docker
+    sudo systemctl restart rsyslog > /dev/null 2>&1
     upgradeDocker
     return 0
   fi
@@ -28338,7 +28564,6 @@ if \$programname == 'docker' then {
 }
 \$FileCreateMode 0600
 EOFRL
-
 }
 
 function outputDockerDaemonJson()
@@ -28374,7 +28599,12 @@ function installDockerUbuntu2204()
 
 function upgradeDockerUbuntu2204()
 {
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2204 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
+  docker -v | grep -q $DOCKER_VERSION_CHECK_UBUNTU_2204
+  if [ $? -eq 0 ]; then
+    sudo systemctl restart docker > /dev/null 2>&1
+  else
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2204 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
+  fi
 }
 
 function installDockerUbuntu2404()
@@ -28391,7 +28621,12 @@ function installDockerUbuntu2404()
 
 function upgradeDockerUbuntu2404()
 {
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2404 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
+  docker -v | grep -q $DOCKER_VERSION_CHECK_UBUNTU_2404
+  if [ $? -eq 0 ]; then
+    sudo systemctl restart docker > /dev/null 2>&1
+  else
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2404 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
+  fi
 }
 
 function installDockerDebian12()
@@ -28408,7 +28643,12 @@ function installDockerDebian12()
 
 function upgradeDockerDebian12()
 {
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_DEBIAN_12 docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
+  docker -v | grep -q $DOCKER_VERSION_CHECK_DEBIAN_12
+  if [ $? -eq 0 ]; then
+    sudo systemctl restart docker > /dev/null 2>&1
+  else
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_DEBIAN_12 docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
+  fi
 }
 
 function initCertificateAuthority()
@@ -28840,6 +29080,7 @@ function createDockerNetworks()
   docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null
   docker network create -o com.docker.network.bridge.name=$NET_MAILU_EXT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_EXT_SUBNET dock-mailu-ext > /dev/null
   docker network create -o com.docker.network.bridge.name=$NET_MAILU_INT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_INT_SUBNET --internal dock-mailu-int > /dev/null
+  docker network create -o com.docker.network.bridge.name=$NET_AIPRIVATE_BRIDGE_NAME --driver=bridge --subnet $NET_AIPRIVATE_SUBNET --internal dock-aipriv > /dev/null
 }
 
 function removeDockerNetworks()
@@ -29289,6 +29530,89 @@ function upgradeDatabaseInStack()
   return $rtVal
 }
 
+function addReadOnlyUserToDatabase()
+{
+  rou_name="$1"
+  rou_dbtype="$2"
+  rou_container="$3"
+  rou_databasename="$4"
+  rou_rootuser="$5"
+  rou_rootpassword="$6"
+  rou_directory="$7"
+  rou_readonlyuser="$8"
+  rou_readonlypassword="$9"
+  set +e
+  docker ps | grep -q $rou_container > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "Database container ($rou_container) not found, returning..."
+    return
+  fi
+  case "$rou_dbtype" in
+    "mysql")
+      cat <<EOFPC > $rou_directory/addreadonly.sql
+CREATE USER IF NOT EXISTS '$rou_readonlyuser'@'%' IDENTIFIED BY '$rou_readonlypassword';
+GRANT SELECT, SHOW VIEW ON $rou_databasename.* TO '$rou_readonlyuser'@'%';
+FLUSH PRIVILEGES;
+EOFPC
+      ro_res=$(docker exec $rou_container bash -c "mariadb -N -u root -p$rou_rootpassword < /dbexport/addreadonly.sql" 2>&1)
+      ro_ret=$?
+      rm -f $rou_directory/addreadonly.sql
+      ;;
+    "postgres")
+      cat <<EOFPC > $rou_directory/addreadonly.sql
+DO \$do\$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'readaccess') THEN
+        CREATE ROLE readaccess LOGIN PASSWORD '$rou_readonlypassword';
+    ELSE
+        RAISE NOTICE 'Role "readaccess" already exists. Skipping.';
+    END IF;
+END
+\$do\$;
+GRANT CONNECT ON DATABASE $rou_databasename TO readaccess;
+GRANT USAGE ON SCHEMA public TO readaccess;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO readaccess;
+CREATE USER "$rou_readonlyuser" WITH PASSWORD '$rou_readonlypassword';
+GRANT readaccess TO "$rou_readonlyuser";
+EOFPC
+      ro_res=$(docker exec -u postgres $rou_container psql $rou_databasename $rou_rootuser -f /dbexport/addreadonly.sql 2>&1)
+      ro_ret=$?
+      rm -f $rou_directory/addreadonly.sql
+      ;;
+    "mongodb")
+      cat <<EOFPC > $rou_directory/addreadonly.js
+use admin;
+const existingUser = db.getUser("$rou_readonlyuser");
+if (!existingUser) {
+  db.createUser({
+    user: "$rou_readonlyuser",
+    pwd: "$rou_readonlypassword",
+    roles: [
+      {
+        role: "readAnyDatabase",
+        db: "admin"
+      }
+    ]
+  });
+}
+EOFPC
+      ro_res=$(docker exec $rou_container sh -c "mongosh --host localhost -u $rou_rootuser -p $rou_rootpassword --authenticationDatabase admin < /dump/addreadonly.js" 2>&1)
+      ro_ret=$?
+      rm -f $rou_directory/addreadonly.js
+      ;;
+    *)
+      echo "ERROR: Case not found, returning..."
+      return 1
+      ;;
+  esac
+  if [ $ro_ret -eq 0 ]; then
+    echo "The readonly user ($rou_readonlyuser) was added successfully!"
+  else
+    echo "ERROR: There was a problem adding this readonly user ($rou_readonlyuser): $ro_res"
+    return 1
+  fi
+}
+
 # Services Functions
 function loadPinnedDockerImages()
 {
@@ -29516,6 +29840,55 @@ function loadPinnedDockerImages()
   IMG_AXELOR_GOOVEE=mirror.gcr.io/axelor/goovee-ce:v1.1.0
   IMG_CONVERTX_APP=ghcr.io/c4illin/convertx:v0.16.0
   IMG_KOPIA_APP=mirror.gcr.io/kopia/kopia:0.22.3
+  IMG_LOCALAI_SERVER=mirror.gcr.io/localai/localai:v3.8.0-aio-cpu
+  IMG_LOCALAI_RECALL=quay.io/mudler/localrecall:v0.4.1
+  IMG_LOCALAI_LRHEALTH=mirror.gcr.io/busybox:1.37.0
+  IMG_LOCALAI_SSHBOX=hshq/sshbox:v1
+  IMG_LOCALAI_DIND=mirror.gcr.io/docker:29.1.3-dind
+  IMG_LOCALAI_AGI=quay.io/mudler/localagi:v2.6.0
+  IMG_COMFYUI_APP=mirror.gcr.io/corundex/comfyui-rocm:comfyui_0.3.43__rocm6.4.1_ubuntu24.04_py3.12_pytorch_2.6.0
+  IMG_LANGFLOW_APP=mirror.gcr.io/langflowai/langflow:1.7.1
+  IMG_ANYTHINGLLM_APP=mirror.gcr.io/mintplexlabs/anythingllm:1.9.1
+  IMG_PERPLEXICA_APP=mirror.gcr.io/itzcrazykns1337/perplexica:slim-v1.12.0
+  IMG_FIRECRAWL_DB=hshq/firecrawl-db:v1
+  IMG_FIRECRAWL_PLAYWRIGHT=ghcr.io/firecrawl/playwright-service:latest
+  IMG_FIRECRAWL_API=ghcr.io/firecrawl/firecrawl:latest
+  IMG_LIBRECHAT_APP=ghcr.io/danny-avila/librechat:v0.8.1
+  IMG_LIBRECHAT_RAGAPI=ghcr.io/danny-avila/librechat-rag-api-dev-lite:v0.7.0
+  IMG_CRAWL4AI_APP=mirror.gcr.io/unclecode/crawl4ai:0.7.8
+  IMG_CRAWL4AI_PROXY=ghcr.io/lennyerik/crawl4ai-proxy:latest
+  IMG_OLLAMA_SERVER=mirror.gcr.io/ollama/ollama:0.13.5-rocm
+  IMG_OPENWEBUI_APP=ghcr.io/open-webui/open-webui:0.6.43
+  IMG_KHOJ_SANDBOX=ghcr.io/khoj-ai/terrarium:latest
+  IMG_KHOJ_COMPUTER=ghcr.io/khoj-ai/khoj-computer:1.42.0
+  IMG_KHOJ_SERVER=ghcr.io/khoj-ai/khoj:1.42.10
+  IMG_LOBECHAT_APP=mirror.gcr.io/lobehub/lobe-chat-database:1.143.2
+  IMG_INVOKEAI_APP=ghcr.io/invoke-ai/invokeai:6.10.0rc2-rocm
+  IMG_RAGFLOW_INFINITY=mirror.gcr.io/infiniflow/infinity:v0.6.15
+  IMG_RAGFLOW_APP=mirror.gcr.io/infiniflow/ragflow:v0.23.1
+  IMG_RAGFLOW_SANDBOX=mirror.gcr.io/infiniflow/sandbox-executor-manager:latest
+  IMG_RAGFLOW_SB_NODEJS=mirror.gcr.io/infiniflow/sandbox-base-nodejs:latest
+  IMG_RAGFLOW_SB_PYTHON=mirror.gcr.io/infiniflow/sandbox-base-python:latest
+  IMG_TABBYML_APP=mirror.gcr.io/tabbyml/tabby:0.31.2
+  IMG_DEEPWIKIOPEN_APP=ghcr.io/asyncfuncai/deepwiki-open:sha-d48f5bc
+  IMG_DOCLING_APP=ghcr.io/docling-project/docling-serve-rocm:main
+  IMG_DIFY_SSRF=mirror.gcr.io/ubuntu/squid:latest
+  IMG_DIFY_API=mirror.gcr.io/langgenius/dify-api:1.11.2
+  IMG_DIFY_PLUGIND=mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local
+  IMG_DIFY_SANDBOX=mirror.gcr.io/langgenius/dify-sandbox:0.2.12
+  IMG_DIFY_WEB=mirror.gcr.io/langgenius/dify-web:1.11.2
+  IMG_MINDSDB_APP=mirror.gcr.io/mindsdb/mindsdb:v25.13.1-cloud
+  IMG_WATERCRAWL_APP=mirror.gcr.io/watercrawl/watercrawl:v0.12.1
+  IMG_WATERCRAWL_PLAYWRIGHT=mirror.gcr.io/watercrawl/playwright:1.2
+  IMG_WATERCRAWL_FRONTEND=mirror.gcr.io/watercrawl/frontend:v0.12.1
+  IMG_WATERCRAWL_MCP=mirror.gcr.io/watercrawl/mcp:v1.3.0
+  IMG_FLOWISE_APP=mirror.gcr.io/flowiseai/flowise:3.0.12
+  IMG_FLOWISE_WORKER=mirror.gcr.io/flowiseai/flowise-worker:3.0.12
+  IMG_SURFSENSE_APP=ghcr.io/modsetter/surfsense:v1.0.92
+  IMG_NOCODB_APP=mirror.gcr.io/nocodb/nocodb:0.265.1
+  IMG_ENTE_SERVER=hshq/ente-server:v1
+  IMG_ENTE_WEB=ghcr.io/ente-io/web:460ee1671b08b119b894f0ddd71b4c906fb29647
+  IMG_MORPHIC_APP=ghcr.io/miurla/morphic:6443b20c1205adf233c98b67beb34a6117e1cd7a
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -29688,7 +30061,7 @@ function getScriptStackVersion()
     wekan)
       echo "v2" ;;
     revolt)
-      echo "v1" ;;
+      echo "v2" ;;
     frappe-hr)
       echo "v1" ;;
     minthcm)
@@ -29696,19 +30069,19 @@ function getScriptStackVersion()
     cloudbeaver)
       echo "v2" ;;
     twenty)
-      echo "v2" ;;
+      echo "v3" ;;
     odoo)
       echo "v2" ;;
     calcom)
       echo "v2" ;;
     rallly)
-      echo "v2" ;;
+      echo "v3" ;;
     easyappointments)
       echo "v1" ;;
     openproject)
-      echo "v2" ;;
+      echo "v3" ;;
     zammad)
-      echo "v2" ;;
+      echo "v3" ;;
     zulip)
       echo "v2" ;;
     killbill)
@@ -29716,7 +30089,7 @@ function getScriptStackVersion()
     invoiceshelf)
       echo "v1" ;;
     invoiceninja)
-      echo "v2" ;;
+      echo "v3" ;;
     dolibarr)
       echo "v2" ;;
     n8n)
@@ -29759,6 +30132,56 @@ function getScriptStackVersion()
       echo "v2" ;;
     kopia)
       echo "v2" ;;
+    localai)
+      echo "v1" ;;
+    comfyui)
+      echo "v1" ;;
+    langflow)
+      echo "v1" ;;
+    anythingllm)
+      echo "v1" ;;
+    perplexica)
+      echo "v1" ;;
+    firecrawl)
+      echo "v1" ;;
+    librechat)
+      echo "v1" ;;
+    crawl4ai)
+      echo "v1" ;;
+    ollama)
+      echo "v1" ;;
+    openwebui)
+      echo "v1" ;;
+    khoj)
+      echo "v1" ;;
+    lobechat)
+      echo "v1" ;;
+    invokeai)
+      echo "v1" ;;
+    ragflow)
+      echo "v1" ;;
+    tabbyml)
+      echo "v1" ;;
+    deepwikiopen)
+      echo "v1" ;;
+    docling)
+      echo "v1" ;;
+    dify)
+      echo "v1" ;;
+    mindsdb)
+      echo "v1" ;;
+    watercrawl)
+      echo "v1" ;;
+    flowise)
+      echo "v1" ;;
+    surfsense)
+      echo "v1" ;;
+    nocodb)
+      echo "v1" ;;
+    ente)
+      echo "v1" ;;
+    morphic)
+      echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
 }
@@ -29963,6 +30386,55 @@ function pullDockerImages()
   pullImage $IMG_AXELOR_GOOVEE
   pullImage $IMG_CONVERTX_APP
   pullImage $IMG_KOPIA_APP
+  pullImage $IMG_LOCALAI_SERVER
+  pullImage $IMG_LOCALAI_RECALL
+  pullImage $IMG_LOCALAI_LRHEALTH
+  pullImage $IMG_LOCALAI_SSHBOX
+  pullImage $IMG_LOCALAI_DIND
+  pullImage $IMG_LOCALAI_AGI
+  pullImage $IMG_COMFYUI_APP
+  pullImage $IMG_LANGFLOW_APP
+  pullImage $IMG_ANYTHINGLLM_APP
+  pullImage $IMG_PERPLEXICA_APP
+  pullImage $IMG_FIRECRAWL_DB
+  pullImage $IMG_FIRECRAWL_PLAYWRIGHT
+  pullImage $IMG_FIRECRAWL_API
+  pullImage $IMG_LIBRECHAT_APP
+  pullImage $IMG_LIBRECHAT_RAGAPI
+  pullImage $IMG_CRAWL4AI_APP
+  pullImage $IMG_CRAWL4AI_PROXY
+  pullImage $IMG_OLLAMA_SERVER
+  pullImage $IMG_OPENWEBUI_APP
+  pullImage $IMG_KHOJ_SANDBOX
+  pullImage $IMG_KHOJ_COMPUTER
+  pullImage $IMG_KHOJ_SERVER
+  pullImage $IMG_LOBECHAT_APP
+  pullImage $IMG_INVOKEAI_APP
+  pullImage $IMG_RAGFLOW_INFINITY
+  pullImage $IMG_RAGFLOW_APP
+  pullImage $IMG_RAGFLOW_SANDBOX
+  pullImage $IMG_RAGFLOW_SB_NODEJS
+  pullImage $IMG_RAGFLOW_SB_PYTHON
+  pullImage $IMG_TABBYML_APP
+  pullImage $IMG_DEEPWIKIOPEN_APP
+  pullImage $IMG_DOCLING_APP
+  pullImage $IMG_DIFY_SSRF
+  pullImage $IMG_DIFY_API
+  pullImage $IMG_DIFY_PLUGIND
+  pullImage $IMG_DIFY_SANDBOX
+  pullImage $IMG_DIFY_WEB
+  pullImage $IMG_MINDSDB_APP
+  pullImage $IMG_WATERCRAWL_APP
+  pullImage $IMG_WATERCRAWL_PLAYWRIGHT
+  pullImage $IMG_WATERCRAWL_FRONTEND
+  pullImage $IMG_WATERCRAWL_MCP
+  pullImage $IMG_FLOWISE_APP
+  pullImage $IMG_FLOWISE_WORKER
+  pullImage $IMG_SURFSENSE_APP
+  pullImage $IMG_NOCODB_APP
+  pullImage $IMG_ENTE_SERVER
+  pullImage $IMG_ENTE_WEB
+  pullImage $IMG_MORPHIC_APP
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -30315,6 +30787,8 @@ NEXTCLOUD_TALKHPB_INTERNAL_SECRET=
 NEXTCLOUD_TALKHPB_RECORDING_SECRET=
 NEXTCLOUD_HARP_PORT=8780
 NEXTCLOUD_HARP_SHARED_KEY=
+NEXTCLOUD_DATABASE_READONLYUSER=
+NEXTCLOUD_DATABASE_READONLYUSER_PASSWORD=
 # Nextcloud (Service Details) END
 
 # Matrix (Service Details) BEGIN
@@ -30325,12 +30799,16 @@ MATRIX_REDIS_PASSWORD=
 MATRIX_SYNAPSE_REGISTRATION_SECRET=
 MATRIX_SYNAPSE_MACAROON_SECRET=
 MATRIX_SYNAPSE_FORM_SECRET=
+MATRIX_DATABASE_READONLYUSER=
+MATRIX_DATABASE_READONLYUSER_PASSWORD=
 # Matrix (Service Details) END
 
 # Wiki.js (Service Details) BEGIN
 WIKIJS_DATABASE_NAME=
 WIKIJS_DATABASE_USER=
 WIKIJS_DATABASE_USER_PASSWORD=
+WIKIJS_DATABASE_READONLYUSER=
+WIKIJS_DATABASE_READONLYUSER_PASSWORD=
 # Wiki.js (Service Details) END
 
 # Duplicati (Service Details) BEGIN
@@ -30350,6 +30828,8 @@ MASTODON_ELASTICSEARCH_PASSWORD=
 MASTODON_ARE_DETERMINISTIC_KEY=
 MASTODON_ARE_KEY_DERIVATION_SALT=
 MASTODON_ARE_PRIMARY_KEY=
+MASTODON_DATABASE_READONLYUSER=
+MASTODON_DATABASE_READONLYUSER_PASSWORD=
 # Mastodon (Service Details) END
 
 # Dozzle (Service Details) BEGIN
@@ -30380,6 +30860,8 @@ PHOTOPRISM_DATABASE_ROOT_PASSWORD=
 PHOTOPRISM_DATABASE_NAME=
 PHOTOPRISM_DATABASE_USER=
 PHOTOPRISM_DATABASE_USER_PASSWORD=
+PHOTOPRISM_DATABASE_READONLYUSER=
+PHOTOPRISM_DATABASE_READONLYUSER_PASSWORD=
 # PhotoPrism (Service Details) END
 
 # Guacamole (Service Details) BEGIN
@@ -30389,6 +30871,8 @@ GUACAMOLE_DATABASE_ROOT_PASSWORD=
 GUACAMOLE_DATABASE_NAME=
 GUACAMOLE_DATABASE_USER=
 GUACAMOLE_DATABASE_USER_PASSWORD=
+GUACAMOLE_DATABASE_READONLYUSER=
+GUACAMOLE_DATABASE_READONLYUSER_PASSWORD=
 # Guacamole (Service Details) END
 
 # UptimeKuma (Service Details) BEGIN
@@ -30405,6 +30889,8 @@ WORDPRESS_DATABASE_ROOT_PASSWORD=
 WORDPRESS_DATABASE_NAME=
 WORDPRESS_DATABASE_USER=
 WORDPRESS_DATABASE_USER_PASSWORD=
+WORDPRESS_DATABASE_READONLYUSER=
+WORDPRESS_DATABASE_READONLYUSER_PASSWORD=
 # Wordpress (Service Details) END
 
 # Ghost (Service Details) BEGIN
@@ -30412,6 +30898,8 @@ GHOST_DATABASE_ROOT_PASSWORD=
 GHOST_DATABASE_NAME=
 GHOST_DATABASE_USER=
 GHOST_DATABASE_USER_PASSWORD=
+GHOST_DATABASE_READONLYUSER=
+GHOST_DATABASE_READONLYUSER_PASSWORD=
 # Ghost (Service Details) END
 
 # PeerTube (Service Details) BEGIN
@@ -30421,6 +30909,8 @@ PEERTUBE_ADMIN_EMAIL_ADDRESS=
 PEERTUBE_DATABASE_NAME=
 PEERTUBE_DATABASE_USER=
 PEERTUBE_DATABASE_USER_PASSWORD=
+PEERTUBE_DATABASE_READONLYUSER=
+PEERTUBE_DATABASE_READONLYUSER_PASSWORD=
 # PeerTube (Service Details) END
 
 # HomeAssistant (Service Details) BEGIN
@@ -30431,6 +30921,8 @@ HOMEASSISTANT_TASMOADMIN_USER=
 HOMEASSISTANT_TASMOADMIN_USER_PASSWORD=
 HOMEASSISTANT_CONFIGURATOR_USER=
 HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD=
+HOMEASSISTANT_DATABASE_READONLYUSER=
+HOMEASSISTANT_DATABASE_READONLYUSER_PASSWORD=
 # HomeAssistant (Service Details) END
 
 # Gitlab (Service Details) BEGIN
@@ -30439,6 +30931,8 @@ GITLAB_DATABASE_NAME=
 GITLAB_DATABASE_USER=
 GITLAB_DATABASE_USER_PASSWORD=
 GITLAB_REDIS_PASSWORD=
+GITLAB_DATABASE_READONLYUSER=
+GITLAB_DATABASE_READONLYUSER_PASSWORD=
 # Gitlab (Service Details) END
 
 # Vaultwarden (Service Details) BEGIN
@@ -30446,6 +30940,8 @@ VAULTWARDEN_ADMIN_TOKEN=
 VAULTWARDEN_DATABASE_NAME=
 VAULTWARDEN_DATABASE_USER=
 VAULTWARDEN_DATABASE_USER_PASSWORD=
+VAULTWARDEN_DATABASE_READONLYUSER=
+VAULTWARDEN_DATABASE_READONLYUSER_PASSWORD=
 # Vaultwarden (Service Details) END
 
 # Discourse (Service Details) BEGIN
@@ -30456,6 +30952,8 @@ DISCOURSE_DATABASE_NAME=
 DISCOURSE_DATABASE_USER=
 DISCOURSE_DATABASE_USER_PASSWORD=
 DISCOURSE_REDIS_PASSWORD=
+DISCOURSE_DATABASE_READONLYUSER=
+DISCOURSE_DATABASE_READONLYUSER_PASSWORD=
 # Discourse (Service Details) END
 
 # Syncthing (Service Details) BEGIN
@@ -30476,6 +30974,8 @@ SHLINK_DATABASE_USER=
 SHLINK_DATABASE_USER_PASSWORD=
 SHLINK_REDIS_PASSWORD=
 SHLINK_INITIAL_API_KEY=
+SHLINK_DATABASE_READONLYUSER=
+SHLINK_DATABASE_READONLYUSER_PASSWORD=
 # Shlink (Service Details) END
 
 # FireflyIII (Service Details) BEGIN
@@ -30485,6 +30985,8 @@ FIREFLY_DATABASE_USER_PASSWORD=
 FIREFLY_REDIS_PASSWORD=
 FIREFLY_INITIAL_API_KEY=
 FIREFLY_STATIC_CRON_TOKEN=
+FIREFLY_DATABASE_READONLYUSER=
+FIREFLY_DATABASE_READONLYUSER_PASSWORD=
 # FireflyIII (Service Details) END
 
 # Excalidraw (Service Details) BEGIN
@@ -30498,12 +31000,16 @@ GITEA_ADMIN_PASSWORD=
 GITEA_DATABASE_NAME=
 GITEA_DATABASE_USER=
 GITEA_DATABASE_USER_PASSWORD=
+GITEA_DATABASE_READONLYUSER=
+GITEA_DATABASE_READONLYUSER_PASSWORD=
 # Gitea (Service Details) END
 
 # Invidious (Service Details) BEGIN
 INVIDIOUS_DATABASE_NAME=
 INVIDIOUS_DATABASE_USER=
 INVIDIOUS_DATABASE_USER_PASSWORD=
+INVIDIOUS_DATABASE_READONLYUSER=
+INVIDIOUS_DATABASE_READONLYUSER_PASSWORD=
 # Invidious (Service Details) END
 
 # Mealie (Service Details) BEGIN
@@ -30513,6 +31019,8 @@ MEALIE_ADMIN_PASSWORD=
 MEALIE_DATABASE_NAME=
 MEALIE_DATABASE_USER=
 MEALIE_DATABASE_USER_PASSWORD=
+MEALIE_DATABASE_READONLYUSER=
+MEALIE_DATABASE_READONLYUSER_PASSWORD=
 # Mealie (Service Details) END
 
 # Remotely (Service Details) BEGIN
@@ -30553,6 +31061,7 @@ CADDY_SNIPPET_SAFEHEADERALLOWFRAME=safe-header-allow-frame
 CADDY_SNIPPET_SAFEHEADERALLOWCORS=safe-header-allow-cors
 CADDY_SNIPPET_SAFEHEADERCORS=safe-header-cors
 CADDY_SNIPPET_NOTHOMESUBNET=not-home-subnet
+CADDY_SNIPPET_SAFEHEADERCORSPREFLIGHT=safe-header-cors-preflight
 # Caddy (Service Details) END
 
 # Calibre (Service Details) BEGIN
@@ -30568,6 +31077,8 @@ LINKWARDEN_DATABASE_USER=
 LINKWARDEN_DATABASE_USER_PASSWORD=
 LINKWARDEN_NEXTAUTH_SECRET=
 LINKWARDEN_OIDC_CLIENT_SECRET=
+LINKWARDEN_DATABASE_READONLYUSER=
+LINKWARDEN_DATABASE_READONLYUSER_PASSWORD=
 # Linkwarden (Service Details) END
 
 # Bar Assistant (Service Details) BEGIN
@@ -30584,6 +31095,8 @@ FRESHRSS_DATABASE_NAME=
 FRESHRSS_DATABASE_USER=
 FRESHRSS_DATABASE_USER_PASSWORD=
 FRESHRSS_OIDC_CLIENT_SECRET=
+FRESHRSS_DATABASE_READONLYUSER=
+FRESHRSS_DATABASE_READONLYUSER_PASSWORD=
 # FreshRSS (Service Details) END
 
 # Keila (Service Details) BEGIN
@@ -30594,6 +31107,8 @@ KEILA_ADMIN_PASSWORD=
 KEILA_DATABASE_NAME=
 KEILA_DATABASE_USER=
 KEILA_DATABASE_USER_PASSWORD=
+KEILA_DATABASE_READONLYUSER=
+KEILA_DATABASE_READONLYUSER_PASSWORD=
 # Keila (Service Details) END
 
 # Wallabag (Service Details) BEGIN
@@ -30606,6 +31121,8 @@ WALLABAG_DATABASE_USER=
 WALLABAG_DATABASE_USER_PASSWORD=
 WALLABAG_ENV_SECRET=
 WALLABAG_REDIS_PASSWORD=
+WALLABAG_DATABASE_READONLYUSER=
+WALLABAG_DATABASE_READONLYUSER_PASSWORD=
 # Wallabag (Service Details) END
 
 # Jupyter (Service Details) BEGIN
@@ -30624,6 +31141,8 @@ PAPERLESS_DATABASE_NAME=
 PAPERLESS_DATABASE_USER=
 PAPERLESS_DATABASE_USER_PASSWORD=
 PAPERLESS_OIDC_CLIENT_SECRET=
+PAPERLESS_DATABASE_READONLYUSER=
+PAPERLESS_DATABASE_READONLYUSER_PASSWORD=
 # Paperless (Service Details) END
 
 # SpeedtestTrackerLocal (Service Details) BEGIN
@@ -30634,6 +31153,8 @@ SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD=
 SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME=
 SPEEDTEST_TRACKER_LOCAL_DATABASE_USER=
 SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD=
+SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER=
+SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER_PASSWORD=
 # SpeedtestTrackerLocal (Service Details) END
 
 # SpeedtestTrackerVPN (Service Details) BEGIN
@@ -30644,6 +31165,8 @@ SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD=
 SPEEDTEST_TRACKER_VPN_DATABASE_NAME=
 SPEEDTEST_TRACKER_VPN_DATABASE_USER=
 SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD=
+SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER=
+SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER_PASSWORD=
 # SpeedtestTrackerVPN (Service Details) END
 
 # Change Detection (Service Details) BEGIN
@@ -30660,6 +31183,8 @@ HUGINN_ADMIN_PASSWORD=
 HUGINN_DATABASE_NAME=
 HUGINN_DATABASE_USER=
 HUGINN_DATABASE_USER_PASSWORD=
+HUGINN_DATABASE_READONLYUSER=
+HUGINN_DATABASE_READONLYUSER_PASSWORD=
 # Huginn (Service Details) END
 
 # Coturn (Service Details) BEGIN
@@ -30670,6 +31195,8 @@ COTURN_STATIC_SECRET=
 PIPED_DATABASE_NAME=
 PIPED_DATABASE_USER=
 PIPED_DATABASE_USER_PASSWORD=
+PIPED_DATABASE_READONLYUSER=
+PIPED_DATABASE_READONLYUSER_PASSWORD=
 # Piped (Service Details) END
 
 # GrampsWeb (Service Details) BEGIN
@@ -30688,6 +31215,8 @@ PENPOT_DATABASE_NAME=
 PENPOT_DATABASE_USER=
 PENPOT_DATABASE_USER_PASSWORD=
 PENPOT_SECRET_KEY=
+PENPOT_DATABASE_READONLYUSER=
+PENPOT_DATABASE_READONLYUSER_PASSWORD=
 # Penpot (Service Details) END
 
 # EspoCRM (Service Details) BEGIN
@@ -30698,6 +31227,8 @@ ESPOCRM_DATABASE_NAME=
 ESPOCRM_DATABASE_ROOT_PASSWORD=
 ESPOCRM_DATABASE_USER=
 ESPOCRM_DATABASE_USER_PASSWORD=
+ESPOCRM_DATABASE_READONLYUSER=
+ESPOCRM_DATABASE_READONLYUSER_PASSWORD=
 # EspoCRM (Service Details) END
 
 # Immich (Service Details) BEGIN
@@ -30710,6 +31241,8 @@ IMMICH_DATABASE_USER=
 IMMICH_DATABASE_USER_PASSWORD=
 IMMICH_REDIS_PASSWORD=
 IMMICH_OIDC_CLIENT_SECRET=
+IMMICH_DATABASE_READONLYUSER=
+IMMICH_DATABASE_READONLYUSER_PASSWORD=
 # Immich (Service Details) END
 
 # Homarr (Service Details) BEGIN
@@ -30729,6 +31262,8 @@ MATOMO_DATABASE_NAME=
 MATOMO_DATABASE_ROOT_PASSWORD=
 MATOMO_DATABASE_USER=
 MATOMO_DATABASE_USER_PASSWORD=
+MATOMO_DATABASE_READONLYUSER=
+MATOMO_DATABASE_READONLYUSER_PASSWORD=
 # Matomo (Service Details) END
 
 # Pastefy (Service Details) BEGIN
@@ -30740,6 +31275,8 @@ PASTEFY_DATABASE_NAME=
 PASTEFY_DATABASE_ROOT_PASSWORD=
 PASTEFY_DATABASE_USER=
 PASTEFY_DATABASE_USER_PASSWORD=
+PASTEFY_DATABASE_READONLYUSER=
+PASTEFY_DATABASE_READONLYUSER_PASSWORD=
 # Pastefy (Service Details) END
 
 # AIStack (Service Details) BEGIN
@@ -30770,6 +31307,8 @@ PIXELFED_DATABASE_USER=
 PIXELFED_DATABASE_USER_PASSWORD=
 PIXELFED_REDIS_PASSWORD=
 PIXELFED_APP_KEY=
+PIXELFED_DATABASE_READONLYUSER=
+PIXELFED_DATABASE_READONLYUSER_PASSWORD=
 # Pixelfed (Service Details) END
 
 # Yamtrack (Service Details) BEGIN
@@ -30783,6 +31322,8 @@ YAMTRACK_DATABASE_USER_PASSWORD=
 YAMTRACK_SECRET_KEY=
 YAMTRACK_OIDC_CLIENT_ID=
 YAMTRACK_OIDC_CLIENT_SECRET=
+YAMTRACK_DATABASE_READONLYUSER=
+YAMTRACK_DATABASE_READONLYUSER_PASSWORD=
 # Yamtrack (Service Details) END
 
 # Servarr (Service Details) BEGIN
@@ -30824,6 +31365,8 @@ OMBI_DATABASE_NAME=
 OMBI_DATABASE_ROOT_PASSWORD=
 OMBI_DATABASE_USER=
 OMBI_DATABASE_USER_PASSWORD=
+OMBI_DATABASE_READONLYUSER=
+OMBI_DATABASE_READONLYUSER_PASSWORD=
 # Ombi (Service Details) END
 
 # MeshCentral (Service Details) BEGIN
@@ -30832,6 +31375,8 @@ MESHCENTRAL_DATABASE_NAME=
 MESHCENTRAL_DATABASE_ROOT_PASSWORD=
 MESHCENTRAL_DATABASE_USER=
 MESHCENTRAL_DATABASE_USER_PASSWORD=
+MESHCENTRAL_DATABASE_READONLYUSER=
+MESHCENTRAL_DATABASE_READONLYUSER_PASSWORD=
 # MeshCentral (Service Details) END
 
 # Navidrome (Service Details) BEGIN
@@ -30847,6 +31392,8 @@ ADMINER_DATABASE_NAME=
 ADMINER_DATABASE_ROOT_PASSWORD=
 ADMINER_DATABASE_USER=
 ADMINER_DATABASE_USER_PASSWORD=
+ADMINER_DATABASE_READONLYUSER=
+ADMINER_DATABASE_READONLYUSER_PASSWORD=
 # Adminer (Service Details) END
 
 # Budibase (Service Details) BEGIN
@@ -30865,6 +31412,8 @@ BUDIBASE_DATABASE_NAME=
 BUDIBASE_DATABASE_ROOT_PASSWORD=
 BUDIBASE_DATABASE_USER=
 BUDIBASE_DATABASE_USER_PASSWORD=
+BUDIBASE_DATABASE_READONLYUSER=
+BUDIBASE_DATABASE_READONLYUSER_PASSWORD=
 # Budibase (Service Details) END
 
 # AudioBookshelf (Service Details) BEGIN
@@ -30882,6 +31431,8 @@ STANDARDNOTES_DATABASE_NAME=
 STANDARDNOTES_DATABASE_ROOT_PASSWORD=
 STANDARDNOTES_DATABASE_USER=
 STANDARDNOTES_DATABASE_USER_PASSWORD=
+STANDARDNOTES_DATABASE_READONLYUSER=
+STANDARDNOTES_DATABASE_READONLYUSER_PASSWORD=
 # StandardNotes (Service Details) END
 
 # Metabase (Service Details) BEGIN
@@ -30892,6 +31443,8 @@ METABASE_ADMIN_PASSWORD=
 METABASE_DATABASE_NAME=
 METABASE_DATABASE_USER=
 METABASE_DATABASE_USER_PASSWORD=
+METABASE_DATABASE_READONLYUSER=
+METABASE_DATABASE_READONLYUSER_PASSWORD=
 # Metabase (Service Details) END
 
 # Kanboard (Service Details) BEGIN
@@ -30902,6 +31455,8 @@ KANBOARD_ADMIN_PASSWORD=
 KANBOARD_DATABASE_NAME=
 KANBOARD_DATABASE_USER=
 KANBOARD_DATABASE_USER_PASSWORD=
+KANBOARD_DATABASE_READONLYUSER=
+KANBOARD_DATABASE_READONLYUSER_PASSWORD=
 # Kanboard (Service Details) END
 
 # Wekan (Service Details) BEGIN
@@ -30909,6 +31464,8 @@ WEKAN_OIDC_CLIENT_SECRET=
 WEKAN_DATABASE_NAME=
 WEKAN_DATABASE_USER=
 WEKAN_DATABASE_USER_PASSWORD=
+WEKAN_DATABASE_READONLYUSER=
+WEKAN_DATABASE_READONLYUSER_PASSWORD=
 # Wekan (Service Details) END
 
 # Revolt (Service Details) BEGIN
@@ -30920,6 +31477,8 @@ REVOLT_RABBITMQ_USERNAME=
 REVOLT_RABBITMQ_PASSWORD=
 REVOLT_MINIO_KEY=
 REVOLT_MINIO_SECRET=
+REVOLT_DATABASE_READONLYUSER=
+REVOLT_DATABASE_READONLYUSER_PASSWORD=
 # Revolt (Service Details) END
 
 # FrappeHR (Service Details) BEGIN
@@ -30932,6 +31491,8 @@ FRAPPE_HR_DATABASE_ROOT_PASSWORD=
 FRAPPE_HR_DATABASE_USER=
 FRAPPE_HR_DATABASE_USER_PASSWORD=
 FRAPPE_HR_REDIS_PASSWORD=
+FRAPPE_HR_DATABASE_READONLYUSER=
+FRAPPE_HR_DATABASE_READONLYUSER_PASSWORD=
 # FrappeHR (Service Details) END
 
 # MintHCM (Service Details) BEGIN
@@ -30945,6 +31506,8 @@ MINTHCM_DATABASE_USER=
 MINTHCM_DATABASE_USER_PASSWORD=
 MINTHCM_ES_USER=
 MINTHCM_ES_USER_PASSWORD=
+MINTHCM_DATABASE_READONLYUSER=
+MINTHCM_DATABASE_READONLYUSER_PASSWORD=
 # MintHCM (Service Details) END
 
 # CloudBeaver (Service Details) BEGIN
@@ -30970,6 +31533,8 @@ TWENTY_DATABASE_USER_PASSWORD=
 TWENTY_REDIS_PASSWORD=
 TWENTY_MINIO_KEY=
 TWENTY_MINIO_SECRET=
+TWENTY_DATABASE_READONLYUSER=
+TWENTY_DATABASE_READONLYUSER_PASSWORD=
 # Twenty (Service Details) END
 
 # Odoo (Service Details) BEGIN
@@ -30980,6 +31545,8 @@ ODOO_ADMIN_PASSWORD=
 ODOO_DATABASE_NAME=
 ODOO_DATABASE_USER=
 ODOO_DATABASE_USER_PASSWORD=
+ODOO_DATABASE_READONLYUSER=
+ODOO_DATABASE_READONLYUSER_PASSWORD=
 # Odoo (Service Details) END
 
 # Calcom (Service Details) BEGIN
@@ -30990,6 +31557,8 @@ CALCOM_ADMIN_PASSWORD=
 CALCOM_DATABASE_NAME=
 CALCOM_DATABASE_USER=
 CALCOM_DATABASE_USER_PASSWORD=
+CALCOM_DATABASE_READONLYUSER=
+CALCOM_DATABASE_READONLYUSER_PASSWORD=
 # Calcom (Service Details) END
 
 # Rallly (Service Details) BEGIN
@@ -31002,6 +31571,8 @@ RALLLY_DATABASE_USER=
 RALLLY_DATABASE_USER_PASSWORD=
 RALLLY_MINIO_KEY=
 RALLLY_MINIO_SECRET=
+RALLLY_DATABASE_READONLYUSER=
+RALLLY_DATABASE_READONLYUSER_PASSWORD=
 # Rallly (Service Details) END
 
 # EasyAppointments (Service Details) BEGIN
@@ -31013,6 +31584,8 @@ EASYAPPOINTMENTS_DATABASE_NAME=
 EASYAPPOINTMENTS_DATABASE_ROOT_PASSWORD=
 EASYAPPOINTMENTS_DATABASE_USER=
 EASYAPPOINTMENTS_DATABASE_USER_PASSWORD=
+EASYAPPOINTMENTS_DATABASE_READONLYUSER=
+EASYAPPOINTMENTS_DATABASE_READONLYUSER_PASSWORD=
 # EasyAppointments (Service Details) END
 
 # OpenProject (Service Details) BEGIN
@@ -31021,11 +31594,12 @@ OPENPROJECT_ADMIN_USERNAME=
 OPENPROJECT_ADMIN_EMAIL_ADDRESS=
 OPENPROJECT_ADMIN_PASSWORD=
 OPENPROJECT_DATABASE_NAME=
-OPENPROJECT_DATABASE_ROOT_PASSWORD=
 OPENPROJECT_DATABASE_USER=
 OPENPROJECT_DATABASE_USER_PASSWORD=
 OPENPROJECT_MINIO_KEY=
 OPENPROJECT_MINIO_SECRET=
+OPENPROJECT_DATABASE_READONLYUSER=
+OPENPROJECT_DATABASE_READONLYUSER_PASSWORD=
 # OpenProject (Service Details) END
 
 # Zammad (Service Details) BEGIN
@@ -31045,6 +31619,8 @@ ZAMMAD_MINIO_SECRET=
 ZAMMAD_DEDICATED_EMAIL_USERNAME=
 ZAMMAD_DEDICATED_EMAIL_ADDRESS=
 ZAMMAD_DEDICATED_EMAIL_PASSWORD=
+ZAMMAD_DATABASE_READONLYUSER=
+ZAMMAD_DATABASE_READONLYUSER_PASSWORD=
 # Zammad (Service Details) END
 
 # Zulip (Service Details) BEGIN
@@ -31059,6 +31635,8 @@ ZULIP_REDIS_PASSWORD=
 ZULIP_RABBITMQ_USERNAME=
 ZULIP_RABBITMQ_PASSWORD=
 ZULIP_MEMCACHE_PASSWORD=
+ZULIP_DATABASE_READONLYUSER=
+ZULIP_DATABASE_READONLYUSER_PASSWORD=
 # Zulip (Service Details) END
 
 # KillBill (Service Details) BEGIN
@@ -31073,6 +31651,10 @@ KILLBILL_KAUI_DATABASE_NAME=
 KILLBILL_REDIS_PASSWORD=
 KILLBILL_API_KEY=
 KILLBILL_API_SECRET=
+KILLBILL_KB_DATABASE_READONLYUSER=
+KILLBILL_KB_DATABASE_READONLYUSER_PASSWORD=
+KILLBILL_KAUI_DATABASE_READONLYUSER=
+KILLBILL_KAUI_DATABASE_READONLYUSER_PASSWORD=
 # KillBill (Service Details) END
 
 # InvoiceShelf (Service Details) BEGIN
@@ -31083,6 +31665,8 @@ INVOICESHELF_ADMIN_PASSWORD=
 INVOICESHELF_DATABASE_NAME=
 INVOICESHELF_DATABASE_USER=
 INVOICESHELF_DATABASE_USER_PASSWORD=
+INVOICESHELF_DATABASE_READONLYUSER=
+INVOICESHELF_DATABASE_READONLYUSER_PASSWORD=
 # InvoiceShelf (Service Details) END
 
 # InvoiceNinja (Service Details) BEGIN
@@ -31100,6 +31684,8 @@ INVOICENINJA_MINIO_SECRET=
 INVOICENINJA_API_SECRET=
 INVOICENINJA_UPDATE_SECRET=
 INVOICENINJA_WEBCRON_SECRET=
+INVOICENINJA_DATABASE_READONLYUSER=
+INVOICENINJA_DATABASE_READONLYUSER_PASSWORD=
 # InvoiceNinja (Service Details) END
 
 # Dolibarr (Service Details) BEGIN
@@ -31113,6 +31699,8 @@ DOLIBARR_DATABASE_USER=
 DOLIBARR_DATABASE_USER_PASSWORD=
 DOLIBARR_REDIS_PASSWORD=
 DOLIBARR_CRON_SECRET=
+DOLIBARR_DATABASE_READONLYUSER=
+DOLIBARR_DATABASE_READONLYUSER_PASSWORD=
 # Dolibarr (Service Details) END
 
 # n8n (Service Details) BEGIN
@@ -31125,6 +31713,8 @@ N8N_DATABASE_USER=
 N8N_DATABASE_USER_PASSWORD=
 N8N_REDIS_PASSWORD=
 N8N_ENCRYPTION_KEY=
+N8N_DATABASE_READONLYUSER=
+N8N_DATABASE_READONLYUSER_PASSWORD=
 # n8n (Service Details) END
 
 # Automatisch (Service Details) BEGIN
@@ -31139,6 +31729,8 @@ AUTOMATISCH_REDIS_PASSWORD=
 AUTOMATISCH_ENCRYPTION_KEY=
 AUTOMATISCH_WEBHOOK_SECRET_KEY=
 AUTOMATISCH_APP_SECRET_KEY=
+AUTOMATISCH_DATABASE_READONLYUSER=
+AUTOMATISCH_DATABASE_READONLYUSER_PASSWORD=
 # Automatisch (Service Details) END
 
 # ActivePieces (Service Details) BEGIN
@@ -31153,6 +31745,8 @@ ACTIVEPIECES_REDIS_PASSWORD=
 ACTIVEPIECES_ENCRYPTION_KEY=
 ACTIVEPIECES_API_KEY=
 ACTIVEPIECES_JWT_SECRET=
+ACTIVEPIECES_DATABASE_READONLYUSER=
+ACTIVEPIECES_DATABASE_READONLYUSER_PASSWORD=
 # ActivePieces (Service Details) END
 
 # Beszel (Service Details) BEGIN
@@ -31174,6 +31768,8 @@ TAIGA_SECRET_KEY=
 TAIGA_RABBITMQ_USERNAME=
 TAIGA_RABBITMQ_PASSWORD=
 TAIGA_RABBITMQ_ERLANG_COOKIE=
+TAIGA_DATABASE_READONLYUSER=
+TAIGA_DATABASE_READONLYUSER_PASSWORD=
 # Taiga (Service Details) END
 
 # OpenSign (Service Details) BEGIN
@@ -31186,6 +31782,8 @@ OPENSIGN_DATABASE_USER=
 OPENSIGN_DATABASE_USER_PASSWORD=
 OPENSIGN_MASTER_KEY=
 OPENSIGN_CERTIFICATE_PASS_PHRASE=
+OPENSIGN_DATABASE_READONLYUSER=
+OPENSIGN_DATABASE_READONLYUSER_PASSWORD=
 # OpenSign (Service Details) END
 
 # DocuSeal (Service Details) BEGIN
@@ -31196,6 +31794,8 @@ DOCUSEAL_ADMIN_PASSWORD=
 DOCUSEAL_DATABASE_NAME=
 DOCUSEAL_DATABASE_USER=
 DOCUSEAL_DATABASE_USER_PASSWORD=
+DOCUSEAL_DATABASE_READONLYUSER=
+DOCUSEAL_DATABASE_READONLYUSER_PASSWORD=
 # DocuSeal (Service Details) END
 
 # ControlR (Service Details) BEGIN
@@ -31208,6 +31808,8 @@ CONTROLR_DATABASE_USER=
 CONTROLR_DATABASE_USER_PASSWORD=
 CONTROLR_ASPIRE_TOKEN=
 CONTROLR_ASPIRE_APIKEY=
+CONTROLR_DATABASE_READONLYUSER=
+CONTROLR_DATABASE_READONLYUSER_PASSWORD=
 # ControlR (Service Details) END
 
 # Akaunting (Service Details) BEGIN
@@ -31219,6 +31821,8 @@ AKAUNTING_DATABASE_NAME=
 AKAUNTING_DATABASE_ROOT_PASSWORD=
 AKAUNTING_DATABASE_USER=
 AKAUNTING_DATABASE_USER_PASSWORD=
+AKAUNTING_DATABASE_READONLYUSER=
+AKAUNTING_DATABASE_READONLYUSER_PASSWORD=
 # Akaunting (Service Details) END
 
 # Axelor (Service Details) BEGIN
@@ -31232,6 +31836,8 @@ AXELOR_DATABASE_USER_PASSWORD=
 AXELOR_NEXTAUTH_SECRET=
 AXELOR_GOOVEE_ADMIN_USERNAME=
 AXELOR_GOOVEE_ADMIN_PASSWORD=
+AXELOR_DATABASE_READONLYUSER=
+AXELOR_DATABASE_READONLYUSER_PASSWORD=
 # Axelor (Service Details) END
 
 # ConvertX (Service Details) BEGIN
@@ -31247,6 +31853,301 @@ KOPIA_INIT_ENV=true
 KOPIA_ADMIN_USERNAME=
 KOPIA_ADMIN_PASSWORD=
 # Kopia (Service Details) END
+
+# LocalAI (Service Details) BEGIN
+LOCALAI_INIT_ENV=true
+LOCALAI_ADMIN_USERNAME=
+LOCALAI_ADMIN_EMAIL_ADDRESS=
+LOCALAI_ADMIN_PASSWORD=
+LOCALAI_API_KEY=
+LOCALAI_SSHBOX_PASSWORD=
+# LocalAI (Service Details) END
+
+# ComfyUI (Service Details) BEGIN
+COMFYUI_INIT_ENV=true
+COMFYUI_ADMIN_USERNAME=
+COMFYUI_ADMIN_EMAIL_ADDRESS=
+COMFYUI_ADMIN_PASSWORD=
+# ComfyUI (Service Details) END
+
+# Langflow (Service Details) BEGIN
+LANGFLOW_INIT_ENV=true
+LANGFLOW_ADMIN_USERNAME=
+LANGFLOW_ADMIN_EMAIL_ADDRESS=
+LANGFLOW_ADMIN_PASSWORD=
+LANGFLOW_DATABASE_NAME=
+LANGFLOW_DATABASE_USER=
+LANGFLOW_DATABASE_USER_PASSWORD=
+LANGFLOW_DATABASE_READONLYUSER=
+LANGFLOW_DATABASE_READONLYUSER_PASSWORD=
+# Langflow (Service Details) END
+
+# AnythingLLM (Service Details) BEGIN
+ANYTHINGLLM_INIT_ENV=true
+ANYTHINGLLM_ADMIN_USERNAME=
+ANYTHINGLLM_ADMIN_EMAIL_ADDRESS=
+ANYTHINGLLM_ADMIN_PASSWORD=
+ANYTHINGLLM_SIG_KEY=
+ANYTHINGLLM_SIG_SALT=
+ANYTHINGLLM_JWT_SECRET=
+# AnythingLLM (Service Details) END
+
+# Firecrawl (Service Details) BEGIN
+FIRECRAWL_INIT_ENV=true
+FIRECRAWL_DATABASE_NAME=
+FIRECRAWL_DATABASE_USER=
+FIRECRAWL_DATABASE_USER_PASSWORD=
+FIRECRAWL_REDIS_PASSWORD=
+FIRECRAWL_BULL_AUTH_KEY=
+FIRECRAWL_API_KEY=
+FIRECRAWL_RABBITMQ_USERNAME=
+FIRECRAWL_RABBITMQ_PASSWORD=
+# Firecrawl (Service Details) END
+
+# LibreChat (Service Details) BEGIN
+LIBRECHAT_INIT_ENV=true
+LIBRECHAT_ADMIN_USERNAME=
+LIBRECHAT_ADMIN_EMAIL_ADDRESS=
+LIBRECHAT_ADMIN_PASSWORD=
+LIBRECHAT_DATABASE_NAME=
+LIBRECHAT_DATABASE_USER=
+LIBRECHAT_DATABASE_USER_PASSWORD=
+LIBRECHAT_REDIS_PASSWORD=
+LIBRECHAT_MONGODB_DATABASE=
+LIBRECHAT_MONGODB_USER=
+LIBRECHAT_MONGODB_USER_PASSWORD=
+LIBRECHAT_CREDS_KEY=
+LIBRECHAT_CREDS_IV=
+LIBRECHAT_JWT_SECRET=
+LIBRECHAT_JWT_REFRESH_SECRET=
+LIBRECHAT_MEILI_MASTER_KEY=
+LIBRECHAT_OIDC_CLIENT_SECRET=
+LIBRECHAT_DATABASE_READONLYUSER=
+LIBRECHAT_DATABASE_READONLYUSER_PASSWORD=
+LIBRECHAT_MONGODB_READONLYUSER=
+LIBRECHAT_MONGODB_READONLYUSER_PASSWORD=
+# LibreChat (Service Details) END
+
+# OpenWebUI (Service Details) BEGIN
+OPENWEBUI_INIT_ENV=true
+OPENWEBUI_ADMIN_USERNAME=
+OPENWEBUI_ADMIN_EMAIL_ADDRESS=
+OPENWEBUI_ADMIN_PASSWORD=
+OPENWEBUI_DATABASE_NAME=
+OPENWEBUI_DATABASE_USER=
+OPENWEBUI_DATABASE_USER_PASSWORD=
+OPENWEBUI_REDIS_PASSWORD=
+OPENWEBUI_OIDC_CLIENT_ID=
+OPENWEBUI_OIDC_CLIENT_SECRET=
+OPENWEBUI_SECRET_KEY=
+OPENWEBUI_DATABASE_READONLYUSER=
+OPENWEBUI_DATABASE_READONLYUSER_PASSWORD=
+# OpenWebUI (Service Details) END
+
+# Khoj (Service Details) BEGIN
+KHOJ_INIT_ENV=true
+KHOJ_ADMIN_USERNAME=
+KHOJ_ADMIN_EMAIL_ADDRESS=
+KHOJ_ADMIN_PASSWORD=
+KHOJ_DATABASE_NAME=
+KHOJ_DATABASE_USER=
+KHOJ_DATABASE_USER_PASSWORD=
+KHOJ_DJANGO_SECRET_KEY=
+KHOJ_DATABASE_READONLYUSER=
+KHOJ_DATABASE_READONLYUSER_PASSWORD=
+# Khoj (Service Details) END
+
+# LobeChat (Service Details) BEGIN
+LOBECHAT_INIT_ENV=true
+LOBECHAT_ADMIN_USERNAME=
+LOBECHAT_ADMIN_EMAIL_ADDRESS=
+LOBECHAT_ADMIN_PASSWORD=
+LOBECHAT_DATABASE_NAME=
+LOBECHAT_DATABASE_USER=
+LOBECHAT_DATABASE_USER_PASSWORD=
+LOBECHAT_REDIS_PASSWORD=
+LOBECHAT_NEXTAUTH_SECRET=
+LOBECHAT_KEYVAULTS_SECRET=
+LOBECHAT_MINIO_KEY=
+LOBECHAT_MINIO_SECRET=
+LOBECHAT_OIDC_CLIENT_ID=
+LOBECHAT_OIDC_CLIENT_SECRET=
+LOBECHAT_DATABASE_READONLYUSER=
+LOBECHAT_DATABASE_READONLYUSER_PASSWORD=
+# LobeChat (Service Details) END
+
+# RAGFlow (Service Details) BEGIN
+RAGFLOW_INIT_ENV=true
+RAGFLOW_ADMIN_USERNAME=
+RAGFLOW_ADMIN_EMAIL_ADDRESS=
+RAGFLOW_ADMIN_PASSWORD=
+RAGFLOW_DATABASE_NAME=
+RAGFLOW_DATABASE_USER=
+RAGFLOW_DATABASE_USER_PASSWORD=
+RAGFLOW_REDIS_PASSWORD=
+RAGFLOW_MINIO_KEY=
+RAGFLOW_MINIO_SECRET=
+RAGFLOW_OIDC_CLIENT_ID=
+RAGFLOW_OIDC_CLIENT_SECRET=
+RAGFLOW_MCPSERVER_API_KEY=
+RAGFLOW_DATABASE_READONLYUSER=
+RAGFLOW_DATABASE_READONLYUSER_PASSWORD=
+# RAGFlow (Service Details) END
+
+# TabbyML (Service Details) BEGIN
+TABBYML_INIT_ENV=true
+TABBYML_ADMIN_USERNAME=
+TABBYML_ADMIN_EMAIL_ADDRESS=
+TABBYML_ADMIN_PASSWORD=
+TABBYML_JWT_SECRET=
+# TabbyML (Service Details) END
+
+# DeepWikiOpen (Service Details) BEGIN
+DEEPWIKI_OPEN_INIT_ENV=true
+DEEPWIKI_OPEN_AUTH_CODE=
+# DeepWikiOpen (Service Details) END
+
+# Docling (Service Details) BEGIN
+DOCLING_INIT_ENV=true
+DOCLING_REDIS_PASSWORD=
+DOCLING_API_KEY=
+# Docling (Service Details) END
+
+# Dify (Service Details) BEGIN
+DIFY_INIT_ENV=true
+DIFY_ADMIN_USERNAME=
+DIFY_ADMIN_EMAIL_ADDRESS=
+DIFY_ADMIN_PASSWORD=
+DIFY_DATABASE_NAME=
+DIFY_DATABASE_USER=
+DIFY_DATABASE_USER_PASSWORD=
+DIFY_REDIS_PASSWORD=
+DIFY_SECRET_KEY=
+DIFY_MINIO_KEY=
+DIFY_MINIO_SECRET=
+DIFY_QDRANT_API_KEY=
+DIFY_CODE_EXECUTION_API_KEY=
+DIFY_SANDBOX_API_KEY=
+DIFY_PLUGIN_DAEMON_KEY=
+DIFY_PLUGIN_DIFY_INNER_API_KEY=
+DIFY_DATABASE_READONLYUSER=
+DIFY_DATABASE_READONLYUSER_PASSWORD=
+# Dify (Service Details) END
+
+# MindsDB (Service Details) BEGIN
+MINDSDB_INIT_ENV=true
+MINDSDB_ADMIN_USERNAME=
+MINDSDB_ADMIN_EMAIL_ADDRESS=
+MINDSDB_ADMIN_PASSWORD=
+MINDSDB_DATABASE_NAME=
+MINDSDB_DATABASE_USER=
+MINDSDB_DATABASE_USER_PASSWORD=
+MINDSDB_DATABASE_READONLYUSER=
+MINDSDB_DATABASE_READONLYUSER_PASSWORD=
+MINDSDB_REDIS_PASSWORD=
+# MindsDB (Service Details) END
+
+# WaterCrawl (Service Details) BEGIN
+WATERCRAWL_INIT_ENV=true
+WATERCRAWL_ADMIN_USERNAME=
+WATERCRAWL_ADMIN_EMAIL_ADDRESS=
+WATERCRAWL_ADMIN_PASSWORD=
+WATERCRAWL_DATABASE_NAME=
+WATERCRAWL_DATABASE_USER=
+WATERCRAWL_DATABASE_USER_PASSWORD=
+WATERCRAWL_DATABASE_READONLYUSER=
+WATERCRAWL_DATABASE_READONLYUSER_PASSWORD=
+WATERCRAWL_REDIS_PASSWORD=
+WATERCRAWL_SECRET_KEY=
+WATERCRAWL_API_ENCRYPTION_KEY=
+WATERCRAWL_PLAYWRIGHT_API_KEY=
+WATERCRAWL_MINIO_KEY=
+WATERCRAWL_MINIO_SECRET=
+# WaterCrawl (Service Details) END
+
+# Flowise (Service Details) BEGIN
+FLOWISE_INIT_ENV=true
+FLOWISE_ADMIN_USERNAME=
+FLOWISE_ADMIN_EMAIL_ADDRESS=
+FLOWISE_ADMIN_PASSWORD=
+FLOWISE_DATABASE_NAME=
+FLOWISE_DATABASE_USER=
+FLOWISE_DATABASE_USER_PASSWORD=
+FLOWISE_DATABASE_READONLYUSER=
+FLOWISE_DATABASE_READONLYUSER_PASSWORD=
+FLOWISE_REDIS_PASSWORD=
+FLOWISE_JWT_SECRET=
+FLOWISE_JWT_REFRESH_SECRET=
+FLOWISE_EXPRESS_SESSION_SECRET=
+FLOWISE_TOKEN_HASH_SECRET=
+FLOWISE_MINIO_KEY=
+FLOWISE_MINIO_SECRET=
+# Flowise (Service Details) END
+
+# SurfSense (Service Details) BEGIN
+SURFSENSE_INIT_ENV=true
+SURFSENSE_ADMIN_USERNAME=
+SURFSENSE_ADMIN_EMAIL_ADDRESS=
+SURFSENSE_ADMIN_PASSWORD=
+SURFSENSE_SECRET_KEY=
+# SurfSense (Service Details) END
+
+# NocoDB (Service Details) BEGIN
+NOCODB_INIT_ENV=true
+NOCODB_ADMIN_USERNAME=
+NOCODB_ADMIN_EMAIL_ADDRESS=
+NOCODB_ADMIN_PASSWORD=
+NOCODB_DATABASE_NAME=
+NOCODB_DATABASE_USER=
+NOCODB_DATABASE_USER_PASSWORD=
+NOCODB_DATABASE_READONLYUSER=
+NOCODB_DATABASE_READONLYUSER_PASSWORD=
+NOCODB_REDIS_PASSWORD=
+NOCODB_AUTH_JWT_SECRET=
+NOCODB_MINIO_KEY=
+NOCODB_MINIO_SECRET=
+# NocoDB (Service Details) END
+
+# Ente (Service Details) BEGIN
+ENTE_INIT_ENV=true
+ENTE_ADMIN_USERNAME=
+ENTE_ADMIN_EMAIL_ADDRESS=
+ENTE_ADMIN_PASSWORD=
+ENTE_DATABASE_NAME=
+ENTE_DATABASE_USER=
+ENTE_DATABASE_USER_PASSWORD=
+ENTE_DATABASE_READONLYUSER=
+ENTE_DATABASE_READONLYUSER_PASSWORD=
+ENTE_MINIO_KEY=
+ENTE_MINIO_SECRET=
+ENTE_MUSEUM_KEY=
+ENTE_MUSEUM_HASH=
+ENTE_MUSEUM_JWT_SECRET=
+# Ente (Service Details) END
+
+# Morphic (Service Details) BEGIN
+MORPHIC_INIT_ENV=true
+MORPHIC_ADMIN_USERNAME=
+MORPHIC_ADMIN_EMAIL_ADDRESS=
+MORPHIC_ADMIN_PASSWORD=
+MORPHIC_DATABASE_NAME=
+MORPHIC_DATABASE_USER=
+MORPHIC_DATABASE_USER_PASSWORD=
+MORPHIC_DATABASE_READONLYUSER=
+MORPHIC_DATABASE_READONLYUSER_PASSWORD=
+MORPHIC_REDIS_PASSWORD=
+MORPHIC_SUPABASE_DASHBOARD_USERNAME=
+MORPHIC_SUPABASE_DASHBOARD_PASSWORD=
+MORPHIC_SUPABASE_ANON_KEY=
+MORPHIC_SUPABASE_JWT_SECRET=
+MORPHIC_SUPABASE_DB_ENC_KEY=
+MORPHIC_SUPABASE_PG_META_CRYPTO_KEY=
+MORPHIC_SUPABASE_SECRET_KEY_BASE=
+MORPHIC_SUPABASE_SERVICE_ROLE_KEY=
+MORPHIC_SUPABASE_VAULT_ENC_KEY=
+MORPHIC_SUPABASE_LOGFLARE_PRIVATE_ACCESS_TOKEN=
+MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN=
+# Morphic (Service Details) END
 
 # Service Details END
 EOFCF
@@ -31353,9 +32254,9 @@ INPUT_OTHER_VPN_ALLOW_PORTS_DEFAULT=
 # INPUT Chain Defaults END
 
 # DOCKER-USER Chain Defaults BEGIN
-DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT=$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$UPNP_PORT,$PEERTUBE_RDP_PORT,$QBITTORRENT_PORT,$JELLYFIN_PORT,$JITSI_MEET_PORT,$JITSI_JVB_PORT,$JITSI_COLIBRI_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
-DOCKERUSER_PRIMARY_VPN_ALLOW_PORTS_DEFAULT=$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$JITSI_MEET_PORT,$JITSI_JVB_PORT,$JITSI_COLIBRI_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
-DOCKERUSER_OTHER_VPN_ALLOW_PORTS_DEFAULT=$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
+DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT=$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$UPNP_PORT,$PEERTUBE_RDP_PORT,$QBITTORRENT_PORT,$JELLYFIN_PORT,$JITSI_MEET_PORT,$JITSI_JVB_PORT,$JITSI_COLIBRI_PORT,$KHOJ_VNC_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
+DOCKERUSER_PRIMARY_VPN_ALLOW_PORTS_DEFAULT=$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$JITSI_MEET_PORT,$JITSI_JVB_PORT,$JITSI_COLIBRI_PORT,$KHOJ_VNC_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
+DOCKERUSER_OTHER_VPN_ALLOW_PORTS_DEFAULT=$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT,$KHOJ_VNC_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
 # DOCKER-USER Chain Defaults END
 
 EOFPT
@@ -33698,6 +34599,1386 @@ function initServicesCredentials()
     KOPIA_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar KOPIA_ADMIN_PASSWORD $KOPIA_ADMIN_PASSWORD
   fi
+  if [ -z "$LOCALAI_ADMIN_USERNAME" ]; then
+    LOCALAI_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_localai"
+    updateConfigVar LOCALAI_ADMIN_USERNAME $LOCALAI_ADMIN_USERNAME
+  fi
+  if [ -z "$LOCALAI_ADMIN_EMAIL_ADDRESS" ]; then
+    LOCALAI_ADMIN_EMAIL_ADDRESS=$LOCALAI_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar LOCALAI_ADMIN_EMAIL_ADDRESS $LOCALAI_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$LOCALAI_ADMIN_PASSWORD" ]; then
+    LOCALAI_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LOCALAI_ADMIN_PASSWORD $LOCALAI_ADMIN_PASSWORD
+  fi
+  if [ -z "$LOCALAI_API_KEY" ]; then
+    LOCALAI_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar LOCALAI_API_KEY $LOCALAI_API_KEY
+  fi
+  if [ -z "$LOCALAI_SSHBOX_PASSWORD" ]; then
+    LOCALAI_SSHBOX_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LOCALAI_SSHBOX_PASSWORD $LOCALAI_SSHBOX_PASSWORD
+  fi
+  if [ -z "$COMFYUI_ADMIN_USERNAME" ]; then
+    COMFYUI_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_comfyui"
+    updateConfigVar COMFYUI_ADMIN_USERNAME $COMFYUI_ADMIN_USERNAME
+  fi
+  if [ -z "$COMFYUI_ADMIN_EMAIL_ADDRESS" ]; then
+    COMFYUI_ADMIN_EMAIL_ADDRESS=$COMFYUI_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar COMFYUI_ADMIN_EMAIL_ADDRESS $COMFYUI_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$COMFYUI_ADMIN_PASSWORD" ]; then
+    COMFYUI_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar COMFYUI_ADMIN_PASSWORD $COMFYUI_ADMIN_PASSWORD
+  fi
+  if [ -z "$LANGFLOW_ADMIN_USERNAME" ]; then
+    LANGFLOW_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_langflow"
+    updateConfigVar LANGFLOW_ADMIN_USERNAME $LANGFLOW_ADMIN_USERNAME
+  fi
+  if [ -z "$LANGFLOW_ADMIN_EMAIL_ADDRESS" ]; then
+    LANGFLOW_ADMIN_EMAIL_ADDRESS=$LANGFLOW_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar LANGFLOW_ADMIN_EMAIL_ADDRESS $LANGFLOW_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$LANGFLOW_ADMIN_PASSWORD" ]; then
+    LANGFLOW_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LANGFLOW_ADMIN_PASSWORD $LANGFLOW_ADMIN_PASSWORD
+  fi
+  if [ -z "$LANGFLOW_DATABASE_NAME" ]; then
+    LANGFLOW_DATABASE_NAME=langflowdb
+    updateConfigVar LANGFLOW_DATABASE_NAME $LANGFLOW_DATABASE_NAME
+  fi
+  if [ -z "$LANGFLOW_DATABASE_USER" ]; then
+    LANGFLOW_DATABASE_USER=langflow-user
+    updateConfigVar LANGFLOW_DATABASE_USER $LANGFLOW_DATABASE_USER
+  fi
+  if [ -z "$LANGFLOW_DATABASE_USER_PASSWORD" ]; then
+    LANGFLOW_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LANGFLOW_DATABASE_USER_PASSWORD $LANGFLOW_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$ANYTHINGLLM_ADMIN_USERNAME" ]; then
+    ANYTHINGLLM_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_anythingllm"
+    updateConfigVar ANYTHINGLLM_ADMIN_USERNAME $ANYTHINGLLM_ADMIN_USERNAME
+  fi
+  if [ -z "$ANYTHINGLLM_ADMIN_EMAIL_ADDRESS" ]; then
+    ANYTHINGLLM_ADMIN_EMAIL_ADDRESS=$ANYTHINGLLM_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar ANYTHINGLLM_ADMIN_EMAIL_ADDRESS $ANYTHINGLLM_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$ANYTHINGLLM_ADMIN_PASSWORD" ]; then
+    ANYTHINGLLM_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ANYTHINGLLM_ADMIN_PASSWORD $ANYTHINGLLM_ADMIN_PASSWORD
+  fi
+  if [ -z "$ANYTHINGLLM_SIG_KEY" ]; then
+    ANYTHINGLLM_SIG_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar ANYTHINGLLM_SIG_KEY $ANYTHINGLLM_SIG_KEY
+  fi
+  if [ -z "$ANYTHINGLLM_SIG_SALT" ]; then
+    ANYTHINGLLM_SIG_SALT=$(pwgen -c -n 32 1)
+    updateConfigVar ANYTHINGLLM_SIG_SALT $ANYTHINGLLM_SIG_SALT
+  fi
+  if [ -z "$ANYTHINGLLM_JWT_SECRET" ]; then
+    ANYTHINGLLM_JWT_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar ANYTHINGLLM_JWT_SECRET $ANYTHINGLLM_JWT_SECRET
+  fi
+  if [ -z "$FIRECRAWL_DATABASE_NAME" ]; then
+    FIRECRAWL_DATABASE_NAME=firecrawldb
+    updateConfigVar FIRECRAWL_DATABASE_NAME $FIRECRAWL_DATABASE_NAME
+  fi
+  if [ -z "$FIRECRAWL_DATABASE_USER" ]; then
+    FIRECRAWL_DATABASE_USER=firecrawl-user
+    updateConfigVar FIRECRAWL_DATABASE_USER $FIRECRAWL_DATABASE_USER
+  fi
+  if [ -z "$FIRECRAWL_DATABASE_USER_PASSWORD" ]; then
+    FIRECRAWL_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FIRECRAWL_DATABASE_USER_PASSWORD $FIRECRAWL_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$FIRECRAWL_REDIS_PASSWORD" ]; then
+    FIRECRAWL_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FIRECRAWL_REDIS_PASSWORD $FIRECRAWL_REDIS_PASSWORD
+  fi
+  if [ -z "$FIRECRAWL_BULL_AUTH_KEY" ]; then
+    FIRECRAWL_BULL_AUTH_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar FIRECRAWL_BULL_AUTH_KEY $FIRECRAWL_BULL_AUTH_KEY
+  fi
+  if [ -z "$FIRECRAWL_API_KEY" ]; then
+    FIRECRAWL_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar FIRECRAWL_API_KEY $FIRECRAWL_API_KEY
+  fi
+  if [ -z "$FIRECRAWL_RABBITMQ_USERNAME" ]; then
+    FIRECRAWL_RABBITMQ_USERNAME=$ADMIN_USERNAME_BASE"_firecrawl_rmq"
+    updateConfigVar FIRECRAWL_RABBITMQ_USERNAME $FIRECRAWL_RABBITMQ_USERNAME
+  fi
+  if [ -z "$FIRECRAWL_RABBITMQ_PASSWORD" ]; then
+    FIRECRAWL_RABBITMQ_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FIRECRAWL_RABBITMQ_PASSWORD $FIRECRAWL_RABBITMQ_PASSWORD
+  fi
+  if [ -z "$LIBRECHAT_ADMIN_USERNAME" ]; then
+    LIBRECHAT_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_librechat"
+    updateConfigVar LIBRECHAT_ADMIN_USERNAME $LIBRECHAT_ADMIN_USERNAME
+  fi
+  if [ -z "$LIBRECHAT_ADMIN_EMAIL_ADDRESS" ]; then
+    LIBRECHAT_ADMIN_EMAIL_ADDRESS=$LIBRECHAT_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar LIBRECHAT_ADMIN_EMAIL_ADDRESS $LIBRECHAT_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$LIBRECHAT_ADMIN_PASSWORD" ]; then
+    LIBRECHAT_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LIBRECHAT_ADMIN_PASSWORD $LIBRECHAT_ADMIN_PASSWORD
+  fi
+  if [ -z "$LIBRECHAT_DATABASE_NAME" ]; then
+    LIBRECHAT_DATABASE_NAME=librechatdb
+    updateConfigVar LIBRECHAT_DATABASE_NAME $LIBRECHAT_DATABASE_NAME
+  fi
+  if [ -z "$LIBRECHAT_DATABASE_USER" ]; then
+    LIBRECHAT_DATABASE_USER=librechat-user
+    updateConfigVar LIBRECHAT_DATABASE_USER $LIBRECHAT_DATABASE_USER
+  fi
+  if [ -z "$LIBRECHAT_DATABASE_USER_PASSWORD" ]; then
+    LIBRECHAT_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LIBRECHAT_DATABASE_USER_PASSWORD $LIBRECHAT_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$LIBRECHAT_REDIS_PASSWORD" ]; then
+    LIBRECHAT_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LIBRECHAT_REDIS_PASSWORD $LIBRECHAT_REDIS_PASSWORD
+  fi
+  if [ -z "$LIBRECHAT_MONGODB_USER" ]; then
+    LIBRECHAT_MONGODB_USER=librechat-user
+    updateConfigVar LIBRECHAT_MONGODB_USER $LIBRECHAT_MONGODB_USER
+  fi
+  if [ -z "$LIBRECHAT_MONGODB_USER_PASSWORD" ]; then
+    LIBRECHAT_MONGODB_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LIBRECHAT_MONGODB_USER_PASSWORD $LIBRECHAT_MONGODB_USER_PASSWORD
+  fi
+  if [ -z "$LIBRECHAT_MONGODB_DATABASE" ]; then
+    LIBRECHAT_MONGODB_DATABASE=librechatmongodb
+    updateConfigVar LIBRECHAT_MONGODB_DATABASE $LIBRECHAT_MONGODB_DATABASE
+  fi
+  if [ -z "$LIBRECHAT_CREDS_KEY" ]; then
+    LIBRECHAT_CREDS_KEY=$(openssl rand -hex 32)
+    updateConfigVar LIBRECHAT_CREDS_KEY $LIBRECHAT_CREDS_KEY
+  fi
+  if [ -z "$LIBRECHAT_CREDS_IV" ]; then
+    LIBRECHAT_CREDS_IV=$(openssl rand -hex 16)
+    updateConfigVar LIBRECHAT_CREDS_IV $LIBRECHAT_CREDS_IV
+  fi
+  if [ -z "$LIBRECHAT_JWT_SECRET" ]; then
+    LIBRECHAT_JWT_SECRET=$(openssl rand -hex 32)
+    updateConfigVar LIBRECHAT_JWT_SECRET $LIBRECHAT_JWT_SECRET
+  fi
+  if [ -z "$LIBRECHAT_JWT_REFRESH_SECRET" ]; then
+    LIBRECHAT_JWT_REFRESH_SECRET=$(openssl rand -hex 32)
+    updateConfigVar LIBRECHAT_JWT_REFRESH_SECRET $LIBRECHAT_JWT_REFRESH_SECRET
+  fi
+  if [ -z "$LIBRECHAT_MEILI_MASTER_KEY" ]; then
+    LIBRECHAT_MEILI_MASTER_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar LIBRECHAT_MEILI_MASTER_KEY $LIBRECHAT_MEILI_MASTER_KEY
+  fi
+  if [ -z "$LIBRECHAT_OIDC_CLIENT_SECRET" ]; then
+    LIBRECHAT_OIDC_CLIENT_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar LIBRECHAT_OIDC_CLIENT_SECRET $LIBRECHAT_OIDC_CLIENT_SECRET
+  fi
+  if [ -z "$OPENWEBUI_ADMIN_USERNAME" ]; then
+    OPENWEBUI_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_openwebui"
+    updateConfigVar OPENWEBUI_ADMIN_USERNAME $OPENWEBUI_ADMIN_USERNAME
+  fi
+  if [ -z "$OPENWEBUI_ADMIN_EMAIL_ADDRESS" ]; then
+    OPENWEBUI_ADMIN_EMAIL_ADDRESS=$OPENWEBUI_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar OPENWEBUI_ADMIN_EMAIL_ADDRESS $OPENWEBUI_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$OPENWEBUI_ADMIN_PASSWORD" ]; then
+    OPENWEBUI_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OPENWEBUI_ADMIN_PASSWORD $OPENWEBUI_ADMIN_PASSWORD
+  fi
+  if [ -z "$OPENWEBUI_DATABASE_NAME" ]; then
+    OPENWEBUI_DATABASE_NAME=openwebuidb
+    updateConfigVar OPENWEBUI_DATABASE_NAME $OPENWEBUI_DATABASE_NAME
+  fi
+  if [ -z "$OPENWEBUI_DATABASE_USER" ]; then
+    OPENWEBUI_DATABASE_USER=openwebui-user
+    updateConfigVar OPENWEBUI_DATABASE_USER $OPENWEBUI_DATABASE_USER
+  fi
+  if [ -z "$OPENWEBUI_DATABASE_USER_PASSWORD" ]; then
+    OPENWEBUI_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OPENWEBUI_DATABASE_USER_PASSWORD $OPENWEBUI_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$OPENWEBUI_REDIS_PASSWORD" ]; then
+    OPENWEBUI_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OPENWEBUI_REDIS_PASSWORD $OPENWEBUI_REDIS_PASSWORD
+  fi
+  if [ -z "$OPENWEBUI_OIDC_CLIENT_ID" ]; then
+    OPENWEBUI_OIDC_CLIENT_ID=openwebui
+    updateConfigVar OPENWEBUI_OIDC_CLIENT_ID $OPENWEBUI_OIDC_CLIENT_ID
+  fi
+  if [ -z "$OPENWEBUI_OIDC_CLIENT_SECRET" ]; then
+    OPENWEBUI_OIDC_CLIENT_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar OPENWEBUI_OIDC_CLIENT_SECRET $OPENWEBUI_OIDC_CLIENT_SECRET
+  fi
+  if [ -z "$OPENWEBUI_SECRET_KEY" ]; then
+    OPENWEBUI_SECRET_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar OPENWEBUI_SECRET_KEY $OPENWEBUI_SECRET_KEY
+  fi
+  if [ -z "$KHOJ_ADMIN_USERNAME" ]; then
+    KHOJ_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_khoj"
+    updateConfigVar KHOJ_ADMIN_USERNAME $KHOJ_ADMIN_USERNAME
+  fi
+  if [ -z "$KHOJ_ADMIN_EMAIL_ADDRESS" ]; then
+    KHOJ_ADMIN_EMAIL_ADDRESS=$KHOJ_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$KHOJ_ADMIN_PASSWORD" ]; then
+    KHOJ_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar KHOJ_ADMIN_PASSWORD $KHOJ_ADMIN_PASSWORD
+  fi
+  if [ -z "$KHOJ_DATABASE_NAME" ]; then
+    KHOJ_DATABASE_NAME=khojdb
+    updateConfigVar KHOJ_DATABASE_NAME $KHOJ_DATABASE_NAME
+  fi
+  if [ -z "$KHOJ_DATABASE_USER" ]; then
+    KHOJ_DATABASE_USER=khoj-user
+    updateConfigVar KHOJ_DATABASE_USER $KHOJ_DATABASE_USER
+  fi
+  if [ -z "$KHOJ_DATABASE_USER_PASSWORD" ]; then
+    KHOJ_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar KHOJ_DATABASE_USER_PASSWORD $KHOJ_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$KHOJ_DJANGO_SECRET_KEY" ]; then
+    KHOJ_DJANGO_SECRET_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar KHOJ_DJANGO_SECRET_KEY $KHOJ_DJANGO_SECRET_KEY
+  fi
+  if [ -z "$LOBECHAT_ADMIN_USERNAME" ]; then
+    LOBECHAT_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_lobechat"
+    updateConfigVar LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_USERNAME
+  fi
+  if [ -z "$LOBECHAT_ADMIN_EMAIL_ADDRESS" ]; then
+    LOBECHAT_ADMIN_EMAIL_ADDRESS=$LOBECHAT_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar LOBECHAT_ADMIN_EMAIL_ADDRESS $LOBECHAT_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$LOBECHAT_ADMIN_PASSWORD" ]; then
+    LOBECHAT_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LOBECHAT_ADMIN_PASSWORD $LOBECHAT_ADMIN_PASSWORD
+  fi
+  if [ -z "$LOBECHAT_DATABASE_NAME" ]; then
+    LOBECHAT_DATABASE_NAME=lobechatdb
+    updateConfigVar LOBECHAT_DATABASE_NAME $LOBECHAT_DATABASE_NAME
+  fi
+  if [ -z "$LOBECHAT_DATABASE_USER" ]; then
+    LOBECHAT_DATABASE_USER=lobechat-user
+    updateConfigVar LOBECHAT_DATABASE_USER $LOBECHAT_DATABASE_USER
+  fi
+  if [ -z "$LOBECHAT_DATABASE_USER_PASSWORD" ]; then
+    LOBECHAT_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LOBECHAT_DATABASE_USER_PASSWORD $LOBECHAT_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$LOBECHAT_REDIS_PASSWORD" ]; then
+    LOBECHAT_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LOBECHAT_REDIS_PASSWORD $LOBECHAT_REDIS_PASSWORD
+  fi
+  if [ -z "$LOBECHAT_NEXTAUTH_SECRET" ]; then
+    LOBECHAT_NEXTAUTH_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar LOBECHAT_NEXTAUTH_SECRET $LOBECHAT_NEXTAUTH_SECRET
+  fi
+  if [ -z "$LOBECHAT_KEYVAULTS_SECRET" ]; then
+    LOBECHAT_KEYVAULTS_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar LOBECHAT_KEYVAULTS_SECRET $LOBECHAT_KEYVAULTS_SECRET
+  fi
+  if [ -z "$LOBECHAT_MINIO_KEY" ]; then
+    LOBECHAT_MINIO_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar LOBECHAT_MINIO_KEY $LOBECHAT_MINIO_KEY
+  fi
+  if [ -z "$LOBECHAT_MINIO_SECRET" ]; then
+    LOBECHAT_MINIO_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar LOBECHAT_MINIO_SECRET $LOBECHAT_MINIO_SECRET
+  fi
+  if [ -z "$LOBECHAT_OIDC_CLIENT_ID" ]; then
+    LOBECHAT_OIDC_CLIENT_ID=lobechat
+    updateConfigVar LOBECHAT_OIDC_CLIENT_ID $LOBECHAT_OIDC_CLIENT_ID
+  fi
+  if [ -z "$LOBECHAT_OIDC_CLIENT_SECRET" ]; then
+    LOBECHAT_OIDC_CLIENT_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar LOBECHAT_OIDC_CLIENT_SECRET $LOBECHAT_OIDC_CLIENT_SECRET
+  fi
+  if [ -z "$RAGFLOW_ADMIN_USERNAME" ]; then
+    RAGFLOW_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_ragflow"
+    updateConfigVar RAGFLOW_ADMIN_USERNAME $RAGFLOW_ADMIN_USERNAME
+  fi
+  if [ -z "$RAGFLOW_ADMIN_EMAIL_ADDRESS" ]; then
+    RAGFLOW_ADMIN_EMAIL_ADDRESS=$RAGFLOW_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$RAGFLOW_ADMIN_PASSWORD" ]; then
+    RAGFLOW_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RAGFLOW_ADMIN_PASSWORD $RAGFLOW_ADMIN_PASSWORD
+  fi
+  if [ -z "$RAGFLOW_DATABASE_NAME" ]; then
+    RAGFLOW_DATABASE_NAME=ragflowdb
+    updateConfigVar RAGFLOW_DATABASE_NAME $RAGFLOW_DATABASE_NAME
+  fi
+  if [ -z "$RAGFLOW_DATABASE_USER" ]; then
+    RAGFLOW_DATABASE_USER=ragflow-user
+    updateConfigVar RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_USER
+  fi
+  if [ -z "$RAGFLOW_DATABASE_USER_PASSWORD" ]; then
+    RAGFLOW_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RAGFLOW_DATABASE_USER_PASSWORD $RAGFLOW_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$RAGFLOW_REDIS_PASSWORD" ]; then
+    RAGFLOW_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RAGFLOW_REDIS_PASSWORD $RAGFLOW_REDIS_PASSWORD
+  fi
+  if [ -z "$RAGFLOW_MINIO_KEY" ]; then
+    RAGFLOW_MINIO_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_KEY
+  fi
+  if [ -z "$RAGFLOW_MINIO_SECRET" ]; then
+    RAGFLOW_MINIO_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar RAGFLOW_MINIO_SECRET $RAGFLOW_MINIO_SECRET
+  fi
+  if [ -z "$RAGFLOW_OIDC_CLIENT_ID" ]; then
+    RAGFLOW_OIDC_CLIENT_ID=ragflow
+    updateConfigVar RAGFLOW_OIDC_CLIENT_ID $RAGFLOW_OIDC_CLIENT_ID
+  fi
+  if [ -z "$RAGFLOW_OIDC_CLIENT_SECRET" ]; then
+    RAGFLOW_OIDC_CLIENT_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar RAGFLOW_OIDC_CLIENT_SECRET $RAGFLOW_OIDC_CLIENT_SECRET
+  fi
+  if [ -z "$RAGFLOW_MCPSERVER_API_KEY" ]; then
+    RAGFLOW_MCPSERVER_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar RAGFLOW_MCPSERVER_API_KEY $RAGFLOW_MCPSERVER_API_KEY
+  fi
+  if [ -z "$TABBYML_ADMIN_USERNAME" ]; then
+    TABBYML_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_tabbyml"
+    updateConfigVar TABBYML_ADMIN_USERNAME $TABBYML_ADMIN_USERNAME
+  fi
+  if [ -z "$TABBYML_ADMIN_EMAIL_ADDRESS" ]; then
+    TABBYML_ADMIN_EMAIL_ADDRESS=$TABBYML_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar TABBYML_ADMIN_EMAIL_ADDRESS $TABBYML_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$TABBYML_ADMIN_PASSWORD" ]; then
+    TABBYML_ADMIN_PASSWORD=$(getPasswordWithSymbol 16)
+    updateConfigVar TABBYML_ADMIN_PASSWORD $TABBYML_ADMIN_PASSWORD
+  fi
+  if [ -z "$TABBYML_JWT_SECRET" ]; then
+    TABBYML_JWT_SECRET=$(uuidgen)
+    updateConfigVar TABBYML_JWT_SECRET $TABBYML_JWT_SECRET
+  fi
+  if [ -z "$DEEPWIKI_OPEN_AUTH_CODE" ]; then
+    DEEPWIKI_OPEN_AUTH_CODE=$(pwgen -c -n 32 1)
+    updateConfigVar DEEPWIKI_OPEN_AUTH_CODE $DEEPWIKI_OPEN_AUTH_CODE
+  fi
+  if [ -z "$DOCLING_REDIS_PASSWORD" ]; then
+    DOCLING_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar DOCLING_REDIS_PASSWORD $DOCLING_REDIS_PASSWORD
+  fi
+  if [ -z "$DOCLING_API_KEY" ]; then
+    DOCLING_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar DOCLING_API_KEY $DOCLING_API_KEY
+  fi
+  if [ -z "$DIFY_ADMIN_USERNAME" ]; then
+    DIFY_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_dify"
+    updateConfigVar DIFY_ADMIN_USERNAME $DIFY_ADMIN_USERNAME
+  fi
+  if [ -z "$DIFY_ADMIN_EMAIL_ADDRESS" ]; then
+    DIFY_ADMIN_EMAIL_ADDRESS=$DIFY_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar DIFY_ADMIN_EMAIL_ADDRESS $DIFY_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$DIFY_ADMIN_PASSWORD" ]; then
+    DIFY_ADMIN_PASSWORD=$(pwgen -c -n 24 1)
+    updateConfigVar DIFY_ADMIN_PASSWORD $DIFY_ADMIN_PASSWORD
+  fi
+  if [ -z "$DIFY_DATABASE_NAME" ]; then
+    DIFY_DATABASE_NAME=difydb
+    updateConfigVar DIFY_DATABASE_NAME $DIFY_DATABASE_NAME
+  fi
+  if [ -z "$DIFY_DATABASE_USER" ]; then
+    DIFY_DATABASE_USER=dify-user
+    updateConfigVar DIFY_DATABASE_USER $DIFY_DATABASE_USER
+  fi
+  if [ -z "$DIFY_DATABASE_USER_PASSWORD" ]; then
+    DIFY_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar DIFY_DATABASE_USER_PASSWORD $DIFY_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$DIFY_REDIS_PASSWORD" ]; then
+    DIFY_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar DIFY_REDIS_PASSWORD $DIFY_REDIS_PASSWORD
+  fi
+  if [ -z "$DIFY_SECRET_KEY" ]; then
+    DIFY_SECRET_KEY=$(openssl rand -base64 42)
+    updateConfigVar DIFY_SECRET_KEY $DIFY_SECRET_KEY
+  fi
+  if [ -z "$DIFY_MINIO_KEY" ]; then
+    DIFY_MINIO_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar DIFY_MINIO_KEY $DIFY_MINIO_KEY
+  fi
+  if [ -z "$DIFY_MINIO_SECRET" ]; then
+    DIFY_MINIO_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar DIFY_MINIO_SECRET $DIFY_MINIO_SECRET
+  fi
+  if [ -z "$DIFY_QDRANT_API_KEY" ]; then
+    DIFY_QDRANT_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar DIFY_QDRANT_API_KEY $DIFY_QDRANT_API_KEY
+  fi
+  if [ -z "$DIFY_CODE_EXECUTION_API_KEY" ]; then
+    DIFY_CODE_EXECUTION_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar DIFY_CODE_EXECUTION_API_KEY $DIFY_CODE_EXECUTION_API_KEY
+  fi
+  if [ -z "$DIFY_SANDBOX_API_KEY" ]; then
+    DIFY_SANDBOX_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar DIFY_SANDBOX_API_KEY $DIFY_SANDBOX_API_KEY
+  fi
+  if [ -z "$DIFY_PLUGIN_DAEMON_KEY" ]; then
+    DIFY_PLUGIN_DAEMON_KEY=$(dd if=/dev/urandom bs=42 count=1 2>/dev/null | base64 -w 0)
+    updateConfigVar DIFY_PLUGIN_DAEMON_KEY $DIFY_PLUGIN_DAEMON_KEY
+  fi
+  if [ -z "$DIFY_PLUGIN_DIFY_INNER_API_KEY" ]; then
+    DIFY_PLUGIN_DIFY_INNER_API_KEY=$(dd if=/dev/urandom bs=42 count=1 2>/dev/null | base64 -w 0)
+    updateConfigVar DIFY_PLUGIN_DIFY_INNER_API_KEY $DIFY_PLUGIN_DIFY_INNER_API_KEY
+  fi
+  if [ -z "$ACTIVEPIECES_DATABASE_READONLYUSER" ]; then
+    ACTIVEPIECES_DATABASE_READONLYUSER="activepieces-readonly"
+    updateConfigVar ACTIVEPIECES_DATABASE_READONLYUSER $ACTIVEPIECES_DATABASE_READONLYUSER
+  fi
+  if [ -z "$ACTIVEPIECES_DATABASE_READONLYUSER_PASSWORD" ]; then
+    ACTIVEPIECES_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ACTIVEPIECES_DATABASE_READONLYUSER_PASSWORD $ACTIVEPIECES_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$ADMINER_DATABASE_READONLYUSER" ]; then
+    ADMINER_DATABASE_READONLYUSER="adminer-readonly"
+    updateConfigVar ADMINER_DATABASE_READONLYUSER $ADMINER_DATABASE_READONLYUSER
+  fi
+  if [ -z "$ADMINER_DATABASE_READONLYUSER_PASSWORD" ]; then
+    ADMINER_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ADMINER_DATABASE_READONLYUSER_PASSWORD $ADMINER_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$AUTOMATISCH_DATABASE_READONLYUSER" ]; then
+    AUTOMATISCH_DATABASE_READONLYUSER="automatisch-readonly"
+    updateConfigVar AUTOMATISCH_DATABASE_READONLYUSER $AUTOMATISCH_DATABASE_READONLYUSER
+  fi
+  if [ -z "$AUTOMATISCH_DATABASE_READONLYUSER_PASSWORD" ]; then
+    AUTOMATISCH_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AUTOMATISCH_DATABASE_READONLYUSER_PASSWORD $AUTOMATISCH_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$BUDIBASE_DATABASE_READONLYUSER" ]; then
+    BUDIBASE_DATABASE_READONLYUSER="budibase-readonly"
+    updateConfigVar BUDIBASE_DATABASE_READONLYUSER $BUDIBASE_DATABASE_READONLYUSER
+  fi
+  if [ -z "$BUDIBASE_DATABASE_READONLYUSER_PASSWORD" ]; then
+    BUDIBASE_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar BUDIBASE_DATABASE_READONLYUSER_PASSWORD $BUDIBASE_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$CALCOM_DATABASE_READONLYUSER" ]; then
+    CALCOM_DATABASE_READONLYUSER="calcom-readonly"
+    updateConfigVar CALCOM_DATABASE_READONLYUSER $CALCOM_DATABASE_READONLYUSER
+  fi
+  if [ -z "$CALCOM_DATABASE_READONLYUSER_PASSWORD" ]; then
+    CALCOM_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar CALCOM_DATABASE_READONLYUSER_PASSWORD $CALCOM_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$DISCOURSE_DATABASE_READONLYUSER" ]; then
+    DISCOURSE_DATABASE_READONLYUSER="discourse-readonly"
+    updateConfigVar DISCOURSE_DATABASE_READONLYUSER $DISCOURSE_DATABASE_READONLYUSER
+  fi
+  if [ -z "$DISCOURSE_DATABASE_READONLYUSER_PASSWORD" ]; then
+    DISCOURSE_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar DISCOURSE_DATABASE_READONLYUSER_PASSWORD $DISCOURSE_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$DOLIBARR_DATABASE_READONLYUSER" ]; then
+    DOLIBARR_DATABASE_READONLYUSER="dolibarr-readonly"
+    updateConfigVar DOLIBARR_DATABASE_READONLYUSER $DOLIBARR_DATABASE_READONLYUSER
+  fi
+  if [ -z "$DOLIBARR_DATABASE_READONLYUSER_PASSWORD" ]; then
+    DOLIBARR_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar DOLIBARR_DATABASE_READONLYUSER_PASSWORD $DOLIBARR_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$EASYAPPOINTMENTS_DATABASE_READONLYUSER" ]; then
+    EASYAPPOINTMENTS_DATABASE_READONLYUSER="easyappointments-readonly"
+    updateConfigVar EASYAPPOINTMENTS_DATABASE_READONLYUSER $EASYAPPOINTMENTS_DATABASE_READONLYUSER
+  fi
+  if [ -z "$EASYAPPOINTMENTS_DATABASE_READONLYUSER_PASSWORD" ]; then
+    EASYAPPOINTMENTS_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar EASYAPPOINTMENTS_DATABASE_READONLYUSER_PASSWORD $EASYAPPOINTMENTS_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$ESPOCRM_DATABASE_READONLYUSER" ]; then
+    ESPOCRM_DATABASE_READONLYUSER="espocrm-readonly"
+    updateConfigVar ESPOCRM_DATABASE_READONLYUSER $ESPOCRM_DATABASE_READONLYUSER
+  fi
+  if [ -z "$ESPOCRM_DATABASE_READONLYUSER_PASSWORD" ]; then
+    ESPOCRM_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ESPOCRM_DATABASE_READONLYUSER_PASSWORD $ESPOCRM_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$FIREFLY_DATABASE_READONLYUSER" ]; then
+    FIREFLY_DATABASE_READONLYUSER="firefly-readonly"
+    updateConfigVar FIREFLY_DATABASE_READONLYUSER $FIREFLY_DATABASE_READONLYUSER
+  fi
+  if [ -z "$FIREFLY_DATABASE_READONLYUSER_PASSWORD" ]; then
+    FIREFLY_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FIREFLY_DATABASE_READONLYUSER_PASSWORD $FIREFLY_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$FRAPPE_HR_DATABASE_READONLYUSER" ]; then
+    FRAPPE_HR_DATABASE_READONLYUSER="frappe-hr-readonly"
+    updateConfigVar FRAPPE_HR_DATABASE_READONLYUSER $FRAPPE_HR_DATABASE_READONLYUSER
+  fi
+  if [ -z "$FRAPPE_HR_DATABASE_READONLYUSER_PASSWORD" ]; then
+    FRAPPE_HR_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FRAPPE_HR_DATABASE_READONLYUSER_PASSWORD $FRAPPE_HR_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$FRESHRSS_DATABASE_READONLYUSER" ]; then
+    FRESHRSS_DATABASE_READONLYUSER="freshrss-readonly"
+    updateConfigVar FRESHRSS_DATABASE_READONLYUSER $FRESHRSS_DATABASE_READONLYUSER
+  fi
+  if [ -z "$FRESHRSS_DATABASE_READONLYUSER_PASSWORD" ]; then
+    FRESHRSS_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FRESHRSS_DATABASE_READONLYUSER_PASSWORD $FRESHRSS_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$GHOST_DATABASE_READONLYUSER" ]; then
+    GHOST_DATABASE_READONLYUSER="ghost-readonly"
+    updateConfigVar GHOST_DATABASE_READONLYUSER $GHOST_DATABASE_READONLYUSER
+  fi
+  if [ -z "$GHOST_DATABASE_READONLYUSER_PASSWORD" ]; then
+    GHOST_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar GHOST_DATABASE_READONLYUSER_PASSWORD $GHOST_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$GITEA_DATABASE_READONLYUSER" ]; then
+    GITEA_DATABASE_READONLYUSER="gitea-readonly"
+    updateConfigVar GITEA_DATABASE_READONLYUSER $GITEA_DATABASE_READONLYUSER
+  fi
+  if [ -z "$GITEA_DATABASE_READONLYUSER_PASSWORD" ]; then
+    GITEA_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar GITEA_DATABASE_READONLYUSER_PASSWORD $GITEA_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$GITLAB_DATABASE_READONLYUSER" ]; then
+    GITLAB_DATABASE_READONLYUSER="gitlab-readonly"
+    updateConfigVar GITLAB_DATABASE_READONLYUSER $GITLAB_DATABASE_READONLYUSER
+  fi
+  if [ -z "$GITLAB_DATABASE_READONLYUSER_PASSWORD" ]; then
+    GITLAB_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar GITLAB_DATABASE_READONLYUSER_PASSWORD $GITLAB_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$GUACAMOLE_DATABASE_READONLYUSER" ]; then
+    GUACAMOLE_DATABASE_READONLYUSER="guacamole-readonly"
+    updateConfigVar GUACAMOLE_DATABASE_READONLYUSER $GUACAMOLE_DATABASE_READONLYUSER
+  fi
+  if [ -z "$GUACAMOLE_DATABASE_READONLYUSER_PASSWORD" ]; then
+    GUACAMOLE_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar GUACAMOLE_DATABASE_READONLYUSER_PASSWORD $GUACAMOLE_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$HOMEASSISTANT_DATABASE_READONLYUSER" ]; then
+    HOMEASSISTANT_DATABASE_READONLYUSER="homeassistant-readonly"
+    updateConfigVar HOMEASSISTANT_DATABASE_READONLYUSER $HOMEASSISTANT_DATABASE_READONLYUSER
+  fi
+  if [ -z "$HOMEASSISTANT_DATABASE_READONLYUSER_PASSWORD" ]; then
+    HOMEASSISTANT_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar HOMEASSISTANT_DATABASE_READONLYUSER_PASSWORD $HOMEASSISTANT_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$HUGINN_DATABASE_READONLYUSER" ]; then
+    HUGINN_DATABASE_READONLYUSER="huginn-readonly"
+    updateConfigVar HUGINN_DATABASE_READONLYUSER $HUGINN_DATABASE_READONLYUSER
+  fi
+  if [ -z "$HUGINN_DATABASE_READONLYUSER_PASSWORD" ]; then
+    HUGINN_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar HUGINN_DATABASE_READONLYUSER_PASSWORD $HUGINN_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$IMMICH_DATABASE_READONLYUSER" ]; then
+    IMMICH_DATABASE_READONLYUSER="immich-readonly"
+    updateConfigVar IMMICH_DATABASE_READONLYUSER $IMMICH_DATABASE_READONLYUSER
+  fi
+  if [ -z "$IMMICH_DATABASE_READONLYUSER_PASSWORD" ]; then
+    IMMICH_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar IMMICH_DATABASE_READONLYUSER_PASSWORD $IMMICH_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$INVIDIOUS_DATABASE_READONLYUSER" ]; then
+    INVIDIOUS_DATABASE_READONLYUSER="invidious-readonly"
+    updateConfigVar INVIDIOUS_DATABASE_READONLYUSER $INVIDIOUS_DATABASE_READONLYUSER
+  fi
+  if [ -z "$INVIDIOUS_DATABASE_READONLYUSER_PASSWORD" ]; then
+    INVIDIOUS_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar INVIDIOUS_DATABASE_READONLYUSER_PASSWORD $INVIDIOUS_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$INVOICENINJA_DATABASE_READONLYUSER" ]; then
+    INVOICENINJA_DATABASE_READONLYUSER="invoiceninja-readonly"
+    updateConfigVar INVOICENINJA_DATABASE_READONLYUSER $INVOICENINJA_DATABASE_READONLYUSER
+  fi
+  if [ -z "$INVOICENINJA_DATABASE_READONLYUSER_PASSWORD" ]; then
+    INVOICENINJA_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar INVOICENINJA_DATABASE_READONLYUSER_PASSWORD $INVOICENINJA_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$INVOICESHELF_DATABASE_READONLYUSER" ]; then
+    INVOICESHELF_DATABASE_READONLYUSER="invoiceshelf-readonly"
+    updateConfigVar INVOICESHELF_DATABASE_READONLYUSER $INVOICESHELF_DATABASE_READONLYUSER
+  fi
+  if [ -z "$INVOICESHELF_DATABASE_READONLYUSER_PASSWORD" ]; then
+    INVOICESHELF_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar INVOICESHELF_DATABASE_READONLYUSER_PASSWORD $INVOICESHELF_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$KANBOARD_DATABASE_READONLYUSER" ]; then
+    KANBOARD_DATABASE_READONLYUSER="kanboard-readonly"
+    updateConfigVar KANBOARD_DATABASE_READONLYUSER $KANBOARD_DATABASE_READONLYUSER
+  fi
+  if [ -z "$KANBOARD_DATABASE_READONLYUSER_PASSWORD" ]; then
+    KANBOARD_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar KANBOARD_DATABASE_READONLYUSER_PASSWORD $KANBOARD_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$KEILA_DATABASE_READONLYUSER" ]; then
+    KEILA_DATABASE_READONLYUSER="keila-readonly"
+    updateConfigVar KEILA_DATABASE_READONLYUSER $KEILA_DATABASE_READONLYUSER
+  fi
+  if [ -z "$KEILA_DATABASE_READONLYUSER_PASSWORD" ]; then
+    KEILA_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar KEILA_DATABASE_READONLYUSER_PASSWORD $KEILA_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$KILLBILL_KB_DATABASE_READONLYUSER" ]; then
+    KILLBILL_KB_DATABASE_READONLYUSER="killbill-readonly"
+    updateConfigVar KILLBILL_KB_DATABASE_READONLYUSER $KILLBILL_KB_DATABASE_READONLYUSER
+  fi
+  if [ -z "$KILLBILL_KB_DATABASE_READONLYUSER_PASSWORD" ]; then
+    KILLBILL_KB_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar KILLBILL_KB_DATABASE_READONLYUSER_PASSWORD $KILLBILL_KB_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$KILLBILL_KAUI_DATABASE_READONLYUSER" ]; then
+    KILLBILL_KAUI_DATABASE_READONLYUSER="killbill-readonly"
+    updateConfigVar KILLBILL_KAUI_DATABASE_READONLYUSER $KILLBILL_KAUI_DATABASE_READONLYUSER
+  fi
+  if [ -z "$KILLBILL_KAUI_DATABASE_READONLYUSER_PASSWORD" ]; then
+    KILLBILL_KAUI_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar KILLBILL_KAUI_DATABASE_READONLYUSER_PASSWORD $KILLBILL_KAUI_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$LINKWARDEN_DATABASE_READONLYUSER" ]; then
+    LINKWARDEN_DATABASE_READONLYUSER="linkwarden-readonly"
+    updateConfigVar LINKWARDEN_DATABASE_READONLYUSER $LINKWARDEN_DATABASE_READONLYUSER
+  fi
+  if [ -z "$LINKWARDEN_DATABASE_READONLYUSER_PASSWORD" ]; then
+    LINKWARDEN_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LINKWARDEN_DATABASE_READONLYUSER_PASSWORD $LINKWARDEN_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$MASTODON_DATABASE_READONLYUSER" ]; then
+    MASTODON_DATABASE_READONLYUSER="mastodon-readonly"
+    updateConfigVar MASTODON_DATABASE_READONLYUSER $MASTODON_DATABASE_READONLYUSER
+  fi
+  if [ -z "$MASTODON_DATABASE_READONLYUSER_PASSWORD" ]; then
+    MASTODON_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MASTODON_DATABASE_READONLYUSER_PASSWORD $MASTODON_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$MATOMO_DATABASE_READONLYUSER" ]; then
+    MATOMO_DATABASE_READONLYUSER="matomo-readonly"
+    updateConfigVar MATOMO_DATABASE_READONLYUSER $MATOMO_DATABASE_READONLYUSER
+  fi
+  if [ -z "$MATOMO_DATABASE_READONLYUSER_PASSWORD" ]; then
+    MATOMO_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MATOMO_DATABASE_READONLYUSER_PASSWORD $MATOMO_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$MATRIX_DATABASE_READONLYUSER" ]; then
+    MATRIX_DATABASE_READONLYUSER="matrix-readonly"
+    updateConfigVar MATRIX_DATABASE_READONLYUSER $MATRIX_DATABASE_READONLYUSER
+  fi
+  if [ -z "$MATRIX_DATABASE_READONLYUSER_PASSWORD" ]; then
+    MATRIX_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MATRIX_DATABASE_READONLYUSER_PASSWORD $MATRIX_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$MEALIE_DATABASE_READONLYUSER" ]; then
+    MEALIE_DATABASE_READONLYUSER="mealie-readonly"
+    updateConfigVar MEALIE_DATABASE_READONLYUSER $MEALIE_DATABASE_READONLYUSER
+  fi
+  if [ -z "$MEALIE_DATABASE_READONLYUSER_PASSWORD" ]; then
+    MEALIE_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MEALIE_DATABASE_READONLYUSER_PASSWORD $MEALIE_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$MESHCENTRAL_DATABASE_READONLYUSER" ]; then
+    MESHCENTRAL_DATABASE_READONLYUSER="meshcentral-readonly"
+    updateConfigVar MESHCENTRAL_DATABASE_READONLYUSER $MESHCENTRAL_DATABASE_READONLYUSER
+  fi
+  if [ -z "$MESHCENTRAL_DATABASE_READONLYUSER_PASSWORD" ]; then
+    MESHCENTRAL_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MESHCENTRAL_DATABASE_READONLYUSER_PASSWORD $MESHCENTRAL_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$METABASE_DATABASE_READONLYUSER" ]; then
+    METABASE_DATABASE_READONLYUSER="metabase-readonly"
+    updateConfigVar METABASE_DATABASE_READONLYUSER $METABASE_DATABASE_READONLYUSER
+  fi
+  if [ -z "$METABASE_DATABASE_READONLYUSER_PASSWORD" ]; then
+    METABASE_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar METABASE_DATABASE_READONLYUSER_PASSWORD $METABASE_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$MINTHCM_DATABASE_READONLYUSER" ]; then
+    MINTHCM_DATABASE_READONLYUSER="minthcm-readonly"
+    updateConfigVar MINTHCM_DATABASE_READONLYUSER $MINTHCM_DATABASE_READONLYUSER
+  fi
+  if [ -z "$MINTHCM_DATABASE_READONLYUSER_PASSWORD" ]; then
+    MINTHCM_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MINTHCM_DATABASE_READONLYUSER_PASSWORD $MINTHCM_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$N8N_DATABASE_READONLYUSER" ]; then
+    N8N_DATABASE_READONLYUSER="n8n-readonly"
+    updateConfigVar N8N_DATABASE_READONLYUSER $N8N_DATABASE_READONLYUSER
+  fi
+  if [ -z "$N8N_DATABASE_READONLYUSER_PASSWORD" ]; then
+    N8N_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar N8N_DATABASE_READONLYUSER_PASSWORD $N8N_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$NEXTCLOUD_DATABASE_READONLYUSER" ]; then
+    NEXTCLOUD_DATABASE_READONLYUSER="nextcloud-readonly"
+    updateConfigVar NEXTCLOUD_DATABASE_READONLYUSER $NEXTCLOUD_DATABASE_READONLYUSER
+  fi
+  if [ -z "$NEXTCLOUD_DATABASE_READONLYUSER_PASSWORD" ]; then
+    NEXTCLOUD_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar NEXTCLOUD_DATABASE_READONLYUSER_PASSWORD $NEXTCLOUD_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$ODOO_DATABASE_READONLYUSER" ]; then
+    ODOO_DATABASE_READONLYUSER="odoo-readonly"
+    updateConfigVar ODOO_DATABASE_READONLYUSER $ODOO_DATABASE_READONLYUSER
+  fi
+  if [ -z "$ODOO_DATABASE_READONLYUSER_PASSWORD" ]; then
+    ODOO_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ODOO_DATABASE_READONLYUSER_PASSWORD $ODOO_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$OMBI_DATABASE_READONLYUSER" ]; then
+    OMBI_DATABASE_READONLYUSER="ombi-readonly"
+    updateConfigVar OMBI_DATABASE_READONLYUSER $OMBI_DATABASE_READONLYUSER
+  fi
+  if [ -z "$OMBI_DATABASE_READONLYUSER_PASSWORD" ]; then
+    OMBI_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OMBI_DATABASE_READONLYUSER_PASSWORD $OMBI_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$OPENPROJECT_DATABASE_READONLYUSER" ]; then
+    OPENPROJECT_DATABASE_READONLYUSER="openproject-readonly"
+    updateConfigVar OPENPROJECT_DATABASE_READONLYUSER $OPENPROJECT_DATABASE_READONLYUSER
+  fi
+  if [ -z "$OPENPROJECT_DATABASE_READONLYUSER_PASSWORD" ]; then
+    OPENPROJECT_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OPENPROJECT_DATABASE_READONLYUSER_PASSWORD $OPENPROJECT_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$PAPERLESS_DATABASE_READONLYUSER" ]; then
+    PAPERLESS_DATABASE_READONLYUSER="paperless-readonly"
+    updateConfigVar PAPERLESS_DATABASE_READONLYUSER $PAPERLESS_DATABASE_READONLYUSER
+  fi
+  if [ -z "$PAPERLESS_DATABASE_READONLYUSER_PASSWORD" ]; then
+    PAPERLESS_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PAPERLESS_DATABASE_READONLYUSER_PASSWORD $PAPERLESS_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$PASTEFY_DATABASE_READONLYUSER" ]; then
+    PASTEFY_DATABASE_READONLYUSER="pastefy-readonly"
+    updateConfigVar PASTEFY_DATABASE_READONLYUSER $PASTEFY_DATABASE_READONLYUSER
+  fi
+  if [ -z "$PASTEFY_DATABASE_READONLYUSER_PASSWORD" ]; then
+    PASTEFY_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PASTEFY_DATABASE_READONLYUSER_PASSWORD $PASTEFY_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$PEERTUBE_DATABASE_READONLYUSER" ]; then
+    PEERTUBE_DATABASE_READONLYUSER="peertube-readonly"
+    updateConfigVar PEERTUBE_DATABASE_READONLYUSER $PEERTUBE_DATABASE_READONLYUSER
+  fi
+  if [ -z "$PEERTUBE_DATABASE_READONLYUSER_PASSWORD" ]; then
+    PEERTUBE_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PEERTUBE_DATABASE_READONLYUSER_PASSWORD $PEERTUBE_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$PENPOT_DATABASE_READONLYUSER" ]; then
+    PENPOT_DATABASE_READONLYUSER="penpot-readonly"
+    updateConfigVar PENPOT_DATABASE_READONLYUSER $PENPOT_DATABASE_READONLYUSER
+  fi
+  if [ -z "$PENPOT_DATABASE_READONLYUSER_PASSWORD" ]; then
+    PENPOT_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PENPOT_DATABASE_READONLYUSER_PASSWORD $PENPOT_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$PHOTOPRISM_DATABASE_READONLYUSER" ]; then
+    PHOTOPRISM_DATABASE_READONLYUSER="photoprism-readonly"
+    updateConfigVar PHOTOPRISM_DATABASE_READONLYUSER $PHOTOPRISM_DATABASE_READONLYUSER
+  fi
+  if [ -z "$PHOTOPRISM_DATABASE_READONLYUSER_PASSWORD" ]; then
+    PHOTOPRISM_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PHOTOPRISM_DATABASE_READONLYUSER_PASSWORD $PHOTOPRISM_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$PIPED_DATABASE_READONLYUSER" ]; then
+    PIPED_DATABASE_READONLYUSER="piped-readonly"
+    updateConfigVar PIPED_DATABASE_READONLYUSER $PIPED_DATABASE_READONLYUSER
+  fi
+  if [ -z "$PIPED_DATABASE_READONLYUSER_PASSWORD" ]; then
+    PIPED_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PIPED_DATABASE_READONLYUSER_PASSWORD $PIPED_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$PIXELFED_DATABASE_READONLYUSER" ]; then
+    PIXELFED_DATABASE_READONLYUSER="pixelfed-readonly"
+    updateConfigVar PIXELFED_DATABASE_READONLYUSER $PIXELFED_DATABASE_READONLYUSER
+  fi
+  if [ -z "$PIXELFED_DATABASE_READONLYUSER_PASSWORD" ]; then
+    PIXELFED_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PIXELFED_DATABASE_READONLYUSER_PASSWORD $PIXELFED_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$RALLLY_DATABASE_READONLYUSER" ]; then
+    RALLLY_DATABASE_READONLYUSER="rallly-readonly"
+    updateConfigVar RALLLY_DATABASE_READONLYUSER $RALLLY_DATABASE_READONLYUSER
+  fi
+  if [ -z "$RALLLY_DATABASE_READONLYUSER_PASSWORD" ]; then
+    RALLLY_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RALLLY_DATABASE_READONLYUSER_PASSWORD $RALLLY_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$SHLINK_DATABASE_READONLYUSER" ]; then
+    SHLINK_DATABASE_READONLYUSER="shlink-readonly"
+    updateConfigVar SHLINK_DATABASE_READONLYUSER $SHLINK_DATABASE_READONLYUSER
+  fi
+  if [ -z "$SHLINK_DATABASE_READONLYUSER_PASSWORD" ]; then
+    SHLINK_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar SHLINK_DATABASE_READONLYUSER_PASSWORD $SHLINK_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$STANDARDNOTES_DATABASE_READONLYUSER" ]; then
+    STANDARDNOTES_DATABASE_READONLYUSER="standardnotes-readonly"
+    updateConfigVar STANDARDNOTES_DATABASE_READONLYUSER $STANDARDNOTES_DATABASE_READONLYUSER
+  fi
+  if [ -z "$STANDARDNOTES_DATABASE_READONLYUSER_PASSWORD" ]; then
+    STANDARDNOTES_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar STANDARDNOTES_DATABASE_READONLYUSER_PASSWORD $STANDARDNOTES_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER" ]; then
+    SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER="speedtest-tracker-local-readonly"
+    updateConfigVar SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER $SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER
+  fi
+  if [ -z "$SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER_PASSWORD" ]; then
+    SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER_PASSWORD $SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER" ]; then
+    SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER="speedtest-tracker-vpn-readonly"
+    updateConfigVar SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER $SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER
+  fi
+  if [ -z "$SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER_PASSWORD" ]; then
+    SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER_PASSWORD $SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$TWENTY_DATABASE_READONLYUSER" ]; then
+    TWENTY_DATABASE_READONLYUSER="twenty-readonly"
+    updateConfigVar TWENTY_DATABASE_READONLYUSER $TWENTY_DATABASE_READONLYUSER
+  fi
+  if [ -z "$TWENTY_DATABASE_READONLYUSER_PASSWORD" ]; then
+    TWENTY_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar TWENTY_DATABASE_READONLYUSER_PASSWORD $TWENTY_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$VAULTWARDEN_DATABASE_READONLYUSER" ]; then
+    VAULTWARDEN_DATABASE_READONLYUSER="vaultwarden-readonly"
+    updateConfigVar VAULTWARDEN_DATABASE_READONLYUSER $VAULTWARDEN_DATABASE_READONLYUSER
+  fi
+  if [ -z "$VAULTWARDEN_DATABASE_READONLYUSER_PASSWORD" ]; then
+    VAULTWARDEN_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar VAULTWARDEN_DATABASE_READONLYUSER_PASSWORD $VAULTWARDEN_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$WALLABAG_DATABASE_READONLYUSER" ]; then
+    WALLABAG_DATABASE_READONLYUSER="wallabag-readonly"
+    updateConfigVar WALLABAG_DATABASE_READONLYUSER $WALLABAG_DATABASE_READONLYUSER
+  fi
+  if [ -z "$WALLABAG_DATABASE_READONLYUSER_PASSWORD" ]; then
+    WALLABAG_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar WALLABAG_DATABASE_READONLYUSER_PASSWORD $WALLABAG_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$WIKIJS_DATABASE_READONLYUSER" ]; then
+    WIKIJS_DATABASE_READONLYUSER="wikijs-readonly"
+    updateConfigVar WIKIJS_DATABASE_READONLYUSER $WIKIJS_DATABASE_READONLYUSER
+  fi
+  if [ -z "$WIKIJS_DATABASE_READONLYUSER_PASSWORD" ]; then
+    WIKIJS_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar WIKIJS_DATABASE_READONLYUSER_PASSWORD $WIKIJS_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$WORDPRESS_DATABASE_READONLYUSER" ]; then
+    WORDPRESS_DATABASE_READONLYUSER="wordpress-readonly"
+    updateConfigVar WORDPRESS_DATABASE_READONLYUSER $WORDPRESS_DATABASE_READONLYUSER
+  fi
+  if [ -z "$WORDPRESS_DATABASE_READONLYUSER_PASSWORD" ]; then
+    WORDPRESS_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar WORDPRESS_DATABASE_READONLYUSER_PASSWORD $WORDPRESS_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$YAMTRACK_DATABASE_READONLYUSER" ]; then
+    YAMTRACK_DATABASE_READONLYUSER="yamtrack-readonly"
+    updateConfigVar YAMTRACK_DATABASE_READONLYUSER $YAMTRACK_DATABASE_READONLYUSER
+  fi
+  if [ -z "$YAMTRACK_DATABASE_READONLYUSER_PASSWORD" ]; then
+    YAMTRACK_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar YAMTRACK_DATABASE_READONLYUSER_PASSWORD $YAMTRACK_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$ZAMMAD_DATABASE_READONLYUSER" ]; then
+    ZAMMAD_DATABASE_READONLYUSER="zammad-readonly"
+    updateConfigVar ZAMMAD_DATABASE_READONLYUSER $ZAMMAD_DATABASE_READONLYUSER
+  fi
+  if [ -z "$ZAMMAD_DATABASE_READONLYUSER_PASSWORD" ]; then
+    ZAMMAD_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ZAMMAD_DATABASE_READONLYUSER_PASSWORD $ZAMMAD_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$ZULIP_DATABASE_READONLYUSER" ]; then
+    ZULIP_DATABASE_READONLYUSER="zulip-readonly"
+    updateConfigVar ZULIP_DATABASE_READONLYUSER $ZULIP_DATABASE_READONLYUSER
+  fi
+  if [ -z "$ZULIP_DATABASE_READONLYUSER_PASSWORD" ]; then
+    ZULIP_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ZULIP_DATABASE_READONLYUSER_PASSWORD $ZULIP_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$TAIGA_DATABASE_READONLYUSER" ]; then
+    TAIGA_DATABASE_READONLYUSER="taiga-readonly"
+    updateConfigVar TAIGA_DATABASE_READONLYUSER $TAIGA_DATABASE_READONLYUSER
+  fi
+  if [ -z "$TAIGA_DATABASE_READONLYUSER_PASSWORD" ]; then
+    TAIGA_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar TAIGA_DATABASE_READONLYUSER_PASSWORD $TAIGA_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$DOCUSEAL_DATABASE_READONLYUSER" ]; then
+    DOCUSEAL_DATABASE_READONLYUSER="docuseal-readonly"
+    updateConfigVar DOCUSEAL_DATABASE_READONLYUSER $DOCUSEAL_DATABASE_READONLYUSER
+  fi
+  if [ -z "$DOCUSEAL_DATABASE_READONLYUSER_PASSWORD" ]; then
+    DOCUSEAL_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar DOCUSEAL_DATABASE_READONLYUSER_PASSWORD $DOCUSEAL_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$CONTROLR_DATABASE_READONLYUSER" ]; then
+    CONTROLR_DATABASE_READONLYUSER="controlr-readonly"
+    updateConfigVar CONTROLR_DATABASE_READONLYUSER $CONTROLR_DATABASE_READONLYUSER
+  fi
+  if [ -z "$CONTROLR_DATABASE_READONLYUSER_PASSWORD" ]; then
+    CONTROLR_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar CONTROLR_DATABASE_READONLYUSER_PASSWORD $CONTROLR_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$AKAUNTING_DATABASE_READONLYUSER" ]; then
+    AKAUNTING_DATABASE_READONLYUSER="akaunting-readonly"
+    updateConfigVar AKAUNTING_DATABASE_READONLYUSER $AKAUNTING_DATABASE_READONLYUSER
+  fi
+  if [ -z "$AKAUNTING_DATABASE_READONLYUSER_PASSWORD" ]; then
+    AKAUNTING_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AKAUNTING_DATABASE_READONLYUSER_PASSWORD $AKAUNTING_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$AXELOR_DATABASE_READONLYUSER" ]; then
+    AXELOR_DATABASE_READONLYUSER="axelor-readonly"
+    updateConfigVar AXELOR_DATABASE_READONLYUSER $AXELOR_DATABASE_READONLYUSER
+  fi
+  if [ -z "$AXELOR_DATABASE_READONLYUSER_PASSWORD" ]; then
+    AXELOR_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AXELOR_DATABASE_READONLYUSER_PASSWORD $AXELOR_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$LANGFLOW_DATABASE_READONLYUSER" ]; then
+    LANGFLOW_DATABASE_READONLYUSER="langflow-readonly"
+    updateConfigVar LANGFLOW_DATABASE_READONLYUSER $LANGFLOW_DATABASE_READONLYUSER
+  fi
+  if [ -z "$LANGFLOW_DATABASE_READONLYUSER_PASSWORD" ]; then
+    LANGFLOW_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LANGFLOW_DATABASE_READONLYUSER_PASSWORD $LANGFLOW_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$LIBRECHAT_DATABASE_READONLYUSER" ]; then
+    LIBRECHAT_DATABASE_READONLYUSER="librechat-readonly"
+    updateConfigVar LIBRECHAT_DATABASE_READONLYUSER $LIBRECHAT_DATABASE_READONLYUSER
+  fi
+  if [ -z "$LIBRECHAT_DATABASE_READONLYUSER_PASSWORD" ]; then
+    LIBRECHAT_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LIBRECHAT_DATABASE_READONLYUSER_PASSWORD $LIBRECHAT_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$OPENWEBUI_DATABASE_READONLYUSER" ]; then
+    OPENWEBUI_DATABASE_READONLYUSER="openwebui-readonly"
+    updateConfigVar OPENWEBUI_DATABASE_READONLYUSER $OPENWEBUI_DATABASE_READONLYUSER
+  fi
+  if [ -z "$OPENWEBUI_DATABASE_READONLYUSER_PASSWORD" ]; then
+    OPENWEBUI_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OPENWEBUI_DATABASE_READONLYUSER_PASSWORD $OPENWEBUI_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$KHOJ_DATABASE_READONLYUSER" ]; then
+    KHOJ_DATABASE_READONLYUSER="khoj-readonly"
+    updateConfigVar KHOJ_DATABASE_READONLYUSER $KHOJ_DATABASE_READONLYUSER
+  fi
+  if [ -z "$KHOJ_DATABASE_READONLYUSER_PASSWORD" ]; then
+    KHOJ_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar KHOJ_DATABASE_READONLYUSER_PASSWORD $KHOJ_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$LOBECHAT_DATABASE_READONLYUSER" ]; then
+    LOBECHAT_DATABASE_READONLYUSER="lobechat-readonly"
+    updateConfigVar LOBECHAT_DATABASE_READONLYUSER $LOBECHAT_DATABASE_READONLYUSER
+  fi
+  if [ -z "$LOBECHAT_DATABASE_READONLYUSER_PASSWORD" ]; then
+    LOBECHAT_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LOBECHAT_DATABASE_READONLYUSER_PASSWORD $LOBECHAT_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$RAGFLOW_DATABASE_READONLYUSER" ]; then
+    RAGFLOW_DATABASE_READONLYUSER="ragflow-readonly"
+    updateConfigVar RAGFLOW_DATABASE_READONLYUSER $RAGFLOW_DATABASE_READONLYUSER
+  fi
+  if [ -z "$RAGFLOW_DATABASE_READONLYUSER_PASSWORD" ]; then
+    RAGFLOW_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RAGFLOW_DATABASE_READONLYUSER_PASSWORD $RAGFLOW_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$DIFY_DATABASE_READONLYUSER" ]; then
+    DIFY_DATABASE_READONLYUSER="dify-readonly"
+    updateConfigVar DIFY_DATABASE_READONLYUSER $DIFY_DATABASE_READONLYUSER
+  fi
+  if [ -z "$DIFY_DATABASE_READONLYUSER_PASSWORD" ]; then
+    DIFY_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar DIFY_DATABASE_READONLYUSER_PASSWORD $DIFY_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$WEKAN_DATABASE_READONLYUSER" ]; then
+    WEKAN_DATABASE_READONLYUSER="wekan-readonly"
+    updateConfigVar WEKAN_DATABASE_READONLYUSER $WEKAN_DATABASE_READONLYUSER
+  fi
+  if [ -z "$WEKAN_DATABASE_READONLYUSER_PASSWORD" ]; then
+    WEKAN_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar WEKAN_DATABASE_READONLYUSER_PASSWORD $WEKAN_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$REVOLT_DATABASE_READONLYUSER" ]; then
+    REVOLT_DATABASE_READONLYUSER="revolt-readonly"
+    updateConfigVar REVOLT_DATABASE_READONLYUSER $REVOLT_DATABASE_READONLYUSER
+  fi
+  if [ -z "$REVOLT_DATABASE_READONLYUSER_PASSWORD" ]; then
+    REVOLT_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar REVOLT_DATABASE_READONLYUSER_PASSWORD $REVOLT_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$OPENSIGN_DATABASE_READONLYUSER" ]; then
+    OPENSIGN_DATABASE_READONLYUSER="opensign-readonly"
+    updateConfigVar OPENSIGN_DATABASE_READONLYUSER $OPENSIGN_DATABASE_READONLYUSER
+  fi
+  if [ -z "$OPENSIGN_DATABASE_READONLYUSER_PASSWORD" ]; then
+    OPENSIGN_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OPENSIGN_DATABASE_READONLYUSER_PASSWORD $OPENSIGN_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$LIBRECHAT_MONGODB_READONLYUSER" ]; then
+    LIBRECHAT_MONGODB_READONLYUSER="librechat-readonly"
+    updateConfigVar LIBRECHAT_MONGODB_READONLYUSER $LIBRECHAT_MONGODB_READONLYUSER
+  fi
+  if [ -z "$LIBRECHAT_MONGODB_READONLYUSER_PASSWORD" ]; then
+    LIBRECHAT_MONGODB_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LIBRECHAT_MONGODB_READONLYUSER_PASSWORD $LIBRECHAT_MONGODB_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$MINDSDB_ADMIN_USERNAME" ]; then
+    MINDSDB_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_mindsdb"
+    updateConfigVar MINDSDB_ADMIN_USERNAME $MINDSDB_ADMIN_USERNAME
+  fi
+  if [ -z "$MINDSDB_ADMIN_EMAIL_ADDRESS" ]; then
+    MINDSDB_ADMIN_EMAIL_ADDRESS=$MINDSDB_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar MINDSDB_ADMIN_EMAIL_ADDRESS $MINDSDB_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$MINDSDB_ADMIN_PASSWORD" ]; then
+    MINDSDB_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MINDSDB_ADMIN_PASSWORD $MINDSDB_ADMIN_PASSWORD
+  fi
+  if [ -z "$MINDSDB_DATABASE_NAME" ]; then
+    MINDSDB_DATABASE_NAME=mindsdbdb
+    updateConfigVar MINDSDB_DATABASE_NAME $MINDSDB_DATABASE_NAME
+  fi
+  if [ -z "$MINDSDB_DATABASE_USER" ]; then
+    MINDSDB_DATABASE_USER=mindsdb-user
+    updateConfigVar MINDSDB_DATABASE_USER $MINDSDB_DATABASE_USER
+  fi
+  if [ -z "$MINDSDB_DATABASE_USER_PASSWORD" ]; then
+    MINDSDB_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MINDSDB_DATABASE_USER_PASSWORD $MINDSDB_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$MINDSDB_DATABASE_READONLYUSER" ]; then
+    MINDSDB_DATABASE_READONLYUSER=mindsdb-readonly
+    updateConfigVar MINDSDB_DATABASE_READONLYUSER $MINDSDB_DATABASE_READONLYUSER
+  fi
+  if [ -z "$MINDSDB_DATABASE_READONLYUSER_PASSWORD" ]; then
+    MINDSDB_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MINDSDB_DATABASE_READONLYUSER_PASSWORD $MINDSDB_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$MINDSDB_REDIS_PASSWORD" ]; then
+    MINDSDB_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MINDSDB_REDIS_PASSWORD $MINDSDB_REDIS_PASSWORD
+  fi
+  if [ -z "$WATERCRAWL_ADMIN_USERNAME" ]; then
+    WATERCRAWL_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_watercrawl"
+    updateConfigVar WATERCRAWL_ADMIN_USERNAME $WATERCRAWL_ADMIN_USERNAME
+  fi
+  if [ -z "$WATERCRAWL_ADMIN_EMAIL_ADDRESS" ]; then
+    WATERCRAWL_ADMIN_EMAIL_ADDRESS=$WATERCRAWL_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar WATERCRAWL_ADMIN_EMAIL_ADDRESS $WATERCRAWL_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$WATERCRAWL_ADMIN_PASSWORD" ]; then
+    WATERCRAWL_ADMIN_PASSWORD=$(getPasswordWithSymbol 32)
+    updateConfigVar WATERCRAWL_ADMIN_PASSWORD $WATERCRAWL_ADMIN_PASSWORD
+  fi
+  if [ -z "$WATERCRAWL_DATABASE_NAME" ]; then
+    WATERCRAWL_DATABASE_NAME=watercrawldb
+    updateConfigVar WATERCRAWL_DATABASE_NAME $WATERCRAWL_DATABASE_NAME
+  fi
+  if [ -z "$WATERCRAWL_DATABASE_USER" ]; then
+    WATERCRAWL_DATABASE_USER=watercrawl-user
+    updateConfigVar WATERCRAWL_DATABASE_USER $WATERCRAWL_DATABASE_USER
+  fi
+  if [ -z "$WATERCRAWL_DATABASE_USER_PASSWORD" ]; then
+    WATERCRAWL_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar WATERCRAWL_DATABASE_USER_PASSWORD $WATERCRAWL_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$WATERCRAWL_DATABASE_READONLYUSER" ]; then
+    WATERCRAWL_DATABASE_READONLYUSER=watercrawl-readonly
+    updateConfigVar WATERCRAWL_DATABASE_READONLYUSER $WATERCRAWL_DATABASE_READONLYUSER
+  fi
+  if [ -z "$WATERCRAWL_DATABASE_READONLYUSER_PASSWORD" ]; then
+    WATERCRAWL_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar WATERCRAWL_DATABASE_READONLYUSER_PASSWORD $WATERCRAWL_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$WATERCRAWL_REDIS_PASSWORD" ]; then
+    WATERCRAWL_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar WATERCRAWL_REDIS_PASSWORD $WATERCRAWL_REDIS_PASSWORD
+  fi
+  if [ -z "$WATERCRAWL_SECRET_KEY" ]; then
+    WATERCRAWL_SECRET_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+    updateConfigVar WATERCRAWL_SECRET_KEY $WATERCRAWL_SECRET_KEY
+  fi
+  if [ -z "$WATERCRAWL_API_ENCRYPTION_KEY" ]; then
+    WATERCRAWL_API_ENCRYPTION_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+    updateConfigVar WATERCRAWL_API_ENCRYPTION_KEY $WATERCRAWL_API_ENCRYPTION_KEY
+  fi
+  if [ -z "$WATERCRAWL_PLAYWRIGHT_API_KEY" ]; then
+    WATERCRAWL_PLAYWRIGHT_API_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+    updateConfigVar WATERCRAWL_PLAYWRIGHT_API_KEY $WATERCRAWL_PLAYWRIGHT_API_KEY
+  fi
+  if [ -z "$WATERCRAWL_MINIO_KEY" ]; then
+    WATERCRAWL_MINIO_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar WATERCRAWL_MINIO_KEY $WATERCRAWL_MINIO_KEY
+  fi
+  if [ -z "$WATERCRAWL_MINIO_SECRET" ]; then
+    WATERCRAWL_MINIO_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar WATERCRAWL_MINIO_SECRET $WATERCRAWL_MINIO_SECRET
+  fi
+  if [ -z "$FLOWISE_ADMIN_USERNAME" ]; then
+    FLOWISE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_flowise"
+    updateConfigVar FLOWISE_ADMIN_USERNAME $FLOWISE_ADMIN_USERNAME
+  fi
+  if [ -z "$FLOWISE_ADMIN_EMAIL_ADDRESS" ]; then
+    FLOWISE_ADMIN_EMAIL_ADDRESS=$FLOWISE_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar FLOWISE_ADMIN_EMAIL_ADDRESS $FLOWISE_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$FLOWISE_ADMIN_PASSWORD" ]; then
+    FLOWISE_ADMIN_PASSWORD=$(getPasswordWithSymbol 32)
+    updateConfigVar FLOWISE_ADMIN_PASSWORD $FLOWISE_ADMIN_PASSWORD
+  fi
+  if [ -z "$FLOWISE_DATABASE_NAME" ]; then
+    FLOWISE_DATABASE_NAME=flowisedb
+    updateConfigVar FLOWISE_DATABASE_NAME $FLOWISE_DATABASE_NAME
+  fi
+  if [ -z "$FLOWISE_DATABASE_USER" ]; then
+    FLOWISE_DATABASE_USER=flowise-user
+    updateConfigVar FLOWISE_DATABASE_USER $FLOWISE_DATABASE_USER
+  fi
+  if [ -z "$FLOWISE_DATABASE_USER_PASSWORD" ]; then
+    FLOWISE_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FLOWISE_DATABASE_USER_PASSWORD $FLOWISE_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$FLOWISE_DATABASE_READONLYUSER" ]; then
+    FLOWISE_DATABASE_READONLYUSER=flowise-readonly
+    updateConfigVar FLOWISE_DATABASE_READONLYUSER $FLOWISE_DATABASE_READONLYUSER
+  fi
+  if [ -z "$FLOWISE_DATABASE_READONLYUSER_PASSWORD" ]; then
+    FLOWISE_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FLOWISE_DATABASE_READONLYUSER_PASSWORD $FLOWISE_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$FLOWISE_REDIS_PASSWORD" ]; then
+    FLOWISE_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FLOWISE_REDIS_PASSWORD $FLOWISE_REDIS_PASSWORD
+  fi
+  if [ -z "$FLOWISE_JWT_SECRET" ]; then
+    FLOWISE_JWT_SECRET=$(openssl rand -hex 32)
+    updateConfigVar FLOWISE_JWT_SECRET $FLOWISE_JWT_SECRET
+  fi
+  if [ -z "$FLOWISE_JWT_REFRESH_SECRET" ]; then
+    FLOWISE_JWT_REFRESH_SECRET=$(openssl rand -hex 32)
+    updateConfigVar FLOWISE_JWT_REFRESH_SECRET $FLOWISE_JWT_REFRESH_SECRET
+  fi
+  if [ -z "$FLOWISE_EXPRESS_SESSION_SECRET" ]; then
+    FLOWISE_EXPRESS_SESSION_SECRET=$(openssl rand -hex 32)
+    updateConfigVar FLOWISE_EXPRESS_SESSION_SECRET $FLOWISE_EXPRESS_SESSION_SECRET
+  fi
+  if [ -z "$FLOWISE_TOKEN_HASH_SECRET" ]; then
+    FLOWISE_TOKEN_HASH_SECRET=$(openssl rand -hex 32)
+    updateConfigVar FLOWISE_TOKEN_HASH_SECRET $FLOWISE_TOKEN_HASH_SECRET
+  fi
+  if [ -z "$FLOWISE_MINIO_KEY" ]; then
+    FLOWISE_MINIO_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar FLOWISE_MINIO_KEY $FLOWISE_MINIO_KEY
+  fi
+  if [ -z "$FLOWISE_MINIO_SECRET" ]; then
+    FLOWISE_MINIO_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar FLOWISE_MINIO_SECRET $FLOWISE_MINIO_SECRET
+  fi
+  if [ -z "$SURFSENSE_ADMIN_USERNAME" ]; then
+    SURFSENSE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_surfsense"
+    updateConfigVar SURFSENSE_ADMIN_USERNAME $SURFSENSE_ADMIN_USERNAME
+  fi
+  if [ -z "$SURFSENSE_ADMIN_EMAIL_ADDRESS" ]; then
+    SURFSENSE_ADMIN_EMAIL_ADDRESS=$SURFSENSE_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar SURFSENSE_ADMIN_EMAIL_ADDRESS $SURFSENSE_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$SURFSENSE_ADMIN_PASSWORD" ]; then
+    SURFSENSE_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar SURFSENSE_ADMIN_PASSWORD $SURFSENSE_ADMIN_PASSWORD
+  fi
+  if [ -z "$SURFSENSE_SECRET_KEY" ]; then
+    SURFSENSE_SECRET_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar SURFSENSE_SECRET_KEY $SURFSENSE_SECRET_KEY
+  fi
+  if [ -z "$NOCODB_ADMIN_USERNAME" ]; then
+    NOCODB_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_nocodb"
+    updateConfigVar NOCODB_ADMIN_USERNAME $NOCODB_ADMIN_USERNAME
+  fi
+  if [ -z "$NOCODB_ADMIN_EMAIL_ADDRESS" ]; then
+    NOCODB_ADMIN_EMAIL_ADDRESS=$NOCODB_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar NOCODB_ADMIN_EMAIL_ADDRESS $NOCODB_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$NOCODB_ADMIN_PASSWORD" ]; then
+    NOCODB_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar NOCODB_ADMIN_PASSWORD $NOCODB_ADMIN_PASSWORD
+  fi
+  if [ -z "$NOCODB_DATABASE_NAME" ]; then
+    NOCODB_DATABASE_NAME=nocodbdb
+    updateConfigVar NOCODB_DATABASE_NAME $NOCODB_DATABASE_NAME
+  fi
+  if [ -z "$NOCODB_DATABASE_USER" ]; then
+    NOCODB_DATABASE_USER=nocodb-user
+    updateConfigVar NOCODB_DATABASE_USER $NOCODB_DATABASE_USER
+  fi
+  if [ -z "$NOCODB_DATABASE_USER_PASSWORD" ]; then
+    NOCODB_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar NOCODB_DATABASE_USER_PASSWORD $NOCODB_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$NOCODB_DATABASE_READONLYUSER" ]; then
+    NOCODB_DATABASE_READONLYUSER=nocodb-readonly
+    updateConfigVar NOCODB_DATABASE_READONLYUSER $NOCODB_DATABASE_READONLYUSER
+  fi
+  if [ -z "$NOCODB_DATABASE_READONLYUSER_PASSWORD" ]; then
+    NOCODB_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar NOCODB_DATABASE_READONLYUSER_PASSWORD $NOCODB_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$NOCODB_REDIS_PASSWORD" ]; then
+    NOCODB_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar NOCODB_REDIS_PASSWORD $NOCODB_REDIS_PASSWORD
+  fi
+  if [ -z "$NOCODB_AUTH_JWT_SECRET" ]; then
+    NOCODB_AUTH_JWT_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar NOCODB_AUTH_JWT_SECRET $NOCODB_AUTH_JWT_SECRET
+  fi
+  if [ -z "$NOCODB_MINIO_KEY" ]; then
+    NOCODB_MINIO_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar NOCODB_MINIO_KEY $NOCODB_MINIO_KEY
+  fi
+  if [ -z "$NOCODB_MINIO_SECRET" ]; then
+    NOCODB_MINIO_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar NOCODB_MINIO_SECRET $NOCODB_MINIO_SECRET
+  fi
+  if [ -z "$ENTE_ADMIN_USERNAME" ]; then
+    ENTE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_ente"
+    updateConfigVar ENTE_ADMIN_USERNAME $ENTE_ADMIN_USERNAME
+  fi
+  if [ -z "$ENTE_ADMIN_EMAIL_ADDRESS" ]; then
+    ENTE_ADMIN_EMAIL_ADDRESS=$ENTE_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar ENTE_ADMIN_EMAIL_ADDRESS $ENTE_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$ENTE_ADMIN_PASSWORD" ]; then
+    ENTE_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ENTE_ADMIN_PASSWORD $ENTE_ADMIN_PASSWORD
+  fi
+  if [ -z "$ENTE_DATABASE_NAME" ]; then
+    ENTE_DATABASE_NAME=entedb
+    updateConfigVar ENTE_DATABASE_NAME $ENTE_DATABASE_NAME
+  fi
+  if [ -z "$ENTE_DATABASE_USER" ]; then
+    ENTE_DATABASE_USER=ente-user
+    updateConfigVar ENTE_DATABASE_USER $ENTE_DATABASE_USER
+  fi
+  if [ -z "$ENTE_DATABASE_USER_PASSWORD" ]; then
+    ENTE_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ENTE_DATABASE_USER_PASSWORD $ENTE_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$ENTE_DATABASE_READONLYUSER" ]; then
+    ENTE_DATABASE_READONLYUSER=ente-readonly
+    updateConfigVar ENTE_DATABASE_READONLYUSER $ENTE_DATABASE_READONLYUSER
+  fi
+  if [ -z "$ENTE_DATABASE_READONLYUSER_PASSWORD" ]; then
+    ENTE_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ENTE_DATABASE_READONLYUSER_PASSWORD $ENTE_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$ENTE_MINIO_KEY" ]; then
+    ENTE_MINIO_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar ENTE_MINIO_KEY $ENTE_MINIO_KEY
+  fi
+  if [ -z "$ENTE_MINIO_SECRET" ]; then
+    ENTE_MINIO_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar ENTE_MINIO_SECRET $ENTE_MINIO_SECRET
+  fi
+  if [ -z "$ENTE_MUSEUM_KEY" ]; then
+    ENTE_MUSEUM_KEY=$(head -c 32 /dev/urandom | base64 | tr -d '\n')
+    updateConfigVar ENTE_MUSEUM_KEY $ENTE_MUSEUM_KEY
+  fi
+  if [ -z "$ENTE_MUSEUM_HASH" ]; then
+    ENTE_MUSEUM_HASH=$(head -c 64 /dev/urandom | base64 | tr -d '\n')
+    updateConfigVar ENTE_MUSEUM_HASH $ENTE_MUSEUM_HASH
+  fi
+  if [ -z "$ENTE_MUSEUM_JWT_SECRET" ]; then
+    ENTE_MUSEUM_JWT_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '\n' | tr '+/' '-_')
+    updateConfigVar ENTE_MUSEUM_JWT_SECRET $ENTE_MUSEUM_JWT_SECRET
+  fi
+  if [ -z "$MORPHIC_ADMIN_USERNAME" ]; then
+    MORPHIC_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_morphic"
+    updateConfigVar MORPHIC_ADMIN_USERNAME $MORPHIC_ADMIN_USERNAME
+  fi
+  if [ -z "$MORPHIC_ADMIN_EMAIL_ADDRESS" ]; then
+    MORPHIC_ADMIN_EMAIL_ADDRESS=$MORPHIC_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar MORPHIC_ADMIN_EMAIL_ADDRESS $MORPHIC_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$MORPHIC_ADMIN_PASSWORD" ]; then
+    MORPHIC_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MORPHIC_ADMIN_PASSWORD $MORPHIC_ADMIN_PASSWORD
+  fi
+  if [ -z "$MORPHIC_DATABASE_NAME" ]; then
+    MORPHIC_DATABASE_NAME=postgres
+    updateConfigVar MORPHIC_DATABASE_NAME $MORPHIC_DATABASE_NAME
+  fi
+  if [ -z "$MORPHIC_DATABASE_USER" ]; then
+    MORPHIC_DATABASE_USER=supabase_admin
+    updateConfigVar MORPHIC_DATABASE_USER $MORPHIC_DATABASE_USER
+  fi
+  if [ -z "$MORPHIC_DATABASE_USER_PASSWORD" ]; then
+    MORPHIC_DATABASE_USER_PASSWORD=$(openssl rand -hex 16)
+    updateConfigVar MORPHIC_DATABASE_USER_PASSWORD $MORPHIC_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$MORPHIC_DATABASE_READONLYUSER" ]; then
+    MORPHIC_DATABASE_READONLYUSER=morphic-readonly
+    updateConfigVar MORPHIC_DATABASE_READONLYUSER $MORPHIC_DATABASE_READONLYUSER
+  fi
+  if [ -z "$MORPHIC_DATABASE_READONLYUSER_PASSWORD" ]; then
+    MORPHIC_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MORPHIC_DATABASE_READONLYUSER_PASSWORD $MORPHIC_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$MORPHIC_REDIS_PASSWORD" ]; then
+    MORPHIC_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MORPHIC_REDIS_PASSWORD $MORPHIC_REDIS_PASSWORD
+  fi
+  if [ -z "$MORPHIC_SUPABASE_DASHBOARD_USERNAME" ]; then
+    MORPHIC_SUPABASE_DASHBOARD_USERNAME=$ADMIN_USERNAME_BASE"_morphic_supabase"
+    updateConfigVar MORPHIC_SUPABASE_DASHBOARD_USERNAME $MORPHIC_SUPABASE_DASHBOARD_USERNAME
+  fi
+  if [ -z "$MORPHIC_SUPABASE_DASHBOARD_PASSWORD" ]; then
+    MORPHIC_SUPABASE_DASHBOARD_PASSWORD=$(openssl rand -hex 16)
+    updateConfigVar MORPHIC_SUPABASE_DASHBOARD_PASSWORD $MORPHIC_SUPABASE_DASHBOARD_PASSWORD
+  fi
+  if [ -z "$MORPHIC_SUPABASE_JWT_SECRET" ]; then
+    MORPHIC_SUPABASE_JWT_SECRET=$(openssl rand -base64 30)
+    updateConfigVar MORPHIC_SUPABASE_JWT_SECRET $MORPHIC_SUPABASE_JWT_SECRET
+  fi
+  if [ -z "$MORPHIC_SUPABASE_ANON_KEY" ]; then
+    MORPHIC_SUPABASE_ANON_KEY=$(generateFullJWTToken "{\"alg\":\"HS256\",\"typ\":\"JWT\"}" "{\"role\":\"anon\",\"iss\":\"supabase\",\"iat\":$(date +%s),\"exp\":$(($(date +%s) + 20 * 3600 * 24 * 365))}" "$MORPHIC_SUPABASE_JWT_SECRET")
+    updateConfigVar MORPHIC_SUPABASE_ANON_KEY $MORPHIC_SUPABASE_ANON_KEY
+  fi
+  if [ -z "$MORPHIC_SUPABASE_DB_ENC_KEY" ]; then
+    MORPHIC_SUPABASE_DB_ENC_KEY=$(pwgen -c -n 16 1)
+    updateConfigVar MORPHIC_SUPABASE_DB_ENC_KEY $MORPHIC_SUPABASE_DB_ENC_KEY
+  fi
+  if [ -z "$MORPHIC_SUPABASE_PG_META_CRYPTO_KEY" ]; then
+    MORPHIC_SUPABASE_PG_META_CRYPTO_KEY=$(openssl rand -base64 24)
+    updateConfigVar MORPHIC_SUPABASE_PG_META_CRYPTO_KEY $MORPHIC_SUPABASE_PG_META_CRYPTO_KEY
+  fi
+  if [ -z "$MORPHIC_SUPABASE_SECRET_KEY_BASE" ]; then
+    MORPHIC_SUPABASE_SECRET_KEY_BASE=$(openssl rand -base64 48)
+    updateConfigVar MORPHIC_SUPABASE_SECRET_KEY_BASE $MORPHIC_SUPABASE_SECRET_KEY_BASE
+  fi
+  if [ -z "$MORPHIC_SUPABASE_SERVICE_ROLE_KEY" ]; then
+    MORPHIC_SUPABASE_SERVICE_ROLE_KEY=$(generateFullJWTToken "{\"alg\":\"HS256\",\"typ\":\"JWT\"}" "{\"role\":\"service_role\",\"iss\":\"supabase\",\"iat\":$(date +%s),\"exp\":$(($(date +%s) + 20 * 3600 * 24 * 365))}" "$MORPHIC_SUPABASE_JWT_SECRET")
+    updateConfigVar MORPHIC_SUPABASE_SERVICE_ROLE_KEY $MORPHIC_SUPABASE_SERVICE_ROLE_KEY
+  fi
+  if [ -z "$MORPHIC_SUPABASE_VAULT_ENC_KEY" ]; then
+    MORPHIC_SUPABASE_VAULT_ENC_KEY=$(openssl rand -hex 16)
+    updateConfigVar MORPHIC_SUPABASE_VAULT_ENC_KEY $MORPHIC_SUPABASE_VAULT_ENC_KEY
+  fi
+  if [ -z "$MORPHIC_SUPABASE_LOGFLARE_PRIVATE_ACCESS_TOKEN" ]; then
+    MORPHIC_SUPABASE_LOGFLARE_PRIVATE_ACCESS_TOKEN=$(openssl rand -base64 24)
+    updateConfigVar MORPHIC_SUPABASE_LOGFLARE_PRIVATE_ACCESS_TOKEN $MORPHIC_SUPABASE_LOGFLARE_PRIVATE_ACCESS_TOKEN
+  fi
+  if [ -z "$MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN" ]; then
+    MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN=$(openssl rand -base64 24)
+    updateConfigVar MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN $MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN
+  fi
 #ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
   if [ -z "$CLIENTDNS_USER1_ADMIN_USERNAME" ]; then
@@ -33906,6 +36187,45 @@ function checkCreateNonbackupDirByStack()
     "kopia")
       mkdir -p $HSHQ_NONBACKUP_DIR/kopia/snapshots
       ;;
+    "localai")
+      mkdir -p $HSHQ_NONBACKUP_DIR/aimodels
+      ;;
+    "firecrawl")
+      mkdir -p $HSHQ_NONBACKUP_DIR/firecrawl/redis
+      ;;
+    "librechat")
+      mkdir -p $HSHQ_NONBACKUP_DIR/librechat/redis
+      ;;
+    "openwebui")
+      mkdir -p $HSHQ_NONBACKUP_DIR/openwebui/redis
+      ;;
+    "lobechat")
+      mkdir -p $HSHQ_NONBACKUP_DIR/lobechat/redis
+      ;;
+    "ragflow")
+      mkdir -p $HSHQ_NONBACKUP_DIR/ragflow/redis
+      ;;
+    "docling")
+      mkdir -p $HSHQ_NONBACKUP_DIR/docling/redis
+      ;;
+    "dify")
+      mkdir -p $HSHQ_NONBACKUP_DIR/dify/redis
+      ;;
+    "mindsdb")
+      mkdir -p $HSHQ_NONBACKUP_DIR/mindsdb/redis
+      ;;
+    "watercrawl")
+      mkdir -p $HSHQ_NONBACKUP_DIR/watercrawl/redis
+      ;;
+    "flowise")
+      mkdir -p $HSHQ_NONBACKUP_DIR/flowise/redis
+      ;;
+    "nocodb")
+      mkdir -p $HSHQ_NONBACKUP_DIR/nocodb/redis
+      ;;
+    "morphic")
+      mkdir -p $HSHQ_NONBACKUP_DIR/morphic/redis
+      ;;
 #ADD_NEW_NONBACKUP_DIRS_HERE
     *)
       ;;
@@ -33947,9 +36267,6 @@ function initServiceVars()
   checkAddSvc "SVCD_ACTIVEPIECES_APP=activepieces,activepieces,primary,admin,ActivePieces,activepieces,hshq"
   checkAddSvc "SVCD_ADGUARD=adguard,adguard,primary,admin,AdguardHome,adguard,hshq"
   checkAddSvc "SVCD_ADMINER=adminer,adminer,primary,admin,Adminer,adminer,hshq"
-  checkAddSvc "SVCD_AISTACK_MINDSDB_APP=aistack,mindsdb,primary,admin,MindsDB,mindsdb,hshq"
-  checkAddSvc "SVCD_AISTACK_LANGFUSE=aistack,langfuse,primary,admin,Langfuse,langfuse,hshq"
-  checkAddSvc "SVCD_AISTACK_OPENWEBUI=aistack,openwebui,primary,user,OpenWebUI,openwebui,hshq"
   checkAddSvc "SVCD_AUDIOBOOKSHELF=audiobookshelf,audiobookshelf,other,user,Audiobookshelf,audiobookshelf,le"
   checkAddSvc "SVCD_AUTHELIA=authelia,authelia,other,user,Authelia,authelia,hshq"
   checkAddSvc "SVCD_AUTOMATISCH_APP=automatisch,automatisch,primary,admin,Automatisch,automatisch,hshq"
@@ -34104,6 +36421,41 @@ function initServiceVars()
   checkAddSvc "SVCD_AXELOR_GOOVEE=axelor,goovee,primary,user,Axelor Goovee,goovee,hshq"
   checkAddSvc "SVCD_CONVERTX_APP=convertx,convertx,primary,user,ConvertX,convertx,hshq"
   checkAddSvc "SVCD_KOPIA_APP=kopia,kopia,primary,admin,Kopia,kopia,hshq"
+  checkAddSvc "SVCD_LOCALAI_SERVER=localai,localai,primary,user,LocalAI,localai,hshq"
+  checkAddSvc "SVCD_LOCALAI_RECALL=localai,localrecall,primary,user,LocalRecall,localrecall,hshq"
+  checkAddSvc "SVCD_LOCALAI_AGI=localai,localagi,primary,user,LocalAGI,localagi,hshq"
+  checkAddSvc "SVCD_COMFYUI_APP=comfyui,comfyui,primary,user,ComfyUI,comfyui,hshq"
+  checkAddSvc "SVCD_LANGFLOW_APP=langflow,langflow,primary,user,Langflow,langflow,hshq"
+  checkAddSvc "SVCD_ANYTHINGLLM_APP=anythingllm,anythingllm,primary,user,AnythingLLM,anythingllm,hshq"
+  checkAddSvc "SVCD_PERPLEXICA_APP=perplexica,perplexica,primary,user,Perplexica,perplexica,hshq"
+  checkAddSvc "SVCD_FIRECRAWL_API=firecrawl,firecrawl,primary,admin,Firecrawl,firecrawl,hshq"
+  checkAddSvc "SVCD_LIBRECHAT_APP=librechat,librechat,primary,user,LibreChat,librechat,hshq"
+  checkAddSvc "SVCD_CRAWL4AI_APP=crawl4ai,crawl4ai,primary,admin,Crawl4AI,crawl4ai,hshq"
+  checkAddSvc "SVCD_OLLAMA_SERVER=ollama,ollama,home,admin,Ollama,ollama,hshq"
+  checkAddSvc "SVCD_OPENWEBUI_APP=openwebui,openwebui,primary,user,Open WebUI,openwebui,hshq"
+  checkAddSvc "SVCD_KHOJ_SERVER=khoj,khoj,primary,user,Khoj,khoj,hshq"
+  checkAddSvc "SVCD_LOBECHAT_APP=lobechat,lobechat,primary,user,LobeChat,lobechat,hshq"
+  checkAddSvc "SVCD_INVOKEAI_APP=invokeai,invokeai,primary,user,InvokeAI,invokeai,hshq"
+  checkAddSvc "SVCD_RAGFLOW_APP=ragflow,ragflow,primary,user,RAGFlow,ragflow,hshq"
+  checkAddSvc "SVCD_RAGFLOW_API=ragflow,ragflow-api,primary,user,RAGFlow API,ragflow-api,hshq"
+  checkAddSvc "SVCD_RAGFLOW_ADMIN=ragflow,ragflow-admin,primary,admin,RAGFlow Admin,ragflow-admin,hshq"
+  checkAddSvc "SVCD_RAGFLOW_MCP=ragflow,ragflow-mcp,primary,user,RAGFlow MCP,ragflow-mcp,hshq"
+  checkAddSvc "SVCD_RAGFLOW_INFINITY_WEB=ragflow,ragflow-infinity,primary,admin,RAGFlow Infinity,ragflow-infinity,hshq"
+  checkAddSvc "SVCD_TABBYML_APP=tabbyml,tabbyml,primary,admin,TabbyML,tabbyml,hshq"
+  checkAddSvc "SVCD_DEEPWIKI_OPEN_APP=deepwikiopen,deepwikiopen,primary,admin,DeepWiki-Open,deepwikiopen,hshq"
+  checkAddSvc "SVCD_DEEPWIKI_OPEN_API=deepwikiopen,deepwikiopen-api,primary,admin,DeepWiki-Open API,deepwikiopen-api,hshq"
+  checkAddSvc "SVCD_DOCLING_APP=docling,docling,primary,admin,Docling,docling,hshq"
+  checkAddSvc "SVCD_DIFY_APP=dify,dify,primary,user,Dify,dify,hshq"
+  checkAddSvc "SVCD_MINDSDB_APP=mindsdb,mindsdb,primary,admin,MindsDB,mindsdb,hshq"
+  checkAddSvc "SVCD_WATERCRAWL_APP=watercrawl,watercrawl,primary,user,WaterCrawl,watercrawl,hshq"
+  checkAddSvc "SVCD_FLOWISE_APP=flowise,flowise,primary,user,Flowise,flowise,hshq"
+  checkAddSvc "SVCD_SURFSENSE_APP=surfsense,surfsense,primary,user,SurfSense,surfsense,hshq"
+  checkAddSvc "SVCD_SURFSENSE_BACKEND=surfsense,surfsense-backend,primary,user,SurfSense Backend,surfsense-backend,hshq"
+  checkAddSvc "SVCD_NOCODB_APP=nocodb,nocodb,primary,user,NocoDB,nocodb,hshq"
+  checkAddSvc "SVCD_ENTE_APP=ente,ente,primary,user,Ente,ente,hshq"
+  checkAddSvc "SVCD_ENTE_SERVER=ente,ente-server,primary,user,Ente Server,ente-server,hshq"
+  checkAddSvc "SVCD_MORPHIC_APP=morphic,morphic,primary,user,Morphic,morphic,hshq"
+  checkAddSvc "SVCD_MORPHIC_SUPABASE=morphic,morphic-supabase,primary,admin,Morphic Supabase,morphic-supabase,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -34346,6 +36698,56 @@ function installStackByName()
       installConvertX $is_integrate ;;
     kopia)
       installKopia $is_integrate ;;
+    localai)
+      installLocalAI $is_integrate ;;
+    comfyui)
+      installComfyUI $is_integrate ;;
+    langflow)
+      installLangflow $is_integrate ;;
+    anythingllm)
+      installAnythingLLM $is_integrate ;;
+    perplexica)
+      installPerplexica $is_integrate ;;
+    firecrawl)
+      installFirecrawl $is_integrate ;;
+    librechat)
+      installLibreChat $is_integrate ;;
+    crawl4ai)
+      installCrawl4AI $is_integrate ;;
+    ollama)
+      installOllama $is_integrate ;;
+    openwebui)
+      installOpenWebUI $is_integrate ;;
+    khoj)
+      installKhoj $is_integrate ;;
+    lobechat)
+      installLobeChat $is_integrate ;;
+    invokeai)
+      installInvokeAI $is_integrate ;;
+    ragflow)
+      installRAGFlow $is_integrate ;;
+    tabbyml)
+      installTabbyML $is_integrate ;;
+    deepwikiopen)
+      installDeepWikiOpen $is_integrate ;;
+    docling)
+      installDocling $is_integrate ;;
+    dify)
+      installDify $is_integrate ;;
+    mindsdb)
+      installMindsDB $is_integrate ;;
+    watercrawl)
+      installWaterCrawl $is_integrate ;;
+    flowise)
+      installFlowise $is_integrate ;;
+    surfsense)
+      installSurfSense $is_integrate ;;
+    nocodb)
+      installNocoDB $is_integrate ;;
+    ente)
+      installEnte $is_integrate ;;
+    morphic)
+      installMorphic $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -34602,6 +37004,56 @@ function performUpdateStackByName()
       performUpdateConvertX ;;
     kopia)
       performUpdateKopia ;;
+    localai)
+      performUpdateLocalAI ;;
+    comfyui)
+      performUpdateComfyUI ;;
+    langflow)
+      performUpdateLangflow ;;
+    anythingllm)
+      performUpdateAnythingLLM ;;
+    perplexica)
+      performUpdatePerplexica ;;
+    firecrawl)
+      performUpdateFirecrawl ;;
+    librechat)
+      performUpdateLibreChat ;;
+    crawl4ai)
+      performUpdateCrawl4AI ;;
+    ollama)
+      performUpdateOllama ;;
+    openwebui)
+      performUpdateOpenWebUI ;;
+    khoj)
+      performUpdateKhoj ;;
+    lobechat)
+      performUpdateLobeChat ;;
+    invokeai)
+      performUpdateInvokeAI ;;
+    ragflow)
+      performUpdateRAGFlow ;;
+    tabbyml)
+      performUpdateTabbyML ;;
+    deepwikiopen)
+      performUpdateDeepWikiOpen ;;
+    docling)
+      performUpdateDocling ;;
+    dify)
+      performUpdateDify ;;
+    mindsdb)
+      performUpdateMindsDB ;;
+    watercrawl)
+      performUpdateWaterCrawl ;;
+    flowise)
+      performUpdateFlowise ;;
+    surfsense)
+      performUpdateSurfSense ;;
+    nocodb)
+      performUpdateNocoDB ;;
+    ente)
+      performUpdateEnte ;;
+    morphic)
+      performUpdateMorphic ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -34691,6 +37143,14 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CONTROLR_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_AKAUNTING_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_RAGFLOW_API.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_RAGFLOW_MCP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_OLLAMA_SERVER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_DEEPWIKI_OPEN_API.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_DOCLING_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SURFSENSE_BACKEND.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_ENTE_SERVER.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_BYPASS_HERE
   retval="${retval}# Authelia bypass END\n"
   retval="${retval}      policy: bypass\n"
@@ -34728,6 +37188,27 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_AXELOR_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_AXELOR_GOOVEE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CONVERTX_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_LOCALAI_RECALL.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_LOCALAI_AGI.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_COMFYUI_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_LANGFLOW_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_ANYTHINGLLM_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_PERPLEXICA_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_FIRECRAWL_API.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_CRAWL4AI_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_INVOKEAI_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_DIFY_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_WATERCRAWL_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_FLOWISE_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SURFSENSE_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_NOCODB_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_ENTE_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_MORPHIC_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_PRIMARY_HERE
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -34782,6 +37263,9 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_BESZEL_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KOPIA_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_TABBYML_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_DEEPWIKI_OPEN_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_MINDSDB_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_ADMIN_HERE
   retval="${retval}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -34856,9 +37340,6 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HOMARR}-Admin" https://$SUB_HOMARR.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $HOMARR_ADMIN_USERNAME $HOMARR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MATOMO}-Admin" https://$SUB_MATOMO.$HOMESERVER_DOMAIN/index.php $HOMESERVER_ABBREV $MATOMO_ADMIN_USERNAME $MATOMO_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PASTEFY}-Admin" https://$SUB_PASTEFY.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $PASTEFY_ADMIN_USERNAME $PASTEFY_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_MINDSDB_APP}-Admin" https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_MINDSDB_ADMIN_USERNAME $AISTACK_MINDSDB_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_LANGFUSE}-Admin" https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN/auth/sign-in $HOMESERVER_ABBREV $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS $AISTACK_LANGFUSE_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_OPENWEBUI}-Admin" https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/auth $HOMESERVER_ABBREV $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PIXELFED}-Admin" "\"https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/i/auth/sudo\"" $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_YAMTRACK}-Admin" https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN/accounts/login $HOMESERVER_ABBREV $YAMTRACK_ADMIN_USERNAME $YAMTRACK_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_SONARR}-Admin" https://$SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SONARR_ADMIN_USERNAME $SONARR_ADMIN_PASSWORD)"\n"
@@ -34907,6 +37388,24 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AXELOR_GOOVEE}-Admin" https://$SUB_AXELOR_GOOVEE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $AXELOR_GOOVEE_ADMIN_USERNAME $AXELOR_GOOVEE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CONVERTX_APP}-Admin" https://$SUB_CONVERTX_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CONVERTX_ADMIN_EMAIL_ADDRESS $CONVERTX_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KOPIA_APP}-Admin" https://$SUB_KOPIA_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KOPIA_ADMIN_USERNAME $KOPIA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LOCALAI_SERVER}-Admin" https://$SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOCALAI_ADMIN_USERNAME $LOCALAI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_COMFYUI_APP}-Admin" https://$SUB_COMFYUI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $COMFYUI_ADMIN_USERNAME $COMFYUI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LANGFLOW_APP}-Admin" https://$SUB_LANGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LANGFLOW_ADMIN_USERNAME $LANGFLOW_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ANYTHINGLLM_APP}-Admin" https://$SUB_ANYTHINGLLM_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $ANYTHINGLLM_ADMIN_USERNAME $ANYTHINGLLM_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LIBRECHAT_APP}-Admin" https://$SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LIBRECHAT_ADMIN_EMAIL_ADDRESS $LIBRECHAT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENWEBUI_APP}-Admin" https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENWEBUI_ADMIN_USERNAME $OPENWEBUI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TABBYML_APP}-Admin" https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN/auth/signin $HOMESERVER_ABBREV $TABBYML_ADMIN_EMAIL_ADDRESS $TABBYML_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DIFY_APP}-Admin" https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $DIFY_ADMIN_EMAIL_ADDRESS $DIFY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MINDSDB_APP}-Admin" https://$SUB_MINDSDB_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MINDSDB_ADMIN_USERNAME $MINDSDB_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_WATERCRAWL_APP}-Admin" https://$SUB_WATERCRAWL_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $WATERCRAWL_ADMIN_EMAIL_ADDRESS $WATERCRAWL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_FLOWISE_APP}-Admin" https://$SUB_FLOWISE_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $FLOWISE_ADMIN_EMAIL_ADDRESS $FLOWISE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SURFSENSE_APP}-Admin" https://$SUB_SURFSENSE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SURFSENSE_ADMIN_EMAIL_ADDRESS $SURFSENSE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_NOCODB_APP}-Admin" https://$SUB_NOCODB_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $NOCODB_ADMIN_EMAIL_ADDRESS $NOCODB_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ENTE_APP}-Admin" https://$SUB_ENTE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $ENTE_ADMIN_USERNAME $ENTE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MORPHIC_APP}-Admin" https://$SUB_MORPHIC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MORPHIC_ADMIN_USERNAME $MORPHIC_ADMIN_PASSWORD)"\n"
 #ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
@@ -35010,9 +37509,6 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HOMARR}-Admin" https://$SUB_HOMARR.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $HOMARR_ADMIN_USERNAME $HOMARR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MATOMO}-Admin" https://$SUB_MATOMO.$HOMESERVER_DOMAIN/index.php $HOMESERVER_ABBREV $MATOMO_ADMIN_USERNAME $MATOMO_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PASTEFY}-Admin" https://$SUB_PASTEFY.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $PASTEFY_ADMIN_USERNAME $PASTEFY_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_MINDSDB_APP}-Admin" https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_MINDSDB_ADMIN_USERNAME $AISTACK_MINDSDB_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_LANGFUSE}-Admin" https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN/auth/sign-in $HOMESERVER_ABBREV $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS $AISTACK_LANGFUSE_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_OPENWEBUI}-Admin" https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/auth $HOMESERVER_ABBREV $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PIXELFED}-Admin" "\"https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/i/auth/sudo\"" $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_YAMTRACK}-Admin" https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN/accounts/login $HOMESERVER_ABBREV $YAMTRACK_ADMIN_USERNAME $YAMTRACK_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SERVARR_SONARR}-Admin" https://$SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SONARR_ADMIN_USERNAME $SONARR_ADMIN_PASSWORD)"\n"
@@ -35061,6 +37557,24 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AXELOR_GOOVEE}-Admin" https://$SUB_AXELOR_GOOVEE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $AXELOR_GOOVEE_ADMIN_USERNAME $AXELOR_GOOVEE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CONVERTX_APP}-Admin" https://$SUB_CONVERTX_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CONVERTX_ADMIN_EMAIL_ADDRESS $CONVERTX_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KOPIA_APP}-Admin" https://$SUB_KOPIA_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KOPIA_ADMIN_USERNAME $KOPIA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LOCALAI_SERVER}-Admin" https://$SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOCALAI_ADMIN_USERNAME $LOCALAI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_COMFYUI_APP}-Admin" https://$SUB_COMFYUI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $COMFYUI_ADMIN_USERNAME $COMFYUI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LANGFLOW_APP}-Admin" https://$SUB_LANGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LANGFLOW_ADMIN_USERNAME $LANGFLOW_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ANYTHINGLLM_APP}-Admin" https://$SUB_ANYTHINGLLM_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $ANYTHINGLLM_ADMIN_USERNAME $ANYTHINGLLM_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LIBRECHAT_APP}-Admin" https://$SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LIBRECHAT_ADMIN_EMAIL_ADDRESS $LIBRECHAT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENWEBUI_APP}-Admin" https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENWEBUI_ADMIN_USERNAME $OPENWEBUI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TABBYML_APP}-Admin" https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN/auth/signin $HOMESERVER_ABBREV $TABBYML_ADMIN_EMAIL_ADDRESS $TABBYML_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DIFY_APP}-Admin" https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $DIFY_ADMIN_EMAIL_ADDRESS $DIFY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MINDSDB_APP}-Admin" https://$SUB_MINDSDB_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MINDSDB_ADMIN_USERNAME $MINDSDB_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_WATERCRAWL_APP}-Admin" https://$SUB_WATERCRAWL_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $WATERCRAWL_ADMIN_EMAIL_ADDRESS $WATERCRAWL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_FLOWISE_APP}-Admin" https://$SUB_FLOWISE_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $FLOWISE_ADMIN_EMAIL_ADDRESS $FLOWISE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SURFSENSE_APP}-Admin" https://$SUB_SURFSENSE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SURFSENSE_ADMIN_EMAIL_ADDRESS $SURFSENSE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_NOCODB_APP}-Admin" https://$SUB_NOCODB_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $NOCODB_ADMIN_EMAIL_ADDRESS $NOCODB_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ENTE_APP}-Admin" https://$SUB_ENTE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $ENTE_ADMIN_USERNAME $ENTE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MORPHIC_APP}-Admin" https://$SUB_MORPHIC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MORPHIC_ADMIN_USERNAME $MORPHIC_ADMIN_PASSWORD)"\n"
 #ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
@@ -35530,6 +38044,87 @@ function getHeimdallOrderFromSub()
     "$SUB_KOPIA_APP")
       order_num=133
       ;;
+    "$SUB_OLLAMA_SERVER")
+      order_num=134
+      ;;
+    "$SUB_OPENWEBUI_APP")
+      order_num=135
+      ;;
+    "$SUB_LOCALAI_SERVER")
+      order_num=136
+      ;;
+    "$SUB_LOCALAI_RECALL")
+      order_num=137
+      ;;
+    "$SUB_LOCALAI_AGI")
+      order_num=138
+      ;;
+    "$SUB_COMFYUI_APP")
+      order_num=139
+      ;;
+    "$SUB_LANGFLOW_APP")
+      order_num=140
+      ;;
+    "$SUB_ANYTHINGLLM_APP")
+      order_num=141
+      ;;
+    "$SUB_PERPLEXICA_APP")
+      order_num=142
+      ;;
+    "$SUB_FIRECRAWL_API")
+      order_num=143
+      ;;
+    "$SUB_LIBRECHAT_APP")
+      order_num=144
+      ;;
+    "$SUB_CRAWL4AI_APP")
+      order_num=145
+      ;;
+    "$SUB_KHOJ_SERVER")
+      order_num=146
+      ;;
+    "$SUB_LOBECHAT_APP")
+      order_num=147
+      ;;
+    "$SUB_INVOKEAI_APP")
+      order_num=148
+      ;;
+    "$SUB_RAGFLOW_APP")
+      order_num=149
+      ;;
+    "$SUB_TABBYML_APP")
+      order_num=150
+      ;;
+    "$SUB_DEEPWIKI_OPEN_APP")
+      order_num=151
+      ;;
+    "$SUB_DOCLING_APP")
+      order_num=152
+      ;;
+    "$SUB_DIFY_APP")
+      order_num=153
+      ;;
+    "$SUB_MINDSDB_APP")
+      order_num=154
+      ;;
+    "$SUB_WATERCRAWL_APP")
+      order_num=155
+      ;;
+    "$SUB_FLOWISE_APP")
+      order_num=156
+      ;;
+    "$SUB_SURFSENSE_APP")
+      order_num=157
+      ;;
+    "$SUB_NOCODB_APP")
+      order_num=158
+      ;;
+    "$SUB_ENTE_APP")
+      order_num=159
+      ;;
+    "$SUB_MORPHIC_APP")
+      order_num=160
+      ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=900
@@ -35580,18 +38175,18 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
 #INIT_SERVICE_DEFAULTS_END
 }
 
@@ -36174,9 +38769,6 @@ function getScriptImageByContainerName()
     "aistack-langfuse")
       container_image=$IMG_AISTACK_LANGFUSE
       ;;
-    "aistack-ollama-server")
-      container_image=$IMG_AISTACK_OLLAMA_SERVER
-      ;;
     "aistack-openwebui")
       container_image=$IMG_AISTACK_OPENWEBUI
       ;;
@@ -36345,9 +38937,6 @@ function getScriptImageByContainerName()
     "revolt-pushd")
       container_image=$IMG_REVOLT_PUSHD
       ;;
-    "revolt-createbuckets")
-      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
-      ;;
     "frappe-hr-db")
       container_image=mirror.gcr.io/mariadb:10.8.8
       ;;
@@ -36387,9 +38976,6 @@ function getScriptImageByContainerName()
     "twenty-minio")
       container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
       ;;
-    "twenty-createbuckets")
-      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
-      ;;
     "odoo-db")
       container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
@@ -36413,9 +38999,6 @@ function getScriptImageByContainerName()
       ;;
     "rallly-minio")
       container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
-      ;;
-    "rallly-createbuckets")
-      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       ;;
     "easyappointments-db")
       container_image=mirror.gcr.io/mariadb:10.7.3
@@ -36443,9 +39026,6 @@ function getScriptImageByContainerName()
       ;;
     "openproject-minio")
       container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
-      ;;
-    "openproject-createbuckets")
-      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       ;;
     "zammad-db")
       container_image=mirror.gcr.io/postgres:16.9-bookworm
@@ -36479,9 +39059,6 @@ function getScriptImageByContainerName()
       ;;
     "zammad-minio")
       container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
-      ;;
-    "zammad-createbuckets")
-      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       ;;
     "zulip-db")
       container_image=$IMG_ZULIP_DB
@@ -36530,9 +39107,6 @@ function getScriptImageByContainerName()
       ;;
     "invoiceninja-minio")
       container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
-      ;;
-    "invoiceninja-createbuckets")
-      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       ;;
     "dolibarr-db")
       container_image=mirror.gcr.io/mariadb:10.7.3
@@ -36657,6 +39231,315 @@ function getScriptImageByContainerName()
     "kopia-app")
       container_image=$IMG_KOPIA_APP
       ;;
+    "localai-server")
+      container_image=$IMG_LOCALAI_SERVER
+      ;;
+    "localai-recall")
+      container_image=$IMG_LOCALAI_RECALL
+      ;;
+    "localai-lrhealth")
+      container_image=$IMG_LOCALAI_LRHEALTH
+      ;;
+    "localai-sshbox")
+      container_image=$IMG_LOCALAI_SSHBOX
+      ;;
+    "localai-dind")
+      container_image=$IMG_LOCALAI_DIND
+      ;;
+    "localai-agi")
+      container_image=$IMG_LOCALAI_AGI
+      ;;
+    "comfyui-app")
+      container_image=$IMG_COMFYUI_APP
+      ;;
+    "langflow-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "langflow-app")
+      container_image=$IMG_LANGFLOW_APP
+      ;;
+    "anythingllm-app")
+      container_image=$IMG_ANYTHINGLLM_APP
+      ;;
+    "perplexica-app")
+      container_image=$IMG_PERPLEXICA_APP
+      ;;
+    "firecrawl-db")
+      container_image=$IMG_FIRECRAWL_DB
+      ;;
+    "firecrawl-playwright")
+      container_image=$IMG_FIRECRAWL_PLAYWRIGHT
+      ;;
+    "firecrawl-api")
+      container_image=$IMG_FIRECRAWL_API
+      ;;
+    "firecrawl-rabbitmq")
+      container_image=mirror.gcr.io/rabbitmq:4.1.4-management-alpine
+      ;;
+    "firecrawl-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "librechat-db")
+      container_image=mirror.gcr.io/pgvector/pgvector:0.8.0-pg15-trixie
+      ;;
+    "librechat-mongodb")
+      container_image=mirror.gcr.io/mongo:8.0.17
+      ;;
+    "librechat-app")
+      container_image=$IMG_LIBRECHAT_APP
+      ;;
+    "librechat-meilisearch")
+      container_image=mirror.gcr.io/getmeili/meilisearch:v1.31.0
+      ;;
+    "librechat-ragapi")
+      container_image=$IMG_LIBRECHAT_RAGAPI
+      ;;
+    "librechat-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "crawl4ai-app")
+      container_image=$IMG_CRAWL4AI_APP
+      ;;
+    "crawl4ai-proxy")
+      container_image=$IMG_CRAWL4AI_PROXY
+      ;;
+    "ollama-server")
+      container_image=$IMG_OLLAMA_SERVER
+      ;;
+    "openwebui-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "openwebui-app")
+      container_image=$IMG_OPENWEBUI_APP
+      ;;
+    "openwebui-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "khoj-db")
+      container_image=mirror.gcr.io/pgvector/pgvector:0.8.1-pg16-bookworm
+      ;;
+    "khoj-sandbox")
+      container_image=$IMG_KHOJ_SANDBOX
+      ;;
+    "khoj-computer")
+      container_image=$IMG_KHOJ_COMPUTER
+      ;;
+    "khoj-server")
+      container_image=$IMG_KHOJ_SERVER
+      ;;
+    "lobechat-db")
+      container_image=mirror.gcr.io/pgvector/pgvector:pg17
+      ;;
+    "lobechat-app")
+      container_image=$IMG_LOBECHAT_APP
+      ;;
+    "lobechat-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "lobechat-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      ;;
+    "invokeai-app")
+      container_image=$IMG_INVOKEAI_APP
+      ;;
+    "ragflow-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "ragflow-infinity")
+      container_image=$IMG_RAGFLOW_INFINITY
+      ;;
+    "ragflow-app")
+      container_image=$IMG_RAGFLOW_APP
+      ;;
+    "ragflow-sandbox")
+      container_image=$IMG_RAGFLOW_SANDBOX
+      ;;
+    "ragflow-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      ;;
+    "ragflow-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "ragflow-sandbox-nodejs")
+      container_image=$IMG_RAGFLOW_SB_NODEJS
+      ;;
+    "ragflow-sandbox-python")
+      container_image=$IMG_RAGFLOW_SB_PYTHON
+      ;;
+    "tabbyml-app")
+      container_image=$IMG_TABBYML_APP
+      ;;
+    "deepwikiopen-app")
+      container_image=$IMG_DEEPWIKIOPEN_APP
+      ;;
+    "docling-app")
+      container_image=$IMG_DOCLING_APP
+      ;;
+    "docling-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "dify-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "dify-vectordb")
+      container_image=mirror.gcr.io/langgenius/qdrant:v1.8.3
+      ;;
+    "dify-ssrf")
+      container_image=$IMG_DIFY_SSRF
+      ;;
+    "dify-api")
+      container_image=$IMG_DIFY_API
+      ;;
+    "dify-worker")
+      container_image=$IMG_DIFY_API
+      ;;
+    "dify-beat")
+      container_image=$IMG_DIFY_API
+      ;;
+    "dify-plugind")
+      container_image=$IMG_DIFY_PLUGIND
+      ;;
+    "dify-sandbox")
+      container_image=$IMG_DIFY_SANDBOX
+      ;;
+    "dify-web")
+      container_image=$IMG_DIFY_WEB
+      ;;
+    "dify-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "dify-nginx")
+      container_image=mirror.gcr.io/nginx:1.29.4-trixie
+      ;;
+    "dify-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      ;;
+    "mindsdb-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "mindsdb-app")
+      container_image=$IMG_MINDSDB_APP
+      ;;
+    "mindsdb-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "watercrawl-db")
+      container_image=mirror.gcr.io/postgres:17.5-bookworm
+      ;;
+    "watercrawl-app")
+      container_image=$IMG_WATERCRAWL_APP
+      ;;
+    "watercrawl-celery")
+      container_image=$IMG_WATERCRAWL_APP
+      ;;
+    "watercrawl-beat")
+      container_image=$IMG_WATERCRAWL_APP
+      ;;
+    "watercrawl-playwright")
+      container_image=$IMG_WATERCRAWL_PLAYWRIGHT
+      ;;
+    "watercrawl-frontend")
+      container_image=$IMG_WATERCRAWL_FRONTEND
+      ;;
+    "watercrawl-nginx")
+      container_image=mirror.gcr.io/nginx:1.29.3-alpine
+      ;;
+    "watercrawl-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      ;;
+    "watercrawl-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "watercrawl-mcp")
+      container_image=$IMG_WATERCRAWL_MCP
+      ;;
+    "flowise-db")
+      container_image=mirror.gcr.io/postgres:17.6
+      ;;
+    "flowise-app")
+      container_image=$IMG_FLOWISE_APP
+      ;;
+    "flowise-worker")
+      container_image=$IMG_FLOWISE_WORKER
+      ;;
+    "flowise-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "flowise-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      ;;
+    "surfsense-app")
+      container_image=$IMG_SURFSENSE_APP
+      ;;
+    "nocodb-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "nocodb-app")
+      container_image=$IMG_NOCODB_APP
+      ;;
+    "nocodb-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "nocodb-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      ;;
+    "ente-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "ente-server")
+      container_image=$IMG_ENTE_SERVER
+      ;;
+    "ente-web")
+      container_image=$IMG_ENTE_WEB
+      ;;
+    "ente-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      ;;
+    "morphic-db")
+      container_image=mirror.gcr.io/supabase/postgres:15.14.1.071
+      ;;
+    "morphic-supabase-vector")
+      container_image=mirror.gcr.io/timberio/vector:0.52.0-alpine
+      ;;
+    "morphic-supabase-studio")
+      container_image=mirror.gcr.io/supabase/studio:2026.01.12-sha-4e9b718
+      ;;
+    "morphic-supabase-kong")
+      container_image=mirror.gcr.io/kong:2.8.1
+      ;;
+    "morphic-supabase-auth")
+      container_image=mirror.gcr.io/supabase/gotrue:v2.185.0
+      ;;
+    "morphic-supabase-rest")
+      container_image=mirror.gcr.io/postgrest/postgrest:v14.3
+      ;;
+    "morphic-supabase-realtime")
+      container_image=mirror.gcr.io/supabase/realtime:v2.69.2
+      ;;
+    "morphic-supabase-storage")
+      container_image=mirror.gcr.io/supabase/storage-api:v1.33.5
+      ;;
+    "morphic-supabase-imgproxy")
+      container_image=mirror.gcr.io/darthsim/imgproxy:v3.30.1
+      ;;
+    "morphic-supabase-meta")
+      container_image=mirror.gcr.io/supabase/postgres-meta:v0.95.2
+      ;;
+    "morphic-supabase-functions")
+      container_image=mirror.gcr.io/supabase/edge-runtime:v1.70.0
+      ;;
+    "morphic-supabase-analytics")
+      container_image=mirror.gcr.io/supabase/logflare:1.28.0
+      ;;
+    "morphic-supabase-supavisor")
+      container_image=mirror.gcr.io/supabase/supavisor:2.7.4
+      ;;
+    "morphic-app")
+      container_image=$IMG_MORPHIC_APP
+      ;;
+    "morphic-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
@@ -36730,7 +39613,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Calcom" "CALCOM_INIT_ENV=false,CALCOM_ADMIN_USERNAME=,CALCOM_ADMIN_EMAIL_ADDRESS=,CALCOM_ADMIN_PASSWORD=,CALCOM_DATABASE_NAME=,CALCOM_DATABASE_USER=,CALCOM_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Rallly" "RALLLY_INIT_ENV=false,RALLLY_ADMIN_USERNAME=,RALLLY_ADMIN_EMAIL_ADDRESS=,RALLLY_ADMIN_PASSWORD=,RALLLY_DATABASE_NAME=,RALLLY_DATABASE_USER=,RALLLY_DATABASE_USER_PASSWORD=,RALLLY_MINIO_KEY=,RALLLY_MINIO_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "EasyAppointments" "EASYAPPOINTMENTS_INIT_ENV=false,EASYAPPOINTMENTS_ADMIN_USERNAME=,EASYAPPOINTMENTS_ADMIN_EMAIL_ADDRESS=,EASYAPPOINTMENTS_ADMIN_PASSWORD=,EASYAPPOINTMENTS_DATABASE_NAME=,EASYAPPOINTMENTS_DATABASE_ROOT_PASSWORD=,EASYAPPOINTMENTS_DATABASE_USER=,EASYAPPOINTMENTS_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
-  checkAddServiceToConfig "OpenProject" "OPENPROJECT_INIT_ENV=false,OPENPROJECT_ADMIN_USERNAME=,OPENPROJECT_ADMIN_EMAIL_ADDRESS=,OPENPROJECT_ADMIN_PASSWORD=,OPENPROJECT_DATABASE_NAME=,OPENPROJECT_DATABASE_ROOT_PASSWORD=,OPENPROJECT_DATABASE_USER=,OPENPROJECT_DATABASE_USER_PASSWORD=,OPENPROJECT_MINIO_KEY=,OPENPROJECT_MINIO_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "OpenProject" "OPENPROJECT_INIT_ENV=false,OPENPROJECT_ADMIN_USERNAME=,OPENPROJECT_ADMIN_EMAIL_ADDRESS=,OPENPROJECT_ADMIN_PASSWORD=,OPENPROJECT_DATABASE_NAME=,OPENPROJECT_DATABASE_USER=,OPENPROJECT_DATABASE_USER_PASSWORD=,OPENPROJECT_MINIO_KEY=,OPENPROJECT_MINIO_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "Zammad" "ZAMMAD_INIT_ENV=false,ZAMMAD_ADMIN_USERNAME=,ZAMMAD_ADMIN_EMAIL_ADDRESS=,ZAMMAD_ADMIN_PASSWORD=,ZAMMAD_DATABASE_NAME=,ZAMMAD_DATABASE_ROOT_PASSWORD=,ZAMMAD_DATABASE_USER=,ZAMMAD_DATABASE_USER_PASSWORD=,ZAMMAD_REDIS_PASSWORD=,ZAMMAD_ES_USERNAME=,ZAMMAD_ES_PASSWORD=,ZAMMAD_MINIO_KEY=,ZAMMAD_MINIO_SECRET=,ZAMMAD_DEDICATED_EMAIL_USERNAME=,ZAMMAD_DEDICATED_EMAIL_ADDRESS=,ZAMMAD_DEDICATED_EMAIL_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Zulip" "ZULIP_INIT_ENV=false,ZULIP_ADMIN_USERNAME=,ZULIP_ADMIN_EMAIL_ADDRESS=,ZULIP_ADMIN_PASSWORD=,ZULIP_DATABASE_NAME=,ZULIP_DATABASE_USER=,ZULIP_DATABASE_USER_PASSWORD=,ZULIP_REDIS_PASSWORD=,ZULIP_RABBITMQ_USERNAME=,ZULIP_RABBITMQ_PASSWORD=,ZULIP_MEMCACHE_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "KillBill" "KILLBILL_INIT_ENV=false,KILLBILL_ADMIN_USERNAME=,KILLBILL_ADMIN_EMAIL_ADDRESS=,KILLBILL_ADMIN_PASSWORD=,KILLBILL_DATABASE_USER=,KILLBILL_DATABASE_USER_PASSWORD=,KILLBILL_KB_DATABASE_NAME=,KILLBILL_KAUI_DATABASE_NAME=,KILLBILL_REDIS_PASSWORD=,KILLBILL_API_KEY=,KILLBILL_API_SECRET=" $CONFIG_FILE false
@@ -36749,8 +39632,28 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Axelor" "AXELOR_INIT_ENV=false,AXELOR_ADMIN_USERNAME=,AXELOR_ADMIN_EMAIL_ADDRESS=,AXELOR_ADMIN_PASSWORD=,AXELOR_DATABASE_NAME=,AXELOR_DATABASE_USER=,AXELOR_DATABASE_USER_PASSWORD=,AXELOR_NEXTAUTH_SECRET=,AXELOR_GOOVEE_ADMIN_USERNAME=,AXELOR_GOOVEE_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "ConvertX" "CONVERTX_INIT_ENV=false,CONVERTX_ADMIN_USERNAME=,CONVERTX_ADMIN_EMAIL_ADDRESS=,CONVERTX_ADMIN_PASSWORD=,CONVERTX_JWT_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "Kopia" "KOPIA_INIT_ENV=false,KOPIA_ADMIN_USERNAME=,KOPIA_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "LocalAI" "LOCALAI_INIT_ENV=false,LOCALAI_ADMIN_USERNAME=,LOCALAI_ADMIN_EMAIL_ADDRESS=,LOCALAI_ADMIN_PASSWORD=,LOCALAI_API_KEY=,LOCALAI_SSHBOX_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "ComfyUI" "COMFYUI_INIT_ENV=false,COMFYUI_ADMIN_USERNAME=,COMFYUI_ADMIN_EMAIL_ADDRESS=,COMFYUI_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Langflow" "LANGFLOW_INIT_ENV=false,LANGFLOW_ADMIN_USERNAME=,LANGFLOW_ADMIN_EMAIL_ADDRESS=,LANGFLOW_ADMIN_PASSWORD=,LANGFLOW_DATABASE_NAME=,LANGFLOW_DATABASE_USER=,LANGFLOW_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "AnythingLLM" "ANYTHINGLLM_INIT_ENV=false,ANYTHINGLLM_ADMIN_USERNAME=,ANYTHINGLLM_ADMIN_EMAIL_ADDRESS=,ANYTHINGLLM_ADMIN_PASSWORD=,ANYTHINGLLM_SIG_KEY=,ANYTHINGLLM_SIG_SALT=,ANYTHINGLLM_JWT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Firecrawl" "FIRECRAWL_INIT_ENV=false,FIRECRAWL_DATABASE_NAME=,FIRECRAWL_DATABASE_USER=,FIRECRAWL_DATABASE_USER_PASSWORD=,FIRECRAWL_REDIS_PASSWORD=,FIRECRAWL_BULL_AUTH_KEY=,FIRECRAWL_API_KEY=,FIRECRAWL_RABBITMQ_USERNAME=,FIRECRAWL_RABBITMQ_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "LibreChat" "LIBRECHAT_INIT_ENV=false,LIBRECHAT_ADMIN_USERNAME=,LIBRECHAT_ADMIN_EMAIL_ADDRESS=,LIBRECHAT_ADMIN_PASSWORD=,LIBRECHAT_DATABASE_NAME=,LIBRECHAT_DATABASE_USER=,LIBRECHAT_DATABASE_USER_PASSWORD=,LIBRECHAT_REDIS_PASSWORD=,LIBRECHAT_MONGODB_DATABASE=,LIBRECHAT_MONGODB_USER=,LIBRECHAT_MONGODB_USER_PASSWORD=,LIBRECHAT_CREDS_KEY=,LIBRECHAT_CREDS_IV=,LIBRECHAT_JWT_SECRET=,LIBRECHAT_JWT_REFRESH_SECRET=,LIBRECHAT_MEILI_MASTER_KEY=,LIBRECHAT_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "OpenWebUI" "OPENWEBUI_INIT_ENV=false,OPENWEBUI_ADMIN_USERNAME=,OPENWEBUI_ADMIN_EMAIL_ADDRESS=,OPENWEBUI_ADMIN_PASSWORD=,OPENWEBUI_DATABASE_NAME=,OPENWEBUI_DATABASE_USER=,OPENWEBUI_DATABASE_USER_PASSWORD=,OPENWEBUI_REDIS_PASSWORD=,OPENWEBUI_OIDC_CLIENT_ID=,OPENWEBUI_OIDC_CLIENT_SECRET=,OPENWEBUI_SECRET_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "Khoj" "KHOJ_INIT_ENV=false,KHOJ_ADMIN_USERNAME=,KHOJ_ADMIN_EMAIL_ADDRESS=,KHOJ_ADMIN_PASSWORD=,KHOJ_DATABASE_NAME=,KHOJ_DATABASE_USER=,KHOJ_DATABASE_USER_PASSWORD=,KHOJ_DJANGO_SECRET_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "LobeChat" "LOBECHAT_INIT_ENV=false,LOBECHAT_ADMIN_USERNAME=,LOBECHAT_ADMIN_EMAIL_ADDRESS=,LOBECHAT_ADMIN_PASSWORD=,LOBECHAT_DATABASE_NAME=,LOBECHAT_DATABASE_USER=,LOBECHAT_DATABASE_USER_PASSWORD=,LOBECHAT_REDIS_PASSWORD=,LOBECHAT_NEXTAUTH_SECRET=,LOBECHAT_KEYVAULTS_SECRET=,LOBECHAT_MINIO_KEY=,LOBECHAT_MINIO_SECRET=,LOBECHAT_OIDC_CLIENT_ID=,LOBECHAT_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "RAGFlow" "RAGFLOW_INIT_ENV=false,RAGFLOW_ADMIN_USERNAME=,RAGFLOW_ADMIN_EMAIL_ADDRESS=,RAGFLOW_ADMIN_PASSWORD=,RAGFLOW_DATABASE_NAME=,RAGFLOW_DATABASE_USER=,RAGFLOW_DATABASE_USER_PASSWORD=,RAGFLOW_REDIS_PASSWORD=,RAGFLOW_MINIO_KEY=,RAGFLOW_MINIO_SECRET=,RAGFLOW_OIDC_CLIENT_ID=,RAGFLOW_OIDC_CLIENT_SECRET=,RAGFLOW_MCPSERVER_API_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "TabbyML" "TABBYML_INIT_ENV=false,TABBYML_ADMIN_USERNAME=,TABBYML_ADMIN_EMAIL_ADDRESS=,TABBYML_ADMIN_PASSWORD=,TABBYML_JWT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "DeepWikiOpen" "DEEPWIKI_OPEN_INIT_ENV=false,DEEPWIKI_OPEN_AUTH_CODE=" $CONFIG_FILE false
+  checkAddServiceToConfig "Docling" "DOCLING_INIT_ENV=false,DOCLING_REDIS_PASSWORD=,DOCLING_API_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "Dify" "DIFY_INIT_ENV=false,DIFY_ADMIN_USERNAME=,DIFY_ADMIN_EMAIL_ADDRESS=,DIFY_ADMIN_PASSWORD=,DIFY_DATABASE_NAME=,DIFY_DATABASE_USER=,DIFY_DATABASE_USER_PASSWORD=,DIFY_REDIS_PASSWORD=,DIFY_SECRET_KEY=,DIFY_MINIO_KEY=,DIFY_MINIO_SECRET=,DIFY_QDRANT_API_KEY=,DIFY_CODE_EXECUTION_API_KEY=,DIFY_SANDBOX_API_KEY=,DIFY_PLUGIN_DAEMON_KEY=,DIFY_PLUGIN_DIFY_INNER_API_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "MindsDB" "MINDSDB_INIT_ENV=false,MINDSDB_ADMIN_USERNAME=,MINDSDB_ADMIN_EMAIL_ADDRESS=,MINDSDB_ADMIN_PASSWORD=,MINDSDB_DATABASE_NAME=,MINDSDB_DATABASE_USER=,MINDSDB_DATABASE_USER_PASSWORD=,MINDSDB_DATABASE_READONLYUSER=,MINDSDB_DATABASE_READONLYUSER_PASSWORD=,MINDSDB_REDIS_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "WaterCrawl" "WATERCRAWL_INIT_ENV=false,WATERCRAWL_ADMIN_USERNAME=,WATERCRAWL_ADMIN_EMAIL_ADDRESS=,WATERCRAWL_ADMIN_PASSWORD=,WATERCRAWL_DATABASE_NAME=,WATERCRAWL_DATABASE_USER=,WATERCRAWL_DATABASE_USER_PASSWORD=,WATERCRAWL_DATABASE_READONLYUSER=,WATERCRAWL_DATABASE_READONLYUSER_PASSWORD=,WATERCRAWL_REDIS_PASSWORD=,WATERCRAWL_SECRET_KEY=,WATERCRAWL_API_ENCRYPTION_KEY=,WATERCRAWL_PLAYWRIGHT_API_KEY=,WATERCRAWL_MINIO_KEY=,WATERCRAWL_MINIO_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Flowise" "FLOWISE_INIT_ENV=false,FLOWISE_ADMIN_USERNAME=,FLOWISE_ADMIN_EMAIL_ADDRESS=,FLOWISE_ADMIN_PASSWORD=,FLOWISE_DATABASE_NAME=,FLOWISE_DATABASE_USER=,FLOWISE_DATABASE_USER_PASSWORD=,FLOWISE_DATABASE_READONLYUSER=,FLOWISE_DATABASE_READONLYUSER_PASSWORD=,FLOWISE_REDIS_PASSWORD=,FLOWISE_JWT_SECRET=,FLOWISE_JWT_REFRESH_SECRET=,FLOWISE_EXPRESS_SESSION_SECRET=,FLOWISE_TOKEN_HASH_SECRET=,FLOWISE_MINIO_KEY=,FLOWISE_MINIO_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "SurfSense" "SURFSENSE_INIT_ENV=false,SURFSENSE_ADMIN_USERNAME=,SURFSENSE_ADMIN_EMAIL_ADDRESS=,SURFSENSE_ADMIN_PASSWORD=,SURFSENSE_SECRET_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "NocoDB" "NOCODB_INIT_ENV=false,NOCODB_ADMIN_USERNAME=,NOCODB_ADMIN_EMAIL_ADDRESS=,NOCODB_ADMIN_PASSWORD=,NOCODB_DATABASE_NAME=,NOCODB_DATABASE_USER=,NOCODB_DATABASE_USER_PASSWORD=,NOCODB_DATABASE_READONLYUSER=,NOCODB_DATABASE_READONLYUSER_PASSWORD=,NOCODB_REDIS_PASSWORD=,NOCODB_AUTH_JWT_SECRET=,NOCODB_MINIO_KEY=,NOCODB_MINIO_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Ente" "ENTE_INIT_ENV=false,ENTE_ADMIN_USERNAME=,ENTE_ADMIN_EMAIL_ADDRESS=,ENTE_ADMIN_PASSWORD=,ENTE_DATABASE_NAME=,ENTE_DATABASE_USER=,ENTE_DATABASE_USER_PASSWORD=,ENTE_DATABASE_READONLYUSER=,ENTE_DATABASE_READONLYUSER_PASSWORD=,ENTE_MINIO_KEY=,ENTE_MINIO_SECRET=,ENTE_MUSEUM_KEY=,ENTE_MUSEUM_HASH=,ENTE_MUSEUM_JWT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Morphic" "MORPHIC_INIT_ENV=false,MORPHIC_ADMIN_USERNAME=,MORPHIC_ADMIN_EMAIL_ADDRESS=,MORPHIC_ADMIN_PASSWORD=,MORPHIC_DATABASE_NAME=,MORPHIC_DATABASE_USER=,MORPHIC_DATABASE_USER_PASSWORD=,MORPHIC_DATABASE_READONLYUSER=,MORPHIC_DATABASE_READONLYUSER_PASSWORD=,MORPHIC_REDIS_PASSWORD=,MORPHIC_SUPABASE_DASHBOARD_USERNAME=,MORPHIC_SUPABASE_DASHBOARD_PASSWORD=,MORPHIC_SUPABASE_ANON_KEY=,MORPHIC_SUPABASE_JWT_SECRET=,MORPHIC_SUPABASE_DB_ENC_KEY=,MORPHIC_SUPABASE_PG_META_CRYPTO_KEY=,MORPHIC_SUPABASE_SECRET_KEY_BASE=,MORPHIC_SUPABASE_SERVICE_ROLE_KEY=,MORPHIC_SUPABASE_VAULT_ENC_KEY=,MORPHIC_SUPABASE_LOGFLARE_PRIVATE_ACCESS_TOKEN=,MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN=" $CONFIG_FILE false
 #ADD_NEW_ADD_SVC_CONFIG_HERE
-
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_USERNAME=" $CONFIG_FILE false
@@ -36775,6 +39678,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_TALKHPB_SIGNALING_SECRET=,NEXTCLOUD_TALKHPB_INTERNAL_SECRET=,NEXTCLOUD_TALKHPB_RECORDING_SECRET=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Portainer" "PORTAINER_ENDPOINT_ID=1" $HSHQ_PLAINTEXT_ROOT_CONFIG true
   checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_HARP_PORT=8780,NEXTCLOUD_HARP_SHARED_KEY=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Caddy" "CADDY_SNIPPET_SAFEHEADERCORSPREFLIGHT=safe-header-cors-preflight" $CONFIG_FILE false
 }
 
 function importDBs()
@@ -36786,7 +39690,7 @@ function importDBs()
 
 function getHomeServerPortsList()
 {
-  portsList="$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$COTURN_COMMS_MIN_PORT:$COTURN_COMMS_MAX_PORT,$JELLYFIN_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$PEERTUBE_RDP_PORT,$QBITTORRENT_PORT,$SYNCTHING_DISC_PORT,$SYNCTHING_SYNC_PORT,$UPNP_PORT,$VNC_SERVER_PORT,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5"
+  portsList="$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$COTURN_COMMS_MIN_PORT:$COTURN_COMMS_MAX_PORT,$JELLYFIN_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT,$KHOJ_VNC_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$PEERTUBE_RDP_PORT,$QBITTORRENT_PORT,$SYNCTHING_DISC_PORT,$SYNCTHING_SYNC_PORT,$UPNP_PORT,$VNC_SERVER_PORT,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5"
   echo "$portsList"
 }
 
@@ -36807,10 +39711,13 @@ function buildOrPullImage()
       buildImagePixelfedV1
       ;;
     "hshq/mindsdb:v1")
-      buildMindsDBImageV1
+      buildImageMindsDBV1
       ;;
     "hshq/mindsdb:v2")
-      buildMindsDBImageV2
+      buildImageMindsDBV2
+      ;;
+    "hshq/sshbox:v1")
+      buildImageLocalAISSHBoxV1
       ;;
     *)
       pullImage "$curImg"
@@ -36833,6 +39740,12 @@ function checkIsCustomImage()
       echo "true"
       ;;
     "hshq/mindsdb:v2")
+      echo "true"
+      ;;
+    "hshq/sshbox:v1")
+      echo "true"
+      ;;
+    "hshq/firecrawl-db:v1")
       echo "true"
       ;;
     *)
@@ -36861,10 +39774,8 @@ function installPortainer()
   fi
   set -e
   createDockerNetworks
-
   mkdir $HSHQ_STACKS_DIR/portainer
   mkdir $HSHQ_STACKS_DIR/portainer/certs
-
   initServicesCredentials
   outputConfigPortainer
   generateCert portainer portainer "127.0.0.1,$HOMESERVER_HOST_PRIMARY_INTERFACE_IP"
@@ -36901,26 +39812,21 @@ function installPortainer()
     echo "Portainer did not start up correctly..."
     exit 1
   fi
-
   echo "Portainer has been loaded and started..."
   echo "Sleeping 10 seconds to ensure Portainer has loaded completely."
   sleep 10
-
   PORTAINER_ADMIN_USERID=$(http --verify=no --print="b" POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/users/admin/init Username="$PORTAINER_ADMIN_USERNAME" Password="$PORTAINER_ADMIN_PASSWORD"  | jq -r .Id)
   updateConfigVar PORTAINER_ADMIN_USERID $PORTAINER_ADMIN_USERID
   PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   http -f --verify=no --timeout=300 --print="b" POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/endpoints "Authorization: Bearer $PORTAINER_TOKEN" Name="$HOMESERVER_NAME" EndpointCreationType=1 >/dev/null
-
   # Enable dark mode because it looks better
   echo "{\"theme\":{\"color\":\"dark\"}}" > $HOME/portainer-json.tmp
   http --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/users/$PORTAINER_ADMIN_USERID "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/portainer-json.tmp > /dev/null
   rm $HOME/portainer-json.tmp
-
   # Add gcr registry
   echo "{\"Name\": \"GCR\",\"Type\": 3,\"URL\": \"mirror.gcr.io\"}" > $HOME/portainer-json.tmp
   http --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/registries "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/portainer-json.tmp > /dev/null
   rm $HOME/portainer-json.tmp
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PORTAINER.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -42155,6 +45061,7 @@ function mfMailuFixRedisCompose()
   replaceText=$replaceText">>>>security_opt:\n"
   replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
   replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>>>--appendonly yes\n"
   replaceText=$replaceText">>>>networks:\n"
   replaceText=$replaceText">>>>>>- dock-mailu-ext-net\n"
   replaceText=$replaceText">>>>volumes:\n"
@@ -43681,6 +46588,8 @@ function installNextcloud()
     echo "ERROR: Nextcloud did not start up correctly, exiting..."
     return 6
   fi
+  sleep 3
+  addReadOnlyUserToDatabase Nextcloud postgres nextcloud-db $NEXTCLOUD_DATABASE_NAME $NEXTCLOUD_DATABASE_USER $NEXTCLOUD_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/nextcloud/dbexport $NEXTCLOUD_DATABASE_READONLYUSER $NEXTCLOUD_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN {\n"
@@ -45235,14 +48144,12 @@ function installMatrix()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/matrix
   mkdir $HSHQ_STACKS_DIR/matrix/db
   mkdir $HSHQ_STACKS_DIR/matrix/dbexport
   mkdir $HSHQ_STACKS_DIR/matrix/synapse
   mkdir $HSHQ_STACKS_DIR/matrix/element
   chmod 777 $HSHQ_STACKS_DIR/matrix/dbexport
-
   initServicesCredentials
   if [ -z "$MATRIX_REDIS_PASSWORD" ]; then
     MATRIX_REDIS_PASSWORD=$(pwgen -c -n 32 1)
@@ -45260,7 +48167,6 @@ function installMatrix()
     MATRIX_SYNAPSE_FORM_SECRET=$(pwgen -c -n 64 1)
     updateConfigVar MATRIX_SYNAPSE_FORM_SECRET $MATRIX_SYNAPSE_FORM_SECRET
   fi
-
   outputConfigMatrix
   generateCert matrix-synapse matrix-synapse
   installStack matrix matrix-synapse "Starting synapse with args" $HOME/matrix.env
@@ -45268,9 +48174,9 @@ function installMatrix()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-  echo "Matrix installed, sleeping 5 seconds..."
-  sleep 5
-
+  echo "Matrix installed, sleeping 3 seconds..."
+  sleep 3
+  addReadOnlyUserToDatabase Matrix postgres matrix-db $MATRIX_DATABASE_NAME $MATRIX_DATABASE_USER $MATRIX_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/matrix/dbexport $MATRIX_DATABASE_READONLYUSER $MATRIX_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -45909,7 +48815,7 @@ function installWikijs()
   docker container restart wikijs-web
   echo "Wikijs installed, sleeping 3 seconds..."
   sleep 3
-
+  addReadOnlyUserToDatabase Wiki.js postgres wikijs-db $WIKIJS_DATABASE_NAME $WIKIJS_DATABASE_USER $WIKIJS_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/wikijs/dbexport $WIKIJS_DATABASE_READONLYUSER $WIKIJS_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WIKIJS.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -46394,6 +49300,7 @@ function installMastodon()
   docker exec mastodon-app tootctl settings registrations close > /dev/null 2>&1
   docker exec mastodon-app tootctl accounts approve $MASTODON_ADMIN_USERNAME > /dev/null 2>&1
   rm -f $HOME/mastodon-compose-tmp.yml
+  addReadOnlyUserToDatabase Mastodon postgres mastodon-db $MASTODON_DATABASE_NAME $MASTODON_DATABASE_USER $MASTODON_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/mastodon/dbexport $MASTODON_DATABASE_READONLYUSER $MASTODON_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_MASTODON.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -47556,6 +50463,7 @@ services:
     networks:
       - int-searxng-net
       - dock-ext-net
+      - dock-aipriv-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -47600,6 +50508,9 @@ networks:
     external: true
   dock-ext-net:
     name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
     external: true
   int-searxng-net:
     driver: bridge
@@ -48335,6 +51246,8 @@ function installPhotoPrism()
     return $retval
   fi
   rm -f $HOME/photoprism-compose-tmp.yml
+  sleep 3
+  addReadOnlyUserToDatabase PhotoPrism mysql photoprism-db $PHOTOPRISM_DATABASE_NAME root $PHOTOPRISM_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/photoprism/dbexport $PHOTOPRISM_DATABASE_READONLYUSER $PHOTOPRISM_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PHOTOPRISM.$HOMESERVER_DOMAIN {\n"
@@ -48716,6 +51629,8 @@ function installGuacamole()
     return $retval
   fi
   rm -f $HOME/guacamole-compose-tmp.yml
+  sleep 3
+  addReadOnlyUserToDatabase Guacamole mysql guacamole-db $GUACAMOLE_DATABASE_NAME root $GUACAMOLE_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/guacamole/dbexport $GUACAMOLE_DATABASE_READONLYUSER $GUACAMOLE_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN {\n"
@@ -49497,13 +52412,11 @@ function installWordPress()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/wordpress
   mkdir $HSHQ_STACKS_DIR/wordpress/db
   mkdir $HSHQ_STACKS_DIR/wordpress/dbexport
   mkdir $HSHQ_STACKS_DIR/wordpress/web
   chmod 777 $HSHQ_STACKS_DIR/wordpress/dbexport
-
   initServicesCredentials
   outputConfigWordPress
   installStack wordpress wordpress-web "WordPress" $HOME/wordpress.env
@@ -49511,7 +52424,8 @@ function installWordPress()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-
+  sleep 3
+  addReadOnlyUserToDatabase Wordpress mysql wordpress-db $WORDPRESS_DATABASE_NAME root $WORDPRESS_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/wordpress/dbexport $WORDPRESS_DATABASE_READONLYUSER $WORDPRESS_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -49702,7 +52616,6 @@ function installGhost()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/ghost
   mkdir $HSHQ_STACKS_DIR/ghost/db
   mkdir $HSHQ_STACKS_DIR/ghost/dbexport
@@ -49713,14 +52626,14 @@ function installGhost()
     GHOST_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar GHOST_DATABASE_ROOT_PASSWORD $GHOST_DATABASE_ROOT_PASSWORD
   fi
-
   outputConfigGhost
   installStack ghost ghost-web "Ghost booted in" $HOME/ghost.env 5
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-
+  sleep 3
+  addReadOnlyUserToDatabase Ghost mysql ghost-db $GHOST_DATABASE_NAME root $GHOST_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/ghost/dbexport $GHOST_DATABASE_READONLYUSER $GHOST_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GHOST.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -49950,7 +52863,6 @@ function installPeerTube()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/peertube
   mkdir $HSHQ_STACKS_DIR/peertube/config
   mkdir $HSHQ_STACKS_DIR/peertube/db
@@ -49989,8 +52901,8 @@ function installPeerTube()
   set -e
   docker exec peertube-db /dbexport/setupLDAP.sh
   rm -f $HSHQ_STACKS_DIR/peertube/dbexport/setupLDAP.sh
+  addReadOnlyUserToDatabase PeerTube postgres peertube-db $PEERTUBE_DATABASE_NAME $PEERTUBE_DATABASE_USER $PEERTUBE_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/peertube/dbexport $PEERTUBE_DATABASE_READONLYUSER $PEERTUBE_DATABASE_READONLYUSER_PASSWORD
   docker container restart peertube-app
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -50356,17 +53268,14 @@ function installHomeAssistant()
   mkdir $HSHQ_STACKS_DIR/homeassistant/nodered
   chmod 777 $HSHQ_STACKS_DIR/homeassistant/dbexport
   sudo chown 1000:1000 $HSHQ_STACKS_DIR/homeassistant/nodered
-
   initServicesCredentials
   generateCert homeassistant-app "homeassistant-app,host.docker.internal"
   generateCert homeassistant-configurator homeassistant-configurator
   generateCert homeassistant-nodered homeassistant-nodered
   outputConfigHomeAssistant
-
   # Ensure NodeRed data directory and settings file permissions are set to 1000:1000
   sudo chown 1000:1000 $HOME/noderedsettings.conf
   sudo mv $HOME/noderedsettings.conf $HSHQ_STACKS_DIR/homeassistant/nodered/settings.js
-
   installStack homeassistant homeassistant-app "legacy-services successfully started" $HOME/homeassistant.env
   retval=$?
   if [ $retval -ne 0 ]; then
@@ -50374,10 +53283,10 @@ function installHomeAssistant()
   fi
   echo "Waiting 10 seconds for HomeAssistant to load"
   sleep 10
+  addReadOnlyUserToDatabase HomeAssistant postgres homeassistant-db $HOMEASSISTANT_DATABASE_NAME $HOMEASSISTANT_DATABASE_USER $HOMEASSISTANT_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/homeassistant/dbexport $HOMEASSISTANT_DATABASE_READONLYUSER $HOMEASSISTANT_DATABASE_READONLYUSER_PASSWORD
   docker container stop homeassistant-app
   sudo mv $HSHQ_STACKS_DIR/homeassistant/configuration.yaml $HSHQ_STACKS_DIR/homeassistant/config/configuration.yaml
   docker container start homeassistant-app
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -50998,6 +53907,8 @@ function installGitlab()
   echo -e "  Go to this link in your Gitlab instance to disable it:"
   echo -e "  https://$SUB_GITLAB.$HOMESERVER_DOMAIN/admin/application_settings/metrics_and_profiling#js-product-usage-data-settings"
   echo -e "========================================================================\n"
+  sleep 3
+  addReadOnlyUserToDatabase Gitlab postgres gitlab-db $GITLAB_DATABASE_NAME $GITLAB_DATABASE_USER $GITLAB_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/gitlab/dbexport $GITLAB_DATABASE_READONLYUSER $GITLAB_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GITLAB.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -51354,13 +54265,11 @@ function installVaultwarden()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/vaultwarden
   mkdir $HSHQ_STACKS_DIR/vaultwarden/app
   mkdir $HSHQ_STACKS_DIR/vaultwarden/db
   mkdir $HSHQ_STACKS_DIR/vaultwarden/dbexport
   chmod 777 $HSHQ_STACKS_DIR/vaultwarden/dbexport
-
   initServicesCredentials
   outputConfigVaultwarden
   generateCert vaultwarden-app vaultwarden-app
@@ -51369,8 +54278,9 @@ function installVaultwarden()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
+  sleep 3
   docker container restart vaultwarden-ldap > /dev/null 2>&1
-
+  addReadOnlyUserToDatabase Vaultwarden postgres vaultwarden-db $VAULTWARDEN_DATABASE_NAME $VAULTWARDEN_DATABASE_USER $VAULTWARDEN_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/vaultwarden/dbexport $VAULTWARDEN_DATABASE_READONLYUSER $VAULTWARDEN_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -51508,7 +54418,6 @@ networks:
     ipam:
       driver: default
 EOFVW
-
   VAULTWARDEN_ADMIN_TOKEN_HASH=$(echo -n "$VAULTWARDEN_ADMIN_TOKEN" | argon2 $(pwgen -c -n 32 1) -id -e -m 16 | sed 's/\$/\$\$/g')
   cat <<EOFVW > $HOME/vaultwarden.env
 UID=$USERID
@@ -51519,6 +54428,7 @@ ROCKET_TLS={certs=/certs/vaultwarden-app.crt,key=/certs/vaultwarden-app.key}
 ROCKET_PORT=443
 IP_HEADER=X-Forwarded-For
 SIGNUPS_ALLOWED=false
+INVITATION_EXPIRATION_HOURS=720
 DOMAIN=https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN
 SMTP_HOST=$SMTP_HOSTNAME
 SMTP_FROM_NAME=Vaultwarden $(getAdminEmailName)
@@ -51539,9 +54449,7 @@ APP_LDAP_NO_TLS_VERIFY=true
 APP_VAULTWARDEN_ROOT_CERT_FILE=/cacert/rootca.der
 APP_LDAP_SEARCH_FILTER=(&(objectClass=person)(memberof=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
 APP_LDAP_SYNC_INTERVAL_SECONDS=300
-
 EOFVW
-
 }
 
 function performUpdateVaultwarden()
@@ -51688,6 +54596,8 @@ function installDiscourse()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
+  sleep 3
+  addReadOnlyUserToDatabase Discourse postgres discourse-db $DISCOURSE_DATABASE_NAME $DISCOURSE_DATABASE_USER $DISCOURSE_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/discourse/dbexport $DISCOURSE_DATABASE_READONLYUSER $DISCOURSE_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_DISCOURSE.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -52446,7 +55356,6 @@ function installShlink()
   chmod 777 $HSHQ_STACKS_DIR/shlink/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/shlink
   mkdir $HSHQ_NONBACKUP_DIR/shlink/redis
-
   initServicesCredentials
   if [ -z "$SHLINK_REDIS_PASSWORD" ]; then
     SHLINK_REDIS_PASSWORD=$(pwgen -c -n 32 1)
@@ -52456,14 +55365,14 @@ function installShlink()
     SHLINK_INITIAL_API_KEY=$(pwgen -c -n -A 8 1)"-"$(pwgen -c -n -A 4 1)"-"$(pwgen -c -n -A 4 1)"-"$(pwgen -c -n -A 4 1)"-"$(pwgen -c -n -A 12 1)
     updateConfigVar SHLINK_INITIAL_API_KEY $SHLINK_INITIAL_API_KEY
   fi
-
   outputConfigShlink
   installStack shlink shlink "shlink" $HOME/shlink.env
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-
+  sleep 3
+  addReadOnlyUserToDatabase Shlink postgres shlink-db $SHLINK_DATABASE_NAME $SHLINK_DATABASE_USER $SHLINK_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/shlink/dbexport $SHLINK_DATABASE_READONLYUSER $SHLINK_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SHLINK_WEB.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -52861,8 +55770,8 @@ function installFirefly()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-  echo "Firefly installed, sleeping 10 seconds..."
-  sleep 10
+  sleep 3
+  addReadOnlyUserToDatabase FireflyIII postgres firefly-db $FIREFLY_DATABASE_NAME $FIREFLY_DATABASE_USER $FIREFLY_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/firefly/dbexport $FIREFLY_DATABASE_READONLYUSER $FIREFLY_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_FIREFLY_APP.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -53866,9 +56775,8 @@ function installInvidious()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-  echo "Invidious installed, sleeping 10 seconds..."
-  sleep 10
-
+  sleep 3
+  addReadOnlyUserToDatabase Invidious postgres invidious-db $INVIDIOUS_DATABASE_NAME $INVIDIOUS_DATABASE_USER $INVIDIOUS_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/invidious/dbexport $INVIDIOUS_DATABASE_READONLYUSER $INVIDIOUS_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_INVIDIOUS.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -54324,6 +57232,7 @@ function installGitea()
   addUserMailu alias $GITEA_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   docker exec -u $USERID gitea-app gitea admin user create --admin --username $GITEA_ADMIN_USERNAME --password $GITEA_ADMIN_PASSWORD --email $GITEA_ADMIN_EMAIL_ADDRESS
   docker exec -u $USERID gitea-app gitea admin auth add-ldap --name OpenLDAP --security-protocol ldaps --host ldapserver --port 636 --bind-dn "$LDAP_READONLY_USER_BIND_DN" --bind-password "$LDAP_READONLY_USER_PASSWORD" --user-search-base "ou=people,$LDAP_BASE_DN" --user-filter "(&(&(uid=%s)(objectClass=person))(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))" --admin-filter "(memberOf=cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)" --username-attribute uid --firstname-attribute givenName --surname-attribute sn --email-attribute mail --avatar-attribute jpegPhoto --synchronize-users --active
+  addReadOnlyUserToDatabase Gitea postgres gitea-db $GITEA_DATABASE_NAME $GITEA_DATABASE_USER $GITEA_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/gitea/dbexport $GITEA_DATABASE_READONLYUSER $GITEA_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GITEA.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -54583,6 +57492,8 @@ function installMealie()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
+  sleep 3
+  addReadOnlyUserToDatabase Mealie postgres mealie-db $MEALIE_DATABASE_NAME $MEALIE_DATABASE_USER $MEALIE_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/mealie/dbexport $MEALIE_DATABASE_READONLYUSER $MEALIE_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_MEALIE.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -56190,32 +59101,28 @@ function installLinkwarden()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/linkwarden
   mkdir $HSHQ_STACKS_DIR/linkwarden/db
   mkdir $HSHQ_STACKS_DIR/linkwarden/dbexport
   mkdir $HSHQ_STACKS_DIR/linkwarden/app
   chmod 777 $HSHQ_STACKS_DIR/linkwarden/dbexport
-
   initServicesCredentials
   if [ -z "$LINKWARDEN_NEXTAUTH_SECRET" ]; then
     LINKWARDEN_NEXTAUTH_SECRET=$(pwgen -c -n 32 1)
     updateConfigVar LINKWARDEN_NEXTAUTH_SECRET $LINKWARDEN_NEXTAUTH_SECRET
   fi
-  
   LINKWARDEN_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $LINKWARDEN_OIDC_CLIENT_SECRET | tr -d ':\n')
   outputConfigLinkwarden
   oidcBlock=$(cat $HOME/linkwarden.oidc)
   rm -f $HOME/linkwarden.oidc
   insertOIDCClientAuthelia linkwarden "$oidcBlock"
-
   installStack linkwarden linkwarden "" $HOME/linkwarden.env
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
   fi
   sleep 3
-
+  addReadOnlyUserToDatabase Linkwarden postgres linkwarden-db $LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/linkwarden/dbexport $LINKWARDEN_DATABASE_READONLYUSER $LINKWARDEN_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -57061,8 +59968,8 @@ function installFreshRSS()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-  sleep 5
-
+  sleep 3
+  addReadOnlyUserToDatabase FreshRSS postgres freshrss-db $FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_USER $FRESHRSS_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/freshrss/dbexport $FRESHRSS_DATABASE_READONLYUSER $FRESHRSS_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -57347,8 +60254,8 @@ function installKeila()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-  sleep 5
-
+  sleep 3
+  addReadOnlyUserToDatabase Keila postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/keila/dbexport $KEILA_DATABASE_READONLYUSER $KEILA_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_KEILA.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -57570,7 +60477,6 @@ function installWallabag()
   chmod 777 $HSHQ_STACKS_DIR/wallabag/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/wallabag
   mkdir $HSHQ_NONBACKUP_DIR/wallabag/redis
-
   initServicesCredentials
   if [ -z "$WALLABAG_ENV_SECRET" ]; then
     WALLABAG_ENV_SECRET=$(pwgen -c -n 30 1)
@@ -57587,7 +60493,6 @@ function installWallabag()
     WALLABAG_INIT_ENV=true
     updateConfigVar WALLABAG_INIT_ENV $WALLABAG_INIT_ENV
   fi
-
   outputConfigWallabag
   installStack wallabag wallabag-app "wallabag is ready" $HOME/wallabag.env 3
   retval=$?
@@ -57595,18 +60500,16 @@ function installWallabag()
     return $retval
   fi
   sleep 5
-
   docker exec -t wallabag-app /var/www/wallabag/bin/console wallabag:install --env=prod --no-interaction > /dev/null 2>&1
   docker exec -t wallabag-app /var/www/wallabag/bin/console doctrine:migrations:migrate --env=prod --no-interaction > /dev/null 2>&1
   docker exec -t wallabag-app /var/www/wallabag/bin/console fos:user:create --env=prod --super-admin $WALLABAG_ADMIN_USERNAME $WALLABAG_ADMIN_EMAIL_ADDRESS $WALLABAG_ADMIN_PASSWORD > /dev/null 2>&1
   docker exec -t wallabag-app /var/www/wallabag/bin/console fos:user:deactivate --env=prod wallabag > /dev/null 2>&1
   docker exec wallabag-db /dbexport/setupRedis.sh > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/wallabag/dbexport/setupRedis.sh
-
+  addReadOnlyUserToDatabase Wallabag postgres wallabag-db $WALLABAG_DATABASE_NAME $WALLABAG_DATABASE_USER $WALLABAG_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/wallabag/dbexport $WALLABAG_DATABASE_READONLYUSER $WALLABAG_DATABASE_READONLYUSER_PASSWORD
   startStopStack wallabag stop
   sleep 3
   startStopStack wallabag start
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WALLABAG.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -58042,6 +60945,8 @@ function installPaperless()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
+  sleep 3
+  addReadOnlyUserToDatabase Paperless postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/paperless/dbexport $PAPERLESS_DATABASE_READONLYUSER $PAPERLESS_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -58416,9 +61321,9 @@ function installSpeedtestTrackerLocal()
     return $retval
   fi
   sleep 5
-
   docker exec speedtest-tracker-local-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/speedtest-tracker-local/dbexport/setupDBSettings.sh
+  addReadOnlyUserToDatabase SpeedtestTrackerLocal postgres speedtest-tracker-local-db $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/speedtest-tracker-local/dbexport $SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER $SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER_PASSWORD
   sleep 4
   startStopStack speedtest-tracker-local stop
   sleep 1
@@ -58689,6 +61594,7 @@ function installSpeedtestTrackerVPN()
   sleep 5
   docker exec speedtest-tracker-vpn-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/speedtest-tracker-vpn/dbexport/setupDBSettings.sh
+  addReadOnlyUserToDatabase SpeedtestTrackerVPN postgres speedtest-tracker-vpn-db $SPEEDTEST_TRACKER_VPN_DATABASE_NAME $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/speedtest-tracker-vpn/dbexport $SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER $SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER_PASSWORD
   sleep 4
   startStopStack speedtest-tracker-vpn stop
   sleep 1
@@ -59192,7 +62098,7 @@ function installHuginn()
     return $retval
   fi
   sleep 3
-
+  addReadOnlyUserToDatabase Huginn postgres huginn-db $HUGINN_DATABASE_NAME $HUGINN_DATABASE_USER $HUGINN_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/huginn/dbexport $HUGINN_DATABASE_READONLYUSER $HUGINN_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_HUGINN.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -59781,7 +62687,6 @@ function installPiped()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/piped
   mkdir $HSHQ_STACKS_DIR/piped/db
   mkdir $HSHQ_STACKS_DIR/piped/dbexport
@@ -59791,7 +62696,6 @@ function installPiped()
   chmod 777 $HSHQ_STACKS_DIR/piped/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/piped
   mkdir $HSHQ_NONBACKUP_DIR/piped/proxy
-
   initServicesCredentials
   outputConfigPiped
   installStack piped piped-app "" $HOME/piped.env
@@ -59799,7 +62703,8 @@ function installPiped()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-
+  sleep 3
+  addReadOnlyUserToDatabase Piped postgres piped-db $PIPED_DATABASE_NAME $PIPED_DATABASE_USER $PIPED_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/piped/dbexport $PIPED_DATABASE_READONLYUSER $PIPED_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -60585,6 +63490,8 @@ function installPenpot()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
+  sleep 3
+  addReadOnlyUserToDatabase Penpot postgres penpot-db $PENPOT_DATABASE_NAME $PENPOT_DATABASE_USER $PENPOT_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/penpot/dbexport $PENPOT_DATABASE_READONLYUSER $PENPOT_DATABASE_READONLYUSER_PASSWORD
   if ! [ "$PENPOT_INIT_ENV" = "true" ]; then
     sendEmail -s "Penpot Login Info" -b "Penpot has been installed. It has been configured and integrated with LDAP. However, you must use the email address of the LDAP user rather than the username. The password is the LDAP user's password. Here are the credentials for the LDAP Admin user: \n\nEmail: $EMAIL_ADMIN_EMAIL_ADDRESS\nPassword: $LDAP_ADMIN_USER_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     PENPOT_INIT_ENV=true
@@ -60927,13 +63834,11 @@ function installEspoCRM()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/espocrm
   mkdir $HSHQ_STACKS_DIR/espocrm/db
   mkdir $HSHQ_STACKS_DIR/espocrm/dbexport
   mkdir $HSHQ_STACKS_DIR/espocrm/app
   chmod 777 $HSHQ_STACKS_DIR/espocrm/dbexport
-
   initServicesCredentials
   set +e
   outputConfigEspoCRM
@@ -60942,12 +63847,13 @@ function installEspoCRM()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
+  sleep 3
+  addReadOnlyUserToDatabase EspoCRM mysql espocrm-db $ESPOCRM_DATABASE_NAME root $ESPOCRM_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/espocrm/dbexport $ESPOCRM_DATABASE_READONLYUSER $ESPOCRM_DATABASE_READONLYUSER_PASSWORD
   if ! [ "$ESPOCRM_INIT_ENV" = "true" ]; then
     sendEmail -s "EspoCRM Login Info" -b "EspoCRM Admin Username: $ESPOCRM_ADMIN_USERNAME\nPassword: $ESPOCRM_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     ESPOCRM_INIT_ENV=true
     updateConfigVar ESPOCRM_INIT_ENV $ESPOCRM_INIT_ENV
   fi
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -61233,7 +64139,6 @@ function installImmich()
   if [ $? -ne 0 ]; then
     return 1
   fi
-
   mkdir $HSHQ_STACKS_DIR/immich
   mkdir $HSHQ_STACKS_DIR/immich/db
   mkdir $HSHQ_STACKS_DIR/immich/dbexport
@@ -61246,7 +64151,6 @@ function installImmich()
   initServicesCredentials
   set +e
   addUserMailu alias $IMMICH_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-
   IMMICH_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $IMMICH_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/')
   outputConfigImmich
   oidcBlock=$(cat $HOME/immich.oidc)
@@ -61260,7 +64164,7 @@ function installImmich()
   fi
   docker exec -u postgres immich-db psql immichdb immich-user -f /dbexport/addadmin.sql > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/immich/dbexport/addadmin.sql
-
+  addReadOnlyUserToDatabase Immich postgres immich-db $IMMICH_DATABASE_NAME $IMMICH_DATABASE_USER $IMMICH_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/immich/dbexport $IMMICH_DATABASE_READONLYUSER $IMMICH_DATABASE_READONLYUSER_PASSWORD
   if ! [ "$IMMICH_INIT_ENV" = "true" ]; then
     sendEmail -s "Immich Login Info" -b "Immich Admin Username: $IMMICH_ADMIN_EMAIL_ADDRESS\nPassword: $IMMICH_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     IMMICH_INIT_ENV=true
@@ -62037,7 +64941,6 @@ function installMatomo()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/matomo
   mkdir $HSHQ_STACKS_DIR/matomo/config
   mkdir $HSHQ_STACKS_DIR/matomo/db
@@ -62048,7 +64951,6 @@ function installMatomo()
   set +e
   addUserMailu alias $MATOMO_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   MATOMO_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $MATOMO_ADMIN_PASSWORD | tr -d ':\n')
-
   outputConfigMatomo
   installStack matomo matomo-app "ready to handle connections" $HOME/matomo.env 5
   retVal=$?
@@ -62061,6 +64963,7 @@ function installMatomo()
     updateConfigVar MATOMO_INIT_ENV $MATOMO_INIT_ENV
   fi
   sleep 3
+  addReadOnlyUserToDatabase Matomo mysql matomo-db $MATOMO_DATABASE_NAME root $MATOMO_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/matomo/dbexport $MATOMO_DATABASE_READONLYUSER $MATOMO_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_MATOMO.$HOMESERVER_DOMAIN {\n"
@@ -62345,7 +65248,6 @@ function installPastefy()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/pastefy
   mkdir $HSHQ_STACKS_DIR/pastefy/db
   mkdir $HSHQ_STACKS_DIR/pastefy/dbexport
@@ -62366,6 +65268,7 @@ function installPastefy()
     updateConfigVar PASTEFY_INIT_ENV $PASTEFY_INIT_ENV
   fi
   sleep 3
+  addReadOnlyUserToDatabase Pastefy mysql pastefy-db $PASTEFY_DATABASE_NAME root $PASTEFY_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/pastefy/dbexport $PASTEFY_DATABASE_READONLYUSER $PASTEFY_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PASTEFY.$HOMESERVER_DOMAIN {\n"
@@ -62647,6 +65550,10 @@ function performUpdateSnippetBox()
 function installAIStack()
 {
   set +e
+  if true; then
+    echo "ERROR: This stack is deprecated, returning..."
+    return 1
+  fi
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory aistack "AIStack"
   cdRes=$?
@@ -62669,19 +65576,11 @@ function installAIStack()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName aistack-ollama-server)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
-  pullImage $(getScriptImageByContainerName aistack-openwebui)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
   pullImage $(getScriptImageByContainerName aistack-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  buildMindsDBImageV1
+  buildImageMindsDBV1
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -62693,10 +65592,6 @@ function installAIStack()
   mkdir $HSHQ_STACKS_DIR/aistack/mindsdb/dbexport
   mkdir $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport
   mkdir $HSHQ_STACKS_DIR/aistack/otel
-  mkdir $HSHQ_STACKS_DIR/aistack/ollama
-  mkdir $HSHQ_STACKS_DIR/aistack/ollama/code
-  mkdir $HSHQ_STACKS_DIR/aistack/ollama/root
-  mkdir $HSHQ_STACKS_DIR/aistack/openwebui
   mkdir $HSHQ_NONBACKUP_DIR/aistack
   mkdir $HSHQ_NONBACKUP_DIR/aistack/redis
   chmod 777 $HSHQ_STACKS_DIR/aistack/mindsdb/dbexport
@@ -62704,11 +65599,7 @@ function installAIStack()
   set +e
   addUserMailu alias $AISTACK_MINDSDB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   addUserMailu alias $AISTACK_LANGFUSE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-  addUserMailu alias $AISTACK_OPENWEBUI_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigAIStack
-  oidcBlock=$(cat $HOME/openwebui.oidc)
-  rm -f $HOME/openwebui.oidc
-  insertOIDCClientAuthelia aistack-openwebui "$oidcBlock"
   cd ~
   docker compose -f $HOME/aistack-compose-tmp.yml up -d
   echo "Waiting at least 5 seconds before continuing..."
@@ -62753,7 +65644,7 @@ function installAIStack()
     return $retVal
   fi
   if ! [ "$AISTACK_INIT_ENV" = "true" ]; then
-    sendEmail -s "AIStack Login Info" -b "MindsDB Admin Username: $AISTACK_MINDSDB_ADMIN_USERNAME\nMindsDB Admin Password: $AISTACK_MINDSDB_ADMIN_PASSWORD\nLangfuse Admin Username: $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS\nLangfuse Admin Password: $AISTACK_LANGFUSE_ADMIN_PASSWORD\nOpenWebUI Admin Username: $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS\nOpenWebUI Admin Password: $AISTACK_OPENWEBUI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "AIStack Login Info" -b "MindsDB Admin Username: $AISTACK_MINDSDB_ADMIN_USERNAME\nMindsDB Admin Password: $AISTACK_MINDSDB_ADMIN_PASSWORD\nLangfuse Admin Username: $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS\nLangfuse Admin Password: $AISTACK_LANGFUSE_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     AISTACK_INIT_ENV=true
     updateConfigVar AISTACK_INIT_ENV $AISTACK_INIT_ENV
   fi
@@ -62791,51 +65682,20 @@ function installAIStack()
   updateCaddyBlocks $SUB_AISTACK_LANGFUSE $MANAGETLS_AISTACK_LANGFUSE "$is_integrate_hshq" $NETDEFAULT_AISTACK_LANGFUSE "$inner_block"
   insertSubAuthelia $SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
-  inner_block=""
-  inner_block=$inner_block">>https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN {\n"
-  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
-  inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://aistack-openwebui:8080 {\n"
-  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
-  inner_block=$inner_block">>>>>>}\n"
-  inner_block=$inner_block">>>>}\n"
-  inner_block=$inner_block">>>>respond 404\n"
-  inner_block=$inner_block">>}"
-  updateCaddyBlocks $SUB_AISTACK_OPENWEBUI $MANAGETLS_AISTACK_OPENWEBUI "$is_integrate_hshq" $NETDEFAULT_AISTACK_OPENWEBUI "$inner_block"
-  insertSubAuthelia $SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
-
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll aistack "$FMLNAME_AISTACK_MINDSDB_APP" $USERTYPE_AISTACK_MINDSDB_APP "https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN" "mindsdb.png" "$(getHeimdallOrderFromSub $SUB_AISTACK_MINDSDB_APP $USERTYPE_AISTACK_MINDSDB_APP)"
     insertEnableSvcAll aistack "$FMLNAME_AISTACK_LANGFUSE" $USERTYPE_AISTACK_LANGFUSE "https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN" "langfuse.png" "$(getHeimdallOrderFromSub $SUB_AISTACK_LANGFUSE $USERTYPE_AISTACK_LANGFUSE)"
-    insertEnableSvcAll aistack "$FMLNAME_AISTACK_OPENWEBUI" $USERTYPE_AISTACK_OPENWEBUI "https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN" "openwebui.png" "$(getHeimdallOrderFromSub $SUB_AISTACK_OPENWEBUI $USERTYPE_AISTACK_OPENWEBUI)"
     restartAllCaddyContainers
     checkAddDBConnection false aistack-mindsdb "$FMLNAME_AISTACK_MINDSDB_APP" postgres aistack-mindsdb-db $AISTACK_MINDSDB_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
     checkAddDBConnection false aistack-langfuse "$FMLNAME_AISTACK_LANGFUSE" postgres aistack-mindsdb-db $AISTACK_LANGFUSE_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
   fi
-  echo -e "================================================================================"
-  echo -e "================================================================================\n"
-  echo -e "  For your convenience, the DB connections for all of your services"
-  echo -e "  have been prepped and output to the following file on your host: \n"
-  echo -e "  $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME\n"
-  echo -e "  If you wish to perform a batch import on these connections into"
-  echo -e "  MindsDB, then enter the following command in a terminal: \n"
-  echo -e "  docker exec aistack-mindsdb-db bash /dbimport/importConnections.sh\n"
-  echo -e "  You can remove unwanted connections from this list before running"
-  echo -e "  the above command. Ensure to delete this file by running the command:\n"
-  echo -e "  rm $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME\n"
-  echo -e "================================================================================"
-  echo -e "================================================================================"
+
 }
 
 function outputConfigAIStack()
 {
   AISTACK_LANGFUSE_PUBKEY=$(pwgen -c -n 32 1)
   AISTACK_LANGFUSE_SECRETKEY=$(pwgen -c -n 32 1)
-  AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET | tr -d ':\n')
-  randuid=$(uuidgen)
   cat <<EOFMT > $HOME/aistack-compose-tmp.yml
 $STACK_VERSION_PREFIX aistack $(getScriptStackVersion aistack)
 
@@ -62929,52 +65789,6 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-
-  aistack-ollama-server:
-    image: $(getScriptImageByContainerName aistack-ollama-server)
-    container_name: aistack-ollama-server
-    hostname: aistack-ollama-server
-    restart: unless-stopped
-    env_file: aistack.env
-    tty: true
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - aistack-mindsdb-db
-    networks:
-      - int-aistack-net
-      - dock-ext-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - ${HSHQ_STACKS_DIR}/aistack/ollama/code:/code
-      - ${HSHQ_STACKS_DIR}/aistack/ollama/root:/root/.ollama
-
-  aistack-openwebui:
-    image: $(getScriptImageByContainerName aistack-openwebui)
-    container_name: aistack-openwebui
-    hostname: aistack-openwebui
-    restart: unless-stopped
-    env_file: aistack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - aistack-mindsdb-db
-      - aistack-ollama-server
-    networks:
-      - int-aistack-net
-      - dock-ext-net
-      - dock-proxy-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - ${HSHQ_STACKS_DIR}/aistack/openwebui:/app/backend/data
 
   aistack-redis:
     image: $(getScriptImageByContainerName aistack-redis)
@@ -63145,50 +65959,6 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 
-  aistack-ollama-server:
-    image: $(getScriptImageByContainerName aistack-ollama-server)
-    container_name: aistack-ollama-server
-    hostname: aistack-ollama-server
-    restart: unless-stopped
-    env_file: stack.env
-    tty: true
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - int-aistack-net
-      - dock-ext-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/aistack/ollama/code:/code
-      - \${PORTAINER_HSHQ_STACKS_DIR}/aistack/ollama/root:/root/.ollama
-
-  aistack-openwebui:
-    image: $(getScriptImageByContainerName aistack-openwebui)
-    container_name: aistack-openwebui
-    hostname: aistack-openwebui
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - aistack-ollama-server
-    networks:
-      - int-aistack-net
-      - dock-ext-net
-      - dock-proxy-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/aistack/openwebui:/app/backend/data
-
   aistack-redis:
     image: $(getScriptImageByContainerName aistack-redis)
     container_name: aistack-redis
@@ -63281,48 +66051,7 @@ LANGFUSE_INIT_USER_PASSWORD=$AISTACK_LANGFUSE_ADMIN_PASSWORD
 POSTGRES_USER=$AISTACK_MINDSDB_DATABASE_USER
 POSTGRES_PASSWORD=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
 POSTGRES_DB=$AISTACK_MINDSDB_DATABASE_NAME
-OLLAMA_BASE_URL=http://aistack-ollama-server:11434
-OLLAMA_HOST=0.0.0.0
-WEBUI_AUTH=True
-ENABLE_SIGNUP=False
-ENABLE_LOGIN_FORM=True
-DEFAULT_USER_ROLE=user
-WEBUI_URL=https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN
-WEBUI_SECRET_KEY=$(pwgen -c -n 32 1)
-ENABLE_OAUTH_SIGNUP=true
-ADMIN_EMAIL=$AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS
-ENV=prod
-OAUTH_MERGE_ACCOUNTS_BY_EMAIL=true
-OAUTH_PROVIDER_NAME=Authelia
-OPENID_PROVIDER_URL=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/.well-known/openid-configuration
-OAUTH_CLIENT_ID=$AISTACK_OPENWEBUI_OIDC_CLIENT_ID
-OAUTH_CLIENT_SECRET=$AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET
-OAUTH_SCOPES=openid groups email profile
-OPENID_REDIRECT_URI=https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/oauth/oidc/callback
-REDIS_HOST=aistack-redis
-REDIS_PORT=6379
-REDIS_PASSWORD=$AISTACK_REDIS_PASSWORD
-REDIS_CONNECTION_STRING=redis://:$AISTACK_REDIS_PASSWORD@aistack-redis:6379/0
-PYTHON_VER=python3.11
 EOFMT
-  cat <<EOFIM > $HOME/openwebui.oidc
-# Authelia OIDC Client aistack-openwebui BEGIN
-      - client_id: $AISTACK_OPENWEBUI_OIDC_CLIENT_ID
-        client_name: OpenWebUI
-        client_secret: '$AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET_HASH'
-        public: false
-        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
-        redirect_uris:
-          - https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/oauth/oidc/callback
-        scopes:
-          - openid
-          - profile
-          - email
-          - groups
-        userinfo_signed_response_alg: none
-        token_endpoint_auth_method: client_secret_basic
-# Authelia OIDC Client aistack-openwebui END
-EOFIM
   cat <<EOFOT > $HSHQ_STACKS_DIR/aistack/otel/otel-collector-config.yaml
 receivers:
   otlp:
@@ -63366,145 +66095,6 @@ service:
       processors: [batch]
       exporters: [debug]
 EOFOT
-  cat <<EOFAS > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME
-"ActivePieces" postgres activepieces-db $ACTIVEPIECES_DATABASE_NAME $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_USER_PASSWORD
-"Adminer" mysql adminer-db $ADMINER_DATABASE_NAME $ADMINER_DATABASE_USER $ADMINER_DATABASE_USER_PASSWORD
-"MindsDB" postgres aistack-mindsdb-db $AISTACK_MINDSDB_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
-"Langfuse" postgres aistack-mindsdb-db $AISTACK_LANGFUSE_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
-"Automatisch" postgres automatisch-db $AUTOMATISCH_DATABASE_NAME $AUTOMATISCH_DATABASE_USER $AUTOMATISCH_DATABASE_USER_PASSWORD
-"Calcom" postgres calcom-db $CALCOM_DATABASE_NAME $CALCOM_DATABASE_USER $CALCOM_DATABASE_USER_PASSWORD
-"Discourse" postgres discourse-db $DISCOURSE_DATABASE_NAME $DISCOURSE_DATABASE_USER $DISCOURSE_DATABASE_USER_PASSWORD
-"Dolibarr" mysql dolibarr-db $DOLIBARR_DATABASE_NAME $DOLIBARR_DATABASE_USER $DOLIBARR_DATABASE_USER_PASSWORD
-"EasyAppointments" mysql easyappointments-db $EASYAPPOINTMENTS_DATABASE_NAME $EASYAPPOINTMENTS_DATABASE_USER $EASYAPPOINTMENTS_DATABASE_USER_PASSWORD
-"EspoCRM" mysql espocrm-db $ESPOCRM_DATABASE_NAME $ESPOCRM_DATABASE_USER $ESPOCRM_DATABASE_USER_PASSWORD
-"Firefly" postgres firefly-db $FIREFLY_DATABASE_NAME $FIREFLY_DATABASE_USER $FIREFLY_DATABASE_USER_PASSWORD
-"FrappeHR" mysql frappe-hr-db $FRAPPE_HR_DATABASE_NAME $FRAPPE_HR_DATABASE_USER $FRAPPE_HR_DATABASE_USER_PASSWORD
-"FreshRSS" postgres freshrss-db $FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_USER $FRESHRSS_DATABASE_USER_PASSWORD
-"Ghost" mysql ghost-db $GHOST_DATABASE_NAME $GHOST_DATABASE_USER $GHOST_DATABASE_USER_PASSWORD
-"Gitea" postgres gitea-db $GITEA_DATABASE_NAME $GITEA_DATABASE_USER $GITEA_DATABASE_USER_PASSWORD
-"Gitlab" postgres gitlab-db $GITLAB_DATABASE_NAME $GITLAB_DATABASE_USER $GITLAB_DATABASE_USER_PASSWORD
-"Guacamole" mysql guacamole-db $GUACAMOLE_DATABASE_NAME $GUACAMOLE_DATABASE_USER $GUACAMOLE_DATABASE_USER_PASSWORD
-"HomeAssistant" postgres homeassistant-db $HOMEASSISTANT_DATABASE_NAME $HOMEASSISTANT_DATABASE_USER $HOMEASSISTANT_DATABASE_USER_PASSWORD
-"Huginn" postgres huginn-db $HUGINN_DATABASE_NAME $HUGINN_DATABASE_USER $HUGINN_DATABASE_USER_PASSWORD
-"Immich" postgres immich-db $IMMICH_DATABASE_NAME $IMMICH_DATABASE_USER $IMMICH_DATABASE_USER_PASSWORD
-"Invidious" postgres invidious-db $INVIDIOUS_DATABASE_NAME $INVIDIOUS_DATABASE_USER $INVIDIOUS_DATABASE_USER_PASSWORD
-"InvoiceNinja" mysql invoiceninja-db $INVOICENINJA_DATABASE_NAME $INVOICENINJA_DATABASE_USER $INVOICENINJA_DATABASE_USER_PASSWORD
-"InvoiceShelf" mysql invoiceshelf-db $INVOICESHELF_DATABASE_NAME $INVOICESHELF_DATABASE_USER $INVOICESHELF_DATABASE_USER_PASSWORD
-"Kanboard" postgres kanboard-db $KANBOARD_DATABASE_NAME $KANBOARD_DATABASE_USER $KANBOARD_DATABASE_USER_PASSWORD
-"Keila" postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD
-"KillBillAPI" mysql killbill-db $KILLBILL_KB_DATABASE_NAME $KILLBILL_DATABASE_USER $KILLBILL_DATABASE_USER_PASSWORD
-"KillBill" mysql killbill-db $KILLBILL_KAUI_DATABASE_NAME $KILLBILL_DATABASE_USER $KILLBILL_DATABASE_USER_PASSWORD
-"Linkwarden" postgres linkwarden-db $LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER_PASSWORD
-"Mastodon" postgres mastodon-db $MASTODON_DATABASE_NAME $MASTODON_DATABASE_USER $MASTODON_DATABASE_USER_PASSWORD
-"Matomo" mysql matomo-db $MATOMO_DATABASE_NAME $MATOMO_DATABASE_USER $MATOMO_DATABASE_USER_PASSWORD
-"Matrix" postgres matrix-db $MATRIX_DATABASE_NAME $MATRIX_DATABASE_USER $MATRIX_DATABASE_USER_PASSWORD
-"Mealie" postgres mealie-db $MEALIE_DATABASE_NAME $MEALIE_DATABASE_USER $MEALIE_DATABASE_USER_PASSWORD
-"MeshCentral" mysql meshcentral-db $MESHCENTRAL_DATABASE_NAME $MESHCENTRAL_DATABASE_USER $MESHCENTRAL_DATABASE_USER_PASSWORD
-"Metabase" postgres metabase-db $METABASE_DATABASE_NAME $METABASE_DATABASE_USER $METABASE_DATABASE_USER_PASSWORD
-"MintHCM" mysql minthcm-db $MINTHCM_DATABASE_NAME $MINTHCM_DATABASE_USER $MINTHCM_DATABASE_USER_PASSWORD
-"n8n" postgres n8n-db $N8N_DATABASE_NAME $N8N_DATABASE_USER $N8N_DATABASE_USER_PASSWORD
-"Nextcloud" postgres nextcloud-db $NEXTCLOUD_DATABASE_NAME $NEXTCLOUD_DATABASE_USER $NEXTCLOUD_DATABASE_USER_PASSWORD
-"Odoo" postgres odoo-db $ODOO_DATABASE_NAME $ODOO_DATABASE_USER $ODOO_DATABASE_USER_PASSWORD
-"Ombi" mysql ombi-db $OMBI_DATABASE_NAME $OMBI_DATABASE_USER $OMBI_DATABASE_USER_PASSWORD
-"OpenProject" postgres openproject-db $OPENPROJECT_DATABASE_NAME $OPENPROJECT_DATABASE_USER $OPENPROJECT_DATABASE_USER_PASSWORD
-"Paperless" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
-"Pastefy" mysql pastefy-db $PASTEFY_DATABASE_NAME $PASTEFY_DATABASE_USER $PASTEFY_DATABASE_USER_PASSWORD
-"PeerTube" postgres peertube-db $PEERTUBE_DATABASE_NAME $PEERTUBE_DATABASE_USER $PEERTUBE_DATABASE_USER_PASSWORD
-"Penpot" postgres penpot-db $PENPOT_DATABASE_NAME $PENPOT_DATABASE_USER $PENPOT_DATABASE_USER_PASSWORD
-"PhotoPrism" mysql photoprism-db $PHOTOPRISM_DATABASE_NAME $PHOTOPRISM_DATABASE_USER $PHOTOPRISM_DATABASE_USER_PASSWORD
-"Piped" postgres piped-db $PIPED_DATABASE_NAME $PIPED_DATABASE_USER $PIPED_DATABASE_USER_PASSWORD
-"Pixelfed" mysql pixelfed-db $PIXELFED_DATABASE_NAME $PIXELFED_DATABASE_USER $PIXELFED_DATABASE_USER_PASSWORD
-"Rallly" postgres rallly-db $RALLLY_DATABASE_NAME $RALLLY_DATABASE_USER $RALLLY_DATABASE_USER_PASSWORD
-"Shlink" postgres shlink-db $SHLINK_DATABASE_NAME $SHLINK_DATABASE_USER $SHLINK_DATABASE_USER_PASSWORD
-"StandardNotes" mysql standardnotes-db $STANDARDNOTES_DATABASE_NAME $STANDARDNOTES_DATABASE_USER $STANDARDNOTES_DATABASE_USER_PASSWORD
-"$FMLNAME_SPEEDTEST_TRACKER_LOCAL" postgres speedtest-tracker-local-db $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
-"$FMLNAME_SPEEDTEST_TRACKER_VPN" postgres speedtest-tracker-vpn-db $SPEEDTEST_TRACKER_VPN_DATABASE_NAME $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
-"Twenty" postgres twenty-db $TWENTY_DATABASE_NAME $TWENTY_DATABASE_USER $TWENTY_DATABASE_USER_PASSWORD
-"Vaultwarden" postgres vaultwarden-db $VAULTWARDEN_DATABASE_NAME $VAULTWARDEN_DATABASE_USER $VAULTWARDEN_DATABASE_USER_PASSWORD
-"Wallabag" postgres wallabag-db $WALLABAG_DATABASE_NAME $WALLABAG_DATABASE_USER $WALLABAG_DATABASE_USER_PASSWORD
-"Wikijs" postgres wikijs-db $WIKIJS_DATABASE_NAME $WIKIJS_DATABASE_USER $WIKIJS_DATABASE_USER_PASSWORD
-"WordPress" mysql wordpress-db $WORDPRESS_DATABASE_NAME $WORDPRESS_DATABASE_USER $WORDPRESS_DATABASE_USER_PASSWORD
-"Yamtrack" postgres yamtrack-db $YAMTRACK_DATABASE_NAME $YAMTRACK_DATABASE_USER $YAMTRACK_DATABASE_USER_PASSWORD
-"Zammad" postgres zammad-db $ZAMMAD_DATABASE_NAME $ZAMMAD_DATABASE_USER $ZAMMAD_DATABASE_USER_PASSWORD
-"Zulip" postgres zulip-db $ZULIP_DATABASE_NAME $ZULIP_DATABASE_USER $ZULIP_DATABASE_USER_PASSWORD
-"Taiga" postgres taiga-db $TAIGA_DATABASE_NAME $TAIGA_DATABASE_USER $TAIGA_DATABASE_USER_PASSWORD
-"DocuSeal" postgres docuseal-db $DOCUSEAL_DATABASE_NAME $DOCUSEAL_DATABASE_USER $DOCUSEAL_DATABASE_USER_PASSWORD
-"ControlR" postgres controlr-db $CONTROLR_DATABASE_NAME $CONTROLR_DATABASE_USER $CONTROLR_DATABASE_USER_PASSWORD
-"Akaunting" mysql akaunting-db $AKAUNTING_DATABASE_NAME $AKAUNTING_DATABASE_USER $AKAUNTING_DATABASE_USER_PASSWORD
-"Axelor" postgres axelor-db $AXELOR_DATABASE_NAME $AXELOR_DATABASE_USER $AXELOR_DATABASE_USER_PASSWORD
-#ADD_NEW_AISTACK_DB_IMPORT_HERE
-EOFAS
-  cat <<EOFIM > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/importConnections.sh
-#!/bin/bash
-
-AISTACK_MINDSDB_DATABASE_NAME=$AISTACK_MINDSDB_DATABASE_NAME
-AISTACK_MINDSDB_DATABASE_USER=$AISTACK_MINDSDB_DATABASE_USER
-PGPASSWORD=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
-curdt=\$(date '+%Y-%m-%d %H:%M:%S.%3N')
-
-function main()
-{
-  if ! [ -f /dbimport/$MINDSDB_IMPORT_FILENAME ]; then
-    return
-  fi
-  while read curLine; do
-    if [ -z "\$curLine" ] || [ "\${curLine:0:1}" = "#" ]; then
-      continue
-    fi
-    connName=\$(echo "\$curLine" | cut -d" " -f1 | sed 's/"//g')
-    connType=\$(echo "\$curLine" | cut -d" " -f2)
-    connHost=\$(echo "\$curLine" | cut -d" " -f3)
-    connDatabase=\$(echo "\$curLine" | cut -d" " -f4)
-    connUser=\$(echo "\$curLine" | cut -d" " -f5)
-    connPassword=\$(echo "\$curLine" | cut -d" " -f6)
-    case "\$connType" in
-      "postgres")
-        connPort=5432
-      ;;
-      "mysql")
-        connPort=3306
-      ;;
-      *)
-        continue
-      ;;
-    esac
-    sqlcmd="select count(*) from integration where name='\$connName';"
-    checkExist=\$(echo "\$sqlcmd" | psql -t -U \$AISTACK_MINDSDB_DATABASE_USER \$AISTACK_MINDSDB_DATABASE_NAME | xargs)
-    if [ -z "\$checkExist" ]; then
-      echo "ERROR: There was a problem adding this DB Connection to MindsDB - \$connName"
-      continue
-    fi
-    if [ \$checkExist -eq 0 ]; then
-      sqlcmd="insert into integration(updated_at, created_at, name, data, engine) values ('\$curdt', '\$curdt', '\$connName','{\"database\": \"\$connDatabase\", \"host\": \"\$connHost\", \"password\": \"\$connPassword\", \"port\": \"\$connPort\", \"user\": \"\$connUser\"}','\$connType');"
-      echo "\$sqlcmd" | psql -U \$AISTACK_MINDSDB_DATABASE_USER \$AISTACK_MINDSDB_DATABASE_NAME > /dev/null 2>&1
-    else
-      echo "INFO: DB Connection already exists in MindsDB - \$connName"
-    fi
-  done </dbimport/$MINDSDB_IMPORT_FILENAME
-}
-
-main
-EOFIM
-  chmod 755 $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/importConnections.sh
-  cat <<EOFIM > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/insertAdmin.sh
-#!/bin/bash
-
-AISTACK_LANGFUSE_DATABASE_NAME=$AISTACK_LANGFUSE_DATABASE_NAME
-AISTACK_MINDSDB_DATABASE_USER=$AISTACK_MINDSDB_DATABASE_USER
-PGPASSWORD=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
-curdt=\$(date '+%s')
-AISTACK_OPENWEBUI_ADMIN_PASSWORD_HASH="$(htpasswd -bnBC 10 "" $AISTACK_OPENWEBUI_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/' | sed 's/\$/\\\$/g')"
-function main()
-{
-  sqlcmd="insert into \"user\"(id,name,email,role,profile_image_url,created_at,updated_at,last_active_at) values ('$randuid', '$(getAdminEmailName) OpenWebUI', '$AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS', 'admin','data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAJSElEQVR4Xu1aaZBV1RH+3r66gLIYETUogiITGUBwArKIEAeMDLgBLok/NNGykqqYyqrZrLjFMokmJiHEqmQkRirioAyIooihCCqCBLFQwyKiqKPCzNuXm+775t3HG+fNe/fO3DunKt2/YF6fvt/p7/Q5fbqPq33pQA0iynjAJYQow4UORAhRiw8hRDE+hBAhRDUPKIZHzhAhRDEPKAZHIkQIUcwDisGRCBFCFPOAYnAkQoQQxTygGByJECFEMQ8oBkciRAhRzAOKwZEIEUIU84BicCRChBDFPKAYHIkQIUQxDygGRyJECFHMA4rBkQgRQhTzgGJwJEKEEMU8oBgciRAhRDEPKAanXyPEPage3tMa4TmxDu7jRsLlPxbwBoF0B/LJj5D/5A3k3t+I7J4WaMm2PnWd56QGhC5pMWzGV81G/sNX+vQbVoz1CyGeYRchMOF2uAeeUxvmfAaZNx9Beus90FKf1DamilZwym/gHbnY0MrsWobUptv6xHZvjDhLiNuHwOS74Bt1fQlzNo7s/jXIvvsstNhBaOnDcIUGwX3s6fCefik8Qy8gXZeur8UPIrH+BuQPbenNnAFPENHFbwK+Yww7THSseTR9JNs7270c7RwhLi+CM/8C76mXGJBz7z2P5IaboSUOVZyGZ+hkBKf9Aa7IyQUdIjDxzFW0lf3L8tS9IxaQzT8C+TTg9ht2EusWI0eLoz/FMUICE38G37k3l8g4uAGJ1gW87qvO3xU9BZH5GwD/cQXd1GeIPTFFjygrEprzODwnz0DmP7+Hb8w3DBPZPU8iuf7rVkz22RhHCOHDO3zpWmPrQaYdsX/UmzqovSMW6pFSlNyB55BYe4VpR7hCQxC5egftgh7E/9lAUfsIJRRnFuzkkuhoHgXG11/iCCGhOStoRU435pjZ8SBSW+4wN2eXG5ErXoUrOry0xaz+Km1dL5my4zv3FgQm/pTOo/cRWz4GgUl3wnfOTYaN5MZbkd3dbMpmXyrbTojrmNN0Rx4tsccnQDvyX9Pz8J93G/zjvlfaYvY9jeSz15qyE256Ce4Bo5HZ+TBSm38I95CJCM9tLUUepdmJ1ZeZstmXyrYT4q/7Nvzjf2Rg1tr30XY1ztIc3IPGd259ncMpHe5oPovuLYdrsuc+YSzClz2v68ZbZiH/0Vb935ErXytFnpZH7O91ekbXH2I7IV23q+xby5F88RZrc6VtK3rdu3raWhSOkCxFSi1S3J44OjlKi+If/2P4675l/D/18k+Qef23tZjscx3bCYleQ1tTMTsi+OlXfo709gcsTyS8YBPcx1NUdErN5xEd4pFFO+EKDqIL5l1Iv3avYcM9YBTCTaU0Ov/pG3TgT7GMsTcD7SUkMADRJW+X4eO0ktNLqxKa1QzP8DnG8Oz+ViTXLalqzjN8NkKzHiU9DbHHxkHr2F82Jty0kc6Ws42/MSFMjNNiKyFcGgnPf7FsTonWJuToDmJVghf+Dt4zrjSG59t2IL5yWlVzwRnL6OZPWdkHm5B4et7n9P1jb4V/Qinz4y2Lty6nxV5CumQwPLn4qjlUxHvZ8jwDF9wH3+ivGeO1I3voPBjfsz0qWkYXUanEE0CltJYrAZGrtpOdUpkmtnysHlFOiq2EeE76MlVUy7en+MrpyLe9bnmOgfN/UXa7Lt4nejLoG3UdAg3308UvQVkZ1asqXPxCjU9R7WyyYYrTX642Oym2EuIeTGnqPL6hl6Q/IiQ8bw3cgycg+84KJF+4saJ/uegZaPiV8TtfEDminBR7CemSvfDEnD5DXFQ1jlxe6HMk1lyO3HvrK/uXk5BFu6jg6CvoUCTppRQqqTglthLC5e3otXvL5pKk8nl2z0rL8wtdvByeUy4ureJ9q+m2fk1Fe3yz5xu+VektXrPftZcQQhNZvJty/xMMXOlX70R6G+3nFiW8cHOpGMiLuEo2VHYLt/DN3P61SKxbZGGktSG2E/K5Ff32Y9QD+aZFtB5Erz9Q1sPgOwjfRboTbm6FGlfpP3FlN//ZW9W/6w3RtkX3D2+koEvlmdijZ/dZp7IaANsJ4X4DZ0ZF0ToO0MWsrhqu7h085HyE5q4u/UYNpkIt60i3+oEpv4Zv5BLqze9E/ImpNX8zOP1P8H6xydBPbfouMrv+XPP43ijaTogr8gXK7znNLeT3+mpdMQn5wzWs1i4z63oeZPe2IPlc6U5Spn5Um9ZsuYa7msGL/mqY48cP/AjCCbGdEJ5EcNbf4B3+FWM+3KlL/btUAa5polyL4qpssZVLgxJPNSJ3aHO3w402Lf3K1WWuMtcs1NaNLtld1nPXG2rte2s2YVXREULcA8dQ2ZvSTXKqLpkOvdqqJT6sGbf3zKsRnPqgoc+9b+6BV5LQbGrTDpuB/MfbEH9yZs3fKSp2LdGkt95NBcl7TNsxO8ARQhiUv/778H/pOyWHUqcv0TqfKhP5qpj1Jtf8F4wVqyU/pkN6asXHEa4wb5Pb9AVQczW4Cwo+Q/gsKYp25B1aRBOrYu2tgmOEgHoZwelL9QJfUbjIyBmXFv+g4jz4QVtw2sNgJxeiqx3xNQt7fNTGDTFujLFwmZ3L7WaFo4uj7GjhoiQXJ+0U5wjhWdBToMDkX1Jx8KiXHfwua18rvctap3fptHQ7vcs6kd5ljdDJ8wydxAN1H3DJPEGHOG9DlUSvMFOpBN6wrsLJQ3wVnV+pT0340YXghQ+VVZV1W9RhjHN7NxszYcucqrOEdGLzDJtJLxfvqP3lYi6lp50pbipVSHH99T/QH9V5BteX3VMKUdWBXNt2uksc7uzBd1/B5XPKR4uAG1b89KhboSdIubZt1JNfWvH+Y46Ccu1+IaQIgYuPvlPnws1ve48/g9720rsrbs+SA/PxQ/r9gbe1zF663JEjepJQYwsR0lDVFx3LBlOo5brV6/p2rCdjqS230/n0UNXvmVXoV0LMgv1/0BdCFGNZCBFCFPOAYnAkQoQQxTygGByJECFEMQ8oBkciRAhRzAOKwZEIEUIU84BicCRChBDFPKAYHIkQIUQxDygGRyJECFHMA4rBkQgRQhTzgGJwJEKEEMU8oBgciRAhRDEPKAZHIkQIUcwDisGRCBFCFPOAYnAkQoQQxTygGByJECFEMQ8oBkciRAhRzAOKwZEIEUIU84BicCRChBDFPKAYHIkQxQj5H8Wj5BIH8hVZAAAAAElFTkSuQmCC', \$curdt, \$curdt, \$curdt);"
-  echo "\$sqlcmd" | psql -U \$AISTACK_MINDSDB_DATABASE_USER \$AISTACK_LANGFUSE_DATABASE_NAME > /dev/null 2>&1
-
-  psql -U \$AISTACK_MINDSDB_DATABASE_USER \$AISTACK_LANGFUSE_DATABASE_NAME -c "insert into auth(id,email,password,active) values('$randuid','$AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS','\$AISTACK_OPENWEBUI_ADMIN_PASSWORD_HASH',true);" > /dev/null 2>&1
-}
-
-main
-EOFIM
-  chmod 755 $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/insertAdmin.sh
 }
 
 function importDBConnectionsAIStack()
@@ -63530,7 +66120,7 @@ function importDBConnectionsAIStack()
   rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME
 }
 
-function buildMindsDBImageV1()
+function buildImageMindsDBV1()
 {
   # Capture the return value deliberately, just so we don't forget down the road
   buildMindsDBImage "mindsdb/mindsdb:v25.4.5.0" "hshq/mindsdb:v1"
@@ -63538,7 +66128,7 @@ function buildMindsDBImageV1()
   return $rtval
 }
 
-function buildMindsDBImageV2()
+function buildImageMindsDBV2()
 {
   # Capture the return value deliberately, just so we don't forget down the road
   buildMindsDBImage "mirror.gcr.io/mindsdb/mindsdb:v25.7.4.0" "hshq/mindsdb:v2"
@@ -63619,7 +66209,7 @@ function performUpdateAIStack()
       image_update_map[4]="ollama/ollama:0.6.8,mirror.gcr.io/ollama/ollama:0.11.4"
       image_update_map[5]="ghcr.io/open-webui/open-webui:git-aa37482,ghcr.io/open-webui/open-webui:0.6.22"
       image_update_map[6]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
-      buildMindsDBImageV2
+      buildImageMindsDBV2
       if [ $? -ne 0 ]; then
         perform_update_report="ERROR ($perform_stack_name): Could not build new MindsDB image"
         return
@@ -63706,6 +66296,7 @@ function installPixelfed()
   sleep 3
   docker exec pixelfed-app bash -c "php artisan ldap:import users --filter \"(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)\" -n -q" >/dev/null
   docker exec pixelfed-app bash -c "yes | php artisan user:admin $LDAP_ADMIN_USER_USERNAME" >/dev/null
+  addReadOnlyUserToDatabase Pixelfed mysql pixelfed-db $PIXELFED_DATABASE_NAME root $PIXELFED_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/pixelfed/dbexport $PIXELFED_DATABASE_READONLYUSER $PIXELFED_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PIXELFED.$HOMESERVER_DOMAIN {\n"
@@ -65192,6 +67783,7 @@ function installYamtrack()
   fi
   sleep 3
   docker exec -it yamtrack-app python manage.py shell -c "User.objects.create_user(username='$YAMTRACK_ADMIN_USERNAME', password='$YAMTRACK_ADMIN_PASSWORD', is_staff=True, is_superuser=True)" > /dev/null 2>&1
+  addReadOnlyUserToDatabase Yamtrack postgres yamtrack-db $YAMTRACK_DATABASE_NAME $YAMTRACK_DATABASE_USER $YAMTRACK_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/yamtrack/dbexport $YAMTRACK_DATABASE_READONLYUSER $YAMTRACK_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN {\n"
@@ -66572,7 +69164,6 @@ function installOmbi()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/ombi
   mkdir $HSHQ_STACKS_DIR/ombi/config
   mkdir $HSHQ_STACKS_DIR/ombi/db
@@ -66594,6 +69185,7 @@ function installOmbi()
     updateConfigVar OMBI_INIT_ENV $OMBI_INIT_ENV
   fi
   sleep 3
+  addReadOnlyUserToDatabase Ombi mysql ombi-db $OMBI_DATABASE_NAME root $OMBI_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/ombi/dbexport $OMBI_DATABASE_READONLYUSER $OMBI_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN {\n"
@@ -66802,6 +69394,7 @@ function installMeshCentral()
     return $retVal
   fi
   sleep 3
+  addReadOnlyUserToDatabase MeshCentral mysql meshcentral-db $MESHCENTRAL_DATABASE_NAME root $MESHCENTRAL_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/meshcentral/dbexport $MESHCENTRAL_DATABASE_READONLYUSER $MESHCENTRAL_DATABASE_READONLYUSER_PASSWORD
   if ! [ "$MESHCENTRAL_INIT_ENV" = "true" ]; then
     sendEmail -s "MeshCentral Admin Login Info" -b "MeshCentral Admin Username: $LDAP_ADMIN_USER_USERNAME\nMeshCentral Admin Password: $LDAP_ADMIN_USER_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     MESHCENTRAL_INIT_ENV=true
@@ -67241,6 +69834,7 @@ function installAdminer()
     return $retVal
   fi
   sleep 3
+  addReadOnlyUserToDatabase Adminer mysql adminer-db $ADMINER_DATABASE_NAME root $ADMINER_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/adminer/dbexport $ADMINER_DATABASE_READONLYUSER $ADMINER_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_ADMINER.$HOMESERVER_DOMAIN {\n"
@@ -67622,7 +70216,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-budibase-minio:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/budibase/minio:/data
 
   budibase-proxy:
     image: $(getScriptImageByContainerName budibase-proxy)
@@ -67677,12 +70271,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/budibase/couchdb
-  v-budibase-minio:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/budibase/minio
   v-budibase-redis:
     driver: local
     driver_opts:
@@ -67710,7 +70298,6 @@ networks:
       driver: default
 
 EOFMT
-
   cat <<EOFMT > $HOME/budibase.env
 TZ=\${PORTAINER_TZ}
 MYSQL_DATABASE=$BUDIBASE_DATABASE_NAME
@@ -68034,6 +70621,7 @@ function installStandardNotes()
     return $retVal
   fi
   sleep 3
+  addReadOnlyUserToDatabase StandardNotes mysql standardnotes-db $STANDARDNOTES_DATABASE_NAME root $STANDARDNOTES_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/standardnotes/dbexport $STANDARDNOTES_DATABASE_READONLYUSER $STANDARDNOTES_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_STANDARDNOTES_SERVER.$HOMESERVER_DOMAIN {\n"
@@ -68552,6 +71140,7 @@ function installMetabase()
     updateConfigVar METABASE_INIT_ENV $METABASE_INIT_ENV
   fi
   sleep 3
+  addReadOnlyUserToDatabase Metabase postgres metabase-db $METABASE_DATABASE_NAME $METABASE_DATABASE_USER $METABASE_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/metabase/dbexport $METABASE_DATABASE_READONLYUSER $METABASE_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_METABASE.$HOMESERVER_DOMAIN {\n"
@@ -68746,6 +71335,7 @@ function installKanboard()
   sleep 3
   docker exec kanboard-db /dbexport/setupDBSettings.sh
   rm -f $HSHQ_STACKS_DIR/kanboard/dbexport/setupDBSettings.sh
+  addReadOnlyUserToDatabase Kanboard postgres kanboard-db $KANBOARD_DATABASE_NAME $KANBOARD_DATABASE_USER $KANBOARD_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/kanboard/dbexport $KANBOARD_DATABASE_READONLYUSER $KANBOARD_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_KANBOARD.$HOMESERVER_DOMAIN {\n"
@@ -69003,6 +71593,7 @@ function installWekan()
   fi
   sleep 3
   docker exec -it wekan-db bash -c "mongosh -u $WEKAN_DATABASE_USER -p $WEKAN_DATABASE_USER_PASSWORD --eval \"use $WEKAN_DATABASE_NAME\" --eval \"db.settings.updateOne( {}, { \\\$set: { disableRegistration: true } } )\"" > /dev/null 2>&1
+  addReadOnlyUserToDatabase Wekan mongodb wekan-db $WEKAN_DATABASE_NAME $WEKAN_DATABASE_USER $WEKAN_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/wekan/dbexport $WEKAN_DATABASE_READONLYUSER $WEKAN_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WEKAN.$HOMESERVER_DOMAIN {\n"
@@ -69041,7 +71632,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    command: mongod --logpath /dev/null --oplogSize 128 --quiet --auth
+    command: mongod --oplogSize 128 --quiet --auth
     networks:
       - int-wekan-net
       - dock-dbs-net
@@ -69260,10 +71851,6 @@ function installRevolt()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName revolt-createbuckets)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/revolt
   mkdir $HSHQ_STACKS_DIR/revolt/config
@@ -69285,6 +71872,7 @@ function installRevolt()
     return $retVal
   fi
   sleep 3
+  addReadOnlyUserToDatabase Revolt mongodb revolt-db $REVOLT_DATABASE_NAME $REVOLT_DATABASE_USER $REVOLT_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/revolt/dbexport $REVOLT_DATABASE_READONLYUSER $REVOLT_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_REVOLT.$HOMESERVER_DOMAIN {\n"
@@ -69322,7 +71910,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    command: mongod --logpath /dev/null --oplogSize 128 --quiet --auth
+    command: mongod --oplogSize 128 --quiet --auth
     networks:
       - int-revolt-net
       - dock-dbs-net
@@ -69387,6 +71975,26 @@ services:
           - icons.minio
           - banners.minio
           - emojis.minio
+    entrypoint: >
+      /bin/sh -c "
+        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\\\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        /usr/bin/mc alias set minio http://revolt-minio:9000 ${REVOLT_MINIO_KEY} ${REVOLT_MINIO_SECRET}
+        echo 'Creating buckets revolt'
+        /usr/bin/mc mb minio/attachments
+        /usr/bin/mc mb minio/avatars
+        /usr/bin/mc mb minio/backgrounds
+        /usr/bin/mc mb minio/icons
+        /usr/bin/mc mb minio/banners
+        /usr/bin/mc mb minio/emojis
+        /usr/bin/mc mb minio/revolt-uploads
+        wait \\\$MINIO_PID
+      "
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -69492,7 +72100,6 @@ services:
       - no-new-privileges:true
     depends_on:
       - revolt-db
-      - revolt-createbuckets
     networks:
       - dock-proxy-net
       - dock-internalmail-net
@@ -69570,40 +72177,6 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
-
-  revolt-createbuckets:
-    image: $(getScriptImageByContainerName revolt-createbuckets)
-    container_name: revolt-createbuckets
-    hostname: revolt-createbuckets
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - minio
-    networks:
-      - int-revolt-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-    entrypoint: >
-      /bin/sh -c "
-      while ! /usr/bin/mc ready minio;
-      do
-        /usr/bin/mc alias set minio http://minio:9000 $REVOLT_MINIO_KEY $REVOLT_MINIO_SECRET;
-        echo 'Waiting minio...' && sleep 1;
-      done;
-      /usr/bin/mc mb minio/attachments;
-      /usr/bin/mc mb minio/avatars;
-      /usr/bin/mc mb minio/backgrounds;
-      /usr/bin/mc mb minio/icons;
-      /usr/bin/mc mb minio/banners;
-      /usr/bin/mc mb minio/emojis;
-      /usr/bin/mc mb minio/revolt-uploads;
-      exit 0;
-      "
 
 volumes:
   v-revolt-db:
@@ -69987,7 +72560,7 @@ function performUpdateRevolt()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=mirror.gcr.io/mongo:8.0.13,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/rabbitmq:4.1.4,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/caddy:2.10.0,ghcr.io/revoltchat/server:20250807-1,ghcr.io/revoltchat/bonfire:20250807-1,ghcr.io/revoltchat/client:master,ghcr.io/revoltchat/autumn:20250807-1,ghcr.io/revoltchat/january:20250807-1,ghcr.io/revoltchat/crond:20250807-1,ghcr.io/revoltchat/pushd:20250807-1,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       image_update_map[0]="mirror.gcr.io/mongo:8.0.13,mirror.gcr.io/mongo:8.0.13"
       image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
@@ -70002,6 +72575,28 @@ function performUpdateRevolt()
       image_update_map[10]="ghcr.io/revoltchat/crond:20250807-1,ghcr.io/revoltchat/crond:20250807-1"
       image_update_map[11]="ghcr.io/revoltchat/pushd:20250807-1,ghcr.io/revoltchat/pushd:20250807-1"
       image_update_map[12]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true fixV2ComposeRevolt
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      startStopStack revolt stop
+      sleep 2
+      startStopStack revolt start
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/mongo:8.0.13,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/rabbitmq:4.1.4,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/caddy:2.10.0,ghcr.io/revoltchat/server:20250807-1,ghcr.io/revoltchat/bonfire:20250807-1,ghcr.io/revoltchat/client:master,ghcr.io/revoltchat/autumn:20250807-1,ghcr.io/revoltchat/january:20250807-1,ghcr.io/revoltchat/crond:20250807-1,ghcr.io/revoltchat/pushd:20250807-1
+      image_update_map[0]="mirror.gcr.io/mongo:8.0.13,mirror.gcr.io/mongo:8.0.13"
+      image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[2]="mirror.gcr.io/rabbitmq:4.1.4,mirror.gcr.io/rabbitmq:4.1.4"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z"
+      image_update_map[4]="mirror.gcr.io/caddy:2.10.0,mirror.gcr.io/caddy:2.10.0"
+      image_update_map[5]="ghcr.io/revoltchat/server:20250807-1,ghcr.io/revoltchat/server:20250807-1"
+      image_update_map[6]="ghcr.io/revoltchat/bonfire:20250807-1,ghcr.io/revoltchat/bonfire:20250807-1"
+      image_update_map[7]="ghcr.io/revoltchat/client:master,ghcr.io/revoltchat/client:master"
+      image_update_map[8]="ghcr.io/revoltchat/autumn:20250807-1,ghcr.io/revoltchat/autumn:20250807-1"
+      image_update_map[9]="ghcr.io/revoltchat/january:20250807-1,ghcr.io/revoltchat/january:20250807-1"
+      image_update_map[10]="ghcr.io/revoltchat/crond:20250807-1,ghcr.io/revoltchat/crond:20250807-1"
+      image_update_map[11]="ghcr.io/revoltchat/pushd:20250807-1,ghcr.io/revoltchat/pushd:20250807-1"
     ;;
     *)
       is_upgrade_error=true
@@ -70011,6 +72606,332 @@ function performUpdateRevolt()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function fixV2ComposeRevolt()
+{
+  rm -f $HOME/revolt-compose.yml
+  cat <<EOFMT > $HOME/revolt-compose.yml
+$STACK_VERSION_PREFIX revolt v3
+
+services:
+  revolt-db:
+    image: mirror.gcr.io/mongo:8.0.13
+    container_name: revolt-db
+    hostname: revolt-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mongod --oplogSize 128 --quiet --auth
+    networks:
+      - int-revolt-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-revolt-db:/data/db
+      - v-revolt-dbexport:/dump
+
+  revolt-redis:
+    image: mirror.gcr.io/redis:8.2.0-bookworm
+    container_name: revolt-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $REVOLT_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-revolt-redis:/data
+
+  revolt-rabbitmq:
+    image: mirror.gcr.io/rabbitmq:4.1.4
+    container_name: revolt-rabbitmq
+    hostname: revolt-rabbitmq
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/rabbitmq:/var/lib/rabbitmq
+
+  minio:
+    image: mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+    container_name: revolt-minio
+    hostname: revolt-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: server /data
+    networks:
+      dock-proxy-net:
+      int-revolt-net:
+        aliases:
+          - revolt-uploads.minio
+          - attachments.minio
+          - avatars.minio
+          - backgrounds.minio
+          - icons.minio
+          - banners.minio
+          - emojis.minio
+    entrypoint: >
+      /bin/sh -c "
+        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\\\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        /usr/bin/mc alias set minio http://revolt-minio:9000 ${REVOLT_MINIO_KEY} ${REVOLT_MINIO_SECRET}
+        echo 'Creating buckets revolt'
+        /usr/bin/mc mb minio/attachments
+        /usr/bin/mc mb minio/avatars
+        /usr/bin/mc mb minio/backgrounds
+        /usr/bin/mc mb minio/icons
+        /usr/bin/mc mb minio/banners
+        /usr/bin/mc mb minio/emojis
+        /usr/bin/mc mb minio/revolt-uploads
+        wait \\\$MINIO_PID
+      "
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/minio:/data
+
+  revolt-caddy:
+    image: mirror.gcr.io/caddy:2.10.0
+    container_name: revolt-caddy
+    hostname: revolt-caddy
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/caddy/data:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/caddy/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/caddy/Caddyfile:/etc/caddy/Caddyfile
+
+  revolt-api:
+    image: ghcr.io/revoltchat/server:20250807-1
+    container_name: revolt-api
+    hostname: revolt-api
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - revolt-db
+      - revolt-redis
+      - revolt-rabbitmq
+    networks:
+      - dock-proxy-net
+      - dock-internalmail-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+  revolt-events:
+    image: ghcr.io/revoltchat/bonfire:20250807-1
+    container_name: revolt-events
+    hostname: revolt-events
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - revolt-db
+      - revolt-redis
+    networks:
+      - dock-proxy-net
+      - dock-internalmail-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+  revolt-web:
+    image: ghcr.io/revoltchat/client:master
+    container_name: revolt-web
+    hostname: revolt-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  revolt-autumn:
+    image: ghcr.io/revoltchat/autumn:20250807-1
+    container_name: revolt-autumn
+    hostname: revolt-autumn
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - revolt-db
+    networks:
+      - dock-proxy-net
+      - dock-internalmail-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+  revolt-january:
+    image: ghcr.io/revoltchat/january:20250807-1
+    container_name: revolt-january
+    hostname: revolt-january
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-internalmail-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+  revolt-crond:
+    image: ghcr.io/revoltchat/crond:20250807-1
+    container_name: revolt-crond
+    hostname: revolt-crond
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - revolt-db
+      - minio
+    networks:
+      - int-revolt-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+  revolt-pushd:
+    image: ghcr.io/revoltchat/pushd:20250807-1
+    container_name: revolt-pushd
+    hostname: revolt-pushd
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - revolt-db
+      - revolt-redis
+      - revolt-rabbitmq
+    networks:
+      - int-revolt-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+volumes:
+  v-revolt-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/revolt/db
+  v-revolt-dbexport:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/revolt/dbexport
+  v-revolt-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/revolt/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-revolt-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  
 }
 
 # FrappeHR
@@ -70057,6 +72978,7 @@ function installFrappeHR()
     updateConfigVar FRAPPE_HR_INIT_ENV $FRAPPE_HR_INIT_ENV
   fi
   sleep 3
+  addReadOnlyUserToDatabase FrappeHR mysql frappe-hr-db $FRAPPE_HR_DATABASE_NAME root $FRAPPE_HR_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/frappe-hr/dbexport $FRAPPE_HR_DATABASE_READONLYUSER $FRAPPE_HR_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_FRAPPE_HR.$HOMESERVER_DOMAIN {\n"
@@ -70319,6 +73241,7 @@ function installMintHCM()
   echo "Setting up integrations..."
   docker exec minthcm-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/minthcm/dbexport/setupDBSettings.sh
+  addReadOnlyUserToDatabase MintHCM mysql minthcm-db $MINTHCM_DATABASE_NAME root $MINTHCM_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/minthcm/dbexport $MINTHCM_DATABASE_READONLYUSER $MINTHCM_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_MINTHCM.$HOMESERVER_DOMAIN {\n"
@@ -70697,10 +73620,6 @@ function installTwenty()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName twenty-createbuckets)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/twenty
   mkdir $HSHQ_STACKS_DIR/twenty/data
@@ -70724,6 +73643,7 @@ function installTwenty()
   TWENTY_INIT_ENV=true
   updateConfigVar TWENTY_INIT_ENV $TWENTY_INIT_ENV
   sleep 3
+  addReadOnlyUserToDatabase Twenty postgres twenty-db $TWENTY_DATABASE_NAME $TWENTY_DATABASE_USER $TWENTY_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/twenty/dbexport $TWENTY_DATABASE_READONLYUSER $TWENTY_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_TWENTY.$HOMESERVER_DOMAIN {\n"
@@ -70871,6 +73791,20 @@ services:
     networks:
       - dock-proxy-net
       - int-twenty-net
+    entrypoint: >
+      /bin/sh -c "
+        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\\\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        /usr/bin/mc alias set minio http://twenty-minio:9000 ${TWENTY_MINIO_KEY} ${TWENTY_MINIO_SECRET}
+        echo 'Creating bucket twenty'
+        /usr/bin/mc mb minio/bucket-twenty
+        wait \\\$MINIO_PID
+      "
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -70878,34 +73812,6 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/twenty/minio:/data
-
-  twenty-createbuckets:
-    image: $(getScriptImageByContainerName twenty-createbuckets)
-    container_name: twenty-createbuckets
-    hostname: twenty-createbuckets
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - twenty-minio
-    networks:
-      - int-twenty-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-    entrypoint: >
-      /bin/sh -c "
-      while ! /usr/bin/mc ready minio;
-      do
-        /usr/bin/mc alias set minio http://twenty-minio:9000 $TWENTY_MINIO_KEY $TWENTY_MINIO_SECRET;
-        echo 'Waiting minio...' && sleep 1;
-      done;
-      /usr/bin/mc mb minio/bucket-twenty;
-      exit 0;
-      "
 
 volumes:
   v-twenty-data:
@@ -70992,13 +73898,27 @@ function performUpdateTwenty()
       image_update_map[4]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/twentycrm/twenty:v1.12.0,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
       image_update_map[2]="mirror.gcr.io/twentycrm/twenty:v1.12.0,mirror.gcr.io/twentycrm/twenty:v1.12.0"
       image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
       image_update_map[4]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true fixV2ComposeTwenty
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      startStopStack twenty stop
+      sleep 2
+      startStopStack twenty start
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/twentycrm/twenty:v1.12.0,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
+      image_update_map[2]="mirror.gcr.io/twentycrm/twenty:v1.12.0,mirror.gcr.io/twentycrm/twenty:v1.12.0"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
     ;;
     *)
       is_upgrade_error=true
@@ -71008,6 +73928,189 @@ function performUpdateTwenty()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function fixV2ComposeTwenty()
+{
+  rm -f $HOME/twenty-compose.yml
+  cat <<EOFMT > $HOME/twenty-compose.yml
+$STACK_VERSION_PREFIX twenty v3
+
+services:
+  twenty-db:
+    image: mirror.gcr.io/postgres:16.9-bookworm
+    container_name: twenty-db
+    hostname: twenty-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-twenty-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/twenty/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/twenty/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.twenty-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.twenty-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.twenty-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.twenty-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.twenty-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.twenty-hourly-db.email-from=Twenty Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.twenty-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.twenty-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.twenty-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.twenty-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.twenty-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.twenty-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.twenty-monthly-db.email-from=Twenty Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.twenty-monthly-db.mail-only-on-error=false"
+
+  twenty-app:
+    image: mirror.gcr.io/twentycrm/twenty:v1.12.0
+    container_name: twenty-app
+    hostname: twenty-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - twenty-db
+    networks:
+      - int-twenty-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    environment:
+      - DISABLE_DB_MIGRATIONS=false
+      - DISABLE_CRON_JOBS_REGISTRATION=false
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-twenty-data:/app/packages/twenty-server/.local-storage
+
+  twenty-worker:
+    image: mirror.gcr.io/twentycrm/twenty:v1.12.0
+    container_name: twenty-worker
+    hostname: twenty-worker
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: ["yarn", "worker:prod"]
+    depends_on:
+      - twenty-db
+    networks:
+      - int-twenty-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    environment:
+      - DISABLE_DB_MIGRATIONS=true
+      - DISABLE_CRON_JOBS_REGISTRATION=true
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-twenty-data:/app/packages/twenty-server/.local-storage
+
+  twenty-redis:
+    image: mirror.gcr.io/redis:8.4.0-bookworm
+    container_name: twenty-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $TWENTY_REDIS_PASSWORD
+      --appendonly yes
+      --maxmemory-policy noeviction
+    networks:
+      - int-twenty-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-twenty-redis:/data
+
+  twenty-minio:
+    image: mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: twenty-minio
+    hostname: twenty-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: server /data
+    networks:
+      - dock-proxy-net
+      - int-twenty-net
+    entrypoint: >
+      /bin/sh -c "
+        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\\\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        /usr/bin/mc alias set minio http://twenty-minio:9000 ${TWENTY_MINIO_KEY} ${TWENTY_MINIO_SECRET}
+        echo 'Creating bucket twenty'
+        /usr/bin/mc mb minio/bucket-twenty
+        wait \\\$MINIO_PID
+      "
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/twenty/minio:/data
+
+volumes:
+  v-twenty-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/twenty/data
+  v-twenty-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/twenty/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-twenty-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
 }
 
 # Odoo
@@ -71105,6 +74208,7 @@ EOFDS
   docker exec odoo-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/odoo/dbexport/setupDBSettings.sh
   docker exec -it odoo-app bash -c "odoo -p 8070 --db_host odoo-db -r $ODOO_DATABASE_USER -w $ODOO_DATABASE_USER_PASSWORD -d $ODOO_DATABASE_NAME -u google_gmail,microsoft_outlook --stop-after-init --without-demo=True" > /dev/null 2>&1
+  addReadOnlyUserToDatabase Odoo postgres odoo-db $ODOO_DATABASE_NAME $ODOO_DATABASE_USER $ODOO_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/odoo/dbexport $ODOO_DATABASE_READONLYUSER $ODOO_DATABASE_READONLYUSER_PASSWORD
   echo "Odoo Initialization complete!"
   echo "Restarting stack..."
   updateStackEnv odoo outputEnvOdoo > /dev/null 2>&1
@@ -71308,6 +74412,7 @@ function installCalcom()
   sleep 3
   docker exec calcom-db /dbexport/setupDBSettings.sh
   rm -f $HSHQ_STACKS_DIR/calcom/dbexport/setupDBSettings.sh
+  addReadOnlyUserToDatabase Calcom postgres calcom-db $CALCOM_DATABASE_NAME $CALCOM_DATABASE_USER $CALCOM_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/calcom/dbexport $CALCOM_DATABASE_READONLYUSER $CALCOM_DATABASE_READONLYUSER_PASSWORD
   startStopStack calcom stop
   startStopStack calcom start
   set -e
@@ -71569,10 +74674,6 @@ function installRallly()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName rallly-createbuckets)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/rallly
   mkdir $HSHQ_STACKS_DIR/rallly/db
@@ -71597,6 +74698,7 @@ function installRallly()
   sleep 3
   docker exec rallly-db /dbexport/setupDBSettings.sh
   rm -f $HSHQ_STACKS_DIR/rallly/dbexport/setupDBSettings.sh
+  addReadOnlyUserToDatabase Rallly postgres rallly-db $RALLLY_DATABASE_NAME $RALLLY_DATABASE_USER $RALLLY_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/rallly/dbexport $RALLLY_DATABASE_READONLYUSER $RALLLY_DATABASE_READONLYUSER_PASSWORD
   startStopStack rallly stop
   startStopStack rallly start
   set -e
@@ -71698,6 +74800,21 @@ services:
     networks:
       - dock-proxy-net
       - int-rallly-net
+    entrypoint: >
+      /bin/sh -c "
+        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\\\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        /usr/bin/mc alias set minio http://rallly-minio:9000 ${RALLLY_MINIO_KEY} ${RALLLY_MINIO_SECRET}
+        echo 'Creating buckets rallly'
+        /usr/bin/mc mb minio/rallly
+        /usr/bin/mc anonymous set public minio/rallly/public
+        wait \\\$MINIO_PID
+      "
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -71705,35 +74822,6 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/rallly/minio:/data
-
-  rallly-createbuckets:
-    image: $(getScriptImageByContainerName rallly-createbuckets)
-    container_name: rallly-createbuckets
-    hostname: rallly-createbuckets
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - rallly-minio
-    networks:
-      - int-rallly-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-    entrypoint: >
-      /bin/sh -c "
-      while ! /usr/bin/mc ready minio;
-      do
-        /usr/bin/mc alias set minio http://rallly-minio:9000 $RALLLY_MINIO_KEY $RALLLY_MINIO_SECRET;
-        echo 'Waiting minio...' && sleep 1;
-      done;
-      /usr/bin/mc mb minio/rallly;
-      /usr/bin/mc anonymous set public minio/rallly/public;
-      exit 0;
-      "
 
 networks:
   dock-proxy-net:
@@ -71832,12 +74920,25 @@ function performUpdateRallly()
       image_update_map[3]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/lukevella/rallly:4.5.7,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
       image_update_map[1]="mirror.gcr.io/lukevella/rallly:4.5.7,mirror.gcr.io/lukevella/rallly:4.5.7"
       image_update_map[2]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
       image_update_map[3]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true fixV2ComposeRallly
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      startStopStack rallly stop
+      sleep 2
+      startStopStack rallly start
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/lukevella/rallly:4.5.7,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
+      image_update_map[1]="mirror.gcr.io/lukevella/rallly:4.5.7,mirror.gcr.io/lukevella/rallly:4.5.7"
+      image_update_map[2]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
     ;;
     *)
       is_upgrade_error=true
@@ -71847,6 +74948,128 @@ function performUpdateRallly()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function fixV2ComposeRallly()
+{
+  rm -f $HOME/rallly-compose.yml
+  cat <<EOFMT > $HOME/rallly-compose.yml
+$STACK_VERSION_PREFIX rallly v3
+
+services:
+  rallly-db:
+    image: mirror.gcr.io/postgres:17.6
+    container_name: rallly-db
+    hostname: rallly-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-rallly-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/rallly/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/rallly/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.rallly-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.rallly-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.rallly-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.rallly-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.rallly-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.rallly-hourly-db.email-from=Rallly Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.rallly-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.rallly-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.rallly-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.rallly-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.rallly-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.rallly-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.rallly-monthly-db.email-from=Rallly Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.rallly-monthly-db.mail-only-on-error=false"
+
+  rallly-app:
+    image: mirror.gcr.io/lukevella/rallly:4.5.7
+    container_name: rallly-app
+    hostname: rallly-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - rallly-db
+    networks:
+      - int-rallly-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  rallly-minio:
+    image: mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: rallly-minio
+    hostname: rallly-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: server /data
+    networks:
+      - dock-proxy-net
+      - int-rallly-net
+    entrypoint: >
+      /bin/sh -c "
+        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\\\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        /usr/bin/mc alias set minio http://rallly-minio:9000 ${RALLLY_MINIO_KEY} ${RALLLY_MINIO_SECRET}
+        echo 'Creating buckets rallly'
+        /usr/bin/mc mb minio/rallly
+        /usr/bin/mc anonymous set public minio/rallly/public
+        wait \\\$MINIO_PID
+      "
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/rallly/minio:/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-rallly-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
 }
 
 # EasyAppointments
@@ -71900,6 +75123,7 @@ function installEasyAppointments()
   echo "Initialization complete!"
   rm -f $HSHQ_STACKS_DIR/easyappointments/dbexport/setupDBSettings.sh
   rm -f $HSHQ_STACKS_DIR/easyappointments/dbexport/initdb.sql
+  addReadOnlyUserToDatabase EasyAppointments mysql easyappointments-db $EASYAPPOINTMENTS_DATABASE_NAME root $EASYAPPOINTMENTS_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/easyappointments/dbexport $EASYAPPOINTMENTS_DATABASE_READONLYUSER $EASYAPPOINTMENTS_DATABASE_READONLYUSER_PASSWORD
   startStopStack easyappointments stop
   startStopStack easyappointments start
   set -e
@@ -72752,10 +75976,6 @@ function installOpenProject()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName openproject-createbuckets)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/openproject
   mkdir $HSHQ_STACKS_DIR/openproject/db
@@ -72779,6 +75999,7 @@ function installOpenProject()
     updateConfigVar OPENPROJECT_INIT_ENV $OPENPROJECT_INIT_ENV
   fi
   sleep 3
+  addReadOnlyUserToDatabase OpenProject postgres openproject-db $OPENPROJECT_DATABASE_NAME $OPENPROJECT_DATABASE_USER $OPENPROJECT_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/openproject/dbexport $OPENPROJECT_DATABASE_READONLYUSER $OPENPROJECT_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN {\n"
@@ -72976,6 +76197,20 @@ services:
 #    networks:
 #      - dock-proxy-net
 #      - int-openproject-net
+#   entrypoint: >
+#     /bin/sh -c "
+#       minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+#       MINIO_PID=\\\$!
+#       while ! curl -s http://localhost:9000/minio/health/live; do
+#         echo 'Waiting for MinIO to start...'
+#         sleep 1
+#       done
+#       sleep 5
+#       /usr/bin/mc alias set minio http://openproject-minio:9000 ${OPENPROJECT_MINIO_KEY} ${OPENPROJECT_MINIO_SECRET}
+#       echo 'Creating bucket openproject'
+#       /usr/bin/mc mb minio/uploads
+#       wait \\\$MINIO_PID
+#     "
 #    volumes:
 #      - /etc/localtime:/etc/localtime:ro
 #      - /etc/timezone:/etc/timezone:ro
@@ -72983,34 +76218,6 @@ services:
 #      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
 #      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 #      - \${PORTAINER_HSHQ_STACKS_DIR}/openproject/minio:/data
-#
-#  openproject-createbuckets:
-#    image: $(getScriptImageByContainerName openproject-createbuckets)
-#    container_name: openproject-createbuckets
-#    hostname: openproject-createbuckets
-#    env_file: stack.env
-#    security_opt:
-#      - no-new-privileges:true
-#    depends_on:
-#      - openproject-minio
-#    networks:
-#      - int-openproject-net
-#    volumes:
-#      - /etc/localtime:/etc/localtime:ro
-#      - /etc/timezone:/etc/timezone:ro
-#      - /etc/ssl/certs:/etc/ssl/certs:ro
-#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-#    entrypoint: >
-#      /bin/sh -c "
-#      while ! /usr/bin/mc ready minio;
-#      do
-#        /usr/bin/mc alias set minio http://openproject-minio:9000 $OPENPROJECT_MINIO_KEY $OPENPROJECT_MINIO_SECRET;
-#        echo 'Waiting minio...' && sleep 1;
-#      done;
-#      /usr/bin/mc mb minio/uploads;
-#      exit 0;
-#      "
 
 volumes:
   v-openproject-data:
@@ -73126,13 +76333,27 @@ function performUpdateOpenProject()
       image_update_map[4]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/openproject/openproject:16.6.2-slim,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="mirror.gcr.io/openproject/openproject:16.6.2-slim,mirror.gcr.io/openproject/openproject:16.6.2-slim"
       image_update_map[2]="mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/memcached:1.6.39-alpine"
       image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
       image_update_map[4]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true fixV2ComposeOpenProject
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      startStopStack openproject stop
+      sleep 2
+      startStopStack openproject start
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/openproject/openproject:16.6.2-slim,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/openproject/openproject:16.6.2-slim,mirror.gcr.io/openproject/openproject:16.6.2-slim"
+      image_update_map[2]="mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/memcached:1.6.39-alpine"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
     ;;
     *)
       is_upgrade_error=true
@@ -73142,6 +76363,234 @@ function performUpdateOpenProject()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function fixV2ComposeOpenProject()
+{
+  rm -f $HOME/openproject-compose.yml
+  cat <<EOFMT > $HOME/openproject-compose.yml
+$STACK_VERSION_PREFIX openproject v3
+
+services:
+  openproject-db:
+    image: mirror.gcr.io/postgres:16.9-bookworm
+    container_name: openproject-db
+    hostname: openproject-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-openproject-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openproject/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openproject/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.openproject-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.openproject-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.openproject-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.openproject-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.openproject-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.openproject-hourly-db.email-from=OpenProject Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.openproject-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.openproject-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.openproject-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.openproject-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.openproject-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.openproject-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.openproject-monthly-db.email-from=OpenProject Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.openproject-monthly-db.mail-only-on-error=false"
+
+  openproject-memcache:
+    image: mirror.gcr.io/memcached:1.6.39-alpine
+    container_name: openproject-memcache
+    hostname: openproject-memcache
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-openproject-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  openproject-web:
+    image: mirror.gcr.io/openproject/openproject:16.6.2-slim
+    container_name: openproject-web
+    hostname: openproject-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: "./docker/prod/web"
+    depends_on:
+      - openproject-db
+      - openproject-memcache
+      - openproject-seeder
+    networks:
+      - int-openproject-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-openproject-data:/var/openproject/assets
+
+  openproject-worker:
+    image: mirror.gcr.io/openproject/openproject:16.6.2-slim
+    container_name: openproject-worker
+    hostname: openproject-worker
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: "./docker/prod/worker"
+    depends_on:
+      - openproject-db
+      - openproject-memcache
+      - openproject-seeder
+    networks:
+      - int-openproject-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-openproject-data:/var/openproject/assets
+
+  openproject-cron:
+    image: mirror.gcr.io/openproject/openproject:16.6.2-slim
+    container_name: openproject-cron
+    hostname: openproject-cron
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: "./docker/prod/cron"
+    depends_on:
+      - openproject-db
+      - openproject-memcache
+      - openproject-seeder
+    networks:
+      - int-openproject-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-openproject-data:/var/openproject/assets
+
+  openproject-seeder:
+    image: mirror.gcr.io/openproject/openproject:16.6.2-slim
+    container_name: openproject-seeder
+    hostname: openproject-seeder
+    restart: on-failure
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: "./docker/prod/seeder"
+    depends_on:
+      - openproject-db
+      - openproject-memcache
+    networks:
+      - int-openproject-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-openproject-data:/var/openproject/assets
+
+#  openproject-minio:
+#    image: mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+#    container_name: openproject-minio
+#    hostname: openproject-minio
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    command: server /data
+#    networks:
+#      - dock-proxy-net
+#      - int-openproject-net
+#   entrypoint: >
+#     /bin/sh -c "
+#       minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+#       MINIO_PID=\\\$!
+#       while ! curl -s http://localhost:9000/minio/health/live; do
+#         echo 'Waiting for MinIO to start...'
+#         sleep 1
+#       done
+#       sleep 5
+#       /usr/bin/mc alias set minio http://openproject-minio:9000 ${OPENPROJECT_MINIO_KEY} ${OPENPROJECT_MINIO_SECRET}
+#       echo 'Creating bucket openproject'
+#       /usr/bin/mc mb minio/uploads
+#       wait \\\$MINIO_PID
+#     "
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+#      - \${PORTAINER_HSHQ_STACKS_DIR}/openproject/minio:/data
+
+volumes:
+  v-openproject-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/openproject/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  int-openproject-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
 }
 
 # Zammad
@@ -73175,10 +76624,6 @@ function installZammad()
     return 1
   fi
   pullImage $(getScriptImageByContainerName zammad-minio)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
-  pullImage $(getScriptImageByContainerName zammad-createbuckets)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -73217,6 +76662,7 @@ function installZammad()
   docker exec zammad-railsserver bash -c "cp /config/auto_wizard.json /opt/zammad/auto_wizard.json;/docker-entrypoint.sh bundle exec rails runner /config/init.rb" > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/zammad/config/auto_wizard.json
   rm -f $HSHQ_STACKS_DIR/zammad/config/init.rb
+  addReadOnlyUserToDatabase Zammad postgres zammad-db $ZAMMAD_DATABASE_NAME $ZAMMAD_DATABASE_USER $ZAMMAD_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/zammad/dbexport $ZAMMAD_DATABASE_READONLYUSER $ZAMMAD_DATABASE_READONLYUSER_PASSWORD
   #echo "Restarting stack..."
   #startStopStack zammad stop
   #sleep 3
@@ -73651,6 +77097,20 @@ services:
 #    networks:
 #      - dock-proxy-net
 #      - int-zammad-net
+#   entrypoint: >
+#     /bin/sh -c "
+#       minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+#       MINIO_PID=\\\$!
+#       while ! curl -s http://localhost:9000/minio/health/live; do
+#         echo 'Waiting for MinIO to start...'
+#         sleep 1
+#       done
+#       sleep 5
+#       /usr/bin/mc alias set minio http://zammad-minio:9000 ${ZAMMAD_MINIO_KEY} ${ZAMMAD_MINIO_SECRET}
+#       echo 'Creating bucket zammad'
+#       /usr/bin/mc mb minio/zammad
+#       wait \\\$MINIO_PID
+#     "
 #    volumes:
 #      - /etc/localtime:/etc/localtime:ro
 #      - /etc/timezone:/etc/timezone:ro
@@ -73658,34 +77118,6 @@ services:
 #      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
 #      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 #      - \${PORTAINER_HSHQ_STACKS_DIR}/zammad/minio:/data
-#
-#  zammad-createbuckets:
-#    image: $(getScriptImageByContainerName zammad-createbuckets)
-#    container_name: zammad-createbuckets
-#    hostname: zammad-createbuckets
-#    env_file: stack.env
-#    security_opt:
-#      - no-new-privileges:true
-#    depends_on:
-#      - zammad-minio
-#    networks:
-#      - int-zammad-net
-#    volumes:
-#      - /etc/localtime:/etc/localtime:ro
-#      - /etc/timezone:/etc/timezone:ro
-#      - /etc/ssl/certs:/etc/ssl/certs:ro
-#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-#    entrypoint: >
-#      /bin/sh -c "
-#      while ! /usr/bin/mc ready minio;
-#      do
-#        /usr/bin/mc alias set minio http://zammad-minio:9000 $ZAMMAD_MINIO_KEY $ZAMMAD_MINIO_SECRET;
-#        echo 'Waiting minio...' && sleep 1;
-#      done;
-#      /usr/bin/mc mb minio/zammad;
-#      exit 0;
-#      "
 
 volumes:
   v-zammad-storage:
@@ -73822,7 +77254,7 @@ function performUpdateZammad()
       image_update_map[6]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/zammad/zammad:6.5.2-49,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/elasticsearch:9.2.2,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="ghcr.io/zammad/zammad:6.5.2-49,ghcr.io/zammad/zammad:6.5.2-49"
@@ -73831,6 +77263,22 @@ function performUpdateZammad()
       image_update_map[4]="mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/memcached:1.6.39-alpine"
       image_update_map[5]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
       image_update_map[6]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true fixV2ComposeZammad
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      startStopStack zammad stop
+      sleep 2
+      startStopStack zammad start
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/zammad/zammad:6.5.2-49,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/elasticsearch:9.2.2,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="ghcr.io/zammad/zammad:6.5.2-49,ghcr.io/zammad/zammad:6.5.2-49"
+      image_update_map[2]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
+      image_update_map[3]="mirror.gcr.io/elasticsearch:9.2.2,mirror.gcr.io/elasticsearch:9.2.2"
+      image_update_map[4]="mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/memcached:1.6.39-alpine"
+      image_update_map[5]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
     ;;
     *)
       is_upgrade_error=true
@@ -73840,6 +77288,324 @@ function performUpdateZammad()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function fixV2ComposeZammad()
+{
+  rm -f $HOME/zammad-compose.yml
+  cat <<EOFMT > $HOME/zammad-compose.yml
+$STACK_VERSION_PREFIX zammad v3
+
+services:
+  zammad-db:
+    image: mirror.gcr.io/postgres:16.9-bookworm
+    container_name: zammad-db
+    hostname: zammad-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-zammad-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/zammad/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/zammad/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.zammad-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.zammad-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.zammad-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.zammad-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.zammad-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.zammad-hourly-db.email-from=Zammad Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.zammad-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.zammad-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.zammad-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.zammad-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.zammad-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.zammad-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.zammad-monthly-db.email-from=Zammad Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.zammad-monthly-db.mail-only-on-error=false"
+
+  zammad-init:
+    image: ghcr.io/zammad/zammad:6.5.2-49
+    container_name: zammad-init
+    hostname: zammad-init
+    restart: on-failure
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-init
+    depends_on:
+      - zammad-db
+    networks:
+      - int-zammad-net
+      - dock-internalmail-net
+      - dock-ldap-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-zammad-storage:/opt/zammad/storage
+
+  zammad-backup:
+    image: ghcr.io/zammad/zammad:6.5.2-49
+    container_name: zammad-backup
+    hostname: zammad-backup
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-backup
+    depends_on:
+      - zammad-db
+    networks:
+      - int-zammad-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-zammad-storage:/opt/zammad/storage
+      - v-zammad-backup:/var/tmp/zammad
+
+  zammad-nginx:
+    image: ghcr.io/zammad/zammad:6.5.2-49
+    container_name: zammad-nginx
+    hostname: zammad-nginx
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-nginx
+    depends_on:
+      - zammad-railsserver
+    networks:
+      - int-zammad-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-zammad-storage:/opt/zammad/storage
+
+  zammad-railsserver:
+    image: ghcr.io/zammad/zammad:6.5.2-49
+    container_name: zammad-railsserver
+    hostname: zammad-railsserver
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-railsserver
+    depends_on:
+      - zammad-db
+    networks:
+      - int-zammad-net
+      - dock-proxy-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/zammad/config:/config
+      - v-zammad-storage:/opt/zammad/storage
+
+  zammad-scheduler:
+    image: ghcr.io/zammad/zammad:6.5.2-49
+    container_name: zammad-scheduler
+    hostname: zammad-scheduler
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-scheduler
+    depends_on:
+      - zammad-db
+    networks:
+      - int-zammad-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-zammad-storage:/opt/zammad/storage
+
+  zammad-websocket:
+    image: ghcr.io/zammad/zammad:6.5.2-49
+    container_name: zammad-websocket
+    hostname: zammad-websocket
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-websocket
+    depends_on:
+      - zammad-db
+    networks:
+      - int-zammad-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-zammad-storage:/opt/zammad/storage
+
+  zammad-memcache:
+    image: mirror.gcr.io/memcached:1.6.39-alpine
+    container_name: zammad-memcache
+    hostname: zammad-memcache
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: memcached -m 256M
+    networks:
+      - int-zammad-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  zammad-redis:
+    image: mirror.gcr.io/redis:8.4.0-bookworm
+    container_name: zammad-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $ZAMMAD_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-zammad-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-zammad-redis:/data
+
+#  zammad-es:
+#    image: mirror.gcr.io/elasticsearch:9.2.2
+#    container_name: zammad-es
+#    hostname: zammad-es
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    mem_limit: 2g
+#    networks:
+#      - int-zammad-net
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - v-zammad-es:/usr/share/elasticsearch/data
+
+# If enabling minio, ensure to add this to environment variables:
+# S3_URL=http://$ZAMMAD_MINIO_KEY:$ZAMMAD_MINIO_SECRET@zammad-minio:9000/zammad?region=zammad&force_path_style=true
+#
+#  zammad-minio:
+#    image: mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+#    container_name: zammad-minio
+#    hostname: zammad-minio
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    command: server /data
+#    networks:
+#      - dock-proxy-net
+#      - int-zammad-net
+#   entrypoint: >
+#     /bin/sh -c "
+#       minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+#       MINIO_PID=\\\$!
+#       while ! curl -s http://localhost:9000/minio/health/live; do
+#         echo 'Waiting for MinIO to start...'
+#         sleep 1
+#       done
+#       sleep 5
+#       /usr/bin/mc alias set minio http://zammad-minio:9000 ${ZAMMAD_MINIO_KEY} ${ZAMMAD_MINIO_SECRET}
+#       echo 'Creating bucket zammad'
+#       /usr/bin/mc mb minio/zammad
+#       wait \\\$MINIO_PID
+#     "
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+#      - \${PORTAINER_HSHQ_STACKS_DIR}/zammad/minio:/data
+
+volumes:
+  v-zammad-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/zammad/storage
+  v-zammad-backup:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/zammad/backup
+  v-zammad-es:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/zammad/es
+  v-zammad-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/zammad/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  int-zammad-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
 }
 
 # Zulip
@@ -73901,6 +77667,7 @@ function installZulip()
   set +e
   docker exec -u zulip zulip-app bash -c "/data/settings/etc-zulip/initRealm.sh" > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/zulip/config/initRealm.sh
+  addReadOnlyUserToDatabase Zulip postgres zulip-db $ZULIP_DATABASE_NAME $ZULIP_DATABASE_USER $ZULIP_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/zulip/dbexport $ZULIP_DATABASE_READONLYUSER $ZULIP_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN {\n"
@@ -75151,6 +78918,8 @@ function installKillBill()
     updateConfigVar KILLBILL_INIT_ENV $KILLBILL_INIT_ENV
   fi
   sleep 3
+  addReadOnlyUserToDatabase KillBill mysql killbill-db $KILLBILL_KB_DATABASE_NAME root $KILLBILL_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/killbill/dbexport $KILLBILL_KB_DATABASE_READONLYUSER $KILLBILL_KB_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase KillBill mysql killbill-db $KILLBILL_KAUI_DATABASE_NAME root $KILLBILL_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/killbill/dbexport $KILLBILL_KAUI_DATABASE_READONLYUSER $KILLBILL_KAUI_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_KILLBILL_API.$HOMESERVER_DOMAIN {\n"
@@ -75458,6 +79227,7 @@ EOFWZ
   updateConfigVar INVOICESHELF_INIT_ENV $INVOICESHELF_INIT_ENV
   sleep 3
   docker exec invoiceshelf-app bash -c "chmod -R 775 /var/www/html/storage;chmod -R 775 /var/www/html/bootstrap"
+  addReadOnlyUserToDatabase InvoiceShelf mysql invoiceshelf-db $INVOICESHELF_DATABASE_NAME root $INVOICESHELF_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/invoiceshelf/dbexport $INVOICESHELF_DATABASE_READONLYUSER $INVOICESHELF_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN {\n"
@@ -75663,10 +79433,6 @@ function installInvoiceNinja()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName invoiceninja-createbuckets)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/invoiceninja
   mkdir $HSHQ_STACKS_DIR/invoiceninja/config
@@ -75699,6 +79465,7 @@ function installInvoiceNinja()
   fi
   sleep 3
   docker exec invoiceninja-app bash -c "php artisan optimize;php artisan config:clear;php artisan optimize:clear;php artisan cache:clear" > /dev/null 2>&1
+  addReadOnlyUserToDatabase InvoiceNinja mysql invoiceninja-db $INVOICENINJA_DATABASE_NAME root $INVOICENINJA_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/invoiceninja/dbexport $INVOICENINJA_DATABASE_READONLYUSER $INVOICENINJA_DATABASE_READONLYUSER_PASSWORD
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN {\n"
@@ -75845,6 +79612,20 @@ services:
 #    networks:
 #      - dock-proxy-net
 #      - int-invoiceninja-net
+#   entrypoint: >
+#     /bin/sh -c "
+#       minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+#       MINIO_PID=\\\$!
+#       while ! curl -s http://localhost:9000/minio/health/live; do
+#         echo 'Waiting for MinIO to start...'
+#         sleep 1
+#       done
+#       sleep 5
+#       /usr/bin/mc alias set minio http://invoiceninja-minio:9000 ${INVOICENINJA_MINIO_KEY} ${INVOICENINJA_MINIO_SECRET}
+#       echo 'Creating bucket invoiceninja'
+#       /usr/bin/mc mb minio/invoiceninja
+#       wait \\\$MINIO_PID
+#     "
 #    volumes:
 #      - /etc/localtime:/etc/localtime:ro
 #      - /etc/timezone:/etc/timezone:ro
@@ -75852,34 +79633,6 @@ services:
 #      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
 #      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 #      - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/minio:/data
-#
-#  invoiceninja-createbuckets:
-#    image: $(getScriptImageByContainerName invoiceninja-createbuckets)
-#    container_name: invoiceninja-createbuckets
-#    hostname: invoiceninja-createbuckets
-#    env_file: stack.env
-#    security_opt:
-#      - no-new-privileges:true
-#    depends_on:
-#      - invoiceninja-minio
-#    networks:
-#      - int-invoiceninja-net
-#    volumes:
-#      - /etc/localtime:/etc/localtime:ro
-#      - /etc/timezone:/etc/timezone:ro
-#      - /etc/ssl/certs:/etc/ssl/certs:ro
-#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-#    entrypoint: >
-#      /bin/sh -c "
-#      while ! /usr/bin/mc ready minio;
-#      do
-#        /usr/bin/mc alias set minio http://invoiceninja-minio:9000 $INVOICENINJA_MINIO_KEY $INVOICENINJA_MINIO_SECRET;
-#        echo 'Waiting minio...' && sleep 1;
-#      done;
-#      /usr/bin/mc mb minio/invoiceninja;
-#      exit 0;
-#      "
 
 volumes:
   v-invoiceninja-db:
@@ -76057,7 +79810,7 @@ function performUpdateInvoiceNinja()
       image_update_map[5]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37,mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
       image_update_map[1]="mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37,mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37"
@@ -76065,6 +79818,21 @@ function performUpdateInvoiceNinja()
       image_update_map[3]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
       image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
       image_update_map[5]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true fixV2ComposeInvoiceNinja
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      startStopStack invoiceninja stop
+      sleep 2
+      startStopStack invoiceninja start
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37,mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37,mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37"
+      image_update_map[2]="mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
+      image_update_map[3]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
+      image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
     ;;
     *)
       is_upgrade_error=true
@@ -76074,6 +79842,200 @@ function performUpdateInvoiceNinja()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function fixV2ComposeInvoiceNinja()
+{
+  rm -f $HOME/invoiceninja-compose.yml
+  cat <<EOFMT > $HOME/invoiceninja-compose.yml
+$STACK_VERSION_PREFIX invoiceninja v3
+
+services:
+  invoiceninja-db:
+    image: mirror.gcr.io/mariadb:10.7.3
+    container_name: invoiceninja-db
+    hostname: invoiceninja-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    networks:
+      - int-invoiceninja-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-invoiceninja-db:/var/lib/mysql
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.invoiceninja-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.invoiceninja-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.invoiceninja-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.invoiceninja-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.invoiceninja-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.invoiceninja-hourly-db.email-from=InvoiceNinja Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.invoiceninja-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.invoiceninja-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.invoiceninja-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.invoiceninja-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.invoiceninja-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.invoiceninja-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.invoiceninja-monthly-db.email-from=InvoiceNinja Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.invoiceninja-monthly-db.mail-only-on-error=false"
+
+  invoiceninja-app:
+    image: mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37
+    container_name: invoiceninja-app
+    hostname: invoiceninja-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - invoiceninja-db
+    networks:
+      - int-invoiceninja-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      #- \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/config/env:/var/www/html/.env
+      #- \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/config/php.ini:/usr/local/etc/php/conf.d/invoiceninja.ini:ro
+      #- \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/config/php-fpm.conf:/usr/local/etc/php-fpm.d/invoiceninja.conf:ro
+      #- \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/config/supervisord.conf:/etc/supervisor/conf.d/supervisord.conf:ro
+      - v-invoiceninja-public:/var/www/html/public
+      - v-invoiceninja-storage:/var/www/html/storage
+
+  invoiceninja-web:
+    image: mirror.gcr.io/nginx:1.29.3-alpine
+    container_name: invoiceninja-web
+    hostname: invoiceninja-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - invoiceninja-db
+    networks:
+      - int-invoiceninja-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/nginx:/etc/nginx/conf.d:ro
+      - v-invoiceninja-public:/var/www/html/public
+      - v-invoiceninja-storage:/var/www/html/storage
+
+  invoiceninja-redis:
+    image: mirror.gcr.io/redis:8.4.0-bookworm
+    container_name: invoiceninja-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $INVOICENINJA_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-invoiceninja-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-invoiceninja-redis:/data
+
+#  To enable, set FILESYSTEM_DRIVER=s3 in environment. However,
+#  this feature is inop at the moment.
+#
+#  invoiceninja-minio:
+#    image: mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+#    container_name: invoiceninja-minio
+#    hostname: invoiceninja-minio
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    command: server /data
+#    networks:
+#      - dock-proxy-net
+#      - int-invoiceninja-net
+#   entrypoint: >
+#     /bin/sh -c "
+#       minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+#       MINIO_PID=\\\$!
+#       while ! curl -s http://localhost:9000/minio/health/live; do
+#         echo 'Waiting for MinIO to start...'
+#         sleep 1
+#       done
+#       sleep 5
+#       /usr/bin/mc alias set minio http://invoiceninja-minio:9000 ${INVOICENINJA_MINIO_KEY} ${INVOICENINJA_MINIO_SECRET}
+#       echo 'Creating bucket invoiceninja'
+#       /usr/bin/mc mb minio/invoiceninja
+#       wait \\\$MINIO_PID
+#     "
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+#      - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/minio:/data
+
+volumes:
+  v-invoiceninja-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/db
+  v-invoiceninja-public:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/public
+  v-invoiceninja-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/storage
+  v-invoiceninja-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/invoiceninja/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-invoiceninja-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
 }
 
 # Dolibarr
@@ -76131,6 +80093,7 @@ function installDolibarr()
   docker exec dolibarr-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/dolibarr/dbexport/setupDBSettings.sh
   rm -f $HSHQ_STACKS_DIR/dolibarr/dbexport/initdb.sql
+  addReadOnlyUserToDatabase Dolibarr mysql dolibarr-db $DOLIBARR_DATABASE_NAME root $DOLIBARR_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/dolibarr/dbexport $DOLIBARR_DATABASE_READONLYUSER $DOLIBARR_DATABASE_READONLYUSER_PASSWORD
   #echo "Restarting Dolibarr..."
   #docker container restart dolibarr-app > /dev/null 2>&1
   set -e
@@ -76540,6 +80503,7 @@ function installn8n()
   sleep 3
   docker exec n8n-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/n8n/dbexport/setupDBSettings.sh
+  addReadOnlyUserToDatabase n8n postgres n8n-db $N8N_DATABASE_NAME $N8N_DATABASE_USER $N8N_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/n8n/dbexport $N8N_DATABASE_READONLYUSER $N8N_DATABASE_READONLYUSER_PASSWORD
   docker container restart n8n-app
   set -e
   inner_block=""
@@ -76859,13 +80823,14 @@ function installAutomatisch()
     updateConfigVar AUTOMATISCH_INIT_ENV $AUTOMATISCH_INIT_ENV
   fi
   sleep 3
+  docker exec automatisch-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/automatisch/dbexport/setupDBSettings.sh
+  addReadOnlyUserToDatabase Automatisch postgres automatisch-db $AUTOMATISCH_DATABASE_NAME $AUTOMATISCH_DATABASE_USER $AUTOMATISCH_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/automatisch/dbexport $AUTOMATISCH_DATABASE_READONLYUSER $AUTOMATISCH_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_AUTOMATISCH_APP" ]; then
     set +e
     echo "ERROR: Formal name is emtpy, returning..."
     return 1
   fi
-  docker exec automatisch-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
-  rm -f $HSHQ_STACKS_DIR/automatisch/dbexport/setupDBSettings.sh
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_AUTOMATISCH_APP.$HOMESERVER_DOMAIN {\n"
@@ -77150,14 +81115,15 @@ function installActivePieces()
     updateConfigVar ACTIVEPIECES_INIT_ENV $ACTIVEPIECES_INIT_ENV
   fi
   sleep 3
+  docker exec activepieces-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/activepieces/dbexport/setupDBSettings.sh
+  docker container restart activepieces-app > /dev/null 2>&1
+  addReadOnlyUserToDatabase ActivePieces postgres activepieces-db $ACTIVEPIECES_DATABASE_NAME $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/activepieces/dbexport $ACTIVEPIECES_DATABASE_READONLYUSER $ACTIVEPIECES_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_ACTIVEPIECES_APP" ]; then
     set +e
     echo "ERROR: Formal name is emtpy, returning..."
     return 1
   fi
-  docker exec activepieces-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
-  rm -f $HSHQ_STACKS_DIR/activepieces/dbexport/setupDBSettings.sh
-  docker container restart activepieces-app > /dev/null 2>&1
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_ACTIVEPIECES_APP.$HOMESERVER_DOMAIN {\n"
@@ -77321,6 +81287,7 @@ AP_REDIS_PORT=6379
 AP_REDIS_PASSWORD=$ACTIVEPIECES_REDIS_PASSWORD
 AP_FLOW_TIMEOUT_SECONDS=600
 AP_TELEMETRY_ENABLED=false
+AP_SIGN_UP_ENABLED=false
 AP_TEMPLATES_SOURCE_URL="https://cloud.activepieces.com/api/v1/flow-templates"
 AP_SMTP_HOST=$SMTP_HOSTNAME
 AP_SMTP_PORT=465
@@ -77430,7 +81397,7 @@ function installBeszel()
     BESZEL_INIT_ENV=true
     updateConfigVar BESZEL_INIT_ENV $BESZEL_INIT_ENV
   fi
-  sendEmail -s "$FMLNAME_BESZEL_APP Install Instructions" -b "There is one extra action that you must perform manually to enable the Beszel agent on your local system. Here are the steps:\n\n\t1. Log in to the Beszel web UI using the admin credentials (https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN).\n\t2. Go to Settings (press the gear button on top right of window), then to Tokens & Fingerprints.\n\t3. Under the Universal token section, move the toggle button to the right. You should see a UUID for the token, i.e. something like 9df4ceb0-af96-413a-ab2b-7246cca7422c, etc.\n\t4. Select this generated value and copy it to the clipboard.\n\t5. Go to Portainer (https://$SUB_PORTAINER.$HOMESERVER_DOMAIN), and open up the beszel stack.\n\t6. Select the Editor tab, then in the docker-compose area scoll halfway down to the beszel-agent container.\n\t7. At the end of that block is an environment section with a single variable, TOKEN. It should be assigned to nothing, i.e. - TOKEN=. Paste the generated token from the clipboard on the RHS, i.e. it should then look like this: - TOKEN=9df4ceb0-af96-413a-ab2b-7246cca7422c\n\t8. After pasting the value, scroll down and press the Update the stack button. Your local system should not be connected to the hub. Go back to Beszel and refresh the page (click the word Beszel on top left corner of window to go to the home landing page)." -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  sendEmail -s "$FMLNAME_BESZEL_APP Install Instructions" -b "There is one extra action that you must perform manually to enable the Beszel agent on your local system. Here are the steps:\n\n\t1. Log in to the Beszel web UI using the admin credentials (https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN).\n\t2. Go to Settings (press the gear button on top right of window), then to Tokens & Fingerprints.\n\t3. Under the Universal token section, move the toggle button to the right. You should see a UUID for the token, i.e. something like 9df4ceb0-af96-413a-ab2b-7246cca7422c, etc.\n\t4. Select this generated value and copy it to the clipboard.\n\t5. Go to Portainer (https://$SUB_PORTAINER.$HOMESERVER_DOMAIN), and open up the beszel stack.\n\t6. Select the Editor tab, then in the docker-compose area scoll halfway down to the beszel-agent container.\n\t7. At the end of that block is an environment section with a single variable, TOKEN. It should be assigned to nothing, i.e. - TOKEN=. Paste the generated token from the clipboard on the RHS, i.e. it should then look like this: - TOKEN=9df4ceb0-af96-413a-ab2b-7246cca7422c\n\t8. After pasting the value, scroll down and press the Update the stack button. Your local system should now be connected to the hub. Go back to Beszel and refresh the page (click the word Beszel on top left corner of window to go to the home landing page)." -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
   sleep 3
   beszel_app_key=$(sudo ssh-keygen -y -f $HSHQ_STACKS_DIR/beszel/hubdata/id_ed25519)
   #beszel_app_token=$(sqlite3 $HSHQ_STACKS_DIR/beszel/hubdata/data.db "select token from fingerprints limit 1;")
@@ -77663,6 +81630,7 @@ function installTaiga()
   sleep 3
   set +e
   docker exec -it taiga-back bash -c "export DJANGO_SUPERUSER_PASSWORD=$TAIGA_ADMIN_PASSWORD;python manage.py createsuperuser --username=$TAIGA_ADMIN_USERNAME --email $TAIGA_ADMIN_EMAIL_ADDRESS --noinput" > /dev/null 2>&1
+  addReadOnlyUserToDatabase Taiga postgres taiga-db $TAIGA_DATABASE_NAME $TAIGA_DATABASE_USER $TAIGA_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/taiga/dbexport $TAIGA_DATABASE_READONLYUSER $TAIGA_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_TAIGA_APP" ]; then
     set +e
     echo "ERROR: Formal name is emtpy, returning..."
@@ -78128,6 +82096,7 @@ function installOpenSign()
     updateConfigVar OPENSIGN_INIT_ENV $OPENSIGN_INIT_ENV
   fi
   sleep 3
+  addReadOnlyUserToDatabase OpenSign mongodb opensign-db $OPENSIGN_DATABASE_NAME $OPENSIGN_DATABASE_USER $OPENSIGN_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/opensign/dbexport $OPENSIGN_DATABASE_READONLYUSER $OPENSIGN_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_OPENSIGN_APP" ]; then
     set +e
     echo "ERROR: Formal name is emtpy, returning..."
@@ -78176,7 +82145,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    command: mongod --logpath /dev/null --oplogSize 128 --quiet --auth
+    command: mongod --oplogSize 128 --quiet --auth
     networks:
       - int-opensign-net
       - dock-dbs-net
@@ -78367,6 +82336,7 @@ function installDocuSeal()
     updateConfigVar DOCUSEAL_INIT_ENV $DOCUSEAL_INIT_ENV
   fi
   sleep 3
+  addReadOnlyUserToDatabase DocuSeal postgres docuseal-db $DOCUSEAL_DATABASE_NAME $DOCUSEAL_DATABASE_USER $DOCUSEAL_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/docuseal/dbexport $DOCUSEAL_DATABASE_READONLYUSER $DOCUSEAL_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_DOCUSEAL_APP" ]; then
     set +e
     echo "ERROR: Formal name is emtpy, returning..."
@@ -78562,6 +82532,7 @@ function installControlR()
     updateConfigVar CONTROLR_INIT_ENV $CONTROLR_INIT_ENV
   fi
   sleep 3
+  addReadOnlyUserToDatabase ControlR postgres controlr-db $CONTROLR_DATABASE_NAME $CONTROLR_DATABASE_USER $CONTROLR_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/controlr/dbexport $CONTROLR_DATABASE_READONLYUSER $CONTROLR_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_CONTROLR_APP" ]; then
     set +e
     echo "ERROR: Formal name is emtpy, returning..."
@@ -78821,6 +82792,7 @@ function installAkaunting()
     updateConfigVar AKAUNTING_INIT_ENV $AKAUNTING_INIT_ENV
   fi
   sleep 3
+  addReadOnlyUserToDatabase Akaunting mysql akaunting-db $AKAUNTING_DATABASE_NAME root $AKAUNTING_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/akaunting/dbexport $AKAUNTING_DATABASE_READONLYUSER $AKAUNTING_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_AKAUNTING_APP" ]; then
     set +e
     echo "ERROR: Formal name is emtpy, returning..."
@@ -79035,6 +83007,7 @@ function installAxelor()
     updateConfigVar AXELOR_INIT_ENV $AXELOR_INIT_ENV
   fi
   sleep 3
+  addReadOnlyUserToDatabase Axelor postgres axelor-db $AXELOR_DATABASE_NAME $AXELOR_DATABASE_USER $AXELOR_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/axelor/dbexport $AXELOR_DATABASE_READONLYUSER $AXELOR_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_AXELOR_APP" ]; then
     set +e
     echo "ERROR: Formal name is emtpy, returning..."
@@ -79536,6 +83509,10110 @@ function performUpdateKopia()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# LocalAI
+function installLocalAI()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory localai "LocalAI"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName localai-server)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName localai-recall)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName localai-lrhealth)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName localai-dind)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName localai-agi)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildImageLocalAISSHBoxV1
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/localai
+  mkdir $HSHQ_STACKS_DIR/localai/agi
+  mkdir $HSHQ_STACKS_DIR/localai/assets
+  mkdir $HSHQ_STACKS_DIR/localai/backends
+  mkdir $HSHQ_STACKS_DIR/localai/config
+  mkdir $HSHQ_STACKS_DIR/localai/db
+  mkdir $HSHQ_STACKS_DIR/localai/dind
+  mkdir $HSHQ_STACKS_DIR/localai/images
+  mkdir -p $HSHQ_NONBACKUP_DIR/aimodels
+  initServicesCredentials
+  set +e
+  outputConfigLocalAI
+  installStack localai localai-server "" $HOME/localai.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$LOCALAI_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_LOCALAI_SERVER Admin Login Info" -b "$FMLNAME_LOCALAI_SERVER Admin Username: $LOCALAI_ADMIN_USERNAME\n$FMLNAME_LOCALAI_SERVER Admin Email: $LOCALAI_ADMIN_EMAIL_ADDRESS\n$FMLNAME_LOCALAI_SERVER Admin Password: $LOCALAI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    LOCALAI_INIT_ENV=true
+    updateConfigVar LOCALAI_INIT_ENV $LOCALAI_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_LOCALAI_SERVER" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSPREFLIGHT\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWCORS\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://localai-server:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_LOCALAI_SERVER $MANAGETLS_LOCALAI_SERVER "$is_integrate_hshq" $NETDEFAULT_LOCALAI_SERVER "$inner_block"
+  insertSubAuthelia $SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN bypass
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_LOCALAI_RECALL.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://localai-recall:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_LOCALAI_RECALL $MANAGETLS_LOCALAI_RECALL "$is_integrate_hshq" $NETDEFAULT_LOCALAI_RECALL "$inner_block"
+  insertSubAuthelia $SUB_LOCALAI_RECALL.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_LOCALAI_AGI.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://localai-agi:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_LOCALAI_AGI $MANAGETLS_LOCALAI_AGI "$is_integrate_hshq" $NETDEFAULT_LOCALAI_AGI "$inner_block"
+  insertSubAuthelia $SUB_LOCALAI_AGI.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll localai "$FMLNAME_LOCALAI_SERVER" $USERTYPE_LOCALAI_SERVER "https://$SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN" "localai.png" "$(getHeimdallOrderFromSub $SUB_LOCALAI_SERVER $USERTYPE_LOCALAI_SERVER)"
+    insertEnableSvcAll localai "$FMLNAME_LOCALAI_RECALL" $USERTYPE_LOCALAI_RECALL "https://$SUB_LOCALAI_RECALL.$HOMESERVER_DOMAIN" "localrecall.png" "$(getHeimdallOrderFromSub $SUB_LOCALAI_RECALL $USERTYPE_LOCALAI_RECALL)"
+    insertEnableSvcAll localai "$FMLNAME_LOCALAI_AGI" $USERTYPE_LOCALAI_AGI "https://$SUB_LOCALAI_AGI.$HOMESERVER_DOMAIN" "localagi.png" "$(getHeimdallOrderFromSub $SUB_LOCALAI_AGI $USERTYPE_LOCALAI_AGI)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigLocalAI()
+{
+  cat <<EOFMT > $HOME/localai-compose.yml
+$STACK_VERSION_PREFIX localai $(getScriptStackVersion localai)
+
+services:
+  localai-server:
+    image: $(getScriptImageByContainerName localai-server)
+    container_name: localai-server
+    hostname: localai-server
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-localai-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-H", "Authorization: Bearer $LOCALAI_API_KEY", "http://localhost:8080/readyz"]
+      interval: 60s
+      timeout: 10m
+      retries: 120
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/localai:/models
+      - \${PORTAINER_HSHQ_STACKS_DIR}/localai/backends:/backends
+      - \${PORTAINER_HSHQ_STACKS_DIR}/localai/config:/configuration
+      - \${PORTAINER_HSHQ_STACKS_DIR}/localai/images:/tmp/generated/images
+
+  localai-recall:
+    image: $(getScriptImageByContainerName localai-recall)
+    container_name: localai-recall
+    hostname: localai-recall
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-localai-net
+      - dock-proxy-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/localai/db:/db
+      - \${PORTAINER_HSHQ_STACKS_DIR}/localai/assets:/assets
+
+  localai-sshbox:
+    image: $(getScriptImageByContainerName localai-sshbox)
+    container_name: localai-sshbox
+    hostname: localai-sshbox
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-localai-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    environment:
+      - SSH_USER=root
+      - SSH_PASSWORD=$LOCALAI_SSHBOX_PASSWORD
+
+  localai-dind:
+    image: $(getScriptImageByContainerName localai-dind)
+    container_name: localai-dind
+    hostname: localai-dind
+    restart: unless-stopped
+    privileged: true
+    networks:
+      - int-localai-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/localai/dind:/var/lib/docker
+    environment:
+      - DOCKER_TLS_CERTDIR=""
+
+  localai-agi:
+    image: $(getScriptImageByContainerName localai-agi)
+    container_name: localai-agi
+    hostname: localai-agi
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-localai-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/localai/agi:/pool
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-privateip-net:
+    name: dock-privateip
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-localai-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/localai.env
+TZ=\${PORTAINER_TZ}
+DEBUG=true
+DOCKER_HOST=tcp://localai-dind:2375
+LOCALAI_API_KEY=$LOCALAI_API_KEY
+LOCALAI_MAX_ACTIVE_BACKENDS=4
+COLLECTION_DB_PATH=/db
+EMBEDDING_MODEL=granite-embedding-107m-multilingual
+FILE_ASSETS=/assets
+OPENAI_API_KEY=$LOCALAI_API_KEY
+OPENAI_BASE_URL=http://localai-server:8080
+LOCALAGI_MODEL=gemma-3-4b-it-qat
+LOCALAGI_MULTIMODAL_MODEL=moondream2-20250414
+LOCALAGI_IMAGE_MODEL=sd-1.5-ggml
+LOCALAGI_LLM_API_URL=http://localai-server:8080
+LOCALAGI_LLM_API_KEY=$LOCALAI_API_KEY
+LOCALAGI_LOCALRAG_URL=http://localai-recall:8080
+LOCALAGI_STATE_DIR=/pool
+LOCALAGI_TIMEOUT=5m
+LOCALAGI_ENABLE_CONVERSATIONS_LOGGING=false
+LOCALAGI_SSHBOX_URL=root:$LOCALAI_SSHBOX_PASSWORD@localai-sshbox:22
+EOFMT
+}
+
+function performUpdateLocalAI()
+{
+  perform_stack_name=localai
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/localai/localai:v3.8.0-aio-gpu-hipblas,quay.io/mudler/localrecall:v0.4.1,mirror.gcr.io/busybox:1.37.0,sshbox:v1,mirror.gcr.io/docker:29.1.3-dind,quay.io/mudler/localagi:v2.6.0
+      image_update_map[0]="mirror.gcr.io/localai/localai:v3.8.0-aio-gpu-hipblas,mirror.gcr.io/localai/localai:v3.8.0-aio-gpu-hipblas"
+      image_update_map[1]="quay.io/mudler/localrecall:v0.4.1,quay.io/mudler/localrecall:v0.4.1"
+      image_update_map[2]="mirror.gcr.io/busybox:1.37.0,mirror.gcr.io/busybox:1.37.0"
+      image_update_map[3]="sshbox:v1,sshbox:v1"
+      image_update_map[4]="mirror.gcr.io/docker:29.1.3-dind,mirror.gcr.io/docker:29.1.3-dind"
+      image_update_map[5]="quay.io/mudler/localagi:v2.6.0,quay.io/mudler/localagi:v2.6.0"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function buildImageLocalAISSHBoxV1()
+{
+  set +e
+  sudo rm -fr $HSHQ_BUILD_DIR/localaisshbox
+  mkdir $HSHQ_BUILD_DIR/localaisshbox
+  # This Dockerfile is copied directly from https://github.com/mudler/LocalAGI/blob/main/Dockerfile.sshbox
+  # Since it is so small and unlikely to change, we'll just
+  # avoid the git clone and thus decrease pof.
+  cat <<EOFMT > $HSHQ_BUILD_DIR/localaisshbox/Dockerfile
+# Final stage
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    tzdata \
+    docker.io \
+    bash \
+    wget \
+    curl \
+    openssh-server \
+    sudo
+
+# Configure SSH
+RUN mkdir /var/run/sshd
+RUN echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config
+
+# Create startup script
+RUN echo '#!/bin/bash\n\
+if [ -n "\$SSH_USER" ]; then\n\
+    if [ "\$SSH_USER" = "root" ]; then\n\
+        echo "PermitRootLogin yes" >> /etc/ssh/sshd_config\n\
+        if [ -n "\$SSH_PASSWORD" ]; then\n\
+            echo "root:\$SSH_PASSWORD" | chpasswd\n\
+        fi\n\
+    else\n\
+        echo "PermitRootLogin no" >> /etc/ssh/sshd_config\n\
+        useradd -m -s /bin/bash \$SSH_USER\n\
+        if [ -n "\$SSH_PASSWORD" ]; then\n\
+            echo "\$SSH_USER:\$SSH_PASSWORD" | chpasswd\n\
+        fi\n\
+        if [ -n "\$SUDO_ACCESS" ] && [ "\$SUDO_ACCESS" = "true" ]; then\n\
+            echo "\$SSH_USER ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/\$SSH_USER\n\
+        fi\n\
+    fi\n\
+fi\n\
+/usr/sbin/sshd -D' > /start.sh
+
+RUN chmod +x /start.sh
+
+EXPOSE 22
+
+CMD ["/start.sh"]
+EOFMT
+  docker build -t hshq/sshbox:v1 $HSHQ_BUILD_DIR/localaisshbox
+  retVal=$?
+  sudo rm -fr $HSHQ_BUILD_DIR/localaisshbox
+  return $retVal
+}
+
+# ComfyUI
+function installComfyUI()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory comfyui "ComfyUI"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName comfyui-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/comfyui
+  mkdir $HSHQ_STACKS_DIR/comfyui/models
+  mkdir $HSHQ_STACKS_DIR/comfyui/input
+  mkdir $HSHQ_STACKS_DIR/comfyui/output
+  mkdir $HSHQ_STACKS_DIR/comfyui/custom_nodes
+  mkdir $HSHQ_STACKS_DIR/comfyui/user
+  mkdir -p $HSHQ_NONBACKUP_DIR/comfyui/cache
+  initServicesCredentials
+  set +e
+  outputConfigComfyUI
+  installStack comfyui comfyui-app "" $HOME/comfyui.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$COMFYUI_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_COMFYUI_APP Admin Login Info" -b "$FMLNAME_COMFYUI_APP Admin Username: $COMFYUI_ADMIN_USERNAME\n$FMLNAME_COMFYUI_APP Admin Email: $COMFYUI_ADMIN_EMAIL_ADDRESS\n$FMLNAME_COMFYUI_APP Admin Password: $COMFYUI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    COMFYUI_INIT_ENV=true
+    updateConfigVar COMFYUI_INIT_ENV $COMFYUI_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_COMFYUI_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_COMFYUI_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://comfyui-app:8188 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_COMFYUI_APP $MANAGETLS_COMFYUI_APP "$is_integrate_hshq" $NETDEFAULT_COMFYUI_APP "$inner_block"
+  insertSubAuthelia $SUB_COMFYUI_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll comfyui "$FMLNAME_COMFYUI_APP" $USERTYPE_COMFYUI_APP "https://$SUB_COMFYUI_APP.$HOMESERVER_DOMAIN" "comfyui.png" "$(getHeimdallOrderFromSub $SUB_COMFYUI_APP $USERTYPE_COMFYUI_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigComfyUI()
+{
+  cat <<EOFMT > $HOME/comfyui-compose.yml
+$STACK_VERSION_PREFIX comfyui $(getScriptStackVersion comfyui)
+
+services:
+  comfyui-app:
+    image: $(getScriptImageByContainerName comfyui-app)
+    container_name: comfyui-app
+    hostname: comfyui-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /opt/amdgpu/share/libdrm/amdgpu.ids:/opt/amdgpu/share/libdrm/amdgpu.ids:ro
+      - v-comfyui-models:/opt/ComfyUI/models
+      - v-comfyui-input:/opt/ComfyUI/input
+      - v-comfyui-output:/opt/ComfyUI/output
+      - v-comfyui-user:/opt/ComfyUI/user
+      - v-comfyui-custom_nodes:/opt/ComfyUI/custom_nodes
+      - v-comfyui-cache:/opt/ComfyUI/.cache
+
+volumes:
+  v-comfyui-models:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/comfyui
+  v-comfyui-input:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/input
+  v-comfyui-output:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/output
+  v-comfyui-user:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/user
+  v-comfyui-custom_nodes:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/comfyui/custom_nodes
+  v-comfyui-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/comfyui/cache
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/comfyui.env
+TZ=\${PORTAINER_TZ}
+EOFMT
+}
+
+function performUpdateComfyUI()
+{
+  perform_stack_name=comfyui
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/corundex/comfyui-rocm:comfyui_0.3.43__rocm6.4.1_ubuntu24.04_py3.12_pytorch_2.6.0
+      image_update_map[0]="mirror.gcr.io/corundex/comfyui-rocm:comfyui_0.3.43__rocm6.4.1_ubuntu24.04_py3.12_pytorch_2.6.0,mirror.gcr.io/corundex/comfyui-rocm:comfyui_0.3.43__rocm6.4.1_ubuntu24.04_py3.12_pytorch_2.6.0"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Langflow
+function installLangflow()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory langflow "Langflow"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName langflow-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName langflow-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/langflow
+  mkdir $HSHQ_STACKS_DIR/langflow/config
+  mkdir $HSHQ_STACKS_DIR/langflow/data
+  mkdir $HSHQ_STACKS_DIR/langflow/db
+  mkdir $HSHQ_STACKS_DIR/langflow/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/langflow/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $LANGFLOW_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  LANGFLOW_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $LANGFLOW_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigLangflow
+  installStack langflow langflow-app "" $HOME/langflow.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$LANGFLOW_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_LANGFLOW_APP Admin Login Info" -b "$FMLNAME_LANGFLOW_APP Admin Username: $LANGFLOW_ADMIN_USERNAME\n$FMLNAME_LANGFLOW_APP Admin Email: $LANGFLOW_ADMIN_EMAIL_ADDRESS\n$FMLNAME_LANGFLOW_APP Admin Password: $LANGFLOW_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    LANGFLOW_INIT_ENV=true
+    updateConfigVar LANGFLOW_INIT_ENV $LANGFLOW_INIT_ENV
+  fi
+  sleep 3
+  addReadOnlyUserToDatabase Langflow postgres langflow-db $LANGFLOW_DATABASE_NAME $LANGFLOW_DATABASE_USER $LANGFLOW_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/langflow/dbexport $LANGFLOW_DATABASE_READONLYUSER $LANGFLOW_DATABASE_READONLYUSER_PASSWORD
+  if [ -z "$FMLNAME_LANGFLOW_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_LANGFLOW_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://langflow-app:7860 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_LANGFLOW_APP $MANAGETLS_LANGFLOW_APP "$is_integrate_hshq" $NETDEFAULT_LANGFLOW_APP "$inner_block"
+  insertSubAuthelia $SUB_LANGFLOW_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll langflow "$FMLNAME_LANGFLOW_APP" $USERTYPE_LANGFLOW_APP "https://$SUB_LANGFLOW_APP.$HOMESERVER_DOMAIN" "langflow.png" "$(getHeimdallOrderFromSub $SUB_LANGFLOW_APP $USERTYPE_LANGFLOW_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true langflow "$FMLNAME_LANGFLOW_APP" postgres langflow-db $LANGFLOW_DATABASE_NAME $LANGFLOW_DATABASE_USER $LANGFLOW_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigLangflow()
+{
+  cat <<EOFMT > $HOME/langflow-compose.yml
+$STACK_VERSION_PREFIX langflow $(getScriptStackVersion langflow)
+
+services:
+  langflow-db:
+    image: $(getScriptImageByContainerName langflow-db)
+    container_name: langflow-db
+    hostname: langflow-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-langflow-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/langflow/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/langflow/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.langflow-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.langflow-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.langflow-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.langflow-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.langflow-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.langflow-hourly-db.email-from=Langflow Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.langflow-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.langflow-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.langflow-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.langflow-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.langflow-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.langflow-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.langflow-monthly-db.email-from=Langflow Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.langflow-monthly-db.mail-only-on-error=false"
+
+  langflow-app:
+    image: $(getScriptImageByContainerName langflow-app)
+    container_name: langflow-app
+    hostname: langflow-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - langflow-db
+    networks:
+      - int-langflow-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-langflow-data:/app/langflow
+
+volumes:
+  v-langflow-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/langflow/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-langflow-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/langflow.env
+TZ=\${PORTAINER_TZ}
+DO_NOT_TRACK=true
+POSTGRES_DB=$LANGFLOW_DATABASE_NAME
+POSTGRES_USER=$LANGFLOW_DATABASE_USER
+POSTGRES_PASSWORD=$LANGFLOW_DATABASE_USER_PASSWORD
+LANGFLOW_CONFIG_DIR=/app/langflow
+LANGFLOW_DATABASE_URL=postgresql://$LANGFLOW_DATABASE_USER:$LANGFLOW_DATABASE_USER_PASSWORD@langflow-db:5432/$LANGFLOW_DATABASE_NAME
+OPENAI_API_BASE=https://localai.homeserverbox.com/v1
+LANGFLOW_AUTO_LOGIN=False
+LANGFLOW_SUPERUSER=$LANGFLOW_ADMIN_USERNAME
+LANGFLOW_SUPERUSER_PASSWORD=$LANGFLOW_ADMIN_PASSWORD
+EOFMT
+}
+
+function performUpdateLangflow()
+{
+  perform_stack_name=langflow
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/langflowai/langflow:1.7.1
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/langflowai/langflow:1.7.1,mirror.gcr.io/langflowai/langflow:1.7.1"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# AnythingLLM
+function installAnythingLLM()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory anythingllm "AnythingLLM"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName anythingllm-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/anythingllm
+  mkdir $HSHQ_STACKS_DIR/anythingllm/data
+  initServicesCredentials
+  set +e
+  addUserMailu alias $ANYTHINGLLM_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  ANYTHINGLLM_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $ANYTHINGLLM_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigAnythingLLM
+  installStack anythingllm anythingllm-app "" $HOME/anythingllm.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$ANYTHINGLLM_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_ANYTHINGLLM_APP Admin Login Info" -b "$FMLNAME_ANYTHINGLLM_APP Admin Username: $ANYTHINGLLM_ADMIN_USERNAME\n$FMLNAME_ANYTHINGLLM_APP Admin Email: $ANYTHINGLLM_ADMIN_EMAIL_ADDRESS\n$FMLNAME_ANYTHINGLLM_APP Admin Password: $ANYTHINGLLM_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    ANYTHINGLLM_INIT_ENV=true
+    updateConfigVar ANYTHINGLLM_INIT_ENV $ANYTHINGLLM_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_ANYTHINGLLM_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_ANYTHINGLLM_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://anythingllm-app:3001 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_ANYTHINGLLM_APP $MANAGETLS_ANYTHINGLLM_APP "$is_integrate_hshq" $NETDEFAULT_ANYTHINGLLM_APP "$inner_block"
+  insertSubAuthelia $SUB_ANYTHINGLLM_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll anythingllm "$FMLNAME_ANYTHINGLLM_APP" $USERTYPE_ANYTHINGLLM_APP "https://$SUB_ANYTHINGLLM_APP.$HOMESERVER_DOMAIN" "anythingllm.png" "$(getHeimdallOrderFromSub $SUB_ANYTHINGLLM_APP $USERTYPE_ANYTHINGLLM_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigAnythingLLM()
+{
+  touch $HSHQ_STACKS_DIR/anythingllm/.env
+  cat <<EOFMT > $HOME/anythingllm-compose.yml
+$STACK_VERSION_PREFIX anythingllm $(getScriptStackVersion anythingllm)
+
+services:
+  anythingllm-app:
+    image: $(getScriptImageByContainerName anythingllm-app)
+    container_name: anythingllm-app
+    hostname: anythingllm-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-anythingllm-data:/app/server/storage
+      - \${PORTAINER_HSHQ_STACKS_DIR}/anythingllm/.env:/app/server/.env
+
+volumes:
+  v-anythingllm-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/anythingllm/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/anythingllm.env
+TZ=\${PORTAINER_TZ}
+DISABLE_TELEMETRY=true
+STORAGE_DIR=/app/server/storage
+SIG_KEY=$ANYTHINGLLM_SIG_KEY
+SIG_SALT=$ANYTHINGLLM_SIG_SALT
+JWT_SECRET=$ANYTHINGLLM_JWT_SECRET
+EOFMT
+}
+
+function performUpdateAnythingLLM()
+{
+  perform_stack_name=anythingllm
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/mintplexlabs/anythingllm:1.9.1
+      image_update_map[0]="mirror.gcr.io/mintplexlabs/anythingllm:1.9.1,mirror.gcr.io/mintplexlabs/anythingllm:1.9.1"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Perplexica
+function installPerplexica()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory perplexica "Perplexica"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName perplexica-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/perplexica
+  mkdir $HSHQ_STACKS_DIR/perplexica/data
+  set +e
+  outputConfigPerplexica
+  installStack perplexica perplexica-app "" $HOME/perplexica.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_PERPLEXICA_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_PERPLEXICA_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://perplexica-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_PERPLEXICA_APP $MANAGETLS_PERPLEXICA_APP "$is_integrate_hshq" $NETDEFAULT_PERPLEXICA_APP "$inner_block"
+  insertSubAuthelia $SUB_PERPLEXICA_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll perplexica "$FMLNAME_PERPLEXICA_APP" $USERTYPE_PERPLEXICA_APP "https://$SUB_PERPLEXICA_APP.$HOMESERVER_DOMAIN" "perplexica.png" "$(getHeimdallOrderFromSub $SUB_PERPLEXICA_APP $USERTYPE_PERPLEXICA_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigPerplexica()
+{
+  cat <<EOFMT > $HOME/perplexica-compose.yml
+$STACK_VERSION_PREFIX perplexica $(getScriptStackVersion perplexica)
+
+services:
+  perplexica-app:
+    image: $(getScriptImageByContainerName perplexica-app)
+    container_name: perplexica-app
+    hostname: perplexica-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-perplexica-data:/home/perplexica/data
+
+volumes:
+  v-perplexica-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/perplexica/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/perplexica.env
+TZ=\${PORTAINER_TZ}
+SEARXNG_API_URL=http://searxng-app:8080
+EOFMT
+}
+
+function performUpdatePerplexica()
+{
+  perform_stack_name=perplexica
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/itzcrazykns1337/perplexica:slim-v1.12.0
+      image_update_map[0]="mirror.gcr.io/itzcrazykns1337/perplexica:slim-v1.12.0,mirror.gcr.io/itzcrazykns1337/perplexica:slim-v1.12.0"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Firecrawl
+function installFirecrawl()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory firecrawl "Firecrawl"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  buildImageFirecrawlDBV1
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName firecrawl-playwright)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName firecrawl-api)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName firecrawl-rabbitmq)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName firecrawl-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/firecrawl
+  mkdir $HSHQ_STACKS_DIR/firecrawl/config
+  mkdir $HSHQ_STACKS_DIR/firecrawl/data
+  mkdir $HSHQ_STACKS_DIR/firecrawl/rabbitmq
+  mkdir $HSHQ_STACKS_DIR/firecrawl/db
+  mkdir $HSHQ_STACKS_DIR/firecrawl/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/firecrawl/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/firecrawl
+  mkdir $HSHQ_NONBACKUP_DIR/firecrawl/redis
+  initServicesCredentials
+  set +e
+  outputConfigFirecrawl
+  installStack firecrawl firecrawl-api "" $HOME/firecrawl.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$FIRECRAWL_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_FIRECRAWL_API Admin Login Info" -b "$FMLNAME_FIRECRAWL_API Admin Password: $FIRECRAWL_BULL_AUTH_KEY\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    FIRECRAWL_INIT_ENV=true
+    updateConfigVar FIRECRAWL_INIT_ENV $FIRECRAWL_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_FIRECRAWL_API" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_FIRECRAWL_API.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://firecrawl-api:3002 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_FIRECRAWL_API $MANAGETLS_FIRECRAWL_API "$is_integrate_hshq" $NETDEFAULT_FIRECRAWL_API "$inner_block"
+  insertSubAuthelia $SUB_FIRECRAWL_API.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcUptimeKuma firecrawl "$FMLNAME_FIRECRAWL_API" admin "https://$SUB_FIRECRAWL_API.$HOMESERVER_DOMAIN" true
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigFirecrawl()
+{
+  cat <<EOFMT > $HOME/firecrawl-compose.yml
+$STACK_VERSION_PREFIX firecrawl $(getScriptStackVersion firecrawl)
+
+services:
+  firecrawl-db:
+    image: $(getScriptImageByContainerName firecrawl-db)
+    container_name: firecrawl-db
+    hostname: firecrawl-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-firecrawl-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  firecrawl-playwright:
+    image: $(getScriptImageByContainerName firecrawl-playwright)
+    container_name: firecrawl-playwright
+    hostname: firecrawl-playwright
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 4G
+    memswap_limit: 4G
+    tmpfs:
+      - /tmp/.cache:noexec,nosuid,size=1g
+    networks:
+      - int-firecrawl-net
+      - dock-aipriv-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    environment:
+      - PORT=3000
+
+  firecrawl-api:
+    image: $(getScriptImageByContainerName firecrawl-api)
+    container_name: firecrawl-api
+    hostname: firecrawl-api
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 4G
+    memswap_limit: 4G
+    depends_on:
+      - firecrawl-db
+      - firecrawl-playwright
+      - firecrawl-redis
+      - firecrawl-rabbitmq
+    networks:
+      - int-firecrawl-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3002
+
+  firecrawl-rabbitmq:
+    image: $(getScriptImageByContainerName firecrawl-rabbitmq)
+    container_name: firecrawl-rabbitmq
+    hostname: firecrawl-rabbitmq
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-firecrawl-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  firecrawl-redis:
+    image: $(getScriptImageByContainerName firecrawl-redis)
+    container_name: firecrawl-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $FIRECRAWL_REDIS_PASSWORD
+      --appendonly no
+    networks:
+      - int-firecrawl-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-firecrawl-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/firecrawl.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$FIRECRAWL_DATABASE_NAME
+POSTGRES_USER=$FIRECRAWL_DATABASE_USER
+POSTGRES_PASSWORD=$FIRECRAWL_DATABASE_USER_PASSWORD
+REDIS_URL=redis://:$FIRECRAWL_REDIS_PASSWORD@firecrawl-redis:6379
+REDIS_RATE_LIMIT_URL=redis://:$FIRECRAWL_REDIS_PASSWORD@firecrawl-redis:6379
+PLAYWRIGHT_MICROSERVICE_URL=http://firecrawl-playwright:3000/scrape
+POSTGRES_HOST=firecrawl-db
+POSTGRES_PORT=5432
+USE_DB_AUTHENTICATION=false
+NUM_WORKERS_PER_QUEUE=8
+CRAWL_CONCURRENT_REQUESTS=10
+MAX_CONCURRENT_JOBS=5
+BROWSER_POOL_SIZE=5
+MAX_CONCURRENT_PAGES=10
+OPENAI_API_KEY=
+OPENAI_BASE_URL=
+MODEL_NAME=
+MODEL_EMBEDDING_NAME=
+OLLAMA_BASE_URL=
+SLACK_WEBHOOK_URL=
+BULL_AUTH_KEY=$FIRECRAWL_BULL_AUTH_KEY
+TEST_API_KEY=$FIRECRAWL_API_KEY
+ALLOW_LOCAL_WEBHOOKS=true
+SEARXNG_ENDPOINT=http://searxng-app:8080
+EXTRACT_WORKER_PORT=3004
+WORKER_PORT=3005
+RABBITMQ_DEFAULT_USER=$FIRECRAWL_RABBITMQ_USERNAME
+RABBITMQ_DEFAULT_PASS=$FIRECRAWL_RABBITMQ_PASSWORD
+NUQ_RABBITMQ_URL=amqp://$FIRECRAWL_RABBITMQ_USERNAME:$FIRECRAWL_RABBITMQ_PASSWORD@firecrawl-rabbitmq:5672
+ENV=local
+EOFMT
+}
+
+function performUpdateFirecrawl()
+{
+  perform_stack_name=firecrawl
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=hshq/firecrawl-db:v1,ghcr.io/firecrawl/playwright-service:latest,ghcr.io/firecrawl/firecrawl:latest,mirror.gcr.io/rabbitmq:4.1.4-management-alpine,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="hshq/firecrawl-db:v1,hshq/firecrawl-db:v1"
+      image_update_map[1]="ghcr.io/firecrawl/playwright-service:latest,ghcr.io/firecrawl/playwright-service:latest"
+      image_update_map[2]="ghcr.io/firecrawl/firecrawl:latest,ghcr.io/firecrawl/firecrawl:latest"
+      image_update_map[3]="mirror.gcr.io/rabbitmq:4.1.4-management-alpine,mirror.gcr.io/rabbitmq:4.1.4-management-alpine"
+      image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function buildImageFirecrawlDBV1()
+{
+  set +e
+  sudo rm -fr $HSHQ_BUILD_DIR/firecrawldb
+  mkdir $HSHQ_BUILD_DIR/firecrawldb
+  cd $HSHQ_BUILD_DIR/firecrawldb
+  # This Dockerfile is copied directly from https://github.com/firecrawl/firecrawl/blob/main/apps/nuq-postgres/Dockerfile
+  # Since it is so small and unlikely to change, we'll just
+  # avoid the git clone and thus decrease pof.
+  cat <<EOFMT > $HSHQ_BUILD_DIR/firecrawldb/Dockerfile
+# Build a Postgres image that runs nuq.sql during initdb
+
+ARG PG_MAJOR=17
+FROM postgres:\${PG_MAJOR}
+
+# Install pg_cron for the specified Postgres major version
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        postgresql-\${PG_MAJOR}-cron; \
+    rm -rf /var/lib/apt/lists/*
+
+# Ensure pg_cron is preloaded on first startup by modifying the initdb template
+# This must be set before the first server start (init scripts run after start)
+RUN set -eux; \
+    conf_sample="/usr/share/postgresql/\${PG_MAJOR}/postgresql.conf.sample"; \
+    sed -ri "s/^#?shared_preload_libraries\s*=.*/shared_preload_libraries = 'pg_cron'/" "\$conf_sample"; \
+    printf "\n# Added for pg_cron\ncron.database_name = '$FIRECRAWL_DATABASE_NAME'\n" >> "\$conf_sample"
+
+# Copy nuq.sql so it is executed as part of the initdb sequence
+COPY nuq.sql /docker-entrypoint-initdb.d/010-nuq.sql
+EOFMT
+  cat <<EOFMT > $HSHQ_BUILD_DIR/firecrawldb/nuq.sql
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+CREATE SCHEMA IF NOT EXISTS nuq;
+
+DO \$\$ BEGIN
+  CREATE TYPE nuq.job_status AS ENUM ('queued', 'active', 'completed', 'failed');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END \$\$;
+
+DO \$\$ BEGIN
+  CREATE TYPE nuq.group_status AS ENUM ('active', 'completed', 'cancelled');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END \$\$;
+
+CREATE TABLE IF NOT EXISTS nuq.queue_scrape (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  status nuq.job_status NOT NULL DEFAULT 'queued'::nuq.job_status,
+  data jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  priority int NOT NULL DEFAULT 0,
+  lock uuid,
+  locked_at timestamp with time zone,
+  stalls integer,
+  finished_at timestamp with time zone,
+  listen_channel_id text, -- for listenable jobs over rabbitmq
+  returnvalue jsonb, -- only for selfhost
+  failedreason text, -- only for selfhost
+  owner_id uuid,
+  group_id uuid,
+  CONSTRAINT queue_scrape_pkey PRIMARY KEY (id)
+);
+
+ALTER TABLE nuq.queue_scrape
+SET (autovacuum_vacuum_scale_factor = 0.01,
+     autovacuum_analyze_scale_factor = 0.01,
+     autovacuum_vacuum_cost_limit = 2000,
+     autovacuum_vacuum_cost_delay = 2);
+
+CREATE INDEX IF NOT EXISTS queue_scrape_active_locked_at_idx ON nuq.queue_scrape USING btree (locked_at) WHERE (status = 'active'::nuq.job_status);
+CREATE INDEX IF NOT EXISTS nuq_queue_scrape_queued_optimal_2_idx ON nuq.queue_scrape (priority ASC, created_at ASC, id) WHERE (status = 'queued'::nuq.job_status);
+CREATE INDEX IF NOT EXISTS nuq_queue_scrape_failed_created_at_idx ON nuq.queue_scrape USING btree (created_at) WHERE (status = 'failed'::nuq.job_status);
+CREATE INDEX IF NOT EXISTS nuq_queue_scrape_completed_created_at_idx ON nuq.queue_scrape USING btree (created_at) WHERE (status = 'completed'::nuq.job_status);
+
+-- Indexes for crawl-status.ts queries
+-- For getGroupAnyJob: query by group_id, owner_id, and data->>'mode' = 'single_urls'
+CREATE INDEX IF NOT EXISTS nuq_queue_scrape_group_owner_mode_idx ON nuq.queue_scrape (group_id, owner_id) WHERE ((data->>'mode') = 'single_urls');
+
+-- For getGroupNumericStats: query by group_id and data->>'mode', grouped by status
+CREATE INDEX IF NOT EXISTS nuq_queue_scrape_group_mode_status_idx ON nuq.queue_scrape (group_id, status) WHERE ((data->>'mode') = 'single_urls');
+
+-- For getCrawlJobsForListing: query by group_id, status='completed', data->>'mode', ordered by finished_at, created_at
+CREATE INDEX IF NOT EXISTS nuq_queue_scrape_group_completed_listing_idx ON nuq.queue_scrape (group_id, finished_at ASC, created_at ASC) WHERE (status = 'completed'::nuq.job_status AND (data->>'mode') = 'single_urls');
+
+-- For group finish cron
+CREATE INDEX IF NOT EXISTS idx_queue_scrape_group_status ON nuq.queue_scrape (group_id, status) WHERE status IN ('active', 'queued');
+
+CREATE TABLE IF NOT EXISTS nuq.queue_scrape_backlog (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  data jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  priority int NOT NULL DEFAULT 0,
+  listen_channel_id text, -- for listenable jobs over rabbitmq
+  owner_id uuid,
+  group_id uuid,
+  times_out_at timestamptz,
+  CONSTRAINT queue_scrape_backlog_pkey PRIMARY KEY (id)
+);
+
+-- For getGroupNumericStats backlog query: query by group_id and data->>'mode' on backlog table
+CREATE INDEX IF NOT EXISTS nuq_queue_scrape_backlog_group_mode_idx ON nuq.queue_scrape_backlog (group_id) WHERE ((data->>'mode') = 'single_urls');
+
+SELECT cron.schedule('nuq_queue_scrape_clean_completed', '*/5 * * * *', \$\$
+  DELETE FROM nuq.queue_scrape WHERE nuq.queue_scrape.status = 'completed'::nuq.job_status AND nuq.queue_scrape.created_at < now() - interval '1 hour' AND group_id IS NULL;
+\$\$);
+
+SELECT cron.schedule('nuq_queue_scrape_clean_failed', '*/5 * * * *', \$\$
+  DELETE FROM nuq.queue_scrape WHERE nuq.queue_scrape.status = 'failed'::nuq.job_status AND nuq.queue_scrape.created_at < now() - interval '6 hours' AND group_id IS NULL;
+\$\$);
+
+SELECT cron.schedule('nuq_queue_scrape_lock_reaper', '15 seconds', \$\$
+  UPDATE nuq.queue_scrape SET status = 'queued'::nuq.job_status, lock = null, locked_at = null, stalls = COALESCE(stalls, 0) + 1 WHERE nuq.queue_scrape.locked_at <= now() - interval '1 minute' AND nuq.queue_scrape.status = 'active'::nuq.job_status AND COALESCE(nuq.queue_scrape.stalls, 0) < 9;
+  WITH stallfail AS (UPDATE nuq.queue_scrape SET status = 'failed'::nuq.job_status, lock = null, locked_at = null, stalls = COALESCE(stalls, 0) + 1 WHERE nuq.queue_scrape.locked_at <= now() - interval '1 minute' AND nuq.queue_scrape.status = 'active'::nuq.job_status AND COALESCE(nuq.queue_scrape.stalls, 0) >= 9 RETURNING id)
+  SELECT pg_notify('nuq.queue_scrape', (id::text || '|' || 'failed'::text)) FROM stallfail;
+\$\$);
+
+SELECT cron.schedule('nuq_queue_scrape_backlog_reaper', '* * * * *', \$\$
+  DELETE FROM nuq.queue_scrape_backlog
+  WHERE nuq.queue_scrape_backlog.times_out_at < now();
+\$\$);
+
+SELECT cron.schedule('nuq_queue_scrape_reindex', '0 9 * * *', \$\$
+  REINDEX TABLE CONCURRENTLY nuq.queue_scrape;
+\$\$);
+
+CREATE TABLE IF NOT EXISTS nuq.queue_crawl_finished (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  status nuq.job_status NOT NULL DEFAULT 'queued'::nuq.job_status,
+  data jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  priority int NOT NULL DEFAULT 0,
+  lock uuid,
+  locked_at timestamp with time zone,
+  stalls integer,
+  finished_at timestamp with time zone,
+  listen_channel_id text, -- for listenable jobs over rabbitmq
+  returnvalue jsonb, -- only for selfhost
+  failedreason text, -- only for selfhost
+  owner_id uuid,
+  group_id uuid,
+  CONSTRAINT queue_crawl_finished_pkey PRIMARY KEY (id)
+);
+
+ALTER TABLE nuq.queue_crawl_finished
+SET (autovacuum_vacuum_scale_factor = 0.01,
+     autovacuum_analyze_scale_factor = 0.01,
+     autovacuum_vacuum_cost_limit = 2000,
+     autovacuum_vacuum_cost_delay = 2);
+
+CREATE INDEX IF NOT EXISTS queue_crawl_finished_active_locked_at_idx ON nuq.queue_crawl_finished USING btree (locked_at) WHERE (status = 'active'::nuq.job_status);
+CREATE INDEX IF NOT EXISTS nuq_queue_crawl_finished_queued_optimal_2_idx ON nuq.queue_crawl_finished (priority ASC, created_at ASC, id) WHERE (status = 'queued'::nuq.job_status);
+CREATE INDEX IF NOT EXISTS nuq_queue_crawl_finished_failed_created_at_idx ON nuq.queue_crawl_finished USING btree (created_at) WHERE (status = 'failed'::nuq.job_status);
+CREATE INDEX IF NOT EXISTS nuq_queue_crawl_finished_completed_created_at_idx ON nuq.queue_crawl_finished USING btree (created_at) WHERE (status = 'completed'::nuq.job_status);
+
+SELECT cron.schedule('nuq_queue_crawl_finished_clean_completed', '*/5 * * * *', \$\$
+  DELETE FROM nuq.queue_crawl_finished WHERE nuq.queue_crawl_finished.status = 'completed'::nuq.job_status AND nuq.queue_crawl_finished.created_at < now() - interval '1 hour' AND group_id IS NULL;
+\$\$);
+
+SELECT cron.schedule('nuq_queue_crawl_finished_clean_failed', '*/5 * * * *', \$\$
+  DELETE FROM nuq.queue_crawl_finished WHERE nuq.queue_crawl_finished.status = 'failed'::nuq.job_status AND nuq.queue_crawl_finished.created_at < now() - interval '6 hours' AND group_id IS NULL;
+\$\$);
+
+SELECT cron.schedule('nuq_queue_crawl_finished_lock_reaper', '15 seconds', \$\$
+  UPDATE nuq.queue_crawl_finished SET status = 'queued'::nuq.job_status, lock = null, locked_at = null, stalls = COALESCE(stalls, 0) + 1 WHERE nuq.queue_crawl_finished.locked_at <= now() - interval '1 minute' AND nuq.queue_crawl_finished.status = 'active'::nuq.job_status AND COALESCE(nuq.queue_crawl_finished.stalls, 0) < 9;
+  WITH stallfail AS (UPDATE nuq.queue_crawl_finished SET status = 'failed'::nuq.job_status, lock = null, locked_at = null, stalls = COALESCE(stalls, 0) + 1 WHERE nuq.queue_crawl_finished.locked_at <= now() - interval '1 minute' AND nuq.queue_crawl_finished.status = 'active'::nuq.job_status AND COALESCE(nuq.queue_crawl_finished.stalls, 0) >= 9 RETURNING id)
+  SELECT pg_notify('nuq.queue_crawl_finished', (id::text || '|' || 'failed'::text)) FROM stallfail;
+\$\$);
+
+SELECT cron.schedule('nuq_queue_crawl_finished_reindex', '0 9 * * *', \$\$
+  REINDEX TABLE CONCURRENTLY nuq.queue_crawl_finished;
+\$\$);
+
+CREATE TABLE IF NOT EXISTS nuq.group_crawl (
+  id uuid NOT NULL,
+  status nuq.group_status NOT NULL DEFAULT 'active'::nuq.group_status,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  owner_id uuid NOT NULL,
+  ttl int8 NOT NULL DEFAULT 86400000,
+  expires_at timestamptz,
+  CONSTRAINT group_crawl_pkey PRIMARY KEY (id)
+);
+
+-- Index for group finish cron to find active groups
+CREATE INDEX IF NOT EXISTS idx_group_crawl_status ON nuq.group_crawl (status) WHERE status = 'active'::nuq.group_status;
+
+-- Index for backlog group_id lookups
+CREATE INDEX IF NOT EXISTS idx_queue_scrape_backlog_group_id ON nuq.queue_scrape_backlog (group_id);
+
+SELECT cron.schedule('nuq_group_crawl_finished', '15 seconds', \$\$
+  WITH finished_groups AS (
+    UPDATE nuq.group_crawl
+    SET status = 'completed'::nuq.group_status,
+        expires_at = now() + MAKE_INTERVAL(secs => nuq.group_crawl.ttl / 1000)
+    WHERE status = 'active'::nuq.group_status
+      AND NOT EXISTS (
+        SELECT 1 FROM nuq.queue_scrape
+        WHERE nuq.queue_scrape.status IN ('active', 'queued')
+          AND nuq.queue_scrape.group_id = nuq.group_crawl.id
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM nuq.queue_scrape_backlog
+        WHERE nuq.queue_scrape_backlog.group_id = nuq.group_crawl.id
+      )
+    RETURNING id, owner_id
+  )
+  INSERT INTO nuq.queue_crawl_finished (data, owner_id, group_id)
+  SELECT '{}'::jsonb, finished_groups.owner_id, finished_groups.id
+  FROM finished_groups;
+\$\$);
+
+SELECT cron.schedule('nuq_group_crawl_clean', '*/5 * * * *', \$\$
+  WITH cleaned_groups AS (
+    DELETE FROM nuq.group_crawl
+    WHERE nuq.group_crawl.status = 'completed'::nuq.group_status
+      AND nuq.group_crawl.expires_at < now()
+    RETURNING *
+  ), cleaned_jobs_queue_scrape AS (
+    DELETE FROM nuq.queue_scrape
+    WHERE nuq.queue_scrape.group_id IN (SELECT id FROM cleaned_groups)
+  ), cleaned_jobs_queue_scrape_backlog AS (
+    DELETE FROM nuq.queue_scrape_backlog
+    WHERE nuq.queue_scrape_backlog.group_id IN (SELECT id FROM cleaned_groups)
+  ), cleaned_jobs_crawl_finished AS (
+    DELETE FROM nuq.queue_crawl_finished
+    WHERE nuq.queue_crawl_finished.group_id IN (SELECT id FROM cleaned_groups)
+  )
+  SELECT 1;
+\$\$);
+EOFMT
+  docker build -t hshq/firecrawl-db:v1 $HSHQ_BUILD_DIR/firecrawldb
+  retVal=$?
+  cd
+  return $retVal
+}
+
+# LibreChat
+function installLibreChat()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory librechat "LibreChat"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName librechat-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName librechat-mongodb)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName librechat-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName librechat-meilisearch)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName librechat-ragapi)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName librechat-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/librechat
+  mkdir $HSHQ_STACKS_DIR/librechat/config
+  mkdir $HSHQ_STACKS_DIR/librechat/data
+  mkdir $HSHQ_STACKS_DIR/librechat/images
+  mkdir $HSHQ_STACKS_DIR/librechat/uploads
+  mkdir $HSHQ_STACKS_DIR/librechat/logs
+  mkdir $HSHQ_STACKS_DIR/librechat/mongodata
+  mkdir $HSHQ_STACKS_DIR/librechat/mongoexport
+  mkdir $HSHQ_STACKS_DIR/librechat/db
+  mkdir $HSHQ_STACKS_DIR/librechat/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/librechat/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/librechat
+  mkdir $HSHQ_NONBACKUP_DIR/librechat/redis
+  initServicesCredentials
+  set +e
+  addUserMailu alias $LIBRECHAT_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  LIBRECHAT_OIDC_CLIENT_SECRET_HASH=$(docker run --rm $IMG_AUTHELIA authelia crypto hash generate pbkdf2 --variant sha512 --password $LIBRECHAT_OIDC_CLIENT_SECRET | cut -d" " -f2)
+  outputConfigLibreChat
+  oidcBlock=$(cat $HOME/librechat.oidc)
+  rm -f $HOME/librechat.oidc
+  insertOIDCClientAuthelia librechat "$oidcBlock"
+  installStack librechat librechat-app "Server listening on all interfaces" $HOME/librechat.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$LIBRECHAT_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_LIBRECHAT_APP Admin Login Info" -b "$FMLNAME_LIBRECHAT_APP Admin Email: $LIBRECHAT_ADMIN_EMAIL_ADDRESS\n$FMLNAME_LIBRECHAT_APP Admin Password: $LIBRECHAT_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    LIBRECHAT_INIT_ENV=true
+    updateConfigVar LIBRECHAT_INIT_ENV $LIBRECHAT_INIT_ENV
+  fi
+  sleep 3
+  docker exec librechat-app sh -c "yes | npm run create-user $LIBRECHAT_ADMIN_EMAIL_ADDRESS \"LibreChat HSHQ Admin\" $LIBRECHAT_ADMIN_USERNAME $LIBRECHAT_ADMIN_PASSWORD --email-verified=true" > /dev/null 2>&1
+  addReadOnlyUserToDatabase LibreChat postgres librechat-db $LIBRECHAT_DATABASE_NAME $LIBRECHAT_DATABASE_USER $LIBRECHAT_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/librechat/dbexport $LIBRECHAT_DATABASE_READONLYUSER $LIBRECHAT_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase LibreChat mongodb librechat-mongodb $LIBRECHAT_MONGODB_DATABASE $LIBRECHAT_MONGODB_USER $LIBRECHAT_MONGODB_USER_PASSWORD $HSHQ_STACKS_DIR/librechat/mongoexport $LIBRECHAT_MONGODB_READONLYUSER $LIBRECHAT_MONGODB_READONLYUSER_PASSWORD
+  if [ -z "$FMLNAME_LIBRECHAT_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://librechat-app:3080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_LIBRECHAT_APP $MANAGETLS_LIBRECHAT_APP "$is_integrate_hshq" $NETDEFAULT_LIBRECHAT_APP "$inner_block"
+  insertSubAuthelia $SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll librechat "$FMLNAME_LIBRECHAT_APP" $USERTYPE_LIBRECHAT_APP "https://$SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN" "librechat.png" "$(getHeimdallOrderFromSub $SUB_LIBRECHAT_APP $USERTYPE_LIBRECHAT_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true librechat "$FMLNAME_LIBRECHAT_APP" postgres librechat-db $LIBRECHAT_DATABASE_NAME $LIBRECHAT_DATABASE_USER $LIBRECHAT_DATABASE_USER_PASSWORD
+    checkAddDBConnection true librechat-mongodb "${FMLNAME_LIBRECHAT_APP}-MongoDB" mongo librechat-mongodb $LIBRECHAT_MONGODB_DATABASE $LIBRECHAT_MONGODB_USER $LIBRECHAT_MONGODB_USER_PASSWORD
+  fi
+}
+
+function outputConfigLibreChat()
+{
+  cat <<EOFMT > $HOME/librechat-compose.yml
+$STACK_VERSION_PREFIX librechat $(getScriptStackVersion librechat)
+
+services:
+  librechat-db:
+    image: $(getScriptImageByContainerName librechat-db)
+    container_name: librechat-db
+    hostname: librechat-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-librechat-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/librechat/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/librechat/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.librechat-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.librechat-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.librechat-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.librechat-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.librechat-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.librechat-hourly-db.email-from=LibreChat Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.librechat-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.librechat-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.librechat-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.librechat-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.librechat-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.librechat-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.librechat-monthly-db.email-from=LibreChat Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.librechat-monthly-db.mail-only-on-error=false"
+
+  librechat-mongodb:
+    image: $(getScriptImageByContainerName librechat-mongodb)
+    container_name: librechat-mongodb
+    hostname: librechat-mongodb
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mongod --oplogSize 128 --quiet --auth
+    networks:
+      - int-librechat-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-librechat-mongodata:/data/db
+      - v-librechat-mongoexport:/dump
+
+  librechat-app:
+    image: $(getScriptImageByContainerName librechat-app)
+    container_name: librechat-app
+    hostname: librechat-app
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - librechat-db
+      - librechat-mongodb
+      - librechat-ragapi
+      - librechat-redis
+    networks:
+      - int-librechat-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/librechat/config/env:/app/.env
+      - \${PORTAINER_HSHQ_STACKS_DIR}/librechat/config/librechat.yaml:/app/librechat.yaml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/librechat/images:/app/client/public/images
+      - \${PORTAINER_HSHQ_STACKS_DIR}/librechat/uploads:/app/uploads
+      - \${PORTAINER_HSHQ_STACKS_DIR}/librechat/logs:/app/logs
+
+  librechat-meilisearch:
+    image: $(getScriptImageByContainerName librechat-meilisearch)
+    container_name: librechat-meilisearch
+    hostname: librechat-meilisearch
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-librechat-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/librechat/meilidata:/meili_data
+
+  librechat-ragapi:
+    image: $(getScriptImageByContainerName librechat-ragapi)
+    container_name: librechat-ragapi
+    hostname: librechat-ragapi
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - librechat-db
+    networks:
+      - int-librechat-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  librechat-redis:
+    image: $(getScriptImageByContainerName librechat-redis)
+    container_name: librechat-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $LIBRECHAT_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-librechat-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-librechat-redis:/data
+
+volumes:
+  v-librechat-mongodata:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/librechat/mongodata
+  v-librechat-mongoexport:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/librechat/mongoexport
+  v-librechat-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/librechat/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-librechat-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/librechat.env
+TZ=\${PORTAINER_TZ}
+PYTHON_VER=python3.12
+UID=$USERID
+GID=$GROUPID
+POSTGRES_DB=$LIBRECHAT_DATABASE_NAME
+POSTGRES_USER=$LIBRECHAT_DATABASE_USER
+POSTGRES_PASSWORD=$LIBRECHAT_DATABASE_USER_PASSWORD
+HOST=0.0.0.0
+PORT=3080
+MONGO_INITDB_ROOT_USERNAME=$LIBRECHAT_MONGODB_USER
+MONGO_INITDB_ROOT_PASSWORD=$LIBRECHAT_MONGODB_USER_PASSWORD
+MONGO_URI=mongodb://$LIBRECHAT_MONGODB_USER:$LIBRECHAT_MONGODB_USER_PASSWORD@librechat-mongodb:27017/${LIBRECHAT_MONGODB_DATABASE}?authSource=admin
+MEILI_HOST=http://librechat-meilisearch:7700
+MEILI_NO_ANALYTICS=true
+MEILI_MASTER_KEY=$LIBRECHAT_MEILI_MASTER_KEY
+SEARCH=true
+RAG_PORT=8000
+RAG_API_URL=http://librechat-ragapi:8000
+DB_HOST=librechat-db
+CREDS_KEY=$LIBRECHAT_CREDS_KEY
+CREDS_IV=$LIBRECHAT_CREDS_IV
+DOMAIN_CLIENT=https://$SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN
+DOMAIN_SERVER=https://$SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN
+CONFIG_BYPASS_VALIDATION=false
+TITLE_CONVO=true
+ALLOW_SOCIAL_LOGIN=true
+OPENID_BUTTON_LABEL=Log in with Authelia
+OPENID_ISSUER=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/.well-known/openid-configuration
+OPENID_CLIENT_ID=librechat
+OPENID_CLIENT_SECRET=$LIBRECHAT_OIDC_CLIENT_SECRET
+OPENID_SESSION_SECRET=$(pwgen -c -n 32 1)
+OPENID_CALLBACK_URL=/oauth/openid/callback
+OPENID_SCOPE=openid profile email
+OPENID_IMAGE_URL=https://www.authelia.com/images/branding/logo-cropped.png
+OPENID_USE_END_SESSION_ENDPOINT=true 
+JWT_SECRET=$LIBRECHAT_JWT_SECRET
+JWT_REFRESH_SECRET=$LIBRECHAT_JWT_REFRESH_SECRET
+EMAIL_HOST=$SMTP_HOSTNAME
+EMAIL_PORT=$SMTP_HOSTPORT
+EMAIL_ENCRYPTION=starttls
+EMAIL_ALLOW_SELFSIGNED=true
+EMAIL_FROM_NAME=LibreChat $(getAdminEmailName)
+EMAIL_FROM=$EMAIL_ADMIN_EMAIL_ADDRESS
+APP_TITLE=LibreChat
+USE_REDIS=true
+REDIS_URI=redis://:$LIBRECHAT_REDIS_PASSWORD@librechat-redis:6379
+ENDPOINTS=custom,agents
+OPENAI_API_KEY=user_provided
+RAG_OPENAI_API_KEY=$LOCALAI_API_KEY
+RAG_OPENAI_BASEURL=http://localai-server:8080
+EMBEDDINGS_PROVIDER=openai
+EMBEDDINGS_MODEL=text-embedding-ada-002
+NODE_ENV=production
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+SEARXNG_INSTANCE_URL=http://searxng-app:8080
+SEARXNG_API_KEY=nokey
+FIRECRAWL_API_URL=http://firecrawl-api:3002
+FIRECRAWL_API_KEY=$FIRECRAWL_API_KEY
+FIRECRAWL_VERSION=v2
+JINA_API_KEY=$LOCALAI_API_KEY
+JINA_API_URL=http://localai-server:8080/v1/rerank
+EOFMT
+  cp $HOME/librechat.env $HSHQ_STACKS_DIR/librechat/config/env
+  cat <<EOFIM > $HOME/librechat.oidc
+# Authelia OIDC Client librechat BEGIN
+      - client_id: librechat
+        client_name: LibreChat
+        client_secret: $LIBRECHAT_OIDC_CLIENT_SECRET_HASH
+        public: false
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
+        redirect_uris:
+          - https://$SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN/oauth/openid/callback
+        scopes:
+          - openid
+          - profile
+          - email
+          - offline_access
+        response_types:
+          - code
+        grant_types:
+          - authorization_code
+          - refresh_token
+        access_token_signed_response_alg: none
+        userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_post
+# Authelia OIDC Client librechat END
+EOFIM
+  cat <<EOFIM > $HSHQ_STACKS_DIR/librechat/config/librechat.yaml
+version: 1.2.8
+cache: true
+interface:
+  mcpServers:
+    placeholder: "MCP Servers"
+    use: true
+    create: true
+    share: true
+    trustCheckbox:
+      label: "I trust this server"
+      subLabel: "Only enable servers you trust"
+  modelSelect: true
+  parameters: true
+  sidePanel: true
+  presets: true
+  prompts: true
+  bookmarks: true
+  multiConvo: true
+  agents: true
+  customWelcome: "Hey {{user.name}}! Welcome to LibreChat"
+  runCode: true
+  webSearch: true
+  fileSearch: true
+  fileCitations: true
+  peoplePicker:
+    users: true
+    groups: true
+    roles: true
+  marketplace:
+    use: true
+endpoints:
+  custom:
+    - name: "Ollama"
+      apiKey: "ollama"
+      baseURL: "http://ollama-server:11434/v1/"
+      models:
+        default:
+          - "mistral-nemo:12b"
+          - "mixtral:8x7b"
+          - "phi4:14b"
+          - "qwen3:8b"
+        fetch: true
+      titleConvo: true
+      titleModel: "current_model"
+      summarize: true
+      summaryModel: "current_model"
+      forcePrompt: false
+      modelDisplayLabel: "Ollama"
+    - name: "LocalAI"
+      apiKey: "$LOCALAI_API_KEY"
+      baseURL: "http://localai-server:8080/v1"
+      models:
+        default:
+          - "gpt-4"
+          - "gpt-4o"
+          - "gemma-3-12b-it"
+          - "mistral-7b-instruct-v0.3"
+          - "mistral-small-24b-instruct-2501"
+          - "qwen3-vl-30b-a3b-instruct"
+        fetch: true
+      titleConvo: true
+      titleModel: "current_model"
+      summarize: true
+      forcePrompt: false
+      modelDisplayLabel: "LocalAI"
+webSearch:
+  searxngInstanceUrl: "\${SEARXNG_INSTANCE_URL}"
+  searxngApiKey: "\${SEARXNG_API_KEY}"
+  searchProvider: "searxng"
+  firecrawlApiKey: "\${FIRECRAWL_API_KEY}"
+  firecrawlApiUrl: "\${FIRECRAWL_API_URL}"
+  firecrawlVersion: "\${FIRECRAWL_VERSION}"
+  scraperProvider: "firecrawl"
+  jinaApiKey: "\${JINA_API_KEY}"
+  jinaApiUrl: "\${JINA_API_URL}"
+  rerankerType: "jina"
+  scraperTimeout: 5000
+  safeSearch: 1
+EOFIM
+}
+
+function performUpdateLibreChat()
+{
+  perform_stack_name=librechat
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/pgvector/pgvector:0.8.0-pg15-trixie,mirror.gcr.io/mongo:8.0.17,ghcr.io/danny-avila/librechat:v0.8.1,mirror.gcr.io/getmeili/meilisearch:v1.31.0,ghcr.io/danny-avila/librechat-rag-api-dev-lite:v0.7.0,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/pgvector/pgvector:0.8.0-pg15-trixie,mirror.gcr.io/pgvector/pgvector:0.8.0-pg15-trixie"
+      image_update_map[1]="mirror.gcr.io/mongo:8.0.17,mirror.gcr.io/mongo:8.0.17"
+      image_update_map[2]="ghcr.io/danny-avila/librechat:v0.8.1,ghcr.io/danny-avila/librechat:v0.8.1"
+      image_update_map[3]="mirror.gcr.io/getmeili/meilisearch:v1.31.0,mirror.gcr.io/getmeili/meilisearch:v1.31.0"
+      image_update_map[4]="ghcr.io/danny-avila/librechat-rag-api-dev-lite:v0.7.0,ghcr.io/danny-avila/librechat-rag-api-dev-lite:v0.7.0"
+      image_update_map[5]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Crawl4AI
+function installCrawl4AI()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory crawl4ai "Crawl4AI"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName crawl4ai-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName crawl4ai-proxy)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/crawl4ai
+  initServicesCredentials
+  set +e
+  outputConfigCrawl4AI
+  installStack crawl4ai crawl4ai-app "" $HOME/crawl4ai.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_CRAWL4AI_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_CRAWL4AI_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://crawl4ai-app:11235 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_CRAWL4AI_APP $MANAGETLS_CRAWL4AI_APP "$is_integrate_hshq" $NETDEFAULT_CRAWL4AI_APP "$inner_block"
+  insertSubAuthelia $SUB_CRAWL4AI_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll crawl4ai "$FMLNAME_CRAWL4AI_APP" $USERTYPE_CRAWL4AI_APP "https://$SUB_CRAWL4AI_APP.$HOMESERVER_DOMAIN/playground" "crawl4ai.png" "$(getHeimdallOrderFromSub $SUB_CRAWL4AI_APP $USERTYPE_CRAWL4AI_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigCrawl4AI()
+{
+  cat <<EOFMT > $HOME/crawl4ai-compose.yml
+$STACK_VERSION_PREFIX crawl4ai $(getScriptStackVersion crawl4ai)
+
+services:
+  crawl4ai-app:
+    image: $(getScriptImageByContainerName crawl4ai-app)
+    container_name: crawl4ai-app
+    hostname: crawl4ai-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11235/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /dev/shm:/dev/shm
+
+  crawl4ai-proxy:
+    image: $(getScriptImageByContainerName crawl4ai-proxy)
+    container_name: crawl4ai-proxy
+    hostname: crawl4ai-proxy
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/crawl4ai.env
+TZ=\${PORTAINER_TZ}
+LLM_BASE_URL=http://ollama-server:11434
+LLM_PROVIDER=ollama/mistral-nemo:12b
+LLM_TEMPERATURE=0.5
+LISTEN_PORT=8000
+CRAWL4AI_ENDPOINT=http://crawl4ai-app:11235/crawl
+EOFMT
+}
+
+function performUpdateCrawl4AI()
+{
+  perform_stack_name=crawl4ai
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/unclecode/crawl4ai:0.7.8,ghcr.io/lennyerik/crawl4ai-proxy:latest
+      image_update_map[0]="mirror.gcr.io/unclecode/crawl4ai:0.7.8,mirror.gcr.io/unclecode/crawl4ai:0.7.8"
+      image_update_map[1]="ghcr.io/lennyerik/crawl4ai-proxy:latest,ghcr.io/lennyerik/crawl4ai-proxy:latest"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Ollama
+function installOllama()
+{
+  set +e
+  if [ -d $HSHQ_STACKS_DIR/aistack ]; then
+    echo "ERROR: You must uninstall the aistack in order to continue. It has been deprecated and will cause conflicts with this stack."
+    return 1
+  fi
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory ollama "Ollama"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ollama-server)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/ollama
+  mkdir $HSHQ_STACKS_DIR/ollama/code
+  mkdir -p $HSHQ_NONBACKUP_DIR/aimodels/ollama
+  initServicesCredentials
+  set +e
+  outputConfigOllama
+  installStack ollama ollama-server "" $HOME/ollama.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_OLLAMA_SERVER" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_OLLAMA_SERVER.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSPREFLIGHT\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWCORS\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://ollama-server:11434 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_OLLAMA_SERVER $MANAGETLS_OLLAMA_SERVER "$is_integrate_hshq" $NETDEFAULT_OLLAMA_SERVER "$inner_block"
+  insertSubAuthelia $SUB_OLLAMA_SERVER.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcUptimeKuma ollama "$FMLNAME_OLLAMA_SERVER" $USERTYPE_OLLAMA_SERVER "https://$SUB_OLLAMA_SERVER.$HOMESERVER_DOMAIN" true
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigOllama()
+{
+  cat <<EOFMT > $HOME/ollama-compose.yml
+$STACK_VERSION_PREFIX ollama $(getScriptStackVersion ollama)
+
+services:
+  ollama-server:
+    image: $(getScriptImageByContainerName ollama-server)
+    container_name: ollama-server
+    hostname: ollama-server
+    restart: unless-stopped
+    env_file: stack.env
+    tty: true
+    security_opt:
+      - seccomp:unconfined
+    cap_add:
+      - SYS_PTRACE
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ollama/code:/code
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/ollama:/root/.ollama
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/ollama.env
+TZ=\${PORTAINER_TZ}
+OLLAMA_HOST=0.0.0.0
+OLLAMA_NUM_GPU=999
+EOFMT
+}
+
+function performUpdateOllama()
+{
+  perform_stack_name=ollama
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/ollama/ollama:0.13.5-rocm
+      image_update_map[0]="mirror.gcr.io/ollama/ollama:0.13.5-rocm,mirror.gcr.io/ollama/ollama:0.13.5-rocm"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# OpenWebUI
+function installOpenWebUI()
+{
+  set +e
+  if [ -d $HSHQ_STACKS_DIR/aistack ]; then
+    echo "ERROR: You must uninstall the aistack in order to continue. It has been deprecated and will cause conflicts with this stack."
+    return 1
+  fi
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory openwebui "OpenWebUI"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName openwebui-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName openwebui-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName openwebui-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/openwebui
+  mkdir $HSHQ_STACKS_DIR/openwebui/config
+  mkdir $HSHQ_STACKS_DIR/openwebui/data
+  mkdir $HSHQ_STACKS_DIR/openwebui/db
+  mkdir $HSHQ_STACKS_DIR/openwebui/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/openwebui/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/openwebui
+  mkdir $HSHQ_NONBACKUP_DIR/openwebui/redis
+  initServicesCredentials
+  set +e
+  addUserMailu alias $OPENWEBUI_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  OPENWEBUI_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $OPENWEBUI_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigOpenWebUI
+  oidcBlock=$(cat $HOME/openwebui.oidc)
+  rm -f $HOME/openwebui.oidc
+  insertOIDCClientAuthelia openwebui "$oidcBlock"
+  installStack openwebui openwebui-app "building the best AI user interface" $HOME/openwebui.env 3
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$OPENWEBUI_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_OPENWEBUI_APP Admin Login Info" -b "$FMLNAME_OPENWEBUI_APP Admin Username: $OPENWEBUI_ADMIN_USERNAME\n$FMLNAME_OPENWEBUI_APP Admin Email: $OPENWEBUI_ADMIN_EMAIL_ADDRESS\n$FMLNAME_OPENWEBUI_APP Admin Password: $OPENWEBUI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    OPENWEBUI_INIT_ENV=true
+    updateConfigVar OPENWEBUI_INIT_ENV $OPENWEBUI_INIT_ENV
+  fi
+  sleep 3
+  set +e
+  docker exec openwebui-db bash /dbexport/insertAdmin.sh
+  rm -f $HSHQ_STACKS_DIR/openwebui/dbexport/insertAdmin.sh
+  addReadOnlyUserToDatabase OpenWebUI postgres openwebui-db $OPENWEBUI_DATABASE_NAME $OPENWEBUI_DATABASE_USER $OPENWEBUI_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/openwebui/dbexport $OPENWEBUI_DATABASE_READONLYUSER $OPENWEBUI_DATABASE_READONLYUSER_PASSWORD
+  if [ -z "$FMLNAME_OPENWEBUI_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://openwebui-app:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_OPENWEBUI_APP $MANAGETLS_OPENWEBUI_APP "$is_integrate_hshq" $NETDEFAULT_OPENWEBUI_APP "$inner_block"
+  insertSubAuthelia $SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll openwebui "$FMLNAME_OPENWEBUI_APP" $USERTYPE_OPENWEBUI_APP "https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN" "openwebui.png" "$(getHeimdallOrderFromSub $SUB_OPENWEBUI_APP $USERTYPE_OPENWEBUI_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true openwebui "$FMLNAME_OPENWEBUI_APP" postgres openwebui-db $OPENWEBUI_DATABASE_NAME $OPENWEBUI_DATABASE_USER $OPENWEBUI_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigOpenWebUI()
+{
+  cat <<EOFMT > $HOME/openwebui-compose.yml
+$STACK_VERSION_PREFIX openwebui $(getScriptStackVersion openwebui)
+
+services:
+  openwebui-db:
+    image: $(getScriptImageByContainerName openwebui-db)
+    container_name: openwebui-db
+    hostname: openwebui-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-openwebui-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.openwebui-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.openwebui-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.openwebui-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.openwebui-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.openwebui-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.openwebui-hourly-db.email-from=OpenWebUI Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.openwebui-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.openwebui-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.openwebui-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.openwebui-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.openwebui-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.openwebui-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.openwebui-monthly-db.email-from=OpenWebUI Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.openwebui-monthly-db.mail-only-on-error=false"
+
+  openwebui-app:
+    image: $(getScriptImageByContainerName openwebui-app)
+    container_name: openwebui-app
+    hostname: openwebui-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - openwebui-db
+    networks:
+      - int-openwebui-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/data:/app/backend/data
+
+  openwebui-redis:
+    image: $(getScriptImageByContainerName openwebui-redis)
+    container_name: openwebui-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $OPENWEBUI_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-openwebui-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-openwebui-redis:/data
+
+volumes:
+  v-openwebui-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/openwebui/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-openwebui-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/openwebui.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$OPENWEBUI_DATABASE_NAME
+POSTGRES_USER=$OPENWEBUI_DATABASE_USER
+POSTGRES_PASSWORD=$OPENWEBUI_DATABASE_USER_PASSWORD
+OLLAMA_BASE_URL=http://ollama-server:11434
+DATABASE_URL=postgresql://$OPENWEBUI_DATABASE_USER:$OPENWEBUI_DATABASE_USER_PASSWORD@openwebui-db:5432/$OPENWEBUI_DATABASE_NAME
+WEBUI_AUTH=True
+ENABLE_SIGNUP=False
+ENABLE_LOGIN_FORM=True
+DEFAULT_USER_ROLE=user
+WEBUI_URL=https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN
+WEBUI_SECRET_KEY=$OPENWEBUI_SECRET_KEY
+ENABLE_OAUTH_SIGNUP=true
+ADMIN_EMAIL=$OPENWEBUI_ADMIN_EMAIL_ADDRESS
+ENV=prod
+OPENAI_API_BASE=http://localai-server:8080/v1
+OPENAI_API_KEY=$LOCALAI_API_KEY
+OAUTH_MERGE_ACCOUNTS_BY_EMAIL=true
+OAUTH_PROVIDER_NAME=Authelia
+OPENID_PROVIDER_URL=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/.well-known/openid-configuration
+OAUTH_CLIENT_ID=$OPENWEBUI_OIDC_CLIENT_ID
+OAUTH_CLIENT_SECRET=$OPENWEBUI_OIDC_CLIENT_SECRET
+OAUTH_SCOPES=openid groups email profile
+OPENID_REDIRECT_URI=https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/oauth/oidc/callback
+REDIS_HOST=openwebui-redis
+REDIS_PORT=6379
+REDIS_PASSWORD=$OPENWEBUI_REDIS_PASSWORD
+REDIS_CONNECTION_STRING=redis://:$OPENWEBUI_REDIS_PASSWORD@openwebui-redis:6379/0
+PYTHON_VER=python3.11
+DEFAULT_LOCALE=en
+DEFAULT_MODEL=mistral-nemo:12b
+DEFAULT_PINNED_MODELS=mistral-nemo:12b
+EOFMT
+  OPENWEBUI_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $OPENWEBUI_OIDC_CLIENT_SECRET | tr -d ':\n')
+  randuid=$(uuidgen)
+  cat <<EOFIM > $HOME/openwebui.oidc
+# Authelia OIDC Client openwebui BEGIN
+      - client_id: $OPENWEBUI_OIDC_CLIENT_ID
+        client_name: OpenWebUI
+        client_secret: '$OPENWEBUI_OIDC_CLIENT_SECRET_HASH'
+        public: false
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
+        redirect_uris:
+          - https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/oauth/oidc/callback
+        scopes:
+          - openid
+          - profile
+          - email
+          - groups
+        userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_basic
+# Authelia OIDC Client openwebui END
+EOFIM
+  cat <<EOFIM > $HSHQ_STACKS_DIR/openwebui/dbexport/insertAdmin.sh
+#!/bin/bash
+OPENWEBUI_DATABASE_NAME=$OPENWEBUI_DATABASE_NAME
+OPENWEBUI_DATABASE_USER=$OPENWEBUI_DATABASE_USER
+PGPASSWORD=$OPENWEBUI_DATABASE_USER_PASSWORD
+curdt=\$(date '+%s')
+OPENWEBUI_ADMIN_PASSWORD_HASH="$(htpasswd -bnBC 10 "" $OPENWEBUI_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/' | sed 's/\$/\\\$/g')"
+function main()
+{
+  sqlcmd="insert into \"user\"(id,name,email,role,profile_image_url,created_at,updated_at,last_active_at) values ('$randuid', '$(getAdminEmailName) OpenWebUI', '$OPENWEBUI_ADMIN_EMAIL_ADDRESS', 'admin','data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAJSElEQVR4Xu1aaZBV1RH+3r66gLIYETUogiITGUBwArKIEAeMDLgBLok/NNGykqqYyqrZrLjFMokmJiHEqmQkRirioAyIooihCCqCBLFQwyKiqKPCzNuXm+775t3HG+fNe/fO3DunKt2/YF6fvt/p7/Q5fbqPq33pQA0iynjAJYQow4UORAhRiw8hRDE+hBAhRDUPKIZHzhAhRDEPKAZHIkQIUcwDisGRCBFCFPOAYnAkQoQQxTygGByJECFEMQ8oBkciRAhRzAOKwZEIEUIU84BicCRChBDFPKAYHIkQIUQxDygGRyJECFHMA4rBkQgRQhTzgGJwJEKEEMU8oBgciRAhRDEPKAanXyPEPage3tMa4TmxDu7jRsLlPxbwBoF0B/LJj5D/5A3k3t+I7J4WaMm2PnWd56QGhC5pMWzGV81G/sNX+vQbVoz1CyGeYRchMOF2uAeeUxvmfAaZNx9Beus90FKf1DamilZwym/gHbnY0MrsWobUptv6xHZvjDhLiNuHwOS74Bt1fQlzNo7s/jXIvvsstNhBaOnDcIUGwX3s6fCefik8Qy8gXZeur8UPIrH+BuQPbenNnAFPENHFbwK+Yww7THSseTR9JNs7270c7RwhLi+CM/8C76mXGJBz7z2P5IaboSUOVZyGZ+hkBKf9Aa7IyQUdIjDxzFW0lf3L8tS9IxaQzT8C+TTg9ht2EusWI0eLoz/FMUICE38G37k3l8g4uAGJ1gW87qvO3xU9BZH5GwD/cQXd1GeIPTFFjygrEprzODwnz0DmP7+Hb8w3DBPZPU8iuf7rVkz22RhHCOHDO3zpWmPrQaYdsX/UmzqovSMW6pFSlNyB55BYe4VpR7hCQxC5egftgh7E/9lAUfsIJRRnFuzkkuhoHgXG11/iCCGhOStoRU435pjZ8SBSW+4wN2eXG5ErXoUrOry0xaz+Km1dL5my4zv3FgQm/pTOo/cRWz4GgUl3wnfOTYaN5MZbkd3dbMpmXyrbTojrmNN0Rx4tsccnQDvyX9Pz8J93G/zjvlfaYvY9jeSz15qyE256Ce4Bo5HZ+TBSm38I95CJCM9tLUUepdmJ1ZeZstmXyrYT4q/7Nvzjf2Rg1tr30XY1ztIc3IPGd259ncMpHe5oPovuLYdrsuc+YSzClz2v68ZbZiH/0Vb935ErXytFnpZH7O91ekbXH2I7IV23q+xby5F88RZrc6VtK3rdu3raWhSOkCxFSi1S3J44OjlKi+If/2P4675l/D/18k+Qef23tZjscx3bCYleQ1tTMTsi+OlXfo709gcsTyS8YBPcx1NUdErN5xEd4pFFO+EKDqIL5l1Iv3avYcM9YBTCTaU0Ov/pG3TgT7GMsTcD7SUkMADRJW+X4eO0ktNLqxKa1QzP8DnG8Oz+ViTXLalqzjN8NkKzHiU9DbHHxkHr2F82Jty0kc6Ws42/MSFMjNNiKyFcGgnPf7FsTonWJuToDmJVghf+Dt4zrjSG59t2IL5yWlVzwRnL6OZPWdkHm5B4et7n9P1jb4V/Qinz4y2Lty6nxV5CumQwPLn4qjlUxHvZ8jwDF9wH3+ivGeO1I3voPBjfsz0qWkYXUanEE0CltJYrAZGrtpOdUpkmtnysHlFOiq2EeE76MlVUy7en+MrpyLe9bnmOgfN/UXa7Lt4nejLoG3UdAg3308UvQVkZ1asqXPxCjU9R7WyyYYrTX642Oym2EuIeTGnqPL6hl6Q/IiQ8bw3cgycg+84KJF+4saJ/uegZaPiV8TtfEDminBR7CemSvfDEnD5DXFQ1jlxe6HMk1lyO3HvrK/uXk5BFu6jg6CvoUCTppRQqqTglthLC5e3otXvL5pKk8nl2z0rL8wtdvByeUy4ureJ9q+m2fk1Fe3yz5xu+VektXrPftZcQQhNZvJty/xMMXOlX70R6G+3nFiW8cHOpGMiLuEo2VHYLt/DN3P61SKxbZGGktSG2E/K5Ff32Y9QD+aZFtB5Erz9Q1sPgOwjfRboTbm6FGlfpP3FlN//ZW9W/6w3RtkX3D2+koEvlmdijZ/dZp7IaANsJ4X4DZ0ZF0ToO0MWsrhqu7h085HyE5q4u/UYNpkIt60i3+oEpv4Zv5BLqze9E/ImpNX8zOP1P8H6xydBPbfouMrv+XPP43ijaTogr8gXK7znNLeT3+mpdMQn5wzWs1i4z63oeZPe2IPlc6U5Spn5Um9ZsuYa7msGL/mqY48cP/AjCCbGdEJ5EcNbf4B3+FWM+3KlL/btUAa5polyL4qpssZVLgxJPNSJ3aHO3w402Lf3K1WWuMtcs1NaNLtld1nPXG2rte2s2YVXREULcA8dQ2ZvSTXKqLpkOvdqqJT6sGbf3zKsRnPqgoc+9b+6BV5LQbGrTDpuB/MfbEH9yZs3fKSp2LdGkt95NBcl7TNsxO8ARQhiUv/778H/pOyWHUqcv0TqfKhP5qpj1Jtf8F4wVqyU/pkN6asXHEa4wb5Pb9AVQczW4Cwo+Q/gsKYp25B1aRBOrYu2tgmOEgHoZwelL9QJfUbjIyBmXFv+g4jz4QVtw2sNgJxeiqx3xNQt7fNTGDTFujLFwmZ3L7WaFo4uj7GjhoiQXJ+0U5wjhWdBToMDkX1Jx8KiXHfwua18rvctap3fptHQ7vcs6kd5ljdDJ8wydxAN1H3DJPEGHOG9DlUSvMFOpBN6wrsLJQ3wVnV+pT0340YXghQ+VVZV1W9RhjHN7NxszYcucqrOEdGLzDJtJLxfvqP3lYi6lp50pbipVSHH99T/QH9V5BteX3VMKUdWBXNt2uksc7uzBd1/B5XPKR4uAG1b89KhboSdIubZt1JNfWvH+Y46Ccu1+IaQIgYuPvlPnws1ve48/g9720rsrbs+SA/PxQ/r9gbe1zF663JEjepJQYwsR0lDVFx3LBlOo5brV6/p2rCdjqS230/n0UNXvmVXoV0LMgv1/0BdCFGNZCBFCFPOAYnAkQoQQxTygGByJECFEMQ8oBkciRAhRzAOKwZEIEUIU84BicCRChBDFPKAYHIkQIUQxDygGRyJECFHMA4rBkQgRQhTzgGJwJEKEEMU8oBgciRAhRDEPKAZHIkQIUcwDisGRCBFCFPOAYnAkQoQQxTygGByJECFEMQ8oBkciRAhRzAOKwZEIEUIU84BicCRChBDFPKAYHIkQxQj5H8Wj5BIH8hVZAAAAAElFTkSuQmCC', \$curdt, \$curdt, \$curdt);"
+  echo "\$sqlcmd" | psql -U \$OPENWEBUI_DATABASE_USER \$OPENWEBUI_DATABASE_NAME > /dev/null 2>&1
+
+  psql -U \$OPENWEBUI_DATABASE_USER \$OPENWEBUI_DATABASE_NAME -c "insert into auth(id,email,password,active) values('$randuid','$OPENWEBUI_ADMIN_EMAIL_ADDRESS','\$OPENWEBUI_ADMIN_PASSWORD_HASH',true);" > /dev/null 2>&1
+}
+
+main
+EOFIM
+  chmod 755 $HSHQ_STACKS_DIR/openwebui/dbexport/insertAdmin.sh
+}
+
+function performUpdateOpenWebUI()
+{
+  perform_stack_name=openwebui
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/open-webui/open-webui:0.6.43,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="ghcr.io/open-webui/open-webui:0.6.43,ghcr.io/open-webui/open-webui:0.6.43"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Khoj
+function installKhoj()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory khoj "Khoj"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName khoj-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName khoj-sandbox)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName khoj-computer)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName khoj-server)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/khoj
+  mkdir $HSHQ_STACKS_DIR/khoj/config
+  mkdir $HSHQ_STACKS_DIR/khoj/computer
+  mkdir $HSHQ_STACKS_DIR/khoj/db
+  mkdir $HSHQ_STACKS_DIR/khoj/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/khoj/dbexport
+  sudo chown 1001:1001 $HSHQ_STACKS_DIR/khoj/computer
+  mkdir -p $HSHQ_NONBACKUP_DIR/aimodels/khoj
+  initServicesCredentials
+  set +e
+  addUserMailu alias $KHOJ_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigKhoj
+  installStack khoj khoj-server "" $HOME/khoj.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$KHOJ_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_KHOJ_SERVER Admin Login Info" -b "$FMLNAME_KHOJ_SERVER Admin Email: $KHOJ_ADMIN_EMAIL_ADDRESS\n$FMLNAME_KHOJ_SERVER Admin Password: $KHOJ_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    KHOJ_INIT_ENV=true
+    updateConfigVar KHOJ_INIT_ENV $KHOJ_INIT_ENV
+  fi
+  sleep 3
+  addReadOnlyUserToDatabase Khoj postgres khoj-db $KHOJ_DATABASE_NAME $KHOJ_DATABASE_USER $KHOJ_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/khoj/dbexport $KHOJ_DATABASE_READONLYUSER $KHOJ_DATABASE_READONLYUSER_PASSWORD
+  if [ -z "$FMLNAME_KHOJ_SERVER" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://khoj-server:42110 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_KHOJ_SERVER $MANAGETLS_KHOJ_SERVER "$is_integrate_hshq" $NETDEFAULT_KHOJ_SERVER "$inner_block"
+  insertSubAuthelia $SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll khoj "$FMLNAME_KHOJ_SERVER" $USERTYPE_KHOJ_SERVER "https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN" "khoj.png" "$(getHeimdallOrderFromSub $SUB_KHOJ_SERVER $USERTYPE_KHOJ_SERVER)"
+    restartAllCaddyContainers
+    checkAddDBConnection true khoj "$FMLNAME_KHOJ_SERVER" postgres khoj-db $KHOJ_DATABASE_NAME $KHOJ_DATABASE_USER $KHOJ_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigKhoj()
+{
+  cat <<EOFMT > $HOME/khoj-compose.yml
+$STACK_VERSION_PREFIX khoj $(getScriptStackVersion khoj)
+
+services:
+  khoj-db:
+    image: $(getScriptImageByContainerName khoj-db)
+    container_name: khoj-db
+    hostname: khoj-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-khoj-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/khoj/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/khoj/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.khoj-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.khoj-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.khoj-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.khoj-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.khoj-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.khoj-hourly-db.email-from=Khoj Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.khoj-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.khoj-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.khoj-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.khoj-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.khoj-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.khoj-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.khoj-monthly-db.email-from=Khoj Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.khoj-monthly-db.mail-only-on-error=false"
+
+  khoj-sandbox:
+    image: $(getScriptImageByContainerName khoj-sandbox)
+    container_name: khoj-sandbox
+    hostname: khoj-sandbox
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - khoj-db
+    networks:
+      - int-khoj-net
+      - dock-aipriv-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  khoj-computer:
+    image: $(getScriptImageByContainerName khoj-computer)
+    container_name: khoj-computer
+    hostname: khoj-computer
+    user: "1001:1001"
+    restart: unless-stopped
+    env_file: stack.env
+    privileged: true
+    depends_on:
+      - khoj-db
+    ports:
+      - $KHOJ_VNC_PORT:5900
+    networks:
+      - int-khoj-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-khoj-computer:/home/operator
+
+  khoj-server:
+    image: $(getScriptImageByContainerName khoj-server)
+    container_name: khoj-server
+    hostname: khoj-server
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    working_dir: /app
+    command: --host="0.0.0.0" --port=42110 -vv --anonymous-mode --non-interactive
+    depends_on:
+      - khoj-db
+    networks:
+      - int-khoj-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      # Not sure about this. User can enable if they want.
+      #- /var/run/docker.sock:/var/run/docker.sock
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/khoj:/root/.cache
+      - v-khoj-config:/root/.khoj
+
+volumes:
+  v-khoj-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/khoj/config
+  v-khoj-computer:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/khoj/computer
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-khoj-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/khoj.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$KHOJ_DATABASE_NAME
+POSTGRES_USER=$KHOJ_DATABASE_USER
+POSTGRES_PASSWORD=$KHOJ_DATABASE_USER_PASSWORD
+POSTGRES_HOST=khoj-db
+POSTGRES_PORT=5432
+KHOJ_DJANGO_SECRET_KEY=$KHOJ_DJANGO_SECRET_KEY
+SEARXNG_BASE_URL=http://searxng-app:8080/
+KHOJ_DEBUG=False
+KHOJ_ADMIN_EMAIL=$KHOJ_ADMIN_EMAIL_ADDRESS
+KHOJ_ADMIN_PASSWORD=$KHOJ_ADMIN_PASSWORD
+KHOJ_TERRARIUM_URL=http://khoj-sandbox:8080
+OPENAI_BASE_URL=http://ollama-server:11434/v1/
+KHOJ_DEFAULT_CHAT_MODEL=mistral-nemo:12b
+KHOJ_OPERATOR_ENABLED=True
+KHOJ_NO_HTTPS=True
+KHOJ_DOMAIN=$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN
+KHOJ_ALLOWED_DOMAIN=$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN
+KHOJ_TELEMETRY_DISABLE=True
+EOFMT
+}
+
+function performUpdateKhoj()
+{
+  perform_stack_name=khoj
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/pgvector/pgvector:0.8.1-pg16-bookworm,ghcr.io/khoj-ai/terrarium:latest,ghcr.io/khoj-ai/khoj-computer:1.42.0,ghcr.io/khoj-ai/khoj:1.42.10
+      image_update_map[0]="mirror.gcr.io/pgvector/pgvector:0.8.1-pg16-bookworm,mirror.gcr.io/pgvector/pgvector:0.8.1-pg16-bookworm"
+      image_update_map[1]="ghcr.io/khoj-ai/terrarium:latest,ghcr.io/khoj-ai/terrarium:latest"
+      image_update_map[2]="ghcr.io/khoj-ai/khoj-computer:1.42.0,ghcr.io/khoj-ai/khoj-computer:1.42.0"
+      image_update_map[3]="ghcr.io/khoj-ai/khoj:1.42.10,ghcr.io/khoj-ai/khoj:1.42.10"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# LobeChat
+function installLobeChat()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory lobechat "LobeChat"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName lobechat-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName lobechat-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName lobechat-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName lobechat-minio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/lobechat
+  mkdir $HSHQ_STACKS_DIR/lobechat/minio
+  mkdir $HSHQ_STACKS_DIR/lobechat/db
+  mkdir $HSHQ_STACKS_DIR/lobechat/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/lobechat/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/lobechat
+  mkdir $HSHQ_NONBACKUP_DIR/lobechat/redis
+  initServicesCredentials
+  set +e
+  addUserMailu alias $LOBECHAT_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  LOBECHAT_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $LOBECHAT_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigLobeChat
+  oidcBlock=$(cat $HOME/lobechat.oidc)
+  rm -f $HOME/lobechat.oidc
+  insertOIDCClientAuthelia lobechat "$oidcBlock"
+  installStack lobechat lobechat-app "" $HOME/lobechat.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$LOBECHAT_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_LOBECHAT_APP Admin Login Info" -b "$FMLNAME_LOBECHAT_APP Admin Username: $LOBECHAT_ADMIN_USERNAME\n$FMLNAME_LOBECHAT_APP Admin Email: $LOBECHAT_ADMIN_EMAIL_ADDRESS\n$FMLNAME_LOBECHAT_APP Admin Password: $LOBECHAT_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    LOBECHAT_INIT_ENV=true
+    updateConfigVar LOBECHAT_INIT_ENV $LOBECHAT_INIT_ENV
+  fi
+  sleep 3
+  addReadOnlyUserToDatabase LobeChat postgres lobechat-db $LOBECHAT_DATABASE_NAME $LOBECHAT_DATABASE_USER $LOBECHAT_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/lobechat/dbexport $LOBECHAT_DATABASE_READONLYUSER $LOBECHAT_DATABASE_READONLYUSER_PASSWORD
+  if [ -z "$FMLNAME_LOBECHAT_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://lobechat-app:3210 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_LOBECHAT_APP $MANAGETLS_LOBECHAT_APP "$is_integrate_hshq" $NETDEFAULT_LOBECHAT_APP "$inner_block"
+  insertSubAuthelia $SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll lobechat "$FMLNAME_LOBECHAT_APP" $USERTYPE_LOBECHAT_APP "https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN" "lobechat.png" "$(getHeimdallOrderFromSub $SUB_LOBECHAT_APP $USERTYPE_LOBECHAT_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true lobechat "$FMLNAME_LOBECHAT_APP" postgres lobechat-db $LOBECHAT_DATABASE_NAME $LOBECHAT_DATABASE_USER $LOBECHAT_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigLobeChat()
+{
+  cat <<EOFMT > $HOME/lobechat-compose.yml
+$STACK_VERSION_PREFIX lobechat $(getScriptStackVersion lobechat)
+
+services:
+  lobechat-db:
+    image: $(getScriptImageByContainerName lobechat-db)
+    container_name: lobechat-db
+    hostname: lobechat-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-lobechat-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/lobechat/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/lobechat/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.lobechat-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.lobechat-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.lobechat-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.lobechat-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.lobechat-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.lobechat-hourly-db.email-from=LobeChat Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.lobechat-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.lobechat-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.lobechat-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.lobechat-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.lobechat-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.lobechat-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.lobechat-monthly-db.email-from=LobeChat Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.lobechat-monthly-db.mail-only-on-error=false"
+
+  lobechat-app:
+    image: $(getScriptImageByContainerName lobechat-app)
+    container_name: lobechat-app
+    hostname: lobechat-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - lobechat-db
+      - lobechat-minio
+      - lobechat-redis
+    networks:
+      - int-lobechat-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    entrypoint: >
+      /bin/sh -c "
+        /bin/node /app/startServer.js &
+        LOBE_PID=\\\$!
+        sleep 3
+        wait \\\$LOBE_PID
+      "
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  lobechat-redis:
+    image: $(getScriptImageByContainerName lobechat-redis)
+    container_name: lobechat-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $LOBECHAT_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-lobechat-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-lobechat-redis:/data
+
+  lobechat-minio:
+    image: $(getScriptImageByContainerName lobechat-minio)
+    container_name: lobechat-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-lobechat-net
+    entrypoint: >
+      /bin/sh -c "
+        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\\\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        mc alias set minio http://localhost:9000 ${LOBECHAT_MINIO_KEY} ${LOBECHAT_MINIO_SECRET}
+        echo 'Creating bucket lobechat'
+        mc mb minio/lobechat
+        wait \\\$MINIO_PID
+      "
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/lobechat/minio:/data:/etc/minio/data
+
+volumes:
+  v-lobechat-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/lobechat/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-lobechat-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/lobechat.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$LOBECHAT_DATABASE_NAME
+POSTGRES_USER=$LOBECHAT_DATABASE_USER
+POSTGRES_PASSWORD=$LOBECHAT_DATABASE_USER_PASSWORD
+APP_URL=https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN
+AUTH_URL=https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/api/auth
+LOBE_DB_NAME=$LOBECHAT_DATABASE_NAME
+MINIO_ROOT_USER=$LOBECHAT_MINIO_KEY
+MINIO_ROOT_PASSWORD=$LOBECHAT_MINIO_SECRET
+S3_PUBLIC_DOMAIN=http://lobechat-minio:9000
+S3_ENDPOINT=http://lobechat-minio:9000
+MINIO_LOBE_BUCKET=lobechat
+OPENAI_API_KEY=$LOCALAI_API_KEY
+OPENAI_PROXY_URL=http://localai-server:8080/v1
+KEY_VAULTS_SECRET=$LOBECHAT_KEYVAULTS_SECRET
+NEXT_AUTH_SECRET=$LOBECHAT_NEXTAUTH_SECRET
+NEXT_AUTH_SSO_PROVIDERS=authelia
+AUTH_AUTHELIA_ID=$LOBECHAT_OIDC_CLIENT_ID
+AUTH_AUTHELIA_SECRET=$LOBECHAT_OIDC_CLIENT_SECRET
+AUTH_AUTHELIA_ISSUER=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN
+NEXTAUTH_URL=https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/api/auth
+NODE_ENV=production
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+DATABASE_URL=postgresql://$LOBECHAT_DATABASE_USER:$LOBECHAT_DATABASE_USER_PASSWORD@lobechat-db:5432/$LOBECHAT_DATABASE_NAME
+S3_BUCKET=lobechat
+S3_ENABLE_PATH_STYLE=1
+S3_ACCESS_KEY=$LOBECHAT_MINIO_KEY
+S3_ACCESS_KEY_ID=$LOBECHAT_MINIO_KEY
+S3_SECRET_ACCESS_KEY=$LOBECHAT_MINIO_SECRET
+LLM_VISION_IMAGE_USE_BASE64=1
+S3_SET_ACL=0
+SEARXNG_URL=http://searxng-app:8080
+REDIS_URL=redis://:$LOBECHAT_REDIS_PASSWORD@lobechat-redis:6379/0
+REDIS_PREFIX=lobechat
+REDIS_TLS=0
+EOFMT
+  LOBECHAT_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $LOBECHAT_OIDC_CLIENT_SECRET | tr -d ':\n')
+  cat <<EOFIM > $HOME/lobechat.oidc
+# Authelia OIDC Client lobechat BEGIN
+      - client_id: $LOBECHAT_OIDC_CLIENT_ID
+        client_name: LobeChat
+        client_secret: '$LOBECHAT_OIDC_CLIENT_SECRET_HASH'
+        public: false
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
+        redirect_uris:
+          - https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/api/auth/callback/authelia
+        scopes:
+          - openid
+          - profile
+          - email
+          - groups
+        userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_basic
+# Authelia OIDC Client lobechat END
+EOFIM
+}
+
+function performUpdateLobeChat()
+{
+  perform_stack_name=lobechat
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/lobehub/lobe-chat-database:1.143.2,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
+      image_update_map[1]="mirror.gcr.io/lobehub/lobe-chat-database:1.143.2,mirror.gcr.io/lobehub/lobe-chat-database:1.143.2"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# InvokeAI
+function installInvokeAI()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory invokeai "InvokeAI"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName invokeai-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/invokeai
+  mkdir $HSHQ_STACKS_DIR/invokeai/data
+  mkdir -p $HSHQ_NONBACKUP_DIR/aimodels/invokeai/models
+  mkdir -p $HSHQ_NONBACKUP_DIR/aimodels/invokeai/cache/{download,convert}
+  initServicesCredentials
+  set +e
+  outputConfigInvokeAI
+  installStack invokeai invokeai-app "" $HOME/invokeai.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_INVOKEAI_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_INVOKEAI_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://invokeai-app:9090 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_INVOKEAI_APP $MANAGETLS_INVOKEAI_APP "$is_integrate_hshq" $NETDEFAULT_INVOKEAI_APP "$inner_block"
+  insertSubAuthelia $SUB_INVOKEAI_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll invokeai "$FMLNAME_INVOKEAI_APP" $USERTYPE_INVOKEAI_APP "https://$SUB_INVOKEAI_APP.$HOMESERVER_DOMAIN" "invokeai.png" "$(getHeimdallOrderFromSub $SUB_INVOKEAI_APP $USERTYPE_INVOKEAI_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigInvokeAI()
+{
+  cat <<EOFMT > $HOME/invokeai-compose.yml
+$STACK_VERSION_PREFIX invokeai $(getScriptStackVersion invokeai)
+
+services:
+  invokeai-app:
+    image: $(getScriptImageByContainerName invokeai-app)
+    container_name: invokeai-app
+    hostname: invokeai-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-invokeai-data:/invokeai
+
+volumes:
+  v-invokeai-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/invokeai/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/invokeai.env
+TZ=\${PORTAINER_TZ}
+EOFMT
+}
+
+function performUpdateInvokeAI()
+{
+  perform_stack_name=invokeai
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=ghcr.io/invoke-ai/invokeai:6.10.0rc2-rocm
+      image_update_map[0]="ghcr.io/invoke-ai/invokeai:6.10.0rc2-rocm,ghcr.io/invoke-ai/invokeai:6.10.0rc2-rocm"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# RAGFlow
+function installRAGFlow()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory ragflow "RAGFlow"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-infinity)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-sandbox)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-minio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-sandbox-nodejs)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-sandbox-python)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/ragflow
+  mkdir $HSHQ_STACKS_DIR/ragflow/config
+  mkdir $HSHQ_STACKS_DIR/ragflow/logs
+  mkdir $HSHQ_STACKS_DIR/ragflow/nginx
+  mkdir $HSHQ_STACKS_DIR/ragflow/infinity
+  mkdir $HSHQ_STACKS_DIR/ragflow/minio
+  mkdir $HSHQ_STACKS_DIR/ragflow/db
+  mkdir $HSHQ_STACKS_DIR/ragflow/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/ragflow/dbexport
+  mkdir -p $HSHQ_NONBACKUP_DIR/ragflow/redis
+  initServicesCredentials
+  set +e
+  addUserMailu alias $RAGFLOW_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigRAGFlow
+  oidcBlock=$(cat $HOME/ragflow.oidc)
+  rm -f $HOME/ragflow.oidc
+  insertOIDCClientAuthelia ragflow "$oidcBlock"
+  installStack ragflow ragflow-app "Running on all addresses" $HOME/ragflow.env 10
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$RAGFLOW_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_RAGFLOW_APP Admin Login Info" -b "$FMLNAME_RAGFLOW_APP Admin Username: $RAGFLOW_ADMIN_EMAIL_ADDRESS\n$FMLNAME_RAGFLOW_APP Admin Password: $RAGFLOW_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    RAGFLOW_INIT_ENV=true
+    updateConfigVar RAGFLOW_INIT_ENV $RAGFLOW_INIT_ENV
+  fi
+  sleep 3
+  docker exec ragflow-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/ragflow/dbexport/setupDBSettings.sh
+  addReadOnlyUserToDatabase RAGFlow postgres ragflow-db $RAGFLOW_DATABASE_NAME $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/ragflow/dbexport $RAGFLOW_DATABASE_READONLYUSER $RAGFLOW_DATABASE_READONLYUSER_PASSWORD
+  if [ -z "$FMLNAME_RAGFLOW_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://ragflow-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_RAGFLOW_APP $MANAGETLS_RAGFLOW_APP "$is_integrate_hshq" $NETDEFAULT_RAGFLOW_APP "$inner_block"
+  insertSubAuthelia $SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_RAGFLOW_API.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://ragflow-app:9380 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_RAGFLOW_API $MANAGETLS_RAGFLOW_API "$is_integrate_hshq" $NETDEFAULT_RAGFLOW_API "$inner_block"
+  insertSubAuthelia $SUB_RAGFLOW_API.$HOMESERVER_DOMAIN bypass
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_RAGFLOW_MCP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://ragflow-app:9382 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_RAGFLOW_MCP $MANAGETLS_RAGFLOW_MCP "$is_integrate_hshq" $NETDEFAULT_RAGFLOW_MCP "$inner_block"
+  insertSubAuthelia $SUB_RAGFLOW_MCP.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll ragflow "$FMLNAME_RAGFLOW_APP" $USERTYPE_RAGFLOW_APP "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN" "ragflow.png" "$(getHeimdallOrderFromSub $SUB_RAGFLOW_APP $USERTYPE_RAGFLOW_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true ragflow "$FMLNAME_RAGFLOW_APP" postgres ragflow-db $RAGFLOW_DATABASE_NAME $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigRAGFlow()
+{
+  cat <<EOFMT > $HOME/ragflow-compose.yml
+$STACK_VERSION_PREFIX ragflow $(getScriptStackVersion ragflow)
+
+services:
+  ragflow-db:
+    image: $(getScriptImageByContainerName ragflow-db)
+    container_name: ragflow-db
+    hostname: ragflow-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-ragflow-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.ragflow-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.ragflow-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.ragflow-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.ragflow-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.ragflow-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.ragflow-hourly-db.email-from=RAGFlow Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.ragflow-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.ragflow-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.ragflow-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.ragflow-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.ragflow-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.ragflow-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.ragflow-monthly-db.email-from=RAGFlow Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.ragflow-monthly-db.mail-only-on-error=false"
+
+  ragflow-infinity:
+    image: $(getScriptImageByContainerName ragflow-infinity)
+    container_name: ragflow-infinity
+    hostname: ragflow-infinity
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ragflow-db
+    command: ["-f", "/infinity_conf.toml"]
+    mem_limit: 8g
+    ulimits:
+      nofile:
+        soft: 500000
+        hard: 500000
+    networks:
+      - int-ragflow-net
+      - dock-dbs-net
+      - dock-proxy-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-ragflow-infinity:/var/infinity
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/config/infinity_conf.toml:/infinity_conf.toml
+
+  ragflow-app:
+    image: $(getScriptImageByContainerName ragflow-app)
+    container_name: ragflow-app
+    hostname: ragflow-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ragflow-db
+    command:
+      - --enable-adminserver
+    # command:
+    #   - --enable-mcpserver
+    #   - --mcp-host=0.0.0.0
+    #   - --mcp-port=9382
+    #   - --mcp-base-url=http://127.0.0.1:9380
+    #   - --mcp-script-path=/ragflow/mcp/server/server.py
+    #   - --mcp-mode=self-host
+    #   - --mcp-host-api-key=ragflow-$RAGFLOW_MCPSERVER_API_KEY
+    networks:
+      - int-ragflow-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/logs:/ragflow/logs
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nginx/ragflow.conf:/etc/nginx/conf.d/ragflow.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nginx/proxy.conf:/etc/nginx/proxy.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/config/service_conf.yaml.template:/ragflow/conf/service_conf.yaml.template
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/config/entrypoint.sh:/ragflow/entrypoint.sh
+      - /etc/ssl/certs/ca-certificates.crt:/ragflow/.venv/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+
+  ragflow-sandbox:
+    image: $(getScriptImageByContainerName ragflow-sandbox)
+    container_name: ragflow-sandbox
+    hostname: ragflow-sandbox
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    privileged: true
+    depends_on:
+      - ragflow-db
+    networks:
+      - int-ragflow-net
+      - dock-ext-net
+      - dock-aipriv-net
+    healthcheck:
+      test: ["CMD", "curl", "http://localhost:9385/healthz"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  ragflow-executor:
+    image: $(getScriptImageByContainerName ragflow-app)
+    container_name: ragflow-executor
+    hostname: ragflow-executor
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ragflow-db
+    entrypoint: "/ragflow/entrypoint.sh --disable-webserver --workers=1"
+    networks:
+      - int-ragflow-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/logs:/ragflow/logs
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nginx/ragflow.conf:/etc/nginx/conf.d/ragflow.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/config/service_conf.yaml.template:/ragflow/conf/service_conf.yaml.template
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/config/entrypoint.sh:/ragflow/entrypoint.sh
+
+  ragflow-minio:
+    image: $(getScriptImageByContainerName ragflow-minio)
+    container_name: ragflow-minio
+    hostname: ragflow-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ragflow-db
+    command: server /data
+    networks:
+      - int-ragflow-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/minio:/data
+
+  ragflow-redis:
+    image: $(getScriptImageByContainerName ragflow-redis)
+    container_name: ragflow-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $RAGFLOW_REDIS_PASSWORD
+      --appendonly yes
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+    networks:
+      - int-ragflow-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-ragflow-redis:/data
+
+volumes:
+  v-ragflow-infinity:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/infinity
+  v-ragflow-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/ragflow/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-ragflow-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/ragflow.env
+TZ=\${PORTAINER_TZ}
+TIMEZONE='UTC-6\tAmerica/Chicago'
+POSTGRES_DB=$RAGFLOW_DATABASE_NAME
+POSTGRES_USER=$RAGFLOW_DATABASE_USER
+POSTGRES_PASSWORD=$RAGFLOW_DATABASE_USER_PASSWORD
+POSTGRES_HOST=ragflow-db
+POSTGRES_DBNAME=$RAGFLOW_DATABASE_NAME
+DB_TYPE=postgres
+DOC_ENGINE=infinity
+DEVICE=cpu
+COMPOSE_PROFILES=infinity,cpu,sandbox
+MEM_LIMIT=8589934592
+INFINITY_HOST=ragflow-infinity
+INFINITY_THRIFT_PORT=23817
+INFINITY_HTTP_PORT=23820
+INFINITY_PSQL_PORT=5432
+MINIO_HOST=ragflow-minio
+MINIO_CONSOLE_PORT=9001
+MINIO_PORT=9000
+MINIO_USER=$RAGFLOW_MINIO_KEY
+MINIO_PASSWORD=$RAGFLOW_MINIO_SECRET
+MINIO_ROOT_USER=$RAGFLOW_MINIO_KEY
+MINIO_ROOT_PASSWORD=$RAGFLOW_MINIO_SECRET
+REDIS_HOST=ragflow-redis
+REDIS_PORT=6379
+REDIS_PASSWORD=$RAGFLOW_REDIS_PASSWORD
+SVR_WEB_HTTP_PORT=80
+SVR_WEB_HTTPS_PORT=443
+SVR_HTTP_PORT=9380
+ADMIN_SVR_HTTP_PORT=9381
+SVR_MCP_PORT=9382
+MAX_CONTENT_LENGTH=1073741824
+DOC_BULK_SIZE=4
+EMBEDDING_BATCH_SIZE=16
+REGISTER_ENABLED=1
+SANDBOX_ENABLED=1
+SANDBOX_HOST=ragflow-sandbox
+SANDBOX_EXECUTOR_MANAGER_POOL_SIZE=3
+SANDBOX_BASE_PYTHON_IMAGE=mirror.gcr.io/infiniflow/sandbox-base-python:latest
+SANDBOX_BASE_NODEJS_IMAGE=mirror.gcr.io/infiniflow/sandbox-base-nodejs:latest
+SANDBOX_EXECUTOR_MANAGER_PORT=9385
+SANDBOX_ENABLE_SECCOMP=false
+SANDBOX_MAX_MEMORY=256m
+SANDBOX_TIMEOUT=10s
+USE_DOCLING=false
+DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+PYTHON_VER=python3.12
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/nginx/nginx.conf
+user  root;
+worker_processes  auto;
+error_log  /var/log/nginx/error.log notice;
+pid        /var/run/nginx.pid;
+events {
+    worker_connections  1024;
+}
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+    log_format  main  '\$remote_addr - \$remote_user [\$time_local] "\$request" '
+                      '\$status \$body_bytes_sent "\$http_referer" '
+                      '"\$http_user_agent" "\$http_x_forwarded_for"';
+    access_log  /var/log/nginx/access.log  main;
+    sendfile        on;
+    #tcp_nopush     on;
+    keepalive_timeout  65;
+    #gzip  on;
+    client_max_body_size 1024M;
+    include /etc/nginx/conf.d/ragflow.conf;
+}
+
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/nginx/proxy.conf
+proxy_set_header Host \$host;
+proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto \$scheme;
+proxy_http_version 1.1;
+proxy_set_header Connection "";
+proxy_buffering off;
+proxy_read_timeout 3600s;
+proxy_send_timeout 3600s;
+proxy_buffer_size 1024k;
+proxy_buffers 16 1024k;
+proxy_busy_buffers_size 2048k;
+proxy_temp_file_write_size 2048k;
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/nginx/ragflow.conf
+server {
+    listen 80;
+    server_name _;
+    root /ragflow/web/dist;
+
+    gzip on;
+    gzip_min_length 1k;
+    gzip_comp_level 9;
+    gzip_types text/plain application/javascript application/x-javascript text/css application/xml text/javascript application/x-httpd-php image/jpeg image/gif image/png;
+    gzip_vary on;
+    gzip_disable "MSIE [1-6]\.";
+
+    location ~ ^/api/v1/admin {
+        proxy_pass http://localhost:9381;
+        include proxy.conf;
+    }
+
+    location ~ ^/(v1|api) {
+        proxy_pass http://localhost:9380;
+        include proxy.conf;
+    }
+
+
+    location / {
+        index index.html;
+        try_files \$uri \$uri/ /index.html;
+    }
+
+    # Cache-Control: max-age~@~AExpires
+    location ~ ^/static/(css|js|media)/ {
+        expires 10y;
+        access_log off;
+    }
+}
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/config/entrypoint.sh
+#!/usr/bin/env bash
+
+set -e
+
+# -----------------------------------------------------------------------------
+# Usage and command-line argument parsing
+# -----------------------------------------------------------------------------
+function usage() {
+    echo "Usage: \$0 [--disable-webserver] [--disable-taskexecutor] [--disable-datasync] [--consumer-no-beg=<num>] [--consumer-no-end=<num>] [--workers=<num>] [--host-id=<string>]"
+    echo
+    echo "  --disable-webserver             Disables the web server (nginx + ragflow_server)."
+    echo "  --disable-taskexecutor          Disables task executor workers."
+    echo "  --disable-datasync              Disables synchronization of datasource workers."
+    echo "  --enable-mcpserver              Enables the MCP server."
+    echo "  --enable-adminserver            Enables the Admin server."
+    echo "  --init-superuser                Initializes the superuser."
+    echo "  --consumer-no-beg=<num>         Start range for consumers (if using range-based)."
+    echo "  --consumer-no-end=<num>         End range for consumers (if using range-based)."
+    echo "  --workers=<num>                 Number of task executors to run (if range is not used)."
+    echo "  --host-id=<string>              Unique ID for the host (defaults to hostname)."
+    echo
+    echo "Examples:"
+    echo "  \$0 --disable-taskexecutor"
+    echo "  \$0 --disable-webserver --consumer-no-beg=0 --consumer-no-end=5"
+    echo "  \$0 --disable-webserver --workers=2 --host-id=myhost123"
+    echo "  \$0 --enable-mcpserver"
+    echo "  \$0 --enable-adminserver"
+    echo "  \$0 --init-superuser"
+    exit 1
+}
+
+ENABLE_WEBSERVER=1 # Default to enable web server
+ENABLE_TASKEXECUTOR=1  # Default to enable task executor
+ENABLE_DATASYNC=1
+ENABLE_MCP_SERVER=0
+ENABLE_ADMIN_SERVER=0 # Default close admin server
+INIT_SUPERUSER_ARGS="" # Default to not initialize superuser
+CONSUMER_NO_BEG=0
+CONSUMER_NO_END=0
+WORKERS=1
+
+MCP_HOST="127.0.0.1"
+MCP_PORT=9382
+MCP_BASE_URL="http://127.0.0.1:9380"
+MCP_SCRIPT_PATH="/ragflow/mcp/server/server.py"
+MCP_MODE="self-host"
+MCP_HOST_API_KEY="$RAGFLOW_MCPSERVER_API_KEY"
+MCP_TRANSPORT_SSE_FLAG="--transport-sse-enabled"
+MCP_TRANSPORT_STREAMABLE_HTTP_FLAG="--transport-streamable-http-enabled"
+MCP_JSON_RESPONSE_FLAG="--json-response"
+
+# -----------------------------------------------------------------------------
+# Host ID logic:
+#   1. By default, use the system hostname if length <= 32
+#   2. Otherwise, use the full MD5 hash of the hostname (32 hex chars)
+# -----------------------------------------------------------------------------
+CURRENT_HOSTNAME="\$(hostname)"
+if [ \${#CURRENT_HOSTNAME} -le 32 ]; then
+  DEFAULT_HOST_ID="\$CURRENT_HOSTNAME"
+else
+  DEFAULT_HOST_ID="\$(echo -n "\$CURRENT_HOSTNAME" | md5sum | cut -d ' ' -f 1)"
+fi
+
+HOST_ID="\$DEFAULT_HOST_ID"
+
+# Parse arguments
+for arg in "\$@"; do
+  case \$arg in
+    --disable-webserver)
+      ENABLE_WEBSERVER=0
+      shift
+      ;;
+    --disable-taskexecutor)
+      ENABLE_TASKEXECUTOR=0
+      shift
+      ;;
+    --disable-datasync)
+      ENABLE_DATASYNC=0
+      shift
+      ;;
+    --enable-mcpserver)
+      ENABLE_MCP_SERVER=1
+      shift
+      ;;
+    --enable-adminserver)
+      ENABLE_ADMIN_SERVER=1
+      shift
+      ;;
+    --init-superuser)
+      INIT_SUPERUSER_ARGS="--init-superuser"
+      shift
+      ;;
+    --mcp-host=*)
+      MCP_HOST="\${arg#*=}"
+      shift
+      ;;
+    --mcp-port=*)
+      MCP_PORT="\${arg#*=}"
+      shift
+      ;;
+    --mcp-base-url=*)
+      MCP_BASE_URL="\${arg#*=}"
+      shift
+      ;;
+    --mcp-mode=*)
+      MCP_MODE="\${arg#*=}"
+      shift
+      ;;
+    --mcp-host-api-key=*)
+      MCP_HOST_API_KEY="\${arg#*=}"
+      shift
+      ;;
+    --mcp-script-path=*)
+      MCP_SCRIPT_PATH="\${arg#*=}"
+      shift
+      ;;
+    --no-transport-sse-enabled)
+      MCP_TRANSPORT_SSE_FLAG="--no-transport-sse-enabled"
+      shift
+      ;;
+    --no-transport-streamable-http-enabled)
+      MCP_TRANSPORT_STREAMABLE_HTTP_FLAG="--no-transport-streamable-http-enabled"
+      shift
+      ;;
+    --no-json-response)
+      MCP_JSON_RESPONSE_FLAG="--no-json-response"
+      shift
+      ;;
+    --consumer-no-beg=*)
+      CONSUMER_NO_BEG="\${arg#*=}"
+      shift
+      ;;
+    --consumer-no-end=*)
+      CONSUMER_NO_END="\${arg#*=}"
+      shift
+      ;;
+    --workers=*)
+      WORKERS="\${arg#*=}"
+      shift
+      ;;
+    --host-id=*)
+      HOST_ID="\${arg#*=}"
+      shift
+      ;;
+    *)
+      usage
+      ;;
+  esac
+done
+
+# -----------------------------------------------------------------------------
+# Replace env variables in the service_conf.yaml file
+# -----------------------------------------------------------------------------
+CONF_DIR="/ragflow/conf"
+TEMPLATE_FILE="\${CONF_DIR}/service_conf.yaml.template"
+CONF_FILE="\${CONF_DIR}/service_conf.yaml"
+
+rm -f "\${CONF_FILE}"
+while IFS= read -r line || [[ -n "\$line" ]]; do
+    eval "echo \"\$line\"" >> "\${CONF_FILE}"
+done < "\${TEMPLATE_FILE}"
+
+export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu/"
+PY=python3
+
+# -----------------------------------------------------------------------------
+# Function(s)
+# -----------------------------------------------------------------------------
+
+function task_exe() {
+    local consumer_id="\$1"
+    local host_id="\$2"
+
+    JEMALLOC_PATH="\$(pkg-config --variable=libdir jemalloc)/libjemalloc.so"
+    while true; do
+        LD_PRELOAD="\$JEMALLOC_PATH" \
+        "\$PY" rag/svr/task_executor.py "\${host_id}_\${consumer_id}"  &
+        wait;
+        sleep 1;
+    done
+}
+
+function start_mcp_server() {
+    echo "Starting MCP Server on \${MCP_HOST}:\${MCP_PORT} with base URL \${MCP_BASE_URL}..."
+    "\$PY" "\${MCP_SCRIPT_PATH}" \
+        --host="\${MCP_HOST}" \
+        --port="\${MCP_PORT}" \
+        --base-url="\${MCP_BASE_URL}" \
+        --mode="\${MCP_MODE}" \
+        --api-key="\${MCP_HOST_API_KEY}" \
+        "\${MCP_TRANSPORT_SSE_FLAG}" \
+        "\${MCP_TRANSPORT_STREAMABLE_HTTP_FLAG}" \
+        "\${MCP_JSON_RESPONSE_FLAG}" &
+}
+
+function ensure_docling() {
+    [[ "\${USE_DOCLING}" == "true" ]] || { echo "[docling] disabled by USE_DOCLING"; return 0; }
+    DOCLING_PIN="\${DOCLING_VERSION:-==2.58.0}"
+    "\$PY" -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('docling') else 1)" \
+      || uv pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --extra-index-url https://pypi.org/simple --no-cache-dir "docling\${DOCLING_PIN}"
+}
+
+# -----------------------------------------------------------------------------
+# Start components based on flags
+# -----------------------------------------------------------------------------
+ensure_docling
+
+if [[ "\${ENABLE_WEBSERVER}" -eq 1 ]]; then
+    echo "Starting nginx..."
+    /usr/sbin/nginx
+
+    echo "Starting ragflow_server..."
+    while true; do
+        "\$PY" api/ragflow_server.py \${INIT_SUPERUSER_ARGS} &
+        wait;
+        sleep 1;
+    done &
+fi
+
+if [[ "\${ENABLE_DATASYNC}" -eq 1 ]]; then
+    echo "Starting data sync..."
+    while true; do
+        "\$PY" rag/svr/sync_data_source.py &
+        wait;
+        sleep 1;
+    done &
+fi
+
+if [[ "\${ENABLE_ADMIN_SERVER}" -eq 1 ]]; then
+    echo "Starting admin_server..."
+    while true; do
+        "\$PY" admin/server/admin_server.py &
+        wait;
+        sleep 1;
+    done &
+fi
+
+if [[ "\${ENABLE_MCP_SERVER}" -eq 1 ]]; then
+    start_mcp_server
+fi
+
+
+if [[ "\${ENABLE_TASKEXECUTOR}" -eq 1 ]]; then
+    if [[ "\${CONSUMER_NO_END}" -gt "\${CONSUMER_NO_BEG}" ]]; then
+        echo "Starting task executors on host '\${HOST_ID}' for IDs in [\${CONSUMER_NO_BEG}, \${CONSUMER_NO_END})..."
+        for (( i=CONSUMER_NO_BEG; i<CONSUMER_NO_END; i++ ))
+        do
+          task_exe "\${i}" "\${HOST_ID}" &
+        done
+    else
+        # Otherwise, start a fixed number of workers
+        echo "Starting \${WORKERS} task executor(s) on host '\${HOST_ID}'..."
+        for (( i=0; i<WORKERS; i++ ))
+        do
+          task_exe "\${i}" "\${HOST_ID}" &
+        done
+    fi
+fi
+
+wait
+EOFMT
+  chmod 755 $HSHQ_STACKS_DIR/ragflow/config/entrypoint.sh
+  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/config/infinity_conf.toml
+[general]
+version                  = "0.6.15"
+time_zone                = "utc-8"
+
+[network]
+server_address           = "0.0.0.0"
+postgres_port            = 5432
+http_port                = 23820
+client_port              = 23817
+connection_pool_size     = 128
+
+[log]
+log_filename             = "infinity.log"
+log_dir                  = "/var/infinity/log"
+log_to_stdout            = true
+log_file_max_size        = "100MB"
+log_file_rotate_count    = 10
+
+# trace/debug/info/warning/error/critical 6 log levels, default: info
+log_level               = "info"
+
+[storage]
+persistence_dir         = "/var/infinity/persistence"
+data_dir                = "/var/infinity/data"
+# periodically activates garbage collection:
+# 0 means real-time,
+# s means seconds, for example "60s", 60 seconds
+# m means minutes, for example "60m", 60 minutes
+# h means hours, for example "1h", 1 hour
+optimize_interval        = "10s"
+cleanup_interval         = "60s"
+compact_interval         = "120s"
+storage_type             = "local"
+
+# dump memory index entry when it reachs the capacity
+mem_index_capacity       = 65536
+
+# S3 storage config example:
+# [storage.object_storage]
+# url                      = "127.0.0.1:9000"
+# bucket_name              = "infinity"
+# access_key               = "minioadmin"
+# secret_key               = "minioadmin"
+# enable_https             = false
+
+[buffer]
+buffer_manager_size      = "8GB"
+lru_num                  = 7
+temp_dir                 = "/var/infinity/tmp"
+result_cache             = "off"
+memindex_memory_quota    = "1GB"
+
+[wal]
+wal_dir                       = "/var/infinity/wal"
+
+[resource]
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/config/service_conf.yaml.template
+ragflow:
+  host: 0.0.0.0
+  http_port: 9380
+admin:
+  host: 0.0.0.0
+  http_port: 9381
+minio:
+  user: '$RAGFLOW_MINIO_KEY'
+  password: '$RAGFLOW_MINIO_SECRET'
+  host: 'ragflow-minio:9000'
+  bucket: 'ragflow'
+  prefix_path: ''
+infinity:
+  uri: 'ragflow-infinity:23817'
+  db_name: 'ragflow_db'
+redis:
+  db: 1
+  username: ''
+  password: '$RAGFLOW_REDIS_PASSWORD'
+  host: 'ragflow-redis:6379'
+postgres:
+  name: '$RAGFLOW_DATABASE_NAME'
+  user: '$RAGFLOW_DATABASE_USER'
+  password: '$RAGFLOW_DATABASE_USER_PASSWORD'
+  host: 'ragflow-db'
+  port: 5432
+  max_connections: 100
+  stale_timeout: 30
+user_default_llm:
+  factory: 'Ollama'
+  base_url: 'http://ollama-server:11434'
+  default_models:
+    chat_model:
+      name: 'mistral-nemo:12b'
+    embedding_model:
+      name: 'bge-m3'
+      factory: 'OpenAI'
+      api_key: '$LOCALAI_API_KEY'
+      base_url: 'http://localai-server:8080'
+    rerank_model:
+      name: 'bge-reranker-v2'
+      factory: 'OpenAI'
+      api_key: '$LOCALAI_API_KEY'
+      base_url: 'http://localai-server:8080'
+    asr_model:
+      model: 'whisper-large-v3'
+    image2text_model: ''
+oauth:
+  oidc:
+    display_name: "Authelia"
+    client_id: "$RAGFLOW_OIDC_CLIENT_ID"
+    client_secret: "$RAGFLOW_OIDC_CLIENT_SECRET"
+    issuer: "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN"
+    scope: "openid email profile"
+    redirect_uri: "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/v1/user/oauth/callback/oidc"
+smtp:
+  mail_server: $SMTP_HOSTNAME
+  mail_port: $SMTP_HOSTPORT
+  mail_use_ssl: false
+  mail_use_tls: false
+  mail_username: ""
+  mail_password: ""
+  mail_default_sender:
+    - "RAGFlow $(getAdminEmailName)"
+    - "$EMAIL_ADMIN_EMAIL_ADDRESS"
+  mail_frontend_url: "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN"
+EOFMT
+  RAGFLOW_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $RAGFLOW_OIDC_CLIENT_SECRET | tr -d ':\n')
+  cat <<EOFIM > $HOME/ragflow.oidc
+# Authelia OIDC Client ragflow BEGIN
+      - client_id: $RAGFLOW_OIDC_CLIENT_ID
+        client_name: RAGFlow
+        client_secret: '$RAGFLOW_OIDC_CLIENT_SECRET_HASH'
+        public: false
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
+        redirect_uris:
+          - https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/v1/user/oauth/callback/oidc
+        scopes:
+          - openid
+          - profile
+          - email
+          - groups
+        userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_post
+# Authelia OIDC Client ragflow END
+EOFIM
+  cat <<EOFSQ > $HOME/genhash.py
+import base64
+from werkzeug.security import generate_password_hash
+password="$RAGFLOW_ADMIN_PASSWORD"
+encode_password = base64.b64encode(password.encode('utf-8')).decode('utf-8')
+password_hash = generate_password_hash(encode_password)
+print(password_hash)
+EOFSQ
+  RAGFLOW_ADMIN_PASSWORD_HASH=$(python3 $HOME/genhash.py | sed 's/\$/\\$/g')
+  rm -f $HOME/genhash.py
+  useruuid=$(uuidgen | sed 's/-//g')
+  dtnowseconds=$(date +%s%3N)
+  dtnow=$(date -d "@$(($dtnowseconds / 1000))" +"%Y-%m-%d %H:%M:%S")
+  cat <<EOFDS > $HSHQ_STACKS_DIR/ragflow/dbexport/setupDBSettings.sh
+#!/bin/bash
+
+PGPASSWORD=$RAGFLOW_DATABASE_USER_PASSWORD
+curSeconds=0
+maxSeconds=300
+while [ \$curSeconds -lt \$maxSeconds ]
+do
+  admUser=\$(echo "select id from \"user\" limit 1;" | psql -t -A -U $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_NAME 2> /dev/null)
+  if ! [ -z "\$admUser" ]; then
+    break
+  fi
+  echo "Database not ready, sleeping 5 seconds, total wait=\$curSeconds seconds..."
+  sleep 5
+  curSeconds=\$((curSeconds+5))
+done
+echo "insert into \"user\"(id, create_time, create_date, update_time, update_date, access_token, nickname, password, email, avatar, language, color_schema, timezone, last_login_time, is_authenticated, is_active, is_anonymous, login_channel, status, is_superuser) values('$useruuid',$dtnowseconds,'$dtnow',$dtnowseconds,'$dtnow','$useruuid','RAGFlow HSHQ Admin','$RAGFLOW_ADMIN_PASSWORD_HASH','$RAGFLOW_ADMIN_EMAIL_ADDRESS',NULL,'English','Bright','UTC-6' || chr(9) || 'America/Chicago','$dtnow',1,1,0,'password',1,'f');"  | psql -U $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_NAME
+
+echo "insert into \"file\"(id, create_time, create_date, update_time, update_date, parent_id, tenant_id, created_by, name, location, size, type, source_type) values('$useruuid',$dtnowseconds,'$dtnow',$dtnowseconds,'$dtnow','$useruuid','$useruuid','$useruuid','/','',0,'folder','');"  | psql -U $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_NAME
+
+echo "insert into \"tenant\"(id, create_time, create_date, update_time, update_date, name, public_key, llm_id, embd_id, asr_id, img2txt_id, rerank_id, tts_id, parser_ids, credit, status) values('$useruuid',$dtnowseconds,'$dtnow',$dtnowseconds,'$dtnow','RAGFlow HSHQ Admin‘s Kingdom',NULL,'mistral-nemo:12b@Ollama','bge-m3@OpenAI','whisper-large-v3@Ollama','','bge-reranker-v2@OpenAI',NULL,'naive:General,qa:Q&A,resume:Resume,manual:Manual,table:Table,paper:Paper,book:Book,laws:Laws,presentation:Presentation,picture:Picture,one:One,audio:Audio,email:Email,tag:Tag',512,1);"  | psql -U $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_NAME
+
+echo "insert into \"user_tenant\"(id, create_time, create_date, update_time, update_date, user_id, tenant_id, role, invited_by, status) values('$useruuid',$dtnowseconds,'$dtnow',$dtnowseconds,'$dtnow','$useruuid','$useruuid','owner','$useruuid',1);"  | psql -U $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_NAME
+
+echo "update \"user\" set timezone='UTC-6' || chr(9) || 'America/Chicago';"  | psql -U $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_NAME
+
+EOFDS
+  chmod +x $HSHQ_STACKS_DIR/ragflow/dbexport/setupDBSettings.sh
+}
+
+function performUpdateRAGFlow()
+{
+  perform_stack_name=ragflow
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/infiniflow/infinity:v0.6.15,mirror.gcr.io/infiniflow/ragflow:v0.23.1,mirror.gcr.io/infiniflow/sandbox-executor-manager:latest,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/infiniflow/sandbox-base-nodejs:latest,mirror.gcr.io/infiniflow/sandbox-base-python:latest
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.6.15,mirror.gcr.io/infiniflow/infinity:v0.6.15"
+      image_update_map[2]="mirror.gcr.io/infiniflow/ragflow:v0.23.1,mirror.gcr.io/infiniflow/ragflow:v0.23.1"
+      image_update_map[3]="mirror.gcr.io/infiniflow/sandbox-executor-manager:latest,mirror.gcr.io/infiniflow/sandbox-executor-manager:latest"
+      image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[5]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[6]="mirror.gcr.io/infiniflow/sandbox-base-nodejs:latest,mirror.gcr.io/infiniflow/sandbox-base-nodejs:latest"
+      image_update_map[7]="mirror.gcr.io/infiniflow/sandbox-base-python:latest,mirror.gcr.io/infiniflow/sandbox-base-python:latest"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# TabbyML
+function installTabbyML()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory tabbyml "TabbyML"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName tabbyml-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/tabbyml
+  mkdir $HSHQ_STACKS_DIR/tabbyml/data
+  initServicesCredentials
+  set +e
+  addUserMailu alias $TABBYML_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigTabbyML
+  installStack tabbyml tabbyml-app "Listening at http" $HOME/tabbyml.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$TABBYML_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_TABBYML_APP Admin Login Info" -b "$FMLNAME_TABBYML_APP Admin Email: $TABBYML_ADMIN_EMAIL_ADDRESS\n$FMLNAME_TABBYML_APP Admin Password: $TABBYML_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    TABBYML_INIT_ENV=true
+    updateConfigVar TABBYML_INIT_ENV $TABBYML_INIT_ENV
+  fi
+  sleep 3
+  bash $HOME/setupDBSettings.sh
+  rm -f $HOME/setupDBSettings.sh
+  docker container restart tabbyml-app > /dev/null 2>&1
+  if [ -z "$FMLNAME_TABBYML_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://tabbyml-app:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_TABBYML_APP $MANAGETLS_TABBYML_APP "$is_integrate_hshq" $NETDEFAULT_TABBYML_APP "$inner_block"
+  insertSubAuthelia $SUB_TABBYML_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll tabbyml "$FMLNAME_TABBYML_APP" $USERTYPE_TABBYML_APP "https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN" "tabbyml.png" "$(getHeimdallOrderFromSub $SUB_TABBYML_APP $USERTYPE_TABBYML_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigTabbyML()
+{
+  cat <<EOFMT > $HOME/tabbyml-compose.yml
+$STACK_VERSION_PREFIX tabbyml $(getScriptStackVersion tabbyml)
+
+services:
+  tabbyml-app:
+    image: $(getScriptImageByContainerName tabbyml-app)
+    container_name: tabbyml-app
+    hostname: tabbyml-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: serve
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/tabbyml/data:/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/tabbyml.env
+TZ=\${PORTAINER_TZ}
+TABBY_WEBSERVER_JWT_TOKEN_SECRET=$TABBYML_JWT_SECRET
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/tabbyml/data/config.toml
+[model.completion.http]
+kind = "ollama/completion"
+model_name = "danielsheep/Qwen3-Coder-30B-A3B-Instruct-1M-Unsloth:UD-Q6_K_XL"
+api_endpoint = "http://ollama-server:11434"
+prompt_template = "<PRE> {prefix} <SUF>{suffix} <MID>"
+
+[model.chat.http]
+kind = "openai/chat"
+model_name = "mistral-nemo:12b"
+api_endpoint = "http://ollama-server:11434/v1"
+chat_template = "<s>{% for message in messages %}{% if (message['role'] == 'user') != (loop.index0 % 2 == 0) %}{{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}{% endif %}{% if message['role'] == 'user' %}{{ '[INST] ' + message['content'] + ' [/INST]' }}{% elif message['role'] == 'assistant' %}{{ message['content'] + '</s> ' }}{% else %}{{ raise_exception('Only user and assistant roles are supported!') }}{% endif %}{% endfor %}"
+
+[model.embedding.http]
+kind = "ollama/embedding"
+model_name = "nomic-embed-text:latest"
+api_endpoint = "http://ollama-server:11434"
+EOFMT
+  cat <<EOFDS > $HOME/setupDBSettings.sh
+#!/bin/bash
+tabbyml_db=$HSHQ_STACKS_DIR/tabbyml/data/ee/db.sqlite
+uuid=\$(uuidgen | tr -d '-')
+uuid2=\$(uuidgen | tr -d '-')
+encoded_id=\$(echo -n "0" | md5sum | cut -d' ' -f1 | cut -c1-6)
+token="\${encoded_id}\${uuid}"
+dtnow=\$(date -u '+%Y-%m-%d %H:%M:%S')
+TABBYML_ADMIN_PASSWORD_HASH=\$(echo -n "$TABBYML_ADMIN_PASSWORD" | argon2 \$(pwgen -c -n 16 1) -id -e -t 2 -m 15 -p 1 -l 32)
+sudo sqlite3 \$tabbyml_db "INSERT INTO users(id,email,is_admin,created_at,updated_at,auth_token,active,password_encrypted,avatar,name) VALUES(1,'$TABBYML_ADMIN_EMAIL_ADDRESS',1,'\$dtnow','\$dtnow','auth_\$uuid2',1,'\$TABBYML_ADMIN_PASSWORD_HASH',NULL,'TabbyML HSHQ Admin');"
+sudo sqlite3 \$tabbyml_db "INSERT INTO refresh_tokens(id,user_id,token,expires_at,created_at) VALUES(1,1,'\$token','\$dtnow','\$dtnow');"
+sudo sqlite3 \$tabbyml_db "INSERT INTO sqlite_sequence(name,seq) VALUES('users',1);"
+sudo sqlite3 \$tabbyml_db "INSERT INTO sqlite_sequence(name,seq) VALUES('refresh_tokens',1);"
+sudo sqlite3 \$tabbyml_db "INSERT INTO server_setting(id,security_allowed_register_domain_list,security_disable_client_side_telemetry,network_external_url,billing_enterprise_license,security_disable_password_login,branding_logo,branding_icon) VALUES(1,NULL,0,'http://localhost:8080',NULL,0,NULL,NULL);"
+
+EOFDS
+}
+
+function performUpdateTabbyML()
+{
+  perform_stack_name=tabbyml
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/tabbyml/tabby:0.31.2
+      image_update_map[0]="mirror.gcr.io/tabbyml/tabby:0.31.2,mirror.gcr.io/tabbyml/tabby:0.31.2"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# DeepWikiOpen
+function installDeepWikiOpen()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory deepwikiopen "DeepWikiOpen"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName deepwikiopen-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/deepwikiopen
+  mkdir $HSHQ_STACKS_DIR/deepwikiopen/config
+  mkdir $HSHQ_STACKS_DIR/deepwikiopen/adalflow
+  initServicesCredentials
+  set +e
+  outputConfigDeepWikiOpen
+  installStack deepwikiopen deepwikiopen-app "" $HOME/deepwikiopen.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$DEEPWIKI_OPEN_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_DEEPWIKI_OPEN_APP Auth Code" -b "$FMLNAME_DEEPWIKI_OPEN_APP Auth Code: $DEEPWIKI_OPEN_AUTH_CODE\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    DEEPWIKI_OPEN_INIT_ENV=true
+    updateConfigVar DEEPWIKI_OPEN_INIT_ENV $DEEPWIKI_OPEN_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_DEEPWIKI_OPEN_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_DEEPWIKI_OPEN_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://deepwikiopen-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_DEEPWIKI_OPEN_APP $MANAGETLS_DEEPWIKI_OPEN_APP "$is_integrate_hshq" $NETDEFAULT_DEEPWIKI_OPEN_APP "$inner_block"
+  insertSubAuthelia $SUB_DEEPWIKI_OPEN_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_DEEPWIKI_OPEN_API.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://deepwikiopen-app:8001 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_DEEPWIKI_OPEN_API $MANAGETLS_DEEPWIKI_OPEN_API "$is_integrate_hshq" $NETDEFAULT_DEEPWIKI_OPEN_API "$inner_block"
+  insertSubAuthelia $SUB_DEEPWIKI_OPEN_API.$HOMESERVER_DOMAIN bypass
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll deepwikiopen "$FMLNAME_DEEPWIKI_OPEN_APP" $USERTYPE_DEEPWIKI_OPEN_APP "https://$SUB_DEEPWIKI_OPEN_APP.$HOMESERVER_DOMAIN" "deepwikiopen.png" "$(getHeimdallOrderFromSub $SUB_DEEPWIKI_OPEN_APP $USERTYPE_DEEPWIKI_OPEN_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigDeepWikiOpen()
+{
+  cat <<EOFMT > $HOME/deepwikiopen-compose.yml
+$STACK_VERSION_PREFIX deepwikiopen $(getScriptStackVersion deepwikiopen)
+
+services:
+  deepwikiopen-app:
+    image: $(getScriptImageByContainerName deepwikiopen-app)
+    container_name: deepwikiopen-app
+    hostname: deepwikiopen-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/deepwikiopen/adalflow:/root/.adalflow
+      - \${PORTAINER_HSHQ_STACKS_DIR}/deepwikiopen/config/embedder.json:/app/api/config/embedder.json
+      - \${PORTAINER_HSHQ_STACKS_DIR}/deepwikiopen/config/generator.json:/app/api/config/generator.json
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/deepwikiopen.env
+TZ=\${PORTAINER_TZ}
+SERVER_BASE_URL=https://$SUB_DEEPWIKI_OPEN_API.$HOMESERVER_DOMAIN
+DEEPWIKI_AUTH_MODE=1
+DEEPWIKI_AUTH_CODE=$DEEPWIKI_OPEN_AUTH_CODE
+OLLAMA_HOST=http://ollama-server:11434
+NODE_ENV=production
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/deepwikiopen/config/embedder.json
+{
+  "embedder": {
+    "client_class": "OllamaClient",
+    "model_kwargs": {
+      "model": "nomic-embed-text:latest"
+    }
+  },
+  "retriever": {
+    "top_k": 20
+  },
+  "text_splitter": {
+    "split_by": "word",
+    "chunk_size": 350,
+    "chunk_overlap": 100
+  }
+}
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/deepwikiopen/config/generator.json
+{
+  "default_provider": "ollama",
+  "providers": {
+    "ollama": {
+      "default_model": "qwen3:4b",
+      "supportsCustomModel": true,
+      "models": {
+        "qwen3:4b": {
+          "options": {
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "num_ctx": 32000
+          }
+        },
+        "llama3.1:8b": {
+          "options": {
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "num_ctx": 8000
+          }
+        },
+        "qwen3:8b": {
+          "options": {
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "num_ctx": 32000
+          }
+        }
+      }
+    }
+  }
+}
+EOFMT
+}
+
+function performUpdateDeepWikiOpen()
+{
+  perform_stack_name=deepwikiopen
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=ghcr.io/asyncfuncai/deepwiki-open:sha-d48f5bc
+      image_update_map[0]="ghcr.io/asyncfuncai/deepwiki-open:sha-d48f5bc,ghcr.io/asyncfuncai/deepwiki-open:sha-d48f5bc"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Docling
+function installDocling()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory docling "Docling"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  buildImageDoclingV1
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName docling-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/docling
+  mkdir $HSHQ_STACKS_DIR/docling/config
+  mkdir $HSHQ_STACKS_DIR/docling/data
+  mkdir $HSHQ_NONBACKUP_DIR/docling
+  mkdir $HSHQ_NONBACKUP_DIR/docling/redis
+  initServicesCredentials
+  set +e
+  outputConfigDocling
+  installStack docling docling-app "" $HOME/docling.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_DOCLING_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_DOCLING_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://docling-app:5001 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_DOCLING_APP $MANAGETLS_DOCLING_APP "$is_integrate_hshq" $NETDEFAULT_DOCLING_APP "$inner_block"
+  insertSubAuthelia $SUB_DOCLING_APP.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll docling "$FMLNAME_DOCLING_APP" $USERTYPE_DOCLING_APP "https://$SUB_DOCLING_APP.$HOMESERVER_DOMAIN/ui/" "docling.png" "$(getHeimdallOrderFromSub $SUB_DOCLING_APP $USERTYPE_DOCLING_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigDocling()
+{
+  cat <<EOFMT > $HOME/docling-compose.yml
+$STACK_VERSION_PREFIX docling $(getScriptStackVersion docling)
+
+services:
+  docling-app:
+    image: $(getScriptImageByContainerName docling-app)
+    container_name: docling-app
+    hostname: docling-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-docling-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  docling-redis:
+    image: $(getScriptImageByContainerName docling-redis)
+    container_name: docling-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $DOCLING_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-docling-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-docling-redis:/data
+
+volumes:
+  v-docling-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/docling/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  int-docling-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/docling.env
+TZ=\${PORTAINER_TZ}
+DOCLING_SERVE_ENABLE_UI=true
+DOCLING_SERVE_API_KEY=$DOCLING_API_KEY
+DOCLING_SERVE_ENG_RQ_REDIS_URL=redis://:$DOCLING_REDIS_PASSWORD@docling-redis:6379
+EOFMT
+}
+
+function performUpdateDocling()
+{
+  perform_stack_name=docling
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=ghcr.io/docling-project/docling-serve-rocm:main,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="ghcr.io/docling-project/docling-serve-rocm:main,ghcr.io/docling-project/docling-serve-rocm:main"
+      image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function buildImageDoclingV1()
+{
+  set +e
+  sudo rm -fr $HSHQ_BUILD_DIR/docling
+  cd $HSHQ_BUILD_DIR
+  git clone https://github.com/docling-project/docling-serve.git
+  cd docling-serve
+  make docling-serve-rocm-image
+  rtval=$?
+  cd
+  sudo rm -fr $HSHQ_BUILD_DIR/docling
+  return $rtval
+}
+
+# Dify
+function installDify()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory dify "Dify"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-vectordb)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-ssrf)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-api)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-plugind)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-sandbox)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-nginx)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dify-minio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/dify
+  mkdir $HSHQ_STACKS_DIR/dify/config
+  mkdir $HSHQ_STACKS_DIR/dify/qdrant
+  mkdir $HSHQ_STACKS_DIR/dify/storage
+  mkdir $HSHQ_STACKS_DIR/dify/storage/privkeys
+  mkdir $HSHQ_STACKS_DIR/dify/plugind
+  mkdir $HSHQ_STACKS_DIR/dify/sandbox
+  mkdir $HSHQ_STACKS_DIR/dify/sandbox/conf
+  mkdir $HSHQ_STACKS_DIR/dify/sandbox/dependencies
+  mkdir $HSHQ_STACKS_DIR/dify/nginx
+  mkdir $HSHQ_STACKS_DIR/dify/nginx/conf.d
+  mkdir $HSHQ_STACKS_DIR/dify/minio
+  mkdir $HSHQ_STACKS_DIR/dify/db
+  mkdir $HSHQ_STACKS_DIR/dify/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/dify/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/dify
+  mkdir $HSHQ_NONBACKUP_DIR/dify/redis
+  initServicesCredentials
+  set +e
+  addUserMailu alias $DIFY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigDify
+  installStack dify dify-api "Listening at" $HOME/dify.env 3
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString dify-beat 1 300 "beat: Starting..."
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString dify-db 1 300 "database system is ready to accept connections"
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString dify-plugind 1 300 "listening on: tcp://0.0.0.0:5003"
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString dify-sandbox 1 300 "python dependencies sandbox initialized"
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString dify-ssrf 1 300 "Accepting HTTP Socket connections at "
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString dify-vectordb 1 300 "Qdrant HTTP listening on"
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString dify-worker 1 300 "celery@dify-worker ready"
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$DIFY_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_DIFY_APP Admin Login Info" -b "$FMLNAME_DIFY_APP Admin Email: $DIFY_ADMIN_EMAIL_ADDRESS\n$FMLNAME_DIFY_APP Admin Password: $DIFY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    DIFY_INIT_ENV=true
+    updateConfigVar DIFY_INIT_ENV $DIFY_INIT_ENV
+  fi
+  echo "Dify installed, sleeping for 30 seconds..."
+  sleep 30
+  docker exec dify-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/dify/dbexport/setupDBSettings.sh
+  addReadOnlyUserToDatabase Dify postgres dify-db $DIFY_DATABASE_NAME $DIFY_DATABASE_USER $DIFY_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/dify/dbexport $DIFY_DATABASE_READONLYUSER $DIFY_DATABASE_READONLYUSER_PASSWORD
+  sleep 10
+  startStopStack dify stop
+  echo "Restarting dify stack..."
+  sleep 5
+  startStopStack dify start
+  if [ -z "$FMLNAME_DIFY_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSPREFLIGHT\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWCORS\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://dify-nginx {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_DIFY_APP $MANAGETLS_DIFY_APP "$is_integrate_hshq" $NETDEFAULT_DIFY_APP "$inner_block"
+  insertSubAuthelia $SUB_DIFY_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll dify "$FMLNAME_DIFY_APP" $USERTYPE_DIFY_APP "https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN" "dify.png" "$(getHeimdallOrderFromSub $SUB_DIFY_APP $USERTYPE_DIFY_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true dify "$FMLNAME_DIFY_APP" postgres dify-db $DIFY_DATABASE_NAME $DIFY_DATABASE_USER $DIFY_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigDify()
+{
+  cat <<EOFMT > $HOME/dify-compose.yml
+$STACK_VERSION_PREFIX dify $(getScriptStackVersion dify)
+
+services:
+  dify-db:
+    image: $(getScriptImageByContainerName dify-db)
+    container_name: dify-db
+    hostname: dify-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 512mb
+    networks:
+      - int-dify-net
+      - dock-dbs-net
+    command: >
+      postgres -c 'max_connections=100'
+               -c 'shared_buffers=128MB'
+               -c 'work_mem=4MB'
+               -c 'maintenance_work_mem=64MB'
+               -c 'effective_cache_size=4096MB'
+               -c 'statement_timeout=0'
+               -c 'idle_in_transaction_session_timeout=0'
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/dbexport:/dbexport
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-h",
+          "dify-db",
+          "-U",
+          "$DIFY_DATABASE_USER",
+          "-d",
+          "$DIFY_DATABASE_NAME",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.dify-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.dify-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.dify-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.dify-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.dify-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.dify-hourly-db.email-from=Dify Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.dify-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.dify-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.dify-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.dify-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.dify-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.dify-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.dify-monthly-db.email-from=Dify Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.dify-monthly-db.mail-only-on-error=false"
+
+  dify-vectordb:
+    image: $(getScriptImageByContainerName dify-vectordb)
+    container_name: dify-vectordb
+    hostname: dify-vectordb
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-dify-net
+      - dock-dbs-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/qdrant:/qdrant/storage
+
+  dify-ssrf:
+    image: $(getScriptImageByContainerName dify-ssrf)
+    container_name: dify-ssrf
+    hostname: dify-ssrf
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-dify-net
+      - dock-aipriv-net
+    entrypoint:
+      [
+        "sh",
+        "-c",
+        "cp /docker-entrypoint-mount.sh /docker-entrypoint.sh && sed -i 's/\r\$\$//' /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh && /docker-entrypoint.sh",
+      ]
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/config/squid.conf.template:/etc/squid/squid.conf.template
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/config/docker-entrypoint.sh:/docker-entrypoint-mount.sh
+    environment:
+      - HTTP_PORT=3128
+      - COREDUMP_DIR=/var/spool/squid
+      - REVERSE_PROXY_PORT=8194
+      - SANDBOX_HOST=dify-sandbox
+      - SANDBOX_PORT=8194
+
+  dify-api:
+    image: $(getScriptImageByContainerName dify-api)
+    container_name: dify-api
+    hostname: dify-api
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      dify-db:
+        condition: service_healthy
+      dify-vectordb:
+        condition: service_healthy
+        required: false
+      dify-redis:
+        condition: service_started
+    networks:
+      - int-dify-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/storage:/app/api/storage
+    environment:
+      - MODE=api
+
+  dify-worker:
+    image: $(getScriptImageByContainerName dify-worker)
+    container_name: dify-worker
+    hostname: dify-worker
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      dify-db:
+        condition: service_healthy
+      dify-vectordb:
+        condition: service_healthy
+        required: false
+      dify-redis:
+        condition: service_started
+    networks:
+      - int-dify-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/storage:/app/api/storage
+    environment:
+      - MODE=worker
+      - PLUGIN_MAX_PACKAGE_SIZE=52428800
+      - INNER_API_KEY_FOR_PLUGIN=$DIFY_PLUGIN_DIFY_INNER_API_KEY
+
+  dify-beat:
+    image: $(getScriptImageByContainerName dify-beat)
+    container_name: dify-beat
+    hostname: dify-beat
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      dify-db:
+        condition: service_healthy
+      dify-vectordb:
+        condition: service_healthy
+        required: false
+      dify-redis:
+        condition: service_started
+    networks:
+      - int-dify-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    environment:
+      - MODE=beat
+
+  dify-plugind:
+    image: $(getScriptImageByContainerName dify-plugind)
+    container_name: dify-plugind
+    hostname: dify-plugind
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      dify-db:
+        condition: service_healthy
+      dify-vectordb:
+        condition: service_healthy
+        required: false
+      dify-redis:
+        condition: service_started
+    networks:
+      - int-dify-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/plugind:/app/storage
+    environment:
+      - DB_DATABASE=dify_plugindb
+      - SERVER_PORT=5002
+      - SERVER_KEY=$DIFY_PLUGIN_DAEMON_KEY
+      - MAX_PLUGIN_PACKAGE_SIZE=52428800
+      - PPROF_ENABLED=false
+      - DIFY_INNER_API_URL=http://dify-api:5001
+      - DIFY_INNER_API_KEY=$DIFY_PLUGIN_DIFY_INNER_API_KEY
+      - PLUGIN_REMOTE_INSTALLING_HOST=0.0.0.0
+      - PLUGIN_REMOTE_INSTALLING_PORT=5003
+      - PLUGIN_WORKING_PATH=/app/storage/cwd
+      - FORCE_VERIFYING_SIGNATURE=true
+      - PYTHON_ENV_INIT_TIMEOUT=120
+      - PLUGIN_MAX_EXECUTION_TIMEOUT=600
+      - PLUGIN_STDIO_BUFFER_SIZE=1024
+      - PLUGIN_STDIO_MAX_BUFFER_SIZE=5242880
+      - PLUGIN_STORAGE_TYPE=local
+      - PLUGIN_STORAGE_LOCAL_ROOT=/app/storage
+      - PLUGIN_INSTALLED_PATH=plugin
+      - PLUGIN_PACKAGE_CACHE_PATH=plugin_packages
+      - PLUGIN_MEDIA_CACHE_PATH=assets
+      - S3_USE_AWS_MANAGED_IAM=false
+      - S3_USE_AWS=false
+
+  dify-sandbox:
+    image: $(getScriptImageByContainerName dify-sandbox)
+    container_name: dify-sandbox
+    hostname: dify-sandbox
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-dify-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/sandbox/conf:/conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/sandbox/dependencies:/dependencies
+    environment:
+      - API_KEY=$DIFY_SANDBOX_API_KEY
+      - GIN_MODE=release
+      - WORKER_TIMEOUT=15
+      - ENABLE_NETWORK=true
+      - HTTP_PROXY=http://dify-ssrf:3128
+      - HTTPS_PROXY=http://dify-ssrf:3128
+      - SANDBOX_PORT=8194
+
+  dify-web:
+    image: $(getScriptImageByContainerName dify-web)
+    container_name: dify-web
+    hostname: dify-web
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      dify-db:
+        condition: service_healthy
+      dify-vectordb:
+        condition: service_healthy
+        required: false
+      dify-redis:
+        condition: service_started
+      dify-api:
+        condition: service_healthy
+        required: false
+      dify-plugind:
+        condition: service_healthy
+        required: false
+    networks:
+      - int-dify-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    environment:
+      - CONSOLE_API_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+      - APP_API_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+      - AMPLITUDE_API_KEY=
+      - NEXT_PUBLIC_COOKIE_DOMAIN=
+      - SENTRY_DSN=
+      - NEXT_TELEMETRY_DISABLED=1
+      - TEXT_GENERATION_TIMEOUT_MS=60000
+      - CSP_WHITELIST=
+      - ALLOW_EMBED=false
+      - ALLOW_UNSAFE_DATA_SCHEME=false
+      - MARKETPLACE_API_URL=https://marketplace.dify.ai
+      - MARKETPLACE_URL=https://marketplace.dify.ai
+      - TOP_K_MAX_VALUE=
+      - INDEXING_MAX_SEGMENTATION_TOKENS_LENGTH=
+      - PM2_INSTANCES=2
+      - LOOP_NODE_MAX_COUNT=100
+      - MAX_TOOLS_NUM=10
+      - MAX_PARALLEL_LIMIT=10
+      - MAX_ITERATIONS_NUM=99
+      - MAX_TREE_DEPTH=50
+      - ENABLE_WEBSITE_JINAREADER=true
+      - ENABLE_WEBSITE_FIRECRAWL=true
+      - ENABLE_WEBSITE_WATERCRAWL=true
+
+  dify-redis:
+    image: $(getScriptImageByContainerName dify-redis)
+    container_name: dify-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $DIFY_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-dify-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-dify-redis:/data
+
+  dify-nginx:
+    image: $(getScriptImageByContainerName dify-nginx)
+    container_name: dify-nginx
+    hostname: dify-nginx
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      dify-db:
+        condition: service_healthy
+      dify-vectordb:
+        condition: service_healthy
+        required: false
+      dify-redis:
+        condition: service_started
+      dify-api:
+        condition: service_healthy
+        required: false
+      dify-web:
+        condition: service_healthy
+        required: false
+    networks:
+      - int-dify-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/nginx/nginx.conf.template:/etc/nginx/nginx.conf.template
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/nginx/proxy.conf.template:/etc/nginx/proxy.conf.template
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/nginx/https.conf.template:/etc/nginx/https.conf.template
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/nginx/conf.d:/etc/nginx/conf.d
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/nginx/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+
+#  dify-minio:
+#    image: $(getScriptImageByContainerName dify-minio)
+#    container_name: dify-minio
+#    hostname: dify-minio
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    depends_on:
+#      - dify-db
+#    networks:
+#      - int-dify-net
+#    entrypoint: >
+#      /bin/sh -c "
+#        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+#        MINIO_PID=\\\$!
+#        while ! curl -s http://localhost:9000/minio/health/live; do
+#          echo 'Waiting for MinIO to start...'
+#          sleep 1
+#        done
+#        sleep 5
+#        mc alias set minio http://localhost:9000 ${DIFY_MINIO_KEY} ${DIFY_MINIO_SECRET}
+#        echo 'Creating bucket dify'
+#        mc mb minio/dify
+#        wait \\\$MINIO_PID
+#      "
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+#      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/minio:/data
+
+volumes:
+  v-dify-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/dify/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-dify-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  #Set these for Minio container
+#MINIO_ROOT_USER=$DIFY_MINIO_KEY
+#MINIO_ROOT_PASSWORD=$DIFY_MINIO_SECRET
+#MINIO_REGION=us-east-1
+#S3_ENDPOINT=http://dify-minio:9000
+#S3_REGION=us-east-1
+#S3_BUCKET_NAME=dify
+#S3_ACCESS_KEY=$DIFY_MINIO_KEY
+#S3_SECRET_KEY=$DIFY_MINIO_SECRET
+  cat <<EOFMT > $HOME/dify.env
+TZ=\${PORTAINER_TZ}
+LOG_TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$DIFY_DATABASE_NAME
+POSTGRES_USER=$DIFY_DATABASE_USER
+POSTGRES_PASSWORD=$DIFY_DATABASE_USER_PASSWORD
+HTTP_PROXY=
+HTTPS_PROXY=
+NO_PROXY=dify-vectordb,dify-db,dify-redis,dify-web,dify-worker,dify-plugind,dify-beat,dify-nginx
+CONSOLE_API_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+CONSOLE_WEB_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+SERVICE_API_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+TRIGGER_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+APP_API_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+APP_WEB_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+FILES_URL=https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN
+INTERNAL_FILES_URL=http://dify-api:5001
+SECRET_KEY=$DIFY_SECRET_KEY
+INIT_PASSWORD=
+DEPLOY_ENV=PRODUCTION
+OPENAI_API_BASE=http://localai-server:8080/v1
+ENABLE_WEBSITE_JINAREADER=true
+ENABLE_WEBSITE_FIRECRAWL=true
+ENABLE_WEBSITE_WATERCRAWL=true
+DB_TYPE=postgresql
+DB_USERNAME=$DIFY_DATABASE_USER
+DB_PASSWORD=$DIFY_DATABASE_USER_PASSWORD
+DB_HOST=dify-db
+DB_PORT=5432
+DB_DATABASE=$DIFY_DATABASE_NAME
+SQLALCHEMY_POOL_SIZE=30
+SQLALCHEMY_MAX_OVERFLOW=10
+SQLALCHEMY_POOL_RECYCLE=3600
+SQLALCHEMY_ECHO=false
+SQLALCHEMY_POOL_PRE_PING=false
+SQLALCHEMY_POOL_USE_LIFO=false
+SQLALCHEMY_POOL_TIMEOUT=30
+REDIS_HOST=dify-redis
+REDIS_PASSWORD=$DIFY_REDIS_PASSWORD
+CELERY_BROKER_URL=redis://:$DIFY_REDIS_PASSWORD@dify-redis:6379/1
+CELERY_BACKEND=redis
+BROKER_USE_SSL=false
+VECTOR_STORE=qdrant
+QDRANT_URL=http://dify-vectordb:6333
+QDRANT_API_KEY=$DIFY_QDRANT_API_KEY
+MAIL_TYPE=smtp
+MAIL_DEFAULT_SEND_FROM=Dify $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>
+SMTP_SERVER=$SMTP_HOSTNAME
+SMTP_PORT=$SMTP_HOSTPORT
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_USE_TLS=true
+SMTP_OPPORTUNISTIC_TLS=true
+SANDBOX_HOST=dify-sandbox
+CODE_EXECUTION_ENDPOINT=http://dify-sandbox:8194
+CODE_EXECUTION_API_KEY=$DIFY_CODE_EXECUTION_API_KEY
+SSRF_PROXY_HTTP_URL=http://dify-ssrf:3128
+SSRF_PROXY_HTTPS_URL=http://dify-ssrf:3128
+SANDBOX_API_KEY=$DIFY_SANDBOX_API_KEY
+SANDBOX_HTTP_PROXY=http://dify-ssrf:3128
+SANDBOX_HTTPS_PROXY=http://dify-ssrf:3128
+STORAGE_TYPE=local
+MINIO_ROOT_USER=
+MINIO_ROOT_PASSWORD=
+MINIO_REGION=
+S3_ENDPOINT=
+S3_REGION=
+S3_BUCKET_NAME=
+S3_ACCESS_KEY=
+S3_SECRET_KEY=
+SSRF_SANDBOX_HOST=dify-sandbox
+PLUGIN_DAEMON_KEY=$DIFY_PLUGIN_DAEMON_KEY
+PLUGIN_DAEMON_URL=http://dify-plugind:5002
+PLUGIN_DIFY_INNER_API_KEY=$DIFY_PLUGIN_DIFY_INNER_API_KEY
+PLUGIN_DIFY_INNER_API_URL=http://dify-api:5001
+INNER_API_KEY_FOR_PLUGIN=$DIFY_PLUGIN_DIFY_INNER_API_KEY
+NEXT_TELEMETRY_DISABLED=1
+NUMEXPR_MAX_THREADS=16
+LANG=C.UTF-8
+LC_ALL=C.UTF-8
+PYTHONIOENCODING=utf-8
+LOG_LEVEL=INFO
+LOG_OUTPUT_FORMAT=text
+LOG_FILE=/app/logs/server.log
+LOG_FILE_MAX_SIZE=20
+LOG_FILE_BACKUP_COUNT=5
+LOG_DATEFORMAT=%Y-%m-%d %H:%M:%S
+DEBUG=false
+FLASK_DEBUG=false
+ENABLE_REQUEST_LOGGING=False
+CHECK_UPDATE_URL=https://updates.dify.ai
+MIGRATION_ENABLED=true
+FILES_ACCESS_TIMEOUT=300
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+REFRESH_TOKEN_EXPIRE_DAYS=30
+APP_DEFAULT_ACTIVE_REQUESTS=0
+APP_MAX_ACTIVE_REQUESTS=0
+APP_MAX_EXECUTION_TIME=1200
+DIFY_BIND_ADDRESS=0.0.0.0
+DIFY_PORT=5001
+SERVER_WORKER_AMOUNT=1
+SERVER_WORKER_CLASS=gevent
+SERVER_WORKER_CONNECTIONS=10
+GUNICORN_TIMEOUT=360
+CELERY_AUTO_SCALE=false
+API_TOOL_DEFAULT_CONNECT_TIMEOUT=10
+API_TOOL_DEFAULT_READ_TIMEOUT=60
+NEXT_PUBLIC_ENABLE_SINGLE_DOLLAR_LATEX=false
+POSTGRES_MAX_CONNECTIONS=100
+POSTGRES_SHARED_BUFFERS=128MB
+POSTGRES_WORK_MEM=4MB
+POSTGRES_MAINTENANCE_WORK_MEM=64MB
+POSTGRES_EFFECTIVE_CACHE_SIZE=4096MB
+POSTGRES_STATEMENT_TIMEOUT=0
+POSTGRES_IDLE_IN_TRANSACTION_SESSION_TIMEOUT=0
+REDIS_PORT=6379
+REDIS_USE_SSL=false
+REDIS_DB=0
+REDIS_USE_SENTINEL=false
+REDIS_USE_CLUSTERS=false
+CELERY_USE_SENTINEL=false
+NEXT_PUBLIC_BATCH_CONCURRENCY=5
+S3_USE_AWS_MANAGED_IAM=false
+ARCHIVE_STORAGE_ENABLED=false
+VECTOR_INDEX_NAME_PREFIX=Vector_index
+QDRANT_CLIENT_TIMEOUT=20
+QDRANT_GRPC_ENABLED=false
+QDRANT_GRPC_PORT=6334
+QDRANT_REPLICATION_FACTOR=1
+UPLOAD_FILE_SIZE_LIMIT=15
+UPLOAD_FILE_BATCH_LIMIT=5
+SINGLE_CHUNK_ATTACHMENT_LIMIT=10
+IMAGE_FILE_BATCH_LIMIT=10
+ATTACHMENT_IMAGE_FILE_SIZE_LIMIT=2
+ATTACHMENT_IMAGE_DOWNLOAD_TIMEOUT=60
+ETL_TYPE=dify
+SCARF_NO_ANALYTICS=true
+PROMPT_GENERATION_MAX_TOKENS=512
+CODE_GENERATION_MAX_TOKENS=1024
+PLUGIN_BASED_TOKEN_COUNTING_ENABLED=false
+MULTIMODAL_SEND_FORMAT=base64
+UPLOAD_IMAGE_FILE_SIZE_LIMIT=10
+UPLOAD_VIDEO_FILE_SIZE_LIMIT=100
+UPLOAD_AUDIO_FILE_SIZE_LIMIT=50
+PLUGIN_SENTRY_ENABLED=false
+INDEXING_MAX_SEGMENTATION_TOKENS_LENGTH=4000
+INVITE_EXPIRY_HOURS=72
+RESET_PASSWORD_TOKEN_EXPIRY_MINUTES=5
+EMAIL_REGISTER_TOKEN_EXPIRY_MINUTES=5
+CHANGE_EMAIL_TOKEN_EXPIRY_MINUTES=5
+OWNER_TRANSFER_TOKEN_EXPIRY_MINUTES=5
+CODE_EXECUTION_SSL_VERIFY=True
+CODE_EXECUTION_POOL_MAX_CONNECTIONS=100
+CODE_EXECUTION_POOL_MAX_KEEPALIVE_CONNECTIONS=20
+CODE_EXECUTION_POOL_KEEPALIVE_EXPIRY=5.0
+CODE_MAX_NUMBER=9223372036854775807
+CODE_MIN_NUMBER=-9223372036854775808
+CODE_MAX_DEPTH=5
+CODE_MAX_PRECISION=20
+CODE_MAX_STRING_LENGTH=400000
+CODE_MAX_STRING_ARRAY_LENGTH=30
+CODE_MAX_OBJECT_ARRAY_LENGTH=30
+CODE_MAX_NUMBER_ARRAY_LENGTH=1000
+CODE_EXECUTION_CONNECT_TIMEOUT=10
+CODE_EXECUTION_READ_TIMEOUT=60
+CODE_EXECUTION_WRITE_TIMEOUT=10
+TEMPLATE_TRANSFORM_MAX_LENGTH=400000
+WORKFLOW_MAX_EXECUTION_STEPS=500
+WORKFLOW_MAX_EXECUTION_TIME=1200
+WORKFLOW_CALL_MAX_DEPTH=5
+MAX_VARIABLE_SIZE=204800
+WORKFLOW_FILE_UPLOAD_LIMIT=10
+GRAPH_ENGINE_MIN_WORKERS=1
+GRAPH_ENGINE_MAX_WORKERS=10
+GRAPH_ENGINE_SCALE_UP_THRESHOLD=3
+GRAPH_ENGINE_SCALE_DOWN_IDLE_TIME=5.0
+WORKFLOW_NODE_EXECUTION_STORAGE=rdbms
+CORE_WORKFLOW_EXECUTION_REPOSITORY=core.repositories.sqlalchemy_workflow_execution_repository.SQLAlchemyWorkflowExecutionRepository
+CORE_WORKFLOW_NODE_EXECUTION_REPOSITORY=core.repositories.sqlalchemy_workflow_node_execution_repository.SQLAlchemyWorkflowNodeExecutionRepository
+API_WORKFLOW_RUN_REPOSITORY=repositories.sqlalchemy_api_workflow_run_repository.DifyAPISQLAlchemyWorkflowRunRepository
+API_WORKFLOW_NODE_EXECUTION_REPOSITORY=repositories.sqlalchemy_api_workflow_node_execution_repository.DifyAPISQLAlchemyWorkflowNodeExecutionRepository
+WORKFLOW_LOG_CLEANUP_ENABLED=false
+WORKFLOW_LOG_RETENTION_DAYS=30
+WORKFLOW_LOG_CLEANUP_BATCH_SIZE=100
+LOGSTORE_DUAL_WRITE_ENABLED=false
+LOGSTORE_DUAL_READ_ENABLED=true
+LOGSTORE_ENABLE_PUT_GRAPH_FIELD=true
+HTTP_REQUEST_NODE_MAX_BINARY_SIZE=10485760
+HTTP_REQUEST_NODE_MAX_TEXT_SIZE=1048576
+HTTP_REQUEST_NODE_SSL_VERIFY=True
+HTTP_REQUEST_MAX_CONNECT_TIMEOUT=10
+HTTP_REQUEST_MAX_READ_TIMEOUT=600
+HTTP_REQUEST_MAX_WRITE_TIMEOUT=600
+WEBHOOK_REQUEST_BODY_MAX_SIZE=10485760
+RESPECT_XFORWARD_HEADERS_ENABLED=false
+LOOP_NODE_MAX_COUNT=100
+MAX_TOOLS_NUM=10
+MAX_PARALLEL_LIMIT=10
+MAX_ITERATIONS_NUM=99
+TEXT_GENERATION_TIMEOUT_MS=60000
+ALLOW_UNSAFE_DATA_SCHEME=false
+MAX_TREE_DEPTH=50
+PGDATA=/var/lib/postgresql/data/pgdata
+SANDBOX_GIN_MODE=release
+SANDBOX_WORKER_TIMEOUT=15
+SANDBOX_ENABLE_NETWORK=true
+SANDBOX_PORT=8194
+SSRF_HTTP_PORT=3128
+SSRF_COREDUMP_DIR=/var/spool/squid
+SSRF_REVERSE_PROXY_PORT=8194
+SSRF_DEFAULT_TIME_OUT=5
+SSRF_DEFAULT_CONNECT_TIME_OUT=5
+SSRF_DEFAULT_READ_TIME_OUT=5
+SSRF_DEFAULT_WRITE_TIME_OUT=5
+SSRF_POOL_MAX_CONNECTIONS=100
+SSRF_POOL_MAX_KEEPALIVE_CONNECTIONS=20
+SSRF_POOL_KEEPALIVE_EXPIRY=5.0
+CREATE_TIDB_SERVICE_JOB_ENABLED=false
+MAX_SUBMIT_COUNT=100
+TOP_K_MAX_VALUE=10
+EXPOSE_PLUGIN_DAEMON_PORT=5002
+PLUGIN_DAEMON_PORT=5002
+PLUGIN_MAX_PACKAGE_SIZE=52428800
+PLUGIN_PPROF_ENABLED=false
+PLUGIN_DEBUGGING_HOST=0.0.0.0
+PLUGIN_DEBUGGING_PORT=5003
+EXPOSE_PLUGIN_DEBUGGING_HOST=localhost
+EXPOSE_PLUGIN_DEBUGGING_PORT=5003
+ENDPOINT_URL_TEMPLATE=http://localhost/e/{hook_id}
+MARKETPLACE_ENABLED=true
+MARKETPLACE_API_URL=https://marketplace.dify.ai
+FORCE_VERIFYING_SIGNATURE=true
+ENFORCE_LANGGENIUS_PLUGIN_SIGNATURES=true
+PLUGIN_STDIO_BUFFER_SIZE=1024
+PLUGIN_STDIO_MAX_BUFFER_SIZE=5242880
+PLUGIN_PYTHON_ENV_INIT_TIMEOUT=120
+PLUGIN_MAX_EXECUTION_TIMEOUT=600
+PLUGIN_DAEMON_TIMEOUT=600.0
+PIP_MIRROR_URL=
+PLUGIN_STORAGE_TYPE=local
+PLUGIN_STORAGE_LOCAL_ROOT=/app/storage
+PLUGIN_WORKING_PATH=/app/storage/cwd
+PLUGIN_INSTALLED_PATH=plugin
+PLUGIN_PACKAGE_CACHE_PATH=plugin_packages
+PLUGIN_MEDIA_CACHE_PATH=assets
+PLUGIN_STORAGE_OSS_BUCKET=
+PLUGIN_S3_USE_AWS=false
+PLUGIN_S3_USE_AWS_MANAGED_IAM=false
+PLUGIN_S3_USE_PATH_STYLE=true
+ENABLE_OTEL=false
+ALLOW_EMBED=false
+QUEUE_MONITOR_THRESHOLD=200
+QUEUE_MONITOR_ALERT_EMAILS=
+QUEUE_MONITOR_INTERVAL=30
+SWAGGER_UI_ENABLED=false
+SWAGGER_UI_PATH=/swagger-ui.html
+DSL_EXPORT_ENCRYPT_DATASET_ID=true
+DATASET_MAX_SEGMENTS_PER_REQUEST=0
+ENABLE_CLEAN_EMBEDDING_CACHE_TASK=false
+ENABLE_CLEAN_UNUSED_DATASETS_TASK=false
+ENABLE_CREATE_TIDB_SERVERLESS_TASK=false
+ENABLE_UPDATE_TIDB_SERVERLESS_STATUS_TASK=false
+ENABLE_CLEAN_MESSAGES=false
+ENABLE_MAIL_CLEAN_DOCUMENT_NOTIFY_TASK=false
+ENABLE_DATASETS_QUEUE_MONITOR=false
+ENABLE_CHECK_UPGRADABLE_PLUGIN_TASK=true
+ENABLE_WORKFLOW_SCHEDULE_POLLER_TASK=true
+WORKFLOW_SCHEDULE_POLLER_INTERVAL=1
+WORKFLOW_SCHEDULE_POLLER_BATCH_SIZE=100
+WORKFLOW_SCHEDULE_MAX_DISPATCH_PER_TICK=0
+TENANT_ISOLATED_TASK_CONCURRENCY=1
+ANNOTATION_IMPORT_FILE_SIZE_LIMIT=2
+ANNOTATION_IMPORT_MAX_RECORDS=10000
+ANNOTATION_IMPORT_MIN_RECORDS=1
+ANNOTATION_IMPORT_RATE_LIMIT_PER_MINUTE=5
+ANNOTATION_IMPORT_RATE_LIMIT_PER_HOUR=20
+ANNOTATION_IMPORT_MAX_CONCURRENT=5
+AMPLITUDE_API_KEY=
+SANDBOX_EXPIRED_RECORDS_CLEAN_GRACEFUL_PERIOD=21
+SANDBOX_EXPIRED_RECORDS_CLEAN_BATCH_SIZE=1000
+SANDBOX_EXPIRED_RECORDS_RETENTION_DAYS=30
+NGINX_SERVER_NAME=_
+NGINX_HTTPS_ENABLED=false
+NGINX_PORT=80
+NGINX_WORKER_PROCESSES=auto
+NGINX_CLIENT_MAX_BODY_SIZE=100M
+NGINX_KEEPALIVE_TIMEOUT=65
+NGINX_PROXY_READ_TIMEOUT=3600s
+NGINX_PROXY_SEND_TIMEOUT=3600s
+NGINX_ENABLE_CERTBOT_CHALLENGE=false
+EOFMT
+  cat <<EOFSE > $HSHQ_STACKS_DIR/dify/nginx/https.conf.template
+listen \${NGINX_SSL_PORT} ssl;
+ssl_certificate \${SSL_CERTIFICATE_PATH};
+ssl_certificate_key \${SSL_CERTIFICATE_KEY_PATH};
+ssl_protocols \${NGINX_SSL_PROTOCOLS};
+ssl_prefer_server_ciphers on;
+ssl_session_cache shared:SSL:10m;
+ssl_session_timeout 10m;
+EOFSE
+  cat <<EOFSE > $HSHQ_STACKS_DIR/dify/nginx/nginx.conf.template
+# Please do not directly edit this file. Instead, modify the .env variables related to NGINX configuration.
+
+user  nginx;
+worker_processes  \${NGINX_WORKER_PROCESSES};
+
+error_log  /var/log/nginx/error.log notice;
+pid        /var/run/nginx.pid;
+
+
+events {
+    worker_connections  1024;
+}
+
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format  main  '\$remote_addr - \$remote_user [\$time_local] "\$request" '
+                      '\$status \$body_bytes_sent "\$http_referer" '
+                      '"\$http_user_agent" "\$http_x_forwarded_for"';
+
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile        on;
+    #tcp_nopush     on;
+
+    keepalive_timeout  \${NGINX_KEEPALIVE_TIMEOUT};
+
+    #gzip  on;
+    client_max_body_size \${NGINX_CLIENT_MAX_BODY_SIZE};
+
+    include /etc/nginx/conf.d/*.conf;
+}
+EOFSE
+  cat <<EOFSE > $HSHQ_STACKS_DIR/dify/nginx/proxy.conf.template
+proxy_set_header Host \$host;
+proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto \$scheme;
+proxy_set_header X-Forwarded-Port \$server_port;
+proxy_http_version 1.1;
+proxy_set_header Connection "";
+proxy_buffering off;
+proxy_read_timeout \${NGINX_PROXY_READ_TIMEOUT};
+proxy_send_timeout \${NGINX_PROXY_SEND_TIMEOUT};
+EOFSE
+  cat <<EOFSE > $HSHQ_STACKS_DIR/dify/nginx/conf.d/default.conf.template
+# Please do not directly edit this file. Instead, modify the .env variables related to NGINX configuration.
+
+server {
+    listen \${NGINX_PORT};
+    server_name \${NGINX_SERVER_NAME};
+
+    location /console/api {
+      proxy_pass http://dify-api:5001;
+      include proxy.conf;
+    }
+
+    location /api {
+      proxy_pass http://dify-api:5001;
+      include proxy.conf;
+    }
+
+    location /v1 {
+      proxy_pass http://dify-api:5001;
+      include proxy.conf;
+    }
+
+    location /files {
+      proxy_pass http://dify-api:5001;
+      include proxy.conf;
+    }
+
+    location /explore {
+      proxy_pass http://dify-web:3000;
+      include proxy.conf;
+    }
+
+    location /e/ {
+      proxy_pass http://dify-plugind:5002;
+      proxy_set_header Dify-Hook-Url \$scheme://\$host\$request_uri;
+      include proxy.conf;
+    }
+
+    location / {
+      proxy_pass http://dify-web:3000;
+      include proxy.conf;
+    }
+
+    location /mcp {
+      proxy_pass http://dify-api:5001;
+      include proxy.conf;
+    }
+
+    location /triggers {
+      proxy_pass http://dify-api:5001;
+      include proxy.conf;
+    }
+    
+    # placeholder for acme challenge location
+    \${ACME_CHALLENGE_LOCATION}
+
+    # placeholder for https config defined in https.conf.template
+    \${HTTPS_CONFIG}
+}
+EOFSE
+  cat <<EOFSE > $HSHQ_STACKS_DIR/dify/nginx/docker-entrypoint.sh
+#!/bin/bash
+
+HTTPS_CONFIG=''
+
+if [ "\${NGINX_HTTPS_ENABLED}" = "true" ]; then
+    # Check if the certificate and key files for the specified domain exist
+    if [ -n "\${CERTBOT_DOMAIN}" ] && \
+       [ -f "/etc/letsencrypt/live/\${CERTBOT_DOMAIN}/\${NGINX_SSL_CERT_FILENAME}" ] && \
+       [ -f "/etc/letsencrypt/live/\${CERTBOT_DOMAIN}/\${NGINX_SSL_CERT_KEY_FILENAME}" ]; then
+        SSL_CERTIFICATE_PATH="/etc/letsencrypt/live/\${CERTBOT_DOMAIN}/\${NGINX_SSL_CERT_FILENAME}"
+        SSL_CERTIFICATE_KEY_PATH="/etc/letsencrypt/live/\${CERTBOT_DOMAIN}/\${NGINX_SSL_CERT_KEY_FILENAME}"
+    else
+        SSL_CERTIFICATE_PATH="/etc/ssl/\${NGINX_SSL_CERT_FILENAME}"
+        SSL_CERTIFICATE_KEY_PATH="/etc/ssl/\${NGINX_SSL_CERT_KEY_FILENAME}"
+    fi
+    export SSL_CERTIFICATE_PATH
+    export SSL_CERTIFICATE_KEY_PATH
+
+    # set the HTTPS_CONFIG environment variable to the content of the https.conf.template
+    HTTPS_CONFIG=\$(envsubst < /etc/nginx/https.conf.template)
+    export HTTPS_CONFIG
+    # Substitute the HTTPS_CONFIG in the default.conf.template with content from https.conf.template
+    envsubst '\${HTTPS_CONFIG}' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf
+fi
+export HTTPS_CONFIG
+
+if [ "\${NGINX_ENABLE_CERTBOT_CHALLENGE}" = "true" ]; then
+    ACME_CHALLENGE_LOCATION='location /.well-known/acme-challenge/ { root /var/www/html; }'
+else
+    ACME_CHALLENGE_LOCATION=''
+fi
+export ACME_CHALLENGE_LOCATION
+
+env_vars=\$(printenv | cut -d= -f1 | sed 's/^/\$/g' | paste -sd, -)
+
+envsubst "\$env_vars" < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+envsubst "\$env_vars" < /etc/nginx/proxy.conf.template > /etc/nginx/proxy.conf
+
+envsubst "\$env_vars" < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf
+
+# Start Nginx using the default entrypoint
+exec nginx -g 'daemon off;'
+EOFSE
+  chmod +x $HSHQ_STACKS_DIR/dify/nginx/docker-entrypoint.sh
+  cat <<EOFSE > $HSHQ_STACKS_DIR/dify/config/squid.conf.template
+acl localnet src 0.0.0.1-0.255.255.255	# RFC 1122 "this" network (LAN)
+acl localnet src 10.0.0.0/8		# RFC 1918 local private network (LAN)
+acl localnet src 100.64.0.0/10		# RFC 6598 shared address space (CGN)
+acl localnet src 169.254.0.0/16 	# RFC 3927 link-local (directly plugged) machines
+acl localnet src 172.16.0.0/12		# RFC 1918 local private network (LAN)
+acl localnet src 192.168.0.0/16		# RFC 1918 local private network (LAN)
+acl localnet src fc00::/7       	# RFC 4193 local private network range
+acl localnet src fe80::/10      	# RFC 4291 link-local (directly plugged) machines
+acl SSL_ports port 443
+# acl SSL_ports port 1025-65535   # Enable the configuration to resolve this issue: https://github.com/langgenius/dify/issues/12792
+acl Safe_ports port 80		# http
+acl Safe_ports port 21		# ftp
+acl Safe_ports port 443		# https
+acl Safe_ports port 70		# gopher
+acl Safe_ports port 210		# wais
+acl Safe_ports port 1025-65535	# unregistered ports
+acl Safe_ports port 280		# http-mgmt
+acl Safe_ports port 488		# gss-http
+acl Safe_ports port 591		# filemaker
+acl Safe_ports port 777		# multiling http
+acl CONNECT method CONNECT
+acl allowed_domains dstdomain .marketplace.dify.ai
+http_access allow allowed_domains
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+http_access allow localhost manager
+http_access deny manager
+http_access allow localhost
+include /etc/squid/conf.d/*.conf
+http_access deny all
+
+################################## Proxy Server ################################
+http_port \${HTTP_PORT}
+coredump_dir \${COREDUMP_DIR}
+refresh_pattern ^ftp:		1440	20%	10080
+refresh_pattern ^gopher:	1440	0%	1440
+refresh_pattern -i (/cgi-bin/|\?) 0	0%	0
+refresh_pattern \/(Packages|Sources)(|\.bz2|\.gz|\.xz)\$ 0 0% 0 refresh-ims
+refresh_pattern \/Release(|\.gpg)\$ 0 0% 0 refresh-ims
+refresh_pattern \/InRelease\$ 0 0% 0 refresh-ims
+refresh_pattern \/(Translation-.*)(|\.bz2|\.gz|\.xz)\$ 0 0% 0 refresh-ims
+refresh_pattern .		0	20%	4320
+
+
+# cache_dir ufs /var/spool/squid 100 16 256
+# upstream proxy, set to your own upstream proxy IP to avoid SSRF attacks
+# cache_peer 172.1.1.1 parent 3128 0 no-query no-digest no-netdb-exchange default
+
+################################## Reverse Proxy To Sandbox ################################
+http_port \${REVERSE_PROXY_PORT} accel vhost
+cache_peer \${SANDBOX_HOST} parent \${SANDBOX_PORT} 0 no-query originserver
+acl src_all src all
+http_access allow src_all
+
+# Unless the option's size is increased, an error will occur when uploading more than two files.
+client_request_buffer_max_size 100 MB
+
+################################## Performance & Concurrency ###############################
+# Increase file descriptor limit for high concurrency
+max_filedescriptors 65536
+
+# Timeout configurations for image requests
+connect_timeout 30 seconds
+request_timeout 2 minutes
+read_timeout 2 minutes
+client_lifetime 5 minutes
+shutdown_lifetime 30 seconds
+
+# Persistent connections - improve performance for multiple requests
+server_persistent_connections on
+client_persistent_connections on
+persistent_request_timeout 30 seconds
+pconn_timeout 1 minute
+
+# Connection pool and concurrency limits
+client_db on
+server_idle_pconn_timeout 2 minutes
+client_idle_pconn_timeout 2 minutes
+
+# Quick abort settings - don't abort requests that are mostly done
+quick_abort_min 16 KB
+quick_abort_max 16 MB
+quick_abort_pct 95
+
+# Memory and cache optimization
+memory_cache_mode disk
+cache_mem 256 MB
+maximum_object_size_in_memory 512 KB
+
+# DNS resolver settings for better performance
+dns_timeout 30 seconds
+dns_retransmit_interval 5 seconds
+# By default, Squid uses the system's configured DNS resolvers.
+# If you need to override them, set dns_nameservers to appropriate servers
+# for your environment (for example, internal/corporate DNS). The following
+# is an example using public DNS and SHOULD be customized before use:
+# dns_nameservers 8.8.8.8 8.8.4.4
+
+# Logging format for better debugging
+logformat dify_log %ts.%03tu %6tr %>a %Ss/%03>Hs %<st %rm %ru %[un %Sh/%<a %mt
+access_log daemon:/var/log/squid/access.log dify_log
+
+# Access log to track concurrent requests and timeouts
+logfile_rotate 10
+
+EOFSE
+  cat <<EOFSE > $HSHQ_STACKS_DIR/dify/config/docker-entrypoint.sh
+#!/bin/bash
+
+# Modified based on Squid OCI image entrypoint
+
+# This entrypoint aims to forward the squid logs to stdout to assist users of
+# common container related tooling (e.g., kubernetes, docker-compose, etc) to
+# access the service logs.
+
+# Moreover, it invokes the squid binary, leaving all the desired parameters to
+# be provided by the "command" passed to the spawned container. If no command
+# is provided by the user, the default behavior (as per the CMD statement in
+# the Dockerfile) will be to use Ubuntu's default configuration [1] and run
+# squid with the "-NYC" options to mimic the behavior of the Ubuntu provided
+# systemd unit.
+
+# [1] The default configuration is changed in the Dockerfile to allow local
+# network connections. See the Dockerfile for further information.
+
+echo "[ENTRYPOINT] re-create snakeoil self-signed certificate removed in the build process"
+if [ ! -f /etc/ssl/private/ssl-cert-snakeoil.key ]; then
+    /usr/sbin/make-ssl-cert generate-default-snakeoil --force-overwrite > /dev/null 2>&1
+fi
+
+tail -F /var/log/squid/access.log 2>/dev/null &
+tail -F /var/log/squid/error.log 2>/dev/null &
+tail -F /var/log/squid/store.log 2>/dev/null &
+tail -F /var/log/squid/cache.log 2>/dev/null &
+
+# Replace environment variables in the template and output to the squid.conf
+echo "[ENTRYPOINT] replacing environment variables in the template"
+awk '{
+    while(match(\$0, /\\\${[A-Za-z_][A-Za-z_0-9]*}/)) {
+        var = substr(\$0, RSTART+2, RLENGTH-3)
+        val = ENVIRON[var]
+        \$0 = substr(\$0, 1, RSTART-1) val substr(\$0, RSTART+RLENGTH)
+    }
+    print
+}' /etc/squid/squid.conf.template > /etc/squid/squid.conf
+
+/usr/sbin/squid -Nz
+echo "[ENTRYPOINT] starting squid"
+/usr/sbin/squid -f /etc/squid/squid.conf -NYC 1
+EOFSE
+  cat <<EOFSE > $HSHQ_STACKS_DIR/dify/sandbox/conf/config.yaml
+app:
+  port: 8194
+  debug: True
+  key: dify-sandbox
+max_workers: 4
+max_requests: 50
+worker_timeout: 5
+python_path: /usr/local/bin/python3
+enable_network: True
+allowed_syscalls:
+proxy:
+  socks5: ''
+  http: ''
+  https: ''
+EOFSE
+  cat <<EOFSQ > $HOME/genhash.py
+import base64
+import binascii
+import hashlib
+import re
+import secrets
+
+password_pattern = r"^(?=.*[a-zA-Z])(?=.*\d).{8,}\$"
+
+
+def valid_password(password):
+    # Define a regex pattern for password rules
+    pattern = password_pattern
+    # Check if the password matches the pattern
+    if re.match(pattern, password) is not None:
+        return password
+
+    raise ValueError("Password must contain letters and numbers, and the length must be greater than 8.")
+
+def hash_pass(password_str):
+    salt = secrets.token_bytes(16)
+    base64_salt = base64.b64encode(salt).decode()
+    password_hashed = hash_password(password_str, salt)
+    base64_password_hashed = base64.b64encode(password_hashed).decode()
+    print(base64_salt + "," + base64_password_hashed)
+
+def hash_password(password_str, salt_byte):
+    dk = hashlib.pbkdf2_hmac("sha256", password_str.encode("utf-8"), salt_byte, 10000)
+    return binascii.hexlify(dk)
+
+
+def compare_password(password_str, password_hashed_base64, salt_base64):
+    # compare password for login
+    return hash_password(password_str, base64.b64decode(salt_base64)) == base64.b64decode(password_hashed_base64)
+
+hash_pass("$DIFY_ADMIN_PASSWORD")
+EOFSQ
+  pwhash=$(python3 $HOME/genhash.py)
+  DIFY_ADMIN_PASSWORD_SALT=$(echo "$pwhash" | cut -d"," -f1)
+  DIFY_ADMIN_PASSWORD_HASH=$(echo "$pwhash" | cut -d"," -f2)
+  rm -f $HOME/genhash.py
+  acctuuid=$(uuidgen)
+  tenantuuid=$(uuidgen)
+  taj_uuid=$(uuidgen)
+  tpaus_uuid=$(uuidgen)
+  dtnow=$(date '+%Y-%m-%d %H:%M:%S.%6N')
+  dtnow2=$(date '+%Y-%m-%d %H:%M:%S')
+  mkdir $HSHQ_STACKS_DIR/dify/storage/privkeys/$tenantuuid
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out $HSHQ_STACKS_DIR/dify/storage/privkeys/$tenantuuid/private.pem > /dev/null 2>&1
+  chmod 644 $HSHQ_STACKS_DIR/dify/storage/privkeys/$tenantuuid/private.pem
+  pubkey=$(openssl pkey -in $HSHQ_STACKS_DIR/dify/storage/privkeys/$tenantuuid/private.pem -pubout)
+  cat <<EOFDS > $HSHQ_STACKS_DIR/dify/dbexport/setupDBSettings.sh
+#!/bin/bash
+
+PGPASSWORD=$DIFY_DATABASE_USER_PASSWORD
+
+echo "insert into accounts(id, name, email, password, password_salt, avatar, interface_language, interface_theme, timezone, last_login_at, last_login_ip, status, initialized_at, created_at, updated_at, last_active_at) values('$acctuuid','$DIFY_ADMIN_USERNAME','$DIFY_ADMIN_EMAIL_ADDRESS','$DIFY_ADMIN_PASSWORD_HASH','$DIFY_ADMIN_PASSWORD_SALT',NULL,'en-US','dark','$TZ',NULL,NULL,'active','$dtnow','$dtnow2','$dtnow','$dtnow2');" | psql -U $DIFY_DATABASE_USER $DIFY_DATABASE_NAME
+
+echo "insert into dify_setups(version, setup_at) values('1.11.2','$dtnow2');" | psql -U $DIFY_DATABASE_USER $DIFY_DATABASE_NAME
+
+echo "insert into tenants(id, name, encrypt_public_key, plan, status, created_at, updated_at, custom_config) values('$tenantuuid','${DIFY_ADMIN_USERNAME}''s Workspace','$pubkey','basic','normal','$dtnow2','$dtnow',NULL);" | psql -U $DIFY_DATABASE_USER $DIFY_DATABASE_NAME
+
+echo "insert into tenant_account_joins(id, tenant_id, account_id, role, invited_by, created_at, updated_at, current) values('$taj_uuid','$tenantuuid','$acctuuid','owner',NULL,'$dtnow2','$dtnow2','f');" | psql -U $DIFY_DATABASE_USER $DIFY_DATABASE_NAME
+
+echo "insert into tenant_plugin_auto_upgrade_strategies(id, tenant_id, strategy_setting, upgrade_time_of_day, upgrade_mode, exclude_plugins, include_plugins, created_at, updated_at) values('$tpaus_uuid','$tenantuuid','fix_only',0,'exclude','[]'::json,'[]'::json,'$dtnow','$dtnow');" | psql -U $DIFY_DATABASE_USER $DIFY_DATABASE_NAME
+
+EOFDS
+  chmod +x $HSHQ_STACKS_DIR/dify/dbexport/setupDBSettings.sh
+  #mv $HSHQ_STACKS_DIR/dify/storage $HSHQ_STACKS_DIR/dify/tempstore
+  #mkdir $HSHQ_STACKS_DIR/dify/storage
+  sudo chown -R 1001:1001 $HSHQ_STACKS_DIR/dify/storage
+}
+
+function performUpdateDify()
+{
+  perform_stack_name=dify
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/langgenius/qdrant:v1.8.3,mirror.gcr.io/ubuntu/squid:latest,mirror.gcr.io/langgenius/dify-api:1.11.2,mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local,mirror.gcr.io/langgenius/dify-sandbox:0.2.12,mirror.gcr.io/langgenius/dify-web:1.11.2,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/nginx:1.29.4-trixie,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/langgenius/qdrant:v1.8.3,mirror.gcr.io/langgenius/qdrant:v1.8.3"
+      image_update_map[2]="mirror.gcr.io/ubuntu/squid:latest,mirror.gcr.io/ubuntu/squid:latest"
+      image_update_map[3]="mirror.gcr.io/langgenius/dify-api:1.11.2,mirror.gcr.io/langgenius/dify-api:1.11.2"
+      image_update_map[4]="mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local,mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local"
+      image_update_map[5]="mirror.gcr.io/langgenius/dify-sandbox:0.2.12,mirror.gcr.io/langgenius/dify-sandbox:0.2.12"
+      image_update_map[6]="mirror.gcr.io/langgenius/dify-web:1.11.2,mirror.gcr.io/langgenius/dify-web:1.11.2"
+      image_update_map[7]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[8]="mirror.gcr.io/nginx:1.29.4-trixie,mirror.gcr.io/nginx:1.29.4-trixie"
+      image_update_map[9]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# MindsDB
+function installMindsDB()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory mindsdb "MindsDB"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName mindsdb-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName mindsdb-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName mindsdb-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/mindsdb
+  mkdir $HSHQ_STACKS_DIR/mindsdb/data
+  mkdir $HSHQ_STACKS_DIR/mindsdb/db
+  mkdir $HSHQ_STACKS_DIR/mindsdb/dbimport
+  mkdir $HSHQ_STACKS_DIR/mindsdb/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/mindsdb/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/mindsdb
+  mkdir $HSHQ_NONBACKUP_DIR/mindsdb/redis
+  initServicesCredentials
+  set +e
+  addUserMailu alias $MINDSDB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigMindsDB
+  installStack mindsdb mindsdb-app "mindsdb: http API: started on 47334" $HOME/mindsdb.env 3
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$MINDSDB_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_MINDSDB_APP Admin Login Info" -b "$FMLNAME_MINDSDB_APP Admin Username: $MINDSDB_ADMIN_USERNAME\n$FMLNAME_MINDSDB_APP Admin Password: $MINDSDB_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    MINDSDB_INIT_ENV=true
+    updateConfigVar MINDSDB_INIT_ENV $MINDSDB_INIT_ENV
+  fi
+  sleep 3
+  addReadOnlyUserToDatabase MindsDB postgres mindsdb-db $MINDSDB_DATABASE_NAME $MINDSDB_DATABASE_USER $MINDSDB_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/mindsdb/dbexport $MINDSDB_DATABASE_READONLYUSER $MINDSDB_DATABASE_READONLYUSER_PASSWORD
+  if [ -z "$FMLNAME_MINDSDB_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_MINDSDB_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://mindsdb-app:47334 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_MINDSDB_APP $MANAGETLS_MINDSDB_APP "$is_integrate_hshq" $NETDEFAULT_MINDSDB_APP "$inner_block"
+  insertSubAuthelia $SUB_MINDSDB_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll mindsdb "$FMLNAME_MINDSDB_APP" $USERTYPE_MINDSDB_APP "https://$SUB_MINDSDB_APP.$HOMESERVER_DOMAIN" "mindsdb.png" "$(getHeimdallOrderFromSub $SUB_MINDSDB_APP $USERTYPE_MINDSDB_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true mindsdb "$FMLNAME_MINDSDB_APP" postgres mindsdb-db $MINDSDB_DATABASE_NAME $MINDSDB_DATABASE_USER $MINDSDB_DATABASE_USER_PASSWORD
+  fi
+  echo -e "================================================================================"
+  echo -e "================================================================================\n"
+  echo -e "  For your convenience, the DB connections for all of your services"
+  echo -e "  have been prepped and output to the following file on your host: \n"
+  echo -e "  $HSHQ_STACKS_DIR/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME\n"
+  echo -e "  If you wish to perform a batch import on these connections into"
+  echo -e "  MindsDB, then enter the following command in a terminal: \n"
+  echo -e "  docker exec mindsdb-db bash /dbimport/importConnections.sh\n"
+  echo -e "  You can remove unwanted connections from this list before running"
+  echo -e "  the above command. Ensure to delete this file by running the command:\n"
+  echo -e "  rm $HSHQ_STACKS_DIR/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME\n"
+  echo -e "================================================================================"
+  echo -e "================================================================================"
+}
+
+function outputConfigMindsDB()
+{
+  cat <<EOFMT > $HOME/mindsdb-compose.yml
+$STACK_VERSION_PREFIX mindsdb $(getScriptStackVersion mindsdb)
+
+services:
+  mindsdb-db:
+    image: $(getScriptImageByContainerName mindsdb-db)
+    container_name: mindsdb-db
+    hostname: mindsdb-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-mindsdb-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mindsdb/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mindsdb/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mindsdb/dbimport:/dbimport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.mindsdb-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.mindsdb-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.mindsdb-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.mindsdb-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.mindsdb-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.mindsdb-hourly-db.email-from=MindsDB Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.mindsdb-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.mindsdb-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.mindsdb-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.mindsdb-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.mindsdb-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.mindsdb-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.mindsdb-monthly-db.email-from=MindsDB Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.mindsdb-monthly-db.mail-only-on-error=false"
+
+  mindsdb-app:
+    image: $(getScriptImageByContainerName mindsdb-app)
+    container_name: mindsdb-app
+    hostname: mindsdb-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - mindsdb-db
+    networks:
+      - int-mindsdb-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-mindsdb-data:/mindsdb
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/pip/_vendor/certifi/cacert.pem:ro
+      - /etc/ssl/certs/ca-certificates.crt:/venv/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+      - /etc/ssl/certs/ca-certificates.crt:/venv/lib/\${PYTHON_VER}/site-packages/pip/_vendor/certifi/cacert.pem:ro
+      - /etc/ssl/certs/ca-certificates.crt:/venv/lib/\${PYTHON_VER}/site-packages/pip-25.3.dist-info/licenses/src/pip/_vendor/certifi/cacert.pem:ro
+
+  mindsdb-redis:
+    image: $(getScriptImageByContainerName mindsdb-redis)
+    container_name: mindsdb-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $MINDSDB_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-mindsdb-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-mindsdb-redis:/data
+
+volumes:
+  v-mindsdb-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/mindsdb/data
+  v-mindsdb-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/mindsdb/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-mindsdb-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/mindsdb.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$MINDSDB_DATABASE_NAME
+POSTGRES_USER=$MINDSDB_DATABASE_USER
+POSTGRES_PASSWORD=$MINDSDB_DATABASE_USER_PASSWORD
+MINDSDB_DOCKER_ENV=1
+MINDSDB_APIS=http
+MINDSDB_DATA_CATALOG_ENABLED=1
+MINDSDB_ML_QUEUE_TYPE=redis
+MINDSDB_ML_QUEUE_HOST=mindsdb-redis
+MINDSDB_ML_QUEUE_PASSWORD=$MINDSDB_REDIS_PASSWORD
+MINDSDB_DB_CON=postgresql://$MINDSDB_DATABASE_USER:$MINDSDB_DATABASE_USER_PASSWORD@mindsdb-db:5432/$MINDSDB_DATABASE_NAME
+MINDSDB_STORAGE_DIR=/mindsdb/var
+MINDSDB_USERNAME=$MINDSDB_ADMIN_USERNAME
+MINDSDB_PASSWORD=$MINDSDB_ADMIN_PASSWORD
+SENTRY_IO_DSN=
+SENTRY_IO_ENVIRONMENT=local
+PYTHON_VER=python3.10
+MINDSDB_LOG_LEVEL=DEBUG
+MINDSDB_CONSOLE_LOG_LEVEL=DEBUG
+MINDSDB_FILE_LOG_LEVEL=DEBUG
+MINDSDB_TELEMETRY=false
+EOFMT
+  cat <<EOFAS > $HSHQ_STACKS_DIR/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME
+"ActivePieces" postgres activepieces-db $ACTIVEPIECES_DATABASE_NAME $ACTIVEPIECES_DATABASE_READONLYUSER $ACTIVEPIECES_DATABASE_READONLYUSER_PASSWORD
+"Adminer" mysql adminer-db $ADMINER_DATABASE_NAME $ADMINER_DATABASE_READONLYUSER $ADMINER_DATABASE_READONLYUSER_PASSWORD
+"Automatisch" postgres automatisch-db $AUTOMATISCH_DATABASE_NAME $AUTOMATISCH_DATABASE_READONLYUSER $AUTOMATISCH_DATABASE_READONLYUSER_PASSWORD
+"Budibase" mysql budibase-db $BUDIBASE_DATABASE_NAME $BUDIBASE_DATABASE_READONLYUSER $BUDIBASE_DATABASE_READONLYUSER_PASSWORD
+"Calcom" postgres calcom-db $CALCOM_DATABASE_NAME $CALCOM_DATABASE_READONLYUSER $CALCOM_DATABASE_READONLYUSER_PASSWORD
+"Discourse" postgres discourse-db $DISCOURSE_DATABASE_NAME $DISCOURSE_DATABASE_READONLYUSER $DISCOURSE_DATABASE_READONLYUSER_PASSWORD
+"Dolibarr" mysql dolibarr-db $DOLIBARR_DATABASE_NAME $DOLIBARR_DATABASE_READONLYUSER $DOLIBARR_DATABASE_READONLYUSER_PASSWORD
+"EasyAppointments" mysql easyappointments-db $EASYAPPOINTMENTS_DATABASE_NAME $EASYAPPOINTMENTS_DATABASE_READONLYUSER $EASYAPPOINTMENTS_DATABASE_READONLYUSER_PASSWORD
+"EspoCRM" mysql espocrm-db $ESPOCRM_DATABASE_NAME $ESPOCRM_DATABASE_READONLYUSER $ESPOCRM_DATABASE_READONLYUSER_PASSWORD
+"FireflyIII" postgres firefly-db $FIREFLY_DATABASE_NAME $FIREFLY_DATABASE_READONLYUSER $FIREFLY_DATABASE_READONLYUSER_PASSWORD
+"FrappeHR" mysql frappe-hr-db $FRAPPE_HR_DATABASE_NAME $FRAPPE_HR_DATABASE_READONLYUSER $FRAPPE_HR_DATABASE_READONLYUSER_PASSWORD
+"FreshRSS" postgres freshrss-db $FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_READONLYUSER $FRESHRSS_DATABASE_READONLYUSER_PASSWORD
+"Ghost" mysql ghost-db $GHOST_DATABASE_NAME $GHOST_DATABASE_READONLYUSER $GHOST_DATABASE_READONLYUSER_PASSWORD
+"Gitea" postgres gitea-db $GITEA_DATABASE_NAME $GITEA_DATABASE_READONLYUSER $GITEA_DATABASE_READONLYUSER_PASSWORD
+"Gitlab" postgres gitlab-db $GITLAB_DATABASE_NAME $GITLAB_DATABASE_READONLYUSER $GITLAB_DATABASE_READONLYUSER_PASSWORD
+"Guacamole" mysql guacamole-db $GUACAMOLE_DATABASE_NAME $GUACAMOLE_DATABASE_READONLYUSER $GUACAMOLE_DATABASE_READONLYUSER_PASSWORD
+"HomeAssistant" postgres homeassistant-db $HOMEASSISTANT_DATABASE_NAME $HOMEASSISTANT_DATABASE_READONLYUSER $HOMEASSISTANT_DATABASE_READONLYUSER_PASSWORD
+"Huginn" postgres huginn-db $HUGINN_DATABASE_NAME $HUGINN_DATABASE_READONLYUSER $HUGINN_DATABASE_READONLYUSER_PASSWORD
+"Immich" postgres immich-db $IMMICH_DATABASE_NAME $IMMICH_DATABASE_READONLYUSER $IMMICH_DATABASE_READONLYUSER_PASSWORD
+"Invidious" postgres invidious-db $INVIDIOUS_DATABASE_NAME $INVIDIOUS_DATABASE_READONLYUSER $INVIDIOUS_DATABASE_READONLYUSER_PASSWORD
+"InvoiceNinja" mysql invoiceninja-db $INVOICENINJA_DATABASE_NAME $INVOICENINJA_DATABASE_READONLYUSER $INVOICENINJA_DATABASE_READONLYUSER_PASSWORD
+"InvoiceShelf" mysql invoiceshelf-db $INVOICESHELF_DATABASE_NAME $INVOICESHELF_DATABASE_READONLYUSER $INVOICESHELF_DATABASE_READONLYUSER_PASSWORD
+"Kanboard" postgres kanboard-db $KANBOARD_DATABASE_NAME $KANBOARD_DATABASE_READONLYUSER $KANBOARD_DATABASE_READONLYUSER_PASSWORD
+"Keila" postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_READONLYUSER $KEILA_DATABASE_READONLYUSER_PASSWORD
+"KillBillAPI" mysql killbill-db $KILLBILL_KB_DATABASE_NAME $KILLBILL_DATABASE_READONLYUSER $KILLBILL_DATABASE_READONLYUSER_PASSWORD
+"KillBill" mysql killbill-db $KILLBILL_KAUI_DATABASE_NAME $KILLBILL_DATABASE_READONLYUSER $KILLBILL_DATABASE_READONLYUSER_PASSWORD
+"Linkwarden" postgres linkwarden-db $LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_READONLYUSER $LINKWARDEN_DATABASE_READONLYUSER_PASSWORD
+"Mastodon" postgres mastodon-db $MASTODON_DATABASE_NAME $MASTODON_DATABASE_READONLYUSER $MASTODON_DATABASE_READONLYUSER_PASSWORD
+"Matomo" mysql matomo-db $MATOMO_DATABASE_NAME $MATOMO_DATABASE_READONLYUSER $MATOMO_DATABASE_READONLYUSER_PASSWORD
+"Matrix" postgres matrix-db $MATRIX_DATABASE_NAME $MATRIX_DATABASE_READONLYUSER $MATRIX_DATABASE_READONLYUSER_PASSWORD
+"Mealie" postgres mealie-db $MEALIE_DATABASE_NAME $MEALIE_DATABASE_READONLYUSER $MEALIE_DATABASE_READONLYUSER_PASSWORD
+"MeshCentral" mysql meshcentral-db $MESHCENTRAL_DATABASE_NAME $MESHCENTRAL_DATABASE_READONLYUSER $MESHCENTRAL_DATABASE_READONLYUSER_PASSWORD
+"Metabase" postgres metabase-db $METABASE_DATABASE_NAME $METABASE_DATABASE_READONLYUSER $METABASE_DATABASE_READONLYUSER_PASSWORD
+"MintHCM" mysql minthcm-db $MINTHCM_DATABASE_NAME $MINTHCM_DATABASE_READONLYUSER $MINTHCM_DATABASE_READONLYUSER_PASSWORD
+"n8n" postgres n8n-db $N8N_DATABASE_NAME $N8N_DATABASE_READONLYUSER $N8N_DATABASE_READONLYUSER_PASSWORD
+"Nextcloud" postgres nextcloud-db $NEXTCLOUD_DATABASE_NAME $NEXTCLOUD_DATABASE_READONLYUSER $NEXTCLOUD_DATABASE_READONLYUSER_PASSWORD
+"Odoo" postgres odoo-db $ODOO_DATABASE_NAME $ODOO_DATABASE_READONLYUSER $ODOO_DATABASE_READONLYUSER_PASSWORD
+"Ombi" mysql ombi-db $OMBI_DATABASE_NAME $OMBI_DATABASE_READONLYUSER $OMBI_DATABASE_READONLYUSER_PASSWORD
+"OpenProject" postgres openproject-db $OPENPROJECT_DATABASE_NAME $OPENPROJECT_DATABASE_READONLYUSER $OPENPROJECT_DATABASE_READONLYUSER_PASSWORD
+"Paperless" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_READONLYUSER $PAPERLESS_DATABASE_READONLYUSER_PASSWORD
+"Pastefy" mysql pastefy-db $PASTEFY_DATABASE_NAME $PASTEFY_DATABASE_READONLYUSER $PASTEFY_DATABASE_READONLYUSER_PASSWORD
+"PeerTube" postgres peertube-db $PEERTUBE_DATABASE_NAME $PEERTUBE_DATABASE_READONLYUSER $PEERTUBE_DATABASE_READONLYUSER_PASSWORD
+"Penpot" postgres penpot-db $PENPOT_DATABASE_NAME $PENPOT_DATABASE_READONLYUSER $PENPOT_DATABASE_READONLYUSER_PASSWORD
+"PhotoPrism" mysql photoprism-db $PHOTOPRISM_DATABASE_NAME $PHOTOPRISM_DATABASE_READONLYUSER $PHOTOPRISM_DATABASE_READONLYUSER_PASSWORD
+"Piped" postgres piped-db $PIPED_DATABASE_NAME $PIPED_DATABASE_READONLYUSER $PIPED_DATABASE_READONLYUSER_PASSWORD
+"Pixelfed" mysql pixelfed-db $PIXELFED_DATABASE_NAME $PIXELFED_DATABASE_READONLYUSER $PIXELFED_DATABASE_READONLYUSER_PASSWORD
+"Rallly" postgres rallly-db $RALLLY_DATABASE_NAME $RALLLY_DATABASE_READONLYUSER $RALLLY_DATABASE_READONLYUSER_PASSWORD
+"Shlink" postgres shlink-db $SHLINK_DATABASE_NAME $SHLINK_DATABASE_READONLYUSER $SHLINK_DATABASE_READONLYUSER_PASSWORD
+"StandardNotes" mysql standardnotes-db $STANDARDNOTES_DATABASE_NAME $STANDARDNOTES_DATABASE_READONLYUSER $STANDARDNOTES_DATABASE_READONLYUSER_PASSWORD
+"Speedtest Tracker Local" postgres speedtest-tracker-local-db $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME $SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER $SPEEDTEST_TRACKER_LOCAL_DATABASE_READONLYUSER_PASSWORD
+"Speedtest Tracker VPN" postgres speedtest-tracker-vpn-db $SPEEDTEST_TRACKER_VPN_DATABASE_NAME $SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER $SPEEDTEST_TRACKER_VPN_DATABASE_READONLYUSER_PASSWORD
+"Twenty" postgres twenty-db $TWENTY_DATABASE_NAME $TWENTY_DATABASE_READONLYUSER $TWENTY_DATABASE_READONLYUSER_PASSWORD
+"Vaultwarden" postgres vaultwarden-db $VAULTWARDEN_DATABASE_NAME $VAULTWARDEN_DATABASE_READONLYUSER $VAULTWARDEN_DATABASE_READONLYUSER_PASSWORD
+"Wallabag" postgres wallabag-db $WALLABAG_DATABASE_NAME $WALLABAG_DATABASE_READONLYUSER $WALLABAG_DATABASE_READONLYUSER_PASSWORD
+"Wiki.js" postgres wikijs-db $WIKIJS_DATABASE_NAME $WIKIJS_DATABASE_READONLYUSER $WIKIJS_DATABASE_READONLYUSER_PASSWORD
+"Wordpress" mysql wordpress-db $WORDPRESS_DATABASE_NAME $WORDPRESS_DATABASE_READONLYUSER $WORDPRESS_DATABASE_READONLYUSER_PASSWORD
+"Yamtrack" postgres yamtrack-db $YAMTRACK_DATABASE_NAME $YAMTRACK_DATABASE_READONLYUSER $YAMTRACK_DATABASE_READONLYUSER_PASSWORD
+"Zammad" postgres zammad-db $ZAMMAD_DATABASE_NAME $ZAMMAD_DATABASE_READONLYUSER $ZAMMAD_DATABASE_READONLYUSER_PASSWORD
+"Zulip" postgres zulip-db $ZULIP_DATABASE_NAME $ZULIP_DATABASE_READONLYUSER $ZULIP_DATABASE_READONLYUSER_PASSWORD
+"Taiga" postgres taiga-db $TAIGA_DATABASE_NAME $TAIGA_DATABASE_READONLYUSER $TAIGA_DATABASE_READONLYUSER_PASSWORD
+"DocuSeal" postgres docuseal-db $DOCUSEAL_DATABASE_NAME $DOCUSEAL_DATABASE_READONLYUSER $DOCUSEAL_DATABASE_READONLYUSER_PASSWORD
+"ControlR" postgres controlr-db $CONTROLR_DATABASE_NAME $CONTROLR_DATABASE_READONLYUSER $CONTROLR_DATABASE_READONLYUSER_PASSWORD
+"Akaunting" mysql akaunting-db $AKAUNTING_DATABASE_NAME $AKAUNTING_DATABASE_READONLYUSER $AKAUNTING_DATABASE_READONLYUSER_PASSWORD
+"Axelor" postgres axelor-db $AXELOR_DATABASE_NAME $AXELOR_DATABASE_READONLYUSER $AXELOR_DATABASE_READONLYUSER_PASSWORD
+"Langflow" postgres langflow-db $LANGFLOW_DATABASE_NAME $LANGFLOW_DATABASE_READONLYUSER $LANGFLOW_DATABASE_READONLYUSER_PASSWORD
+"LibreChat" postgres librechat-db $LIBRECHAT_DATABASE_NAME $LIBRECHAT_DATABASE_READONLYUSER $LIBRECHAT_DATABASE_READONLYUSER_PASSWORD
+"OpenWebUI" postgres openwebui-db $OPENWEBUI_DATABASE_NAME $OPENWEBUI_DATABASE_READONLYUSER $OPENWEBUI_DATABASE_READONLYUSER_PASSWORD
+"Khoj" postgres khoj-db $KHOJ_DATABASE_NAME $KHOJ_DATABASE_READONLYUSER $KHOJ_DATABASE_READONLYUSER_PASSWORD
+"LobeChat" postgres lobechat-db $LOBECHAT_DATABASE_NAME $LOBECHAT_DATABASE_READONLYUSER $LOBECHAT_DATABASE_READONLYUSER_PASSWORD
+"RAGFlow" postgres ragflow-db $RAGFLOW_DATABASE_NAME $RAGFLOW_DATABASE_READONLYUSER $RAGFLOW_DATABASE_READONLYUSER_PASSWORD
+"Dify" postgres dify-db $DIFY_DATABASE_NAME $DIFY_DATABASE_READONLYUSER $DIFY_DATABASE_READONLYUSER_PASSWORD
+"MindsDB" postgres mindsdb-db $MINDSDB_DATABASE_NAME $MINDSDB_DATABASE_READONLYUSER $MINDSDB_DATABASE_READONLYUSER_PASSWORD
+"WaterCrawl" postgres watercrawl-db $WATERCRAWL_DATABASE_NAME $WATERCRAWL_DATABASE_READONLYUSER $WATERCRAWL_DATABASE_READONLYUSER_PASSWORD
+"Flowise" postgres flowise-db $FLOWISE_DATABASE_NAME $FLOWISE_DATABASE_READONLYUSER $FLOWISE_DATABASE_READONLYUSER_PASSWORD
+"NocoDB" postgres nocodb-db $NOCODB_DATABASE_NAME $NOCODB_DATABASE_READONLYUSER $NOCODB_DATABASE_READONLYUSER_PASSWORD
+"Ente" postgres ente-db $ENTE_DATABASE_NAME $ENTE_DATABASE_READONLYUSER $ENTE_DATABASE_READONLYUSER_PASSWORD
+"Morphic" postgres morphic-db $MORPHIC_DATABASE_NAME $MORPHIC_DATABASE_READONLYUSER $MORPHIC_DATABASE_READONLYUSER_PASSWORD
+#ADD_NEW_AISTACK_DB_IMPORT_HERE
+EOFAS
+  cat <<EOFIM > $HSHQ_STACKS_DIR/mindsdb/dbimport/importConnections.sh
+#!/bin/bash
+
+MINDSDB_DATABASE_NAME=$MINDSDB_DATABASE_NAME
+MINDSDB_DATABASE_USER=$MINDSDB_DATABASE_USER
+PGPASSWORD=$MINDSDB_DATABASE_USER_PASSWORD
+curdt=\$(date '+%Y-%m-%d %H:%M:%S.%3N')
+
+function main()
+{
+  if ! [ -f /dbimport/$MINDSDB_IMPORT_FILENAME ]; then
+    return
+  fi
+  while read curLine; do
+    if [ -z "\$curLine" ] || [ "\${curLine:0:1}" = "#" ]; then
+      continue
+    fi
+    connName=\$(echo "\$curLine" | cut -d" " -f1 | sed 's/"//g')
+    connType=\$(echo "\$curLine" | cut -d" " -f2)
+    connHost=\$(echo "\$curLine" | cut -d" " -f3)
+    connDatabase=\$(echo "\$curLine" | cut -d" " -f4)
+    connUser=\$(echo "\$curLine" | cut -d" " -f5)
+    connPassword=\$(echo "\$curLine" | cut -d" " -f6)
+    case "\$connType" in
+      "postgres")
+        connPort=5432
+      ;;
+      "mysql")
+        connPort=3306
+      ;;
+      *)
+        continue
+      ;;
+    esac
+    sqlcmd="select count(*) from integration where name='\$connName';"
+    checkExist=\$(echo "\$sqlcmd" | psql -t -U \$MINDSDB_DATABASE_USER \$MINDSDB_DATABASE_NAME | xargs)
+    if [ -z "\$checkExist" ]; then
+      echo "ERROR: There was a problem adding this DB Connection to MindsDB - \$connName"
+      continue
+    fi
+    if [ \$checkExist -eq 0 ]; then
+      sqlcmd="insert into integration(updated_at, created_at, name, data, engine) values ('\$curdt', '\$curdt', '\$connName','{\"database\": \"\$connDatabase\", \"host\": \"\$connHost\", \"password\": \"\$connPassword\", \"port\": \"\$connPort\", \"user\": \"\$connUser\"}','\$connType');"
+      echo "\$sqlcmd" | psql -U \$MINDSDB_DATABASE_USER \$MINDSDB_DATABASE_NAME > /dev/null 2>&1
+    else
+      echo "INFO: DB Connection already exists in MindsDB - \$connName"
+    fi
+  done </dbimport/$MINDSDB_IMPORT_FILENAME
+}
+
+main
+EOFIM
+  chmod 755 $HSHQ_STACKS_DIR/mindsdb/dbimport/importConnections.sh
+}
+
+function performUpdateMindsDB()
+{
+  perform_stack_name=mindsdb
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/mindsdb/mindsdb:v25.13.1-cloud,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/mindsdb/mindsdb:v25.13.1-cloud,mirror.gcr.io/mindsdb/mindsdb:v25.13.1-cloud"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# WaterCrawl
+function installWaterCrawl()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory watercrawl "WaterCrawl"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName watercrawl-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName watercrawl-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName watercrawl-playwright)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName watercrawl-frontend)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName watercrawl-nginx)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName watercrawl-minio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName watercrawl-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName watercrawl-mcp)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/watercrawl
+  mkdir $HSHQ_STACKS_DIR/watercrawl/minio
+  mkdir $HSHQ_STACKS_DIR/watercrawl/nginx
+  mkdir $HSHQ_STACKS_DIR/watercrawl/db
+  mkdir $HSHQ_STACKS_DIR/watercrawl/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/watercrawl/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/watercrawl
+  mkdir $HSHQ_NONBACKUP_DIR/watercrawl/redis
+  initServicesCredentials
+  set +e
+  addUserMailu alias $WATERCRAWL_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  WATERCRAWL_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $WATERCRAWL_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigWaterCrawl
+  installStack watercrawl watercrawl-app "" $HOME/watercrawl.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$WATERCRAWL_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_WATERCRAWL_APP Admin Login Info" -b "$FMLNAME_WATERCRAWL_APP Admin Email: $WATERCRAWL_ADMIN_EMAIL_ADDRESS\n$FMLNAME_WATERCRAWL_APP Admin Password: $WATERCRAWL_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    WATERCRAWL_INIT_ENV=true
+    updateConfigVar WATERCRAWL_INIT_ENV $WATERCRAWL_INIT_ENV
+  fi
+  sleep 3
+  addReadOnlyUserToDatabase WaterCrawl postgres watercrawl-db $WATERCRAWL_DATABASE_NAME $WATERCRAWL_DATABASE_USER $WATERCRAWL_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/watercrawl/dbexport $WATERCRAWL_DATABASE_READONLYUSER $WATERCRAWL_DATABASE_READONLYUSER_PASSWORD
+  if [ -z "$FMLNAME_WATERCRAWL_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_WATERCRAWL_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://watercrawl-nginx {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_WATERCRAWL_APP $MANAGETLS_WATERCRAWL_APP "$is_integrate_hshq" $NETDEFAULT_WATERCRAWL_APP "$inner_block"
+  insertSubAuthelia $SUB_WATERCRAWL_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll watercrawl "$FMLNAME_WATERCRAWL_APP" $USERTYPE_WATERCRAWL_APP "https://$SUB_WATERCRAWL_APP.$HOMESERVER_DOMAIN" "watercrawl.png" "$(getHeimdallOrderFromSub $SUB_WATERCRAWL_APP $USERTYPE_WATERCRAWL_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true watercrawl "$FMLNAME_WATERCRAWL_APP" postgres watercrawl-db $WATERCRAWL_DATABASE_NAME $WATERCRAWL_DATABASE_USER $WATERCRAWL_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigWaterCrawl()
+{
+  cat <<EOFMT > $HOME/watercrawl-compose.yml
+$STACK_VERSION_PREFIX watercrawl $(getScriptStackVersion watercrawl)
+
+services:
+  watercrawl-db:
+    image: $(getScriptImageByContainerName watercrawl-db)
+    container_name: watercrawl-db
+    hostname: watercrawl-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-watercrawl-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/watercrawl/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/watercrawl/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.watercrawl-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.watercrawl-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.watercrawl-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.watercrawl-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.watercrawl-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.watercrawl-hourly-db.email-from=WaterCrawl Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.watercrawl-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.watercrawl-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.watercrawl-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.watercrawl-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.watercrawl-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.watercrawl-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.watercrawl-monthly-db.email-from=WaterCrawl Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.watercrawl-monthly-db.mail-only-on-error=false"
+
+  watercrawl-app:
+    image: $(getScriptImageByContainerName watercrawl-app)
+    container_name: watercrawl-app
+    hostname: watercrawl-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - watercrawl-db
+    command: [ "gunicorn", "-b", "0.0.0.0:9000", "-w", "2", "watercrawl.wsgi:application", "--access-logfile", "-", "--error-logfile", "-", "--timeout", "60" ]
+    networks:
+      - int-watercrawl-net
+      - dock-aipriv-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  watercrawl-celery:
+    image: $(getScriptImageByContainerName watercrawl-celery)
+    container_name: watercrawl-celery
+    hostname: watercrawl-celery
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - watercrawl-db
+    command: [ "celery", "-A", "watercrawl", "worker", "-l", "info", "-S", "django" ]
+    networks:
+      - int-watercrawl-net
+      - dock-aipriv-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  watercrawl-beat:
+    image: $(getScriptImageByContainerName watercrawl-beat)
+    container_name: watercrawl-beat
+    hostname: watercrawl-beat
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - watercrawl-db
+    command: [ "celery", "-A", "watercrawl", "beat", "-l", "info", "-S", "django" ]
+    networks:
+      - int-watercrawl-net
+      - dock-aipriv-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  watercrawl-playwright:
+    image: $(getScriptImageByContainerName watercrawl-playwright)
+    container_name: watercrawl-playwright
+    hostname: watercrawl-playwright
+    restart: unless-stopped
+    env_file: stack.env
+    user: root
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - watercrawl-db
+    networks:
+      - int-watercrawl-net
+      - dock-aipriv-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+
+  watercrawl-frontend:
+    image: $(getScriptImageByContainerName watercrawl-frontend)
+    container_name: watercrawl-frontend
+    hostname: watercrawl-frontend
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - watercrawl-db
+    command: [ "npm", "run", "serve" ]
+    networks:
+      - int-watercrawl-net
+      - dock-aipriv-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  watercrawl-nginx:
+    image: $(getScriptImageByContainerName watercrawl-nginx)
+    container_name: watercrawl-nginx
+    hostname: watercrawl-nginx
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - watercrawl-app
+      - watercrawl-frontend
+      - watercrawl-minio
+    command: [ "/bin/sh", "/entrypoint.sh" ]
+    networks:
+      - int-watercrawl-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/watercrawl/nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/watercrawl/nginx/entrypoint.sh:/entrypoint.sh
+
+  watercrawl-minio:
+    image: $(getScriptImageByContainerName watercrawl-minio)
+    container_name: watercrawl-minio
+    hostname: watercrawl-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: server /data --console-address ":9001"
+    networks:
+      - int-watercrawl-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/watercrawl/minio:/data
+
+  watercrawl-redis:
+    image: $(getScriptImageByContainerName watercrawl-redis)
+    container_name: watercrawl-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $WATERCRAWL_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-watercrawl-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-watercrawl-redis:/data
+
+  watercrawl-mcp:
+    image: $(getScriptImageByContainerName watercrawl-mcp)
+    container_name: watercrawl-mcp
+    hostname: watercrawl-mcp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - watercrawl-db
+    command: [ "sse", "--base-url", "http://watercrawl-app:9000", '--port', '3000', '--endpoint', '/sse' ]
+    networks:
+      - int-watercrawl-net
+      - dock-aipriv-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+volumes:
+  v-watercrawl-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/watercrawl/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-watercrawl-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/watercrawl.env
+TZ=\${PORTAINER_TZ}
+TIME_ZONE=\${PORTAINER_TZ}
+POSTGRES_HOST=watercrawl-db
+POSTGRES_DB=$WATERCRAWL_DATABASE_NAME
+POSTGRES_USER=$WATERCRAWL_DATABASE_USER
+POSTGRES_PASSWORD=$WATERCRAWL_DATABASE_USER_PASSWORD
+DATABASE_URL=postgresql://$WATERCRAWL_DATABASE_USER:$WATERCRAWL_DATABASE_USER_PASSWORD@watercrawl-db:5432/$WATERCRAWL_DATABASE_NAME
+SECRET_KEY=$WATERCRAWL_SECRET_KEY
+API_ENCRYPTION_KEY=$WATERCRAWL_API_ENCRYPTION_KEY
+DEBUG=True
+FRONTEND_URL=https://$SUB_WATERCRAWL_APP.$HOMESERVER_DOMAIN
+CELERY_BROKER_URL=redis://:$WATERCRAWL_REDIS_PASSWORD@watercrawl-redis:6379/0
+REDIS_URL=redis://:$WATERCRAWL_REDIS_PASSWORD@watercrawl-redis:6379/1
+REDIS_LOCKER_URL=redis://:$WATERCRAWL_REDIS_PASSWORD@watercrawl-redis:6379/3
+MINIO_ROOT_USER=$WATERCRAWL_MINIO_KEY
+MINIO_ROOT_PASSWORD=$WATERCRAWL_MINIO_SECRET
+MINIO_ENDPOINT=watercrawl-minio:9000
+MINIO_EXTERNAL_ENDPOINT=$SUB_WATERCRAWL_APP.$HOMESERVER_DOMAIN
+MINIO_ACCESS_KEY=$WATERCRAWL_MINIO_KEY
+MINIO_SECRET_KEY=$WATERCRAWL_MINIO_SECRET
+MINIO_EXTERNAL_ENDPOINT_USE_HTTPS=True
+MINIO_USE_HTTPS=False
+MINIO_BROWSER_REDIRECT_URL=https://$SUB_WATERCRAWL_APP.$HOMESERVER_DOMAIN/minio-console/
+MINIO_SERVER_URL=http://watercrawl-minio:9000
+CORS_ALLOW_ALL_ORIGINS=True
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=$SMTP_HOSTNAME
+EMAIL_PORT=$SMTP_HOSTPORT
+DEFAULT_FROM_EMAIL=WaterCrawl $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>
+PLAYWRIGHT_SERVER=http://watercrawl-playwright:8000
+PLAYWRIGHT_API_KEY=$WATERCRAWL_PLAYWRIGHT_API_KEY
+AUTH_API_KEY=$WATERCRAWL_PLAYWRIGHT_API_KEY
+API_BASE_URL=https://$SUB_WATERCRAWL_APP.$HOMESERVER_DOMAIN/
+MCP_SERVER=https://$SUB_WATERCRAWL_APP.$HOMESERVER_DOMAIN/sse
+IS_ENTERPRISE_MODE_ACTIVE=False
+IS_LOGIN_ACTIVE=True
+IS_SIGNUP_ACTIVE=False
+IS_GITHUB_LOGIN_ACTIVE=False
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+IS_GOOGLE_LOGIN_ACTIVE=False
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/watercrawl/nginx/nginx.conf
+server {
+    listen 80;
+    server_name localhost;
+    client_max_body_size 100M;
+
+    # Frontend
+    location / {
+        proxy_pass http://watercrawl-frontend:80;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    # API
+    location /api/ {
+        proxy_pass http://watercrawl-app:9000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    # MCP
+    location ~ ^/(sse|messages) {
+        proxy_pass http://watercrawl-mcp:3000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+
+
+        # Important SSE settings
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+
+        # Disable buffering so events are sent immediately
+        proxy_buffering off;
+        proxy_cache off;
+
+        # Increase timeouts so connection stays open
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+
+    # MinIO private bucket
+    location /private/ {
+        proxy_pass http://watercrawl-minio:9000/private/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_buffering off;
+    }
+
+    # MinIO public bucket
+    location /public/ {
+        proxy_pass http://watercrawl-minio:9000/public/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_buffering off;
+    }
+
+    # MinIO API - for direct S3 operations
+    # location /minio/api/ {
+    #     proxy_pass http://watercrawl-minio:9000/;
+    #     proxy_set_header Host \$host;
+    #     proxy_set_header X-Real-IP \$remote_addr;
+    #     proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    #     proxy_set_header X-Forwarded-Proto \$scheme;
+    #     proxy_buffering off;
+    # }
+
+    # MinIO Console
+    location /minio-console/ {
+        proxy_pass http://watercrawl-minio:9001/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        # Rewrite location headers
+        proxy_redirect / /minio-console/;
+    }
+}
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/watercrawl/nginx/entrypoint.sh
+#!/bin/sh
+set -e
+
+# Start Nginx
+exec nginx -g 'daemon off;'
+EOFMT
+}
+
+function performUpdateWaterCrawl()
+{
+  perform_stack_name=watercrawl
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:17.5-bookworm,mirror.gcr.io/watercrawl/watercrawl:v0.12.1,mirror.gcr.io/watercrawl/watercrawl:v0.12.1,mirror.gcr.io/watercrawl/watercrawl:v0.12.1,mirror.gcr.io/watercrawl/playwright:1.2,mirror.gcr.io/watercrawl/frontend:v0.12.1,mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/watercrawl/mcp:v1.3.0
+      image_update_map[0]="mirror.gcr.io/postgres:17.5-bookworm,mirror.gcr.io/postgres:17.5-bookworm"
+      image_update_map[1]="mirror.gcr.io/watercrawl/watercrawl:v0.12.1,mirror.gcr.io/watercrawl/watercrawl:v0.12.1"
+      image_update_map[2]="mirror.gcr.io/watercrawl/playwright:1.2,mirror.gcr.io/watercrawl/playwright:1.2"
+      image_update_map[3]="mirror.gcr.io/watercrawl/frontend:v0.12.1,mirror.gcr.io/watercrawl/frontend:v0.12.1"
+      image_update_map[4]="mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
+      image_update_map[5]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[6]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[7]="mirror.gcr.io/watercrawl/mcp:v1.3.0,mirror.gcr.io/watercrawl/mcp:v1.3.0"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Flowise
+function installFlowise()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory flowise "Flowise"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName flowise-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName flowise-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName flowise-worker)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName flowise-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName flowise-minio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/flowise
+  mkdir $HSHQ_STACKS_DIR/flowise/minio
+  mkdir $HSHQ_STACKS_DIR/flowise/data
+  mkdir $HSHQ_STACKS_DIR/flowise/db
+  mkdir $HSHQ_STACKS_DIR/flowise/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/flowise/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/flowise
+  mkdir $HSHQ_NONBACKUP_DIR/flowise/redis
+  initServicesCredentials
+  set +e
+  addUserMailu alias $FLOWISE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigFlowise
+  installStack flowise flowise-app "Flowise Server is listening at" $HOME/flowise.env 3
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$FLOWISE_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_FLOWISE_APP Admin Login Info" -b "$FMLNAME_FLOWISE_APP Admin Email: $FLOWISE_ADMIN_EMAIL_ADDRESS\n$FMLNAME_FLOWISE_APP Admin Password: $FLOWISE_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    FLOWISE_INIT_ENV=true
+    updateConfigVar FLOWISE_INIT_ENV $FLOWISE_INIT_ENV
+  fi
+  sleep 3
+  docker exec flowise-db /dbexport/setupDBSettings.sh
+# > /dev/null 2>&1
+  #rm -f $HSHQ_STACKS_DIR/flowise/dbexport/setupDBSettings.sh
+  addReadOnlyUserToDatabase Flowise postgres flowise-db $FLOWISE_DATABASE_NAME $FLOWISE_DATABASE_USER $FLOWISE_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/flowise/dbexport $FLOWISE_DATABASE_READONLYUSER $FLOWISE_DATABASE_READONLYUSER_PASSWORD
+  if [ -z "$FMLNAME_FLOWISE_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_FLOWISE_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://flowise-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_FLOWISE_APP $MANAGETLS_FLOWISE_APP "$is_integrate_hshq" $NETDEFAULT_FLOWISE_APP "$inner_block"
+  insertSubAuthelia $SUB_FLOWISE_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll flowise "$FMLNAME_FLOWISE_APP" $USERTYPE_FLOWISE_APP "https://$SUB_FLOWISE_APP.$HOMESERVER_DOMAIN" "flowise.png" "$(getHeimdallOrderFromSub $SUB_FLOWISE_APP $USERTYPE_FLOWISE_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true flowise "$FMLNAME_FLOWISE_APP" postgres flowise-db $FLOWISE_DATABASE_NAME $FLOWISE_DATABASE_USER $FLOWISE_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigFlowise()
+{
+  cat <<EOFMT > $HOME/flowise-compose.yml
+$STACK_VERSION_PREFIX flowise $(getScriptStackVersion flowise)
+
+services:
+  flowise-db:
+    image: $(getScriptImageByContainerName flowise-db)
+    container_name: flowise-db
+    hostname: flowise-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-flowise-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/flowise/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/flowise/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.flowise-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.flowise-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.flowise-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.flowise-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.flowise-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.flowise-hourly-db.email-from=Flowise Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.flowise-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.flowise-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.flowise-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.flowise-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.flowise-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.flowise-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.flowise-monthly-db.email-from=Flowise Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.flowise-monthly-db.mail-only-on-error=false"
+
+  flowise-app:
+    image: $(getScriptImageByContainerName flowise-app)
+    container_name: flowise-app
+    hostname: flowise-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - flowise-db
+      - flowise-redis
+      - flowise-minio
+    entrypoint: /bin/sh -c "sleep 3; flowise start"
+    networks:
+      - int-flowise-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/flowise/data:/root/.flowise
+
+  flowise-worker:
+    image: $(getScriptImageByContainerName flowise-worker)
+    container_name: flowise-worker
+    hostname: flowise-worker
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - flowise-db
+      - flowise-redis
+      - flowise-minio
+    entrypoint: /bin/sh -c "node /app/healthcheck/healthcheck.js & sleep 5 && pnpm run start-worker"
+    networks:
+      - int-flowise-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    healthcheck:
+        test: ['CMD', 'curl', '-f', 'http://localhost:5566/healthz']
+        interval: 10s
+        timeout: 5s
+        retries: 5
+        start_period: 30s
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/flowise/data:/root/.flowise
+
+  flowise-redis:
+    image: $(getScriptImageByContainerName flowise-redis)
+    container_name: flowise-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $FLOWISE_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-flowise-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-flowise-redis:/data
+
+  flowise-minio:
+    image: $(getScriptImageByContainerName flowise-minio)
+    container_name: flowise-minio
+    hostname: flowise-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-flowise-net
+    entrypoint: >
+      /bin/sh -c "
+        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\\\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        mc alias set minio http://localhost:9000 ${FLOWISE_MINIO_KEY} ${FLOWISE_MINIO_SECRET}
+        echo 'Creating bucket flowise'
+        mc mb minio/flowise
+        wait \\\$MINIO_PID
+      "
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/flowise/minio:/data
+
+volumes:
+  v-flowise-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/flowise/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-flowise-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/flowise.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$FLOWISE_DATABASE_NAME
+POSTGRES_USER=$FLOWISE_DATABASE_USER
+POSTGRES_PASSWORD=$FLOWISE_DATABASE_USER_PASSWORD
+DATABASE_TYPE=postgres
+DATABASE_PORT=5432
+DATABASE_HOST=flowise-db
+DATABASE_NAME=$FLOWISE_DATABASE_NAME
+DATABASE_USER=$FLOWISE_DATABASE_USER
+DATABASE_PASSWORD=$FLOWISE_DATABASE_USER_PASSWORD
+SECRETKEY_STORAGE_TYPE=local
+SECRETKEY_PATH=/root/.flowise
+LOG_PATH=/root/.flowise/logs
+MINIO_ROOT_USER=$FLOWISE_MINIO_KEY
+MINIO_ROOT_PASSWORD=$FLOWISE_MINIO_SECRET
+STORAGE_TYPE=s3
+BLOB_STORAGE_PATH=/root/.flowise/storage
+S3_STORAGE_BUCKET_NAME=flowise
+S3_STORAGE_ACCESS_KEY_ID=$FLOWISE_MINIO_KEY
+S3_STORAGE_SECRET_ACCESS_KEY=$FLOWISE_MINIO_SECRET
+S3_STORAGE_REGION=us-west-1
+S3_ENDPOINT_URL=http://flowise-minio:9000
+S3_FORCE_PATH_STYLE=true
+SHOW_COMMUNITY_NODES=true
+DISABLE_FLOWISE_TELEMETRY=true
+APP_URL=https://$SUB_FLOWISE_APP.$HOMESERVER_DOMAIN
+SMTP_HOST=$SMTP_HOSTNAME
+SMTP_PORT=$SMTP_HOSTPORT
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_SECURE=false
+ALLOW_UNAUTHORIZED_CERTS=true
+SENDER_EMAIL=Flowise $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>
+JWT_AUTH_TOKEN_SECRET=$FLOWISE_JWT_SECRET
+JWT_REFRESH_TOKEN_SECRET=$FLOWISE_JWT_REFRESH_SECRET
+JWT_ISSUER=ISSUER
+JWT_AUDIENCE=AUDIENCE
+JWT_TOKEN_EXPIRY_IN_MINUTES=360
+JWT_REFRESH_TOKEN_EXPIRY_IN_MINUTES=43200
+EXPRESS_SESSION_SECRET=$FLOWISE_EXPRESS_SESSION_SECRET
+TOKEN_HASH_SECRET=$FLOWISE_TOKEN_HASH_SECRET
+ENABLE_METRICS=false
+MODE=queue
+QUEUE_NAME=flowise-queue
+QUEUE_REDIS_EVENT_STREAM_MAX_LEN=1000
+WORKER_CONCURRENCY=5
+REMOVE_ON_AGE=86400
+REMOVE_ON_COUNT=1000
+REDIS_URL=redis://:$FLOWISE_REDIS_PASSWORD@flowise-redis:6379
+REDIS_HOST=flowise-redis
+REDIS_PORT=6379
+REDIS_PASSWORD=$FLOWISE_REDIS_PASSWORD
+EOFMT
+  useruuid=$(uuidgen)
+  orguuid=$(uuidgen)
+  workuuid=$(uuidgen)
+  dtnow=$(date '+%Y-%m-%d %H:%M:%S.%6N')
+  cat <<EOFDS > $HSHQ_STACKS_DIR/flowise/dbexport/setupDBSettings.sh
+#!/bin/bash
+
+PGPASSWORD=$FLOWISE_DATABASE_USER_PASSWORD
+FLOWISE_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 5 "" "$FLOWISE_ADMIN_PASSWORD" | tr -d ':\n' | sed 's/$2y/$2a/' | sed 's/\$/\\\$/g')
+
+roleid=\$(echo "select id from role where name='owner';" | psql -t -A -U $FLOWISE_DATABASE_USER $FLOWISE_DATABASE_NAME 2> /dev/null)
+
+echo "insert into \"user\"(id, name, email, credential, \"tempToken\", \"tokenExpiry\", status, \"createdDate\", \"updatedDate\", \"createdBy\", \"updatedBy\") values('$useruuid','Flowise HSHQ Admin','$FLOWISE_ADMIN_EMAIL_ADDRESS','\$FLOWISE_ADMIN_PASSWORD_HASH',NULL,NULL,'active','$dtnow','$dtnow','$useruuid','$useruuid');" | psql -U $FLOWISE_DATABASE_USER $FLOWISE_DATABASE_NAME
+
+echo "insert into organization(id, name, \"customerId\", \"subscriptionId\", \"createdDate\", \"updatedDate\", \"createdBy\", \"updatedBy\") values('$orguuid','$HOMESERVER_NAME',NULL,NULL,'$dtnow','$dtnow','$useruuid','$useruuid');" | psql -U $FLOWISE_DATABASE_USER $FLOWISE_DATABASE_NAME
+
+echo "insert into organization_user(\"organizationId\", \"userId\", \"roleId\", status, \"createdDate\", \"updatedDate\", \"createdBy\", \"updatedBy\") values('$orguuid','$useruuid','\$roleid','active','$dtnow','$dtnow','$useruuid','$useruuid');" | psql -U $FLOWISE_DATABASE_USER $FLOWISE_DATABASE_NAME
+
+echo "insert into workspace(id, name, description, \"createdDate\", \"updatedDate\", \"organizationId\", \"createdBy\", \"updatedBy\") values('$workuuid','$HOMESERVER_NAME Workspace',NULL,'$dtnow','$dtnow','$orguuid','$useruuid','$useruuid');" | psql -U $FLOWISE_DATABASE_USER $FLOWISE_DATABASE_NAME
+
+echo "insert into workspace_user(\"workspaceId\", \"userId\", \"roleId\", status, \"lastLogin\", \"createdDate\", \"updatedDate\", \"createdBy\", \"updatedBy\") values('$workuuid','$useruuid','\$roleid','active','$dtnow','$dtnow','$dtnow','$useruuid','$useruuid');" | psql -U $FLOWISE_DATABASE_USER $FLOWISE_DATABASE_NAME
+
+EOFDS
+  chmod +x $HSHQ_STACKS_DIR/flowise/dbexport/setupDBSettings.sh
+}
+
+function performUpdateFlowise()
+{
+  perform_stack_name=flowise
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/flowiseai/flowise:3.0.12,mirror.gcr.io/flowiseai/flowise-worker:3.0.12,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
+      image_update_map[1]="mirror.gcr.io/flowiseai/flowise:3.0.12,mirror.gcr.io/flowiseai/flowise:3.0.12"
+      image_update_map[2]="mirror.gcr.io/flowiseai/flowise-worker:3.0.12,mirror.gcr.io/flowiseai/flowise-worker:3.0.12"
+      image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# SurfSense (project is not ready for production yet)
+function installSurfSense()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory surfsense "SurfSense"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName surfsense-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/surfsense
+  mkdir $HSHQ_STACKS_DIR/surfsense/data
+  initServicesCredentials
+  set +e
+  addUserMailu alias $SURFSENSE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  SURFSENSE_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $SURFSENSE_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigSurfSense
+  installStack surfsense surfsense-app "Uvicorn running on http" $HOME/surfsense.env 10
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$SURFSENSE_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_SURFSENSE_APP Admin Login Info" -b "$FMLNAME_SURFSENSE_APP Admin Email: $SURFSENSE_ADMIN_EMAIL_ADDRESS\n$FMLNAME_SURFSENSE_APP Admin Password: $SURFSENSE_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    SURFSENSE_INIT_ENV=true
+    updateConfigVar SURFSENSE_INIT_ENV $SURFSENSE_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_SURFSENSE_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_SURFSENSE_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://surfsense-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_SURFSENSE_APP $MANAGETLS_SURFSENSE_APP "$is_integrate_hshq" $NETDEFAULT_SURFSENSE_APP "$inner_block"
+  insertSubAuthelia $SUB_SURFSENSE_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_SURFSENSE_BACKEND.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://surfsense-app:8000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_SURFSENSE_BACKEND $MANAGETLS_SURFSENSE_BACKEND "$is_integrate_hshq" $NETDEFAULT_SURFSENSE_BACKEND "$inner_block"
+  insertSubAuthelia $SUB_SURFSENSE_BACKEND.$HOMESERVER_DOMAIN bypass
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll surfsense "$FMLNAME_SURFSENSE_APP" $USERTYPE_SURFSENSE_APP "https://$SUB_SURFSENSE_APP.$HOMESERVER_DOMAIN" "surfsense.png" "$(getHeimdallOrderFromSub $SUB_SURFSENSE_APP $USERTYPE_SURFSENSE_APP)"
+    insertEnableSvcUptimeKuma surfsense "$FMLNAME_SURFSENSE_BACKEND" $USERTYPE_SURFSENSE_BACKEND "https://$SUB_SURFSENSE_BACKEND.$HOMESERVER_DOMAIN" true
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigSurfSense()
+{
+  cat <<EOFMT > $HOME/surfsense-compose.yml
+$STACK_VERSION_PREFIX surfsense $(getScriptStackVersion surfsense)
+
+services:
+  surfsense-app:
+    image: $(getScriptImageByContainerName surfsense-app)
+    container_name: surfsense-app
+    hostname: surfsense-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-surfsense-data:/data
+
+volumes:
+  v-surfsense-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/surfsense/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/surfsense.env
+TZ=\${PORTAINER_TZ}
+SECRET_KEY=$SURFSENSE_SECRET_KEY
+AUTH_TYPE=LOCAL
+ETL_SERVICE=DOCLING
+REGISTRATION_ENABLED=TRUE
+NEXT_PUBLIC_FASTAPI_BACKEND_AUTH_TYPE=LOCAL
+NEXT_PUBLIC_FASTAPI_BACKEND_URL=https://$SUB_SURFSENSE_BACKEND.$HOMESERVER_DOMAIN/
+NODE_ENV=production
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+EOFMT
+}
+
+function performUpdateSurfSense()
+{
+  perform_stack_name=surfsense
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=ghcr.io/modsetter/surfsense:v1.0.92
+      image_update_map[0]="ghcr.io/modsetter/surfsense:v1.0.92,ghcr.io/modsetter/surfsense:v1.0.92"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# NocoDB
+function installNocoDB()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory nocodb "NocoDB"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName nocodb-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName nocodb-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName nocodb-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName nocodb-minio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/nocodb
+  mkdir $HSHQ_STACKS_DIR/nocodb/data
+  mkdir $HSHQ_STACKS_DIR/nocodb/db
+  mkdir $HSHQ_STACKS_DIR/nocodb/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/nocodb/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/nocodb
+  mkdir $HSHQ_NONBACKUP_DIR/nocodb/redis
+  initServicesCredentials
+  set +e
+  addUserMailu alias $NOCODB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  NOCODB_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $NOCODB_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigNocoDB
+  installStack nocodb nocodb-app "Nest application successfully started" $HOME/nocodb.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$NOCODB_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_NOCODB_APP Admin Login Info" -b "$FMLNAME_NOCODB_APP Admin Email: $NOCODB_ADMIN_EMAIL_ADDRESS\n$FMLNAME_NOCODB_APP Admin Password: $NOCODB_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    NOCODB_INIT_ENV=true
+    updateConfigVar NOCODB_INIT_ENV $NOCODB_INIT_ENV
+  fi
+  sleep 3
+  addReadOnlyUserToDatabase NocoDB postgres nocodb-db $NOCODB_DATABASE_NAME $NOCODB_DATABASE_USER $NOCODB_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/nocodb/dbexport $NOCODB_DATABASE_READONLYUSER $NOCODB_DATABASE_READONLYUSER_PASSWORD
+  if [ -z "$FMLNAME_NOCODB_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_NOCODB_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://nocodb-app:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_NOCODB_APP $MANAGETLS_NOCODB_APP "$is_integrate_hshq" $NETDEFAULT_NOCODB_APP "$inner_block"
+  insertSubAuthelia $SUB_NOCODB_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll nocodb "$FMLNAME_NOCODB_APP" $USERTYPE_NOCODB_APP "https://$SUB_NOCODB_APP.$HOMESERVER_DOMAIN" "nocodb.png" "$(getHeimdallOrderFromSub $SUB_NOCODB_APP $USERTYPE_NOCODB_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true nocodb "$FMLNAME_NOCODB_APP" postgres nocodb-db $NOCODB_DATABASE_NAME $NOCODB_DATABASE_USER $NOCODB_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigNocoDB()
+{
+  cat <<EOFMT > $HOME/nocodb-compose.yml
+$STACK_VERSION_PREFIX nocodb $(getScriptStackVersion nocodb)
+
+services:
+  nocodb-db:
+    image: $(getScriptImageByContainerName nocodb-db)
+    container_name: nocodb-db
+    hostname: nocodb-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-nocodb-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/nocodb/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/nocodb/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.nocodb-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.nocodb-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.nocodb-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.nocodb-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.nocodb-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.nocodb-hourly-db.email-from=NocoDB Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.nocodb-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.nocodb-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.nocodb-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.nocodb-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.nocodb-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.nocodb-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.nocodb-monthly-db.email-from=NocoDB Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.nocodb-monthly-db.mail-only-on-error=false"
+
+  nocodb-app:
+    image: $(getScriptImageByContainerName nocodb-app)
+    container_name: nocodb-app
+    hostname: nocodb-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - nocodb-db
+    networks:
+      - int-nocodb-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-nocodb-data:/usr/app/data
+
+  nocodb-redis:
+    image: $(getScriptImageByContainerName nocodb-redis)
+    container_name: nocodb-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $NOCODB_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-nocodb-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-nocodb-redis:/data
+
+  nocodb-minio:
+    image: $(getScriptImageByContainerName nocodb-minio)
+    container_name: nocodb-minio
+    hostname: nocodb-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - nocodb-db
+    command: server /data
+    networks:
+      - int-nocodb-net
+    entrypoint: >
+      /bin/sh -c "
+        minio server /etc/minio/data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\\\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        mc alias set minio http://localhost:9000 ${NOCODB_MINIO_KEY} ${NOCODB_MINIO_SECRET}
+        echo 'Creating bucket nocodb'
+        mc mb minio/nocodb
+        wait \\\$MINIO_PID
+      "
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/nocodb/minio:/data
+
+volumes:
+  v-nocodb-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/nocodb/data
+  v-nocodb-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/nocodb/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-nocodb-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/nocodb.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$NOCODB_DATABASE_NAME
+POSTGRES_USER=$NOCODB_DATABASE_USER
+POSTGRES_PASSWORD=$NOCODB_DATABASE_USER_PASSWORD
+DATABASE_URL=postgres://$NOCODB_DATABASE_USER:$NOCODB_DATABASE_USER_PASSWORD@nocodb-db/$NOCODB_DATABASE_NAME
+NC_AUTH_JWT_SECRET=$NOCODB_AUTH_JWT_SECRET
+NC_ADMIN_EMAIL=$NOCODB_ADMIN_EMAIL_ADDRESS
+NC_ADMIN_PASSWORD=$NOCODB_ADMIN_PASSWORD
+MINIO_ROOT_USER=$NOCODB_MINIO_KEY
+MINIO_ROOT_PASSWORD=$NOCODB_MINIO_SECRET
+NC_S3_BUCKET_NAME=nocodb
+NC_S3_REGION=us-west-1
+NC_S3_ENDPOINT=http://nocodb-minio:9000
+NC_S3_ACCESS_KEY=$NOCODB_MINIO_KEY
+NC_S3_ACCESS_SECRET=$NOCODB_MINIO_SECRET
+NC_S3_FORCE_PATH_STYLE=true
+NC_SMTP_FROM=NocoDB $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>
+NC_SMTP_HOST=$SMTP_HOSTNAME
+NC_SMTP_PORT=$SMTP_HOSTPORT
+NC_SMTP_SECURE=false
+NC_SMTP_IGNORE_TLS=true
+NC_SMTP_REJECT_UNAUTHORIZED=false
+NODE_ENV=production
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+NC_PUBLIC_URL=https://$SUB_NOCODB_APP.$HOMESERVER_DOMAIN
+NC_REDIS_URL=redis://:$NOCODB_REDIS_PASSWORD@nocodb-redis:6379
+NC_INVITE_ONLY_SIGNUP=true
+NC_DISABLE_TELE=true
+NC_DISABLE_SUPPORT_CHAT=true
+EOFMT
+}
+
+function performUpdateNocoDB()
+{
+  perform_stack_name=nocodb
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/nocodb/nocodb:0.265.1,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/nocodb/nocodb:0.265.1,mirror.gcr.io/nocodb/nocodb:0.265.1"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Ente
+function installEnte()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory ente "Ente"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  buildImageEnteServerV1
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ente-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ente-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ente-minio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/ente
+  mkdir $HSHQ_STACKS_DIR/ente/config
+  mkdir $HSHQ_STACKS_DIR/ente/data
+  mkdir $HSHQ_STACKS_DIR/ente/minio
+  mkdir $HSHQ_STACKS_DIR/ente/db
+  mkdir $HSHQ_STACKS_DIR/ente/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/ente/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $ENTE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  ENTE_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $ENTE_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigEnte
+  installStack ente ente-server "" $HOME/ente.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$ENTE_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_ENTE_APP Admin Login Info" -b "$FMLNAME_ENTE_APP Admin Username: $ENTE_ADMIN_USERNAME\n$FMLNAME_ENTE_APP Admin Email: $ENTE_ADMIN_EMAIL_ADDRESS\n$FMLNAME_ENTE_APP Admin Password: $ENTE_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    ENTE_INIT_ENV=true
+    updateConfigVar ENTE_INIT_ENV $ENTE_INIT_ENV
+  fi
+  sleep 3
+  addReadOnlyUserToDatabase Ente postgres ente-db $ENTE_DATABASE_NAME $ENTE_DATABASE_USER $ENTE_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/ente/dbexport $ENTE_DATABASE_READONLYUSER $ENTE_DATABASE_READONLYUSER_PASSWORD
+  if [ -z "$FMLNAME_ENTE_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_ENTE_SERVER.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://ente-server:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_ENTE_SERVER $MANAGETLS_ENTE_SERVER "$is_integrate_hshq" $NETDEFAULT_ENTE_SERVER "$inner_block"
+  insertSubAuthelia $SUB_ENTE_SERVER.$HOMESERVER_DOMAIN bypass
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_ENTE_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://ente-web:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_ENTE_APP $MANAGETLS_ENTE_APP "$is_integrate_hshq" $NETDEFAULT_ENTE_APP "$inner_block"
+  insertSubAuthelia $SUB_ENTE_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll ente "$FMLNAME_ENTE_APP" $USERTYPE_ENTE_APP "https://$SUB_ENTE_APP.$HOMESERVER_DOMAIN" "ente.png" "$(getHeimdallOrderFromSub $SUB_ENTE_APP $USERTYPE_ENTE_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true ente "$FMLNAME_ENTE_APP" postgres ente-db $ENTE_DATABASE_NAME $ENTE_DATABASE_USER $ENTE_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigEnte()
+{
+  cat <<EOFMT > $HOME/ente-compose.yml
+$STACK_VERSION_PREFIX ente $(getScriptStackVersion ente)
+
+services:
+  ente-db:
+    image: $(getScriptImageByContainerName ente-db)
+    container_name: ente-db
+    hostname: ente-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-ente-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ente/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ente/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.ente-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.ente-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.ente-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.ente-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.ente-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.ente-hourly-db.email-from=Ente Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.ente-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.ente-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.ente-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.ente-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.ente-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.ente-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.ente-monthly-db.email-from=Ente Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.ente-monthly-db.mail-only-on-error=false"
+
+  ente-server:
+    image: $(getScriptImageByContainerName ente-server)
+    container_name: ente-server
+    hostname: ente-server
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ente-db
+    networks:
+      - int-ente-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ente/data:/data:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ente/config/museum.yaml:/museum.yaml:ro
+
+  ente-web:
+    image: $(getScriptImageByContainerName ente-web)
+    container_name: ente-web
+    hostname: ente-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ente-db
+    networks:
+      - int-ente-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  ente-minio:
+    image: $(getScriptImageByContainerName ente-minio)
+    container_name: ente-minio
+    hostname: ente-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-ente-net
+    entrypoint: >
+      /bin/sh -c "
+        minio server /etc/minio/data --address ':3200' --console-address ':9001' &
+        MINIO_PID=\\\$!
+        while ! curl -s http://localhost:3200/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        mc alias set h0 http://ente-minio:3200 ${ENTE_MINIO_KEY} ${ENTE_MINIO_SECRET}
+        echo 'Creating buckets'
+        cd /data
+        mc mb -p b2-eu-cen
+        mc mb -p wasabi-eu-central-2-v3
+        mc mb -p scw-eu-fr-v3
+        wait \\\$MINIO_PID
+      "
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ente/minio:/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-ente-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/ente.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$ENTE_DATABASE_NAME
+POSTGRES_USER=$ENTE_DATABASE_USER
+POSTGRES_PASSWORD=$ENTE_DATABASE_USER_PASSWORD
+ENTE_API_ORIGIN=https://$SUB_ENTE_SERVER.$HOMESERVER_DOMAIN
+ENTE_PHOTOS_ORIGIN=https://$SUB_ENTE_APP.$HOMESERVER_DOMAIN
+MINIO_ROOT_USER=$ENTE_MINIO_KEY
+MINIO_ROOT_PASSWORD=$ENTE_MINIO_SECRET
+ENTE_CREDENTIALS_FILE=/museum.yaml
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/ente/config/museum.yaml
+db:
+  host: ente-db
+  port: 5432
+  name: $ENTE_DATABASE_NAME
+  user: $ENTE_DATABASE_USER
+  password: $ENTE_DATABASE_USER_PASSWORD
+
+s3:
+  are_local_buckets: true
+  use_path_style_urls: true
+  b2-eu-cen:
+    key: $ENTE_MINIO_KEY
+    secret: $ENTE_MINIO_SECRET
+    endpoint: http://ente-minio:3200
+    region: eu-central-2
+    bucket: b2-eu-cen
+  wasabi-eu-central-2-v3:
+    key: $ENTE_MINIO_KEY
+    secret: $ENTE_MINIO_SECRET
+    endpoint: http://ente-minio:3200
+    region: eu-central-2
+    bucket: wasabi-eu-central-2-v3
+  scw-eu-fr-v3:
+    key: $ENTE_MINIO_KEY
+    secret: $ENTE_MINIO_SECRET
+    endpoint: http://ente-minio:3200
+    region: eu-central-2
+    bucket: scw-eu-fr-v3
+
+apps:
+  public-albums: https://$SUB_ENTE_APP.$HOMESERVER_DOMAIN
+  cast: https://$SUB_ENTE_APP.$HOMESERVER_DOMAIN
+  public-locker: https://$SUB_ENTE_APP.$HOMESERVER_DOMAIN
+  embed-albums: https://$SUB_ENTE_APP.$HOMESERVER_DOMAIN
+  accounts: https://$SUB_ENTE_APP.$HOMESERVER_DOMAIN
+
+key:
+  encryption: $ENTE_MUSEUM_KEY
+  hash: $ENTE_MUSEUM_HASH
+
+jwt:
+  secret: $ENTE_MUSEUM_JWT_SECRET
+
+smtp:
+  host: $SMTP_HOSTNAME
+  port: $SMTP_HOSTPORT
+  username:
+  password:
+  email: $EMAIL_ADMIN_EMAIL_ADDRESS
+  sender-name: Ente $(getAdminEmailName)
+  encryption: starttls
+EOFMT
+}
+
+function performUpdateEnte()
+{
+  perform_stack_name=ente
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,hshq/ente-server:v1,ghcr.io/ente-io/web:460ee1671b08b119b894f0ddd71b4c906fb29647,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="hshq/ente-server:v1,hshq/ente-server:v1"
+      image_update_map[2]="ghcr.io/ente-io/web:460ee1671b08b119b894f0ddd71b4c906fb29647,ghcr.io/ente-io/web:460ee1671b08b119b894f0ddd71b4c906fb29647"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function buildImageEnteServerV1()
+{
+  set +e
+  sudo rm -fr $HSHQ_BUILD_DIR/ente
+  cd $HSHQ_BUILD_DIR
+  git clone https://github.com/ente-io/ente.git
+  cd ente/server
+  docker image build -t hshq/ente-server:v1 .
+  rtval=$?
+  cd
+  sudo rm -fr $HSHQ_BUILD_DIR/ente
+  return $rtval
+}
+
+# Morphic
+function installMorphic()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory morphic "Morphic"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-vector)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-studio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-kong)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-auth)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-rest)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-realtime)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-storage)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-imgproxy)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-meta)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-functions)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-analytics)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-supabase-supavisor)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName morphic-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/morphic
+  mkdir $HSHQ_STACKS_DIR/morphic/config
+  mkdir $HSHQ_STACKS_DIR/morphic/storage
+  mkdir $HSHQ_STACKS_DIR/morphic/functions
+  mkdir $HSHQ_STACKS_DIR/morphic/functions/hello
+  mkdir $HSHQ_STACKS_DIR/morphic/functions/main
+  mkdir $HSHQ_STACKS_DIR/morphic/dbimport
+  mkdir $HSHQ_STACKS_DIR/morphic/dbconfig
+  mkdir $HSHQ_STACKS_DIR/morphic/db
+  mkdir $HSHQ_STACKS_DIR/morphic/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/morphic/dbexport
+  mkdir $HSHQ_STACKS_DIR/morphic/redis
+  initServicesCredentials
+  set +e
+  addUserMailu alias $MORPHIC_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  MORPHIC_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $MORPHIC_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigMorphic
+  installStack morphic morphic-app "" $HOME/morphic.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$MORPHIC_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_MORPHIC_APP Admin Login Info" -b "$FMLNAME_MORPHIC_APP Admin Username: $MORPHIC_ADMIN_USERNAME\n$FMLNAME_MORPHIC_APP Admin Email: $MORPHIC_ADMIN_EMAIL_ADDRESS\n$FMLNAME_MORPHIC_APP Admin Password: $MORPHIC_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    MORPHIC_INIT_ENV=true
+    updateConfigVar MORPHIC_INIT_ENV $MORPHIC_INIT_ENV
+  fi
+  sleep 3
+  addReadOnlyUserToDatabase Morphic postgres morphic-db $MORPHIC_DATABASE_NAME $MORPHIC_DATABASE_USER $MORPHIC_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/morphic/dbexport $MORPHIC_DATABASE_READONLYUSER $MORPHIC_DATABASE_READONLYUSER_PASSWORD
+  if [ -z "$FMLNAME_MORPHIC_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is emtpy, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_MORPHIC_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://morphic-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_MORPHIC_APP $MANAGETLS_MORPHIC_APP "$is_integrate_hshq" $NETDEFAULT_MORPHIC_APP "$inner_block"
+  insertSubAuthelia $SUB_MORPHIC_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_MORPHIC_SUPABASE.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://morphic-supabase-kong:8000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_MORPHIC_SUPABASE $MANAGETLS_MORPHIC_SUPABASE "$is_integrate_hshq" $NETDEFAULT_MORPHIC_SUPABASE "$inner_block"
+  insertSubAuthelia $SUB_MORPHIC_SUPABASE.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll morphic "$FMLNAME_MORPHIC_APP" $USERTYPE_MORPHIC_APP "https://$SUB_MORPHIC_APP.$HOMESERVER_DOMAIN" "morphic.png" "$(getHeimdallOrderFromSub $SUB_MORPHIC_APP $USERTYPE_MORPHIC_APP)"
+    insertEnableSvcAll morphic "$FMLNAME_MORPHIC_SUPABASE" $USERTYPE_MORPHIC_SUPABASE "https://$SUB_MORPHIC_SUPABASE.$HOMESERVER_DOMAIN" "supabase.png" "$(getHeimdallOrderFromSub $SUB_MORPHIC_SUPABASE $USERTYPE_MORPHIC_SUPABASE)"
+    restartAllCaddyContainers
+    checkAddDBConnection true morphic "$FMLNAME_MORPHIC_APP" postgres morphic-db $MORPHIC_DATABASE_NAME $MORPHIC_DATABASE_USER $MORPHIC_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigMorphic()
+{
+  cat <<EOFMT > $HOME/morphic-compose.yml
+$STACK_VERSION_PREFIX morphic $(getScriptStackVersion morphic)
+
+services:
+  morphic-db:
+    image: $(getScriptImageByContainerName morphic-db)
+    container_name: morphic-db
+    hostname: morphic-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-morphic-net
+      - dock-dbs-net
+    depends_on:
+      morphic-supabase-vector:
+        condition: service_started
+    command:
+      [
+        "postgres",
+        "-c",
+        "config_file=/etc/postgresql/postgresql.conf",
+        "-c",
+        "log_min_messages=fatal"
+      ]
+    healthcheck:
+      test:
+        [
+        "CMD",
+        "pg_isready",
+        "-U",
+        "postgres",
+        "-h",
+        "localhost"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/dbimport/init.sql:/docker-entrypoint-initdb.d/init-scripts/init.sql
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/dbimport/migrations.sql:/docker-entrypoint-initdb.d/migrations/migrations.sql
+      - v-morphic-dbconfig:/etc/postgresql-custom
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.morphic-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.morphic-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.morphic-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.morphic-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.morphic-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.morphic-hourly-db.email-from=Morphic Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.morphic-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.morphic-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.morphic-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.morphic-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.morphic-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.morphic-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.morphic-monthly-db.email-from=Morphic Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.morphic-monthly-db.mail-only-on-error=false"
+    environment:
+      - POSTGRES_HOST=/var/run/postgresql
+
+  morphic-supabase-vector:
+    image: $(getScriptImageByContainerName morphic-supabase-vector)
+    container_name: morphic-supabase-vector
+    hostname: morphic-supabase-vector
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - label=disable
+    networks:
+      - int-morphic-net
+      - dock-dbs-net
+    command:
+      [
+        "--config",
+        "/etc/vector/vector.yml"
+      ]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://morphic-supabase-vector:9001/health"
+        ]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/config/vector.yml:/etc/vector/vector.yml:ro,z
+      - /var/run/docker.sock:/var/run/docker.sock:ro,z
+
+  morphic-supabase-studio:
+    image: $(getScriptImageByContainerName morphic-supabase-studio)
+    container_name: morphic-supabase-studio
+    hostname: morphic-supabase-studio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-supabase-analytics:
+        condition: service_healthy
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://morphic-supabase-studio:3000/api/platform/profile').then((r) => {if (r.status !== 200) throw new Error(r.status)})"
+        ]
+      timeout: 10s
+      interval: 5s
+      retries: 3
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  morphic-supabase-kong:
+    image: $(getScriptImageByContainerName morphic-supabase-kong)
+    container_name: morphic-supabase-kong
+    hostname: morphic-supabase-kong
+    restart: unless-stopped
+    env_file: stack.env
+    depends_on:
+      morphic-supabase-analytics:
+        condition: service_healthy
+    entrypoint: bash -c 'eval "echo \"\$\$(cat ~/temp.yml)\"" > ~/kong.yml && /docker-entrypoint.sh kong docker-start'
+    networks:
+      - int-morphic-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/config/kong.yml:/home/kong/temp.yml:ro,z
+
+  morphic-supabase-auth:
+    image: $(getScriptImageByContainerName morphic-supabase-auth)
+    container_name: morphic-supabase-auth
+    hostname: morphic-supabase-auth
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-db:
+        condition: service_healthy
+      morphic-supabase-analytics:
+        condition: service_healthy
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+      - dock-internalmail-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:9999/health"
+        ]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  morphic-supabase-rest:
+    image: $(getScriptImageByContainerName morphic-supabase-rest)
+    container_name: morphic-supabase-rest
+    hostname: morphic-supabase-rest
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-db:
+        condition: service_healthy
+      morphic-supabase-analytics:
+        condition: service_healthy
+    command:
+      [
+        "postgrest"
+      ]
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  morphic-supabase-realtime:
+    image: $(getScriptImageByContainerName morphic-supabase-realtime)
+    container_name: realtime-dev.supabase-realtime
+    hostname: morphic-supabase-realtime
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-db:
+        condition: service_healthy
+      morphic-supabase-analytics:
+        condition: service_healthy
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sSfL --head -o /dev/null -H \"Authorization: Bearer \${ANON_KEY}\" http://localhost:4000/api/tenants/realtime-dev/health"
+        ]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    environment:
+      - PORT=4000
+
+  morphic-supabase-storage:
+    image: $(getScriptImageByContainerName morphic-supabase-storage)
+    container_name: morphic-supabase-storage
+    hostname: morphic-supabase-storage
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-db:
+        condition: service_healthy
+      morphic-supabase-rest:
+        condition: service_started
+      morphic-supabase-imgproxy:
+        condition: service_started
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://morphic-supabase-storage:5000/status"
+        ]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/storage:/var/lib/storage:z
+    environment:
+      - DATABASE_URL=postgres://supabase_storage_admin:\${POSTGRES_PASSWORD}@\${POSTGRES_HOST}:\${POSTGRES_PORT}/\${POSTGRES_DB}
+      - REGION=stub
+
+  morphic-supabase-imgproxy:
+    image: $(getScriptImageByContainerName morphic-supabase-imgproxy)
+    container_name: morphic-supabase-imgproxy
+    hostname: morphic-supabase-imgproxy
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "imgproxy",
+          "health"
+        ]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/storage:/var/lib/storage:z
+
+  morphic-supabase-meta:
+    image: $(getScriptImageByContainerName morphic-supabase-meta)
+    container_name: morphic-supabase-meta
+    hostname: morphic-supabase-meta
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-db:
+        condition: service_healthy
+      morphic-supabase-analytics:
+        condition: service_healthy
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  morphic-supabase-functions:
+    image: $(getScriptImageByContainerName morphic-supabase-functions)
+    container_name: morphic-supabase-functions
+    hostname: morphic-supabase-functions
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-supabase-analytics:
+        condition: service_healthy
+    command:
+      [
+        "start",
+        "--main-service",
+        "/home/deno/functions/main"
+      ]
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/functions:/home/deno/functions:Z
+
+  morphic-supabase-analytics:
+    image: $(getScriptImageByContainerName morphic-supabase-analytics)
+    container_name: morphic-supabase-analytics
+    hostname: morphic-supabase-analytics
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-db:
+        condition: service_healthy
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "http://localhost:4000/health"
+        ]
+      timeout: 5s
+      interval: 5s
+      retries: 10
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  morphic-supabase-supavisor:
+    image: $(getScriptImageByContainerName morphic-supabase-supavisor)
+    container_name: morphic-supabase-supavisor
+    hostname: morphic-supabase-supavisor
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      morphic-db:
+        condition: service_healthy
+      morphic-supabase-analytics:
+        condition: service_healthy
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-sSfL",
+          "--head",
+          "-o",
+          "/dev/null",
+          "http://127.0.0.1:4000/api/health"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command:
+      [
+        "/bin/sh",
+        "-c",
+        "/app/bin/migrate && /app/bin/supavisor eval \"\$\$(cat /etc/pooler/pooler.exs)\" && /app/bin/server"
+      ]
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/morphic/config/pooler.exs:/etc/pooler/pooler.exs:ro,z
+    environment:
+      - DATABASE_URL=ecto://supabase_admin:\${POSTGRES_PASSWORD}@\${POSTGRES_HOST}:\${POSTGRES_PORT}/_supabase
+
+  morphic-app:
+    image: $(getScriptImageByContainerName morphic-app)
+    container_name: morphic-app
+    hostname: morphic-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: bun start -H 0.0.0.0
+    depends_on:
+      morphic-db:
+        condition: service_healthy
+      morphic-redis:
+        condition: service_started
+    networks:
+      - int-morphic-net
+      - dock-ext-net
+      - dock-proxy-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  morphic-redis:
+    image: $(getScriptImageByContainerName morphic-redis)
+    container_name: morphic-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $MORPHIC_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-morphic-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-morphic-redis:/data
+
+volumes:
+  v-morphic-dbconfig:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/morphic/dbconfig
+  v-morphic-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/morphic/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-morphic-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/morphic.env
+TZ=\${PORTAINER_TZ}
+BASE_URL=https://$SUB_MORPHIC_APP.$HOMESERVER_DOMAIN
+ENABLE_SAVE_CHAT_HISTORY=true
+USE_LOCAL_REDIS=true
+LOCAL_REDIS_URL=redis://:$MORPHIC_REDIS_PASSWORD@morphic-redis:6379
+OLLAMA_BASE_URL=http://ollama-server:11434
+OPENAI_COMPATIBLE_API_KEY=$LOCALAI_API_KEY
+OPENAI_COMPATIBLE_API_BASE_URL=http://localai-server:8080
+SEARCH_API=searxng
+SEARXNG_API_URL=http://searxng-app:8080
+SEARXNG_SECRET=$SEARXNG_SECRET_KEY
+SEARXNG_PORT=8080
+SEARXNG_BIND_ADDRESS=0.0.0.0
+SEARXNG_IMAGE_PROXY=true
+SEARXNG_LIMITER=false
+SEARXNG_DEFAULT_DEPTH=basic
+SEARXNG_MAX_RESULTS=50
+SEARXNG_ENGINES=google,startpage,wolframalpha,duckduckgo,yahoo,wikipedia
+SEARXNG_TIME_RANGE=None
+SEARXNG_SAFESEARCH=0
+NEXT_PUBLIC_ENABLE_SHARE=true
+NEXT_PUBLIC_SUPABASE_URL=http://morphic-supabase-kong:8000
+NEXT_PUBLIC_SUPABASE_ANON_KEY=$MORPHIC_SUPABASE_ANON_KEY
+KONG_NGINX_WORKER_PROCESSES=4
+POSTGRES_DB=$MORPHIC_DATABASE_NAME
+POSTGRES_USER=$MORPHIC_DATABASE_USER
+POSTGRES_PASSWORD=$MORPHIC_DATABASE_USER_PASSWORD
+ADDITIONAL_REDIRECT_URLS=
+ANON_KEY=$MORPHIC_SUPABASE_ANON_KEY
+API_EXTERNAL_URL=https://$SUB_MORPHIC_SUPABASE.$HOMESERVER_DOMAIN
+API_JWT_SECRET=\${JWT_SECRET}
+APP_NAME=realtime
+AUTH_JWT_SECRET=\${JWT_SECRET}
+CLUSTER_POSTGRES=1
+CRYPTO_KEY=\${PG_META_CRYPTO_KEY}
+DASHBOARD_PASSWORD=$MORPHIC_SUPABASE_DASHBOARD_PASSWORD
+DASHBOARD_USERNAME=$MORPHIC_SUPABASE_DASHBOARD_USERNAME
+DB_AFTER_CONNECT_QUERY='SET search_path TO _realtime'
+DB_DATABASE=_supabase
+DB_ENC_KEY=$MORPHIC_SUPABASE_DB_ENC_KEY
+DB_HOST=\${POSTGRES_HOST}
+DB_HOSTNAME=\${POSTGRES_HOST}
+DB_NAME=\${POSTGRES_DB}
+DB_PASSWORD=\${POSTGRES_PASSWORD}
+DB_POOL_SIZE=\${POOLER_DB_POOL_SIZE}
+DB_PORT=\${POSTGRES_PORT}
+DB_SCHEMA=_analytics
+DB_USER=\${POSTGRES_USER}
+DB_USERNAME=\${POSTGRES_USER}
+DEFAULT_ORGANIZATION_NAME=\${STUDIO_DEFAULT_ORGANIZATION}
+DEFAULT_PROJECT_NAME=\${STUDIO_DEFAULT_PROJECT}
+DISABLE_SIGNUP=0
+DNS_NODES=''
+DOCKER_SOCKET_LOCATION=/var/run/docker.sock
+ENABLE_ANONYMOUS_USERS=0
+ENABLE_EMAIL_AUTOCONFIRM=1
+ENABLE_EMAIL_SIGNUP=1
+ENABLE_IMAGE_TRANSFORMATION=1
+ENABLE_PHONE_AUTOCONFIRM=1
+ENABLE_PHONE_SIGNUP=1
+ERL_AFLAGS=-proto_dist inet_tcp
+FILE_SIZE_LIMIT=52428800
+FILE_STORAGE_BACKEND_PATH=/var/lib/storage
+FUNCTIONS_VERIFY_JWT=0
+GLOBAL_S3_BUCKET=stub
+GOOGLE_PROJECT_ID=
+GOOGLE_PROJECT_NUMBER=
+GOTRUE_API_HOST=0.0.0.0
+GOTRUE_API_PORT=9999
+GOTRUE_DB_DATABASE_URL=postgres://supabase_auth_admin:\${POSTGRES_PASSWORD}@\${POSTGRES_HOST}:\${POSTGRES_PORT}/\${POSTGRES_DB}
+GOTRUE_DB_DRIVER=postgres
+GOTRUE_DISABLE_SIGNUP=\${DISABLE_SIGNUP}
+GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED=\${ENABLE_ANONYMOUS_USERS}
+GOTRUE_EXTERNAL_EMAIL_ENABLED=\${ENABLE_EMAIL_SIGNUP}
+GOTRUE_EXTERNAL_PHONE_ENABLED=\${ENABLE_PHONE_SIGNUP}
+GOTRUE_JWT_ADMIN_ROLES=service_role
+GOTRUE_JWT_AUD=authenticated
+GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated
+GOTRUE_JWT_EXP=\${JWT_EXPIRY}
+GOTRUE_JWT_SECRET=\${JWT_SECRET}
+GOTRUE_MAILER_AUTOCONFIRM=\${ENABLE_EMAIL_AUTOCONFIRM}
+GOTRUE_MAILER_URLPATHS_CONFIRMATION=\${MAILER_URLPATHS_CONFIRMATION}
+GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE=\${MAILER_URLPATHS_EMAIL_CHANGE}
+GOTRUE_MAILER_URLPATHS_INVITE=\${MAILER_URLPATHS_INVITE}
+GOTRUE_MAILER_URLPATHS_RECOVERY=\${MAILER_URLPATHS_RECOVERY}
+GOTRUE_SITE_URL=\${SITE_URL}
+GOTRUE_SMS_AUTOCONFIRM=\${ENABLE_PHONE_AUTOCONFIRM}
+GOTRUE_SMTP_ADMIN_EMAIL=\${SMTP_ADMIN_EMAIL}
+GOTRUE_SMTP_HOST=\${SMTP_HOST}
+GOTRUE_SMTP_PASS=\${SMTP_PASS}
+GOTRUE_SMTP_PORT=\${SMTP_PORT}
+GOTRUE_SMTP_SENDER_NAME=\${SMTP_SENDER_NAME}
+GOTRUE_SMTP_USER=\${SMTP_USER}
+GOTRUE_URI_ALLOW_LIST=\${ADDITIONAL_REDIRECT_URLS}
+HOSTNAME=::
+IMGPROXY_BIND=:5001
+IMGPROXY_ENABLE_WEBP_DETECTION=1
+IMGPROXY_LOCAL_FILESYSTEM_ROOT=/
+IMGPROXY_URL=http://morphic-supabase-imgproxy:5001
+IMGPROXY_USE_ETAG=1
+JWT_EXP=\${JWT_EXPIRY}
+JWT_EXPIRY=3600
+JWT_SECRET=$MORPHIC_SUPABASE_JWT_SECRET
+KONG_DATABASE=off
+KONG_DECLARATIVE_CONFIG=/home/kong/kong.yml
+KONG_DNS_ORDER=LAST,A,CNAME
+KONG_HTTP_PORT=8000
+KONG_HTTPS_PORT=8443
+KONG_NGINX_PROXY_PROXY_BUFFER_SIZE=160k
+KONG_NGINX_PROXY_PROXY_BUFFERS=64 160k
+KONG_PLUGINS=request-transformer,cors,key-auth,acl,basic-auth,request-termination,ip-restriction
+LOGFLARE_API_KEY=\${LOGFLARE_PUBLIC_ACCESS_TOKEN}
+LOGFLARE_FEATURE_FLAG_OVERRIDE=multibackend=TRUE
+LOGFLARE_NODE_HOST=127.0.0.1
+LOGFLARE_PRIVATE_ACCESS_TOKEN=$MORPHIC_SUPABASE_LOGFLARE_PRIVATE_ACCESS_TOKEN
+LOGFLARE_PUBLIC_ACCESS_TOKEN=$MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN
+LOGFLARE_SINGLE_TENANT=1
+LOGFLARE_SUPABASE_MODE=1
+LOGFLARE_URL=http://morphic-supabase-analytics:4000
+MAILER_URLPATHS_CONFIRMATION=/auth/v1/verify
+MAILER_URLPATHS_EMAIL_CHANGE=/auth/v1/verify
+MAILER_URLPATHS_INVITE=/auth/v1/verify
+MAILER_URLPATHS_RECOVERY=/auth/v1/verify
+METRICS_JWT_SECRET=\${JWT_SECRET}
+NEXT_ANALYTICS_BACKEND_PROVIDER=postgres
+NEXT_PUBLIC_ENABLE_LOGS=1
+OPENAI_API_KEY=
+PG_META_CRYPTO_KEY=$MORPHIC_SUPABASE_PG_META_CRYPTO_KEY
+PG_META_DB_HOST=\${POSTGRES_HOST}
+PG_META_DB_NAME=\${POSTGRES_DB}
+PG_META_DB_PASSWORD=\${POSTGRES_PASSWORD}
+PG_META_DB_PORT=\${POSTGRES_PORT}
+PG_META_DB_USER=\${POSTGRES_USER}
+PG_META_PORT=8080
+PGDATABASE=\${POSTGRES_DB}
+PGPASSWORD=\${POSTGRES_PASSWORD}
+PGPORT=\${POSTGRES_PORT}
+PGRST_APP_SETTINGS_JWT_EXP=\${JWT_EXPIRY}
+PGRST_APP_SETTINGS_JWT_SECRET=\${JWT_SECRET}
+PGRST_DB_ANON_ROLE=anon
+PGRST_DB_SCHEMAS=public,storage,graphql_public
+PGRST_DB_URI=postgres://authenticator:\${POSTGRES_PASSWORD}@\${POSTGRES_HOST}:\${POSTGRES_PORT}/\${POSTGRES_DB}
+PGRST_DB_USE_LEGACY_GUCS=0
+PGRST_JWT_SECRET=\${JWT_SECRET}
+POOLER_DB_POOL_SIZE=5
+POOLER_DEFAULT_POOL_SIZE=20
+POOLER_MAX_CLIENT_CONN=100
+POOLER_POOL_MODE=transaction
+POOLER_PROXY_PORT_TRANSACTION=6543
+POOLER_TENANT_ID=your-tenant-id
+POSTGRES_BACKEND_SCHEMA=_analytics
+POSTGRES_BACKEND_URL=postgresql://\${POSTGRES_USER}:\${POSTGRES_PASSWORD}@\${POSTGRES_HOST}:\${POSTGRES_PORT}/\${DB_DATABASE}
+POSTGRES_HOST=morphic-db
+POSTGRES_PORT=5432
+POSTGREST_URL=http://morphic-supabase-rest:3000
+REGION=local
+REQUEST_ALLOW_X_FORWARDED_PATH=1
+RLIMIT_NOFILE=10000
+RUN_JANITOR=true
+SECRET_KEY_BASE=$MORPHIC_SUPABASE_SECRET_KEY_BASE
+SEED_SELF_HOST=true
+SERVICE_KEY=\${SERVICE_ROLE_KEY}
+SERVICE_ROLE_KEY=$MORPHIC_SUPABASE_SERVICE_ROLE_KEY
+SITE_URL=https://$SUB_MORPHIC_SUPABASE.$HOMESERVER_DOMAIN
+SMTP_ADMIN_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
+SMTP_HOST=$SMTP_HOSTNAME
+SMTP_PASS=
+SMTP_PORT=$SMTP_HOSTPORT
+SMTP_SENDER_NAME=Morphic Supabase $(getAdminEmailName)
+SMTP_USER=
+STORAGE_BACKEND=file
+STUDIO_DEFAULT_ORGANIZATION=$HOMESERVER_NAME
+STUDIO_DEFAULT_PROJECT=Morphic
+STUDIO_PG_META_URL=http://morphic-supabase-meta:8080
+SUPABASE_ANON_KEY=\${ANON_KEY}
+SUPABASE_DB_URL=postgresql://postgres:\${POSTGRES_PASSWORD}@\${POSTGRES_HOST}:\${POSTGRES_PORT}/\${POSTGRES_DB}
+SUPABASE_PUBLIC_URL=https://$SUB_MORPHIC_SUPABASE.$HOMESERVER_DOMAIN
+SUPABASE_SERVICE_KEY=\${SERVICE_ROLE_KEY}
+SUPABASE_SERVICE_ROLE_KEY=\${SERVICE_ROLE_KEY}
+SUPABASE_URL=http://morphic-supabase-kong:8000
+TENANT_ID=stub
+VAULT_ENC_KEY=$MORPHIC_SUPABASE_VAULT_ENC_KEY
+VERIFY_JWT=\${FUNCTIONS_VERIFY_JWT}
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/morphic/dbimport/init.sql
+-- webhooks.sql
+BEGIN;
+  -- Create pg_net extension
+  CREATE EXTENSION IF NOT EXISTS pg_net SCHEMA extensions;
+  -- Create supabase_functions schema
+  CREATE SCHEMA supabase_functions AUTHORIZATION supabase_admin;
+  GRANT USAGE ON SCHEMA supabase_functions TO postgres, anon, authenticated, service_role;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA supabase_functions GRANT ALL ON TABLES TO postgres, anon, authenticated, service_role;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA supabase_functions GRANT ALL ON FUNCTIONS TO postgres, anon, authenticated, service_role;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA supabase_functions GRANT ALL ON SEQUENCES TO postgres, anon, authenticated, service_role;
+  -- supabase_functions.migrations definition
+  CREATE TABLE supabase_functions.migrations (
+    version text PRIMARY KEY,
+    inserted_at timestamptz NOT NULL DEFAULT NOW()
+  );
+  -- Initial supabase_functions migration
+  INSERT INTO supabase_functions.migrations (version) VALUES ('initial');
+  -- supabase_functions.hooks definition
+  CREATE TABLE supabase_functions.hooks (
+    id bigserial PRIMARY KEY,
+    hook_table_id integer NOT NULL,
+    hook_name text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT NOW(),
+    request_id bigint
+  );
+  CREATE INDEX supabase_functions_hooks_request_id_idx ON supabase_functions.hooks USING btree (request_id);
+  CREATE INDEX supabase_functions_hooks_h_table_id_h_name_idx ON supabase_functions.hooks USING btree (hook_table_id, hook_name);
+  COMMENT ON TABLE supabase_functions.hooks IS 'Supabase Functions Hooks: Audit trail for triggered hooks.';
+  CREATE FUNCTION supabase_functions.http_request()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    AS \$function\$
+    DECLARE
+      request_id bigint;
+      payload jsonb;
+      url text := TG_ARGV[0]::text;
+      method text := TG_ARGV[1]::text;
+      headers jsonb DEFAULT '{}'::jsonb;
+      params jsonb DEFAULT '{}'::jsonb;
+      timeout_ms integer DEFAULT 1000;
+    BEGIN
+      IF url IS NULL OR url = 'null' THEN
+        RAISE EXCEPTION 'url argument is missing';
+      END IF;
+
+      IF method IS NULL OR method = 'null' THEN
+        RAISE EXCEPTION 'method argument is missing';
+      END IF;
+
+      IF TG_ARGV[2] IS NULL OR TG_ARGV[2] = 'null' THEN
+        headers = '{"Content-Type": "application/json"}'::jsonb;
+      ELSE
+        headers = TG_ARGV[2]::jsonb;
+      END IF;
+
+      IF TG_ARGV[3] IS NULL OR TG_ARGV[3] = 'null' THEN
+        params = '{}'::jsonb;
+      ELSE
+        params = TG_ARGV[3]::jsonb;
+      END IF;
+
+      IF TG_ARGV[4] IS NULL OR TG_ARGV[4] = 'null' THEN
+        timeout_ms = 1000;
+      ELSE
+        timeout_ms = TG_ARGV[4]::integer;
+      END IF;
+
+      CASE
+        WHEN method = 'GET' THEN
+          SELECT http_get INTO request_id FROM net.http_get(
+            url,
+            params,
+            headers,
+            timeout_ms
+          );
+        WHEN method = 'POST' THEN
+          payload = jsonb_build_object(
+            'old_record', OLD,
+            'record', NEW,
+            'type', TG_OP,
+            'table', TG_TABLE_NAME,
+            'schema', TG_TABLE_SCHEMA
+          );
+
+          SELECT http_post INTO request_id FROM net.http_post(
+            url,
+            payload,
+            params,
+            headers,
+            timeout_ms
+          );
+        ELSE
+          RAISE EXCEPTION 'method argument % is invalid', method;
+      END CASE;
+
+      INSERT INTO supabase_functions.hooks
+        (hook_table_id, hook_name, request_id)
+      VALUES
+        (TG_RELID, TG_NAME, request_id);
+
+      RETURN NEW;
+    END
+  \$function\$;
+  -- Supabase super admin
+  DO
+  \$\$
+  BEGIN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_roles
+      WHERE rolname = 'supabase_functions_admin'
+    )
+    THEN
+      CREATE USER supabase_functions_admin NOINHERIT CREATEROLE LOGIN NOREPLICATION;
+    END IF;
+  END
+  \$\$;
+  GRANT ALL PRIVILEGES ON SCHEMA supabase_functions TO supabase_functions_admin;
+  GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA supabase_functions TO supabase_functions_admin;
+  GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA supabase_functions TO supabase_functions_admin;
+  ALTER USER supabase_functions_admin SET search_path = "supabase_functions";
+  ALTER table "supabase_functions".migrations OWNER TO supabase_functions_admin;
+  ALTER table "supabase_functions".hooks OWNER TO supabase_functions_admin;
+  ALTER function "supabase_functions".http_request() OWNER TO supabase_functions_admin;
+  GRANT supabase_functions_admin TO postgres;
+  -- Remove unused supabase_pg_net_admin role
+  DO
+  \$\$
+  BEGIN
+    IF EXISTS (
+      SELECT 1
+      FROM pg_roles
+      WHERE rolname = 'supabase_pg_net_admin'
+    )
+    THEN
+      REASSIGN OWNED BY supabase_pg_net_admin TO supabase_admin;
+      DROP OWNED BY supabase_pg_net_admin;
+      DROP ROLE supabase_pg_net_admin;
+    END IF;
+  END
+  \$\$;
+  -- pg_net grants when extension is already enabled
+  DO
+  \$\$
+  BEGIN
+    IF EXISTS (
+      SELECT 1
+      FROM pg_extension
+      WHERE extname = 'pg_net'
+    )
+    THEN
+      GRANT USAGE ON SCHEMA net TO supabase_functions_admin, postgres, anon, authenticated, service_role;
+      ALTER function net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) SECURITY DEFINER;
+      ALTER function net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) SECURITY DEFINER;
+      ALTER function net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) SET search_path = net;
+      ALTER function net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) SET search_path = net;
+      REVOKE ALL ON FUNCTION net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) FROM PUBLIC;
+      REVOKE ALL ON FUNCTION net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) FROM PUBLIC;
+      GRANT EXECUTE ON FUNCTION net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) TO supabase_functions_admin, postgres, anon, authenticated, service_role;
+      GRANT EXECUTE ON FUNCTION net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) TO supabase_functions_admin, postgres, anon, authenticated, service_role;
+    END IF;
+  END
+  \$\$;
+  -- Event trigger for pg_net
+  CREATE OR REPLACE FUNCTION extensions.grant_pg_net_access()
+  RETURNS event_trigger
+  LANGUAGE plpgsql
+  AS \$\$
+  BEGIN
+    IF EXISTS (
+      SELECT 1
+      FROM pg_event_trigger_ddl_commands() AS ev
+      JOIN pg_extension AS ext
+      ON ev.objid = ext.oid
+      WHERE ext.extname = 'pg_net'
+    )
+    THEN
+      GRANT USAGE ON SCHEMA net TO supabase_functions_admin, postgres, anon, authenticated, service_role;
+      ALTER function net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) SECURITY DEFINER;
+      ALTER function net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) SECURITY DEFINER;
+      ALTER function net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) SET search_path = net;
+      ALTER function net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) SET search_path = net;
+      REVOKE ALL ON FUNCTION net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) FROM PUBLIC;
+      REVOKE ALL ON FUNCTION net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) FROM PUBLIC;
+      GRANT EXECUTE ON FUNCTION net.http_get(url text, params jsonb, headers jsonb, timeout_milliseconds integer) TO supabase_functions_admin, postgres, anon, authenticated, service_role;
+      GRANT EXECUTE ON FUNCTION net.http_post(url text, body jsonb, params jsonb, headers jsonb, timeout_milliseconds integer) TO supabase_functions_admin, postgres, anon, authenticated, service_role;
+    END IF;
+  END;
+  \$\$;
+  COMMENT ON FUNCTION extensions.grant_pg_net_access IS 'Grants access to pg_net';
+  DO
+  \$\$
+  BEGIN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_event_trigger
+      WHERE evtname = 'issue_pg_net_access'
+    ) THEN
+      CREATE EVENT TRIGGER issue_pg_net_access ON ddl_command_end WHEN TAG IN ('CREATE EXTENSION')
+      EXECUTE PROCEDURE extensions.grant_pg_net_access();
+    END IF;
+  END
+  \$\$;
+  INSERT INTO supabase_functions.migrations (version) VALUES ('20210809183423_update_grants');
+  ALTER function supabase_functions.http_request() SECURITY DEFINER;
+  ALTER function supabase_functions.http_request() SET search_path = supabase_functions;
+  REVOKE ALL ON FUNCTION supabase_functions.http_request() FROM PUBLIC;
+  GRANT EXECUTE ON FUNCTION supabase_functions.http_request() TO postgres, anon, authenticated, service_role;
+COMMIT;
+
+-- jwt.sql
+\set jwt_secret $MORPHIC_SUPABASE_JWT_SECRET
+\set jwt_exp 3600
+
+ALTER DATABASE postgres SET "app.settings.jwt_secret" TO :'jwt_secret';
+ALTER DATABASE postgres SET "app.settings.jwt_exp" TO :'jwt_exp';
+
+-- roles.sql
+-- NOTE: change to your own passwords for production environments
+\set pgpass $MORPHIC_DATABASE_USER_PASSWORD
+
+ALTER USER authenticator WITH PASSWORD :'pgpass';
+ALTER USER pgbouncer WITH PASSWORD :'pgpass';
+ALTER USER supabase_auth_admin WITH PASSWORD :'pgpass';
+ALTER USER supabase_functions_admin WITH PASSWORD :'pgpass';
+ALTER USER supabase_storage_admin WITH PASSWORD :'pgpass';
+
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/morphic/dbimport/migrations.sql
+-- _supabase.sql
+\set pguser $MORPHIC_DATABASE_USER
+
+CREATE DATABASE _supabase WITH OWNER :pguser;
+
+-- logs.sql
+\set pguser $MORPHIC_DATABASE_USER
+
+\c _supabase
+create schema if not exists _analytics;
+alter schema _analytics owner to :pguser;
+\c postgres
+
+-- pooler.sql
+\set pguser $MORPHIC_DATABASE_USER
+
+\c _supabase
+create schema if not exists _supavisor;
+alter schema _supavisor owner to :pguser;
+\c postgres
+
+-- realtime.sql
+\set pguser $MORPHIC_DATABASE_USER
+
+create schema if not exists _realtime;
+alter schema _realtime owner to :pguser;
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/morphic/config/vector.yml
+api:
+  enabled: true
+  address: 0.0.0.0:9001
+
+sources:
+  docker_host:
+    type: docker_logs
+    exclude_containers:
+      - morphic-supabase-vector
+
+transforms:
+  project_logs:
+    type: remap
+    inputs:
+      - docker_host
+    source: |-
+      .project = "default"
+      .event_message = del(.message)
+      .appname = del(.container_name)
+      del(.container_created_at)
+      del(.container_id)
+      del(.source_type)
+      del(.stream)
+      del(.label)
+      del(.image)
+      del(.host)
+      del(.stream)
+  router:
+    type: route
+    inputs:
+      - project_logs
+    route:
+      kong: '.appname == "morphic-supabase-kong"'
+      auth: '.appname == "morphic-supabase-auth"'
+      rest: '.appname == "morphic-supabase-rest"'
+      realtime: '.appname == "realtime-dev.supabase-realtime"'
+      storage: '.appname == "morphic-supabase-storage"'
+      functions: '.appname == "morphic-supabase-edge-functions"'
+      db: '.appname == "morphic-supabase-db"'
+  # Ignores non nginx errors since they are related with kong booting up
+  kong_logs:
+    type: remap
+    inputs:
+      - router.kong
+    source: |-
+      req, err = parse_nginx_log(.event_message, "combined")
+      if err == null {
+          .timestamp = req.timestamp
+          .metadata.request.headers.referer = req.referer
+          .metadata.request.headers.user_agent = req.agent
+          .metadata.request.headers.cf_connecting_ip = req.client
+          .metadata.request.method = req.method
+          .metadata.request.path = req.path
+          .metadata.request.protocol = req.protocol
+          .metadata.response.status_code = req.status
+      }
+      if err != null {
+        abort
+      }
+  # Ignores non nginx errors since they are related with kong booting up
+  kong_err:
+    type: remap
+    inputs:
+      - router.kong
+    source: |-
+      .metadata.request.method = "GET"
+      .metadata.response.status_code = 200
+      parsed, err = parse_nginx_log(.event_message, "error")
+      if err == null {
+          .timestamp = parsed.timestamp
+          .severity = parsed.severity
+          .metadata.request.host = parsed.host
+          .metadata.request.headers.cf_connecting_ip = parsed.client
+          url, err = split(parsed.request, " ")
+          if err == null {
+              .metadata.request.method = url[0]
+              .metadata.request.path = url[1]
+              .metadata.request.protocol = url[2]
+          }
+      }
+      if err != null {
+        abort
+      }
+  # Gotrue logs are structured json strings which frontend parses directly. But we keep metadata for consistency.
+  auth_logs:
+    type: remap
+    inputs:
+      - router.auth
+    source: |-
+      parsed, err = parse_json(.event_message)
+      if err == null {
+          .metadata.timestamp = parsed.time
+          .metadata = merge!(.metadata, parsed)
+      }
+  # PostgREST logs are structured so we separate timestamp from message using regex
+  rest_logs:
+    type: remap
+    inputs:
+      - router.rest
+    source: |-
+      parsed, err = parse_regex(.event_message, r'^(?P<time>.*): (?P<msg>.*)\$')
+      if err == null {
+          .event_message = parsed.msg
+          .timestamp = parse_timestamp(parsed.time, format: "%Y-%m-%d %H:%M:%S") ?? now()
+          .metadata.host = .project
+      }
+  # Realtime logs are structured so we parse the severity level using regex (ignore time because it has no date)
+  realtime_logs:
+    type: remap
+    inputs:
+      - router.realtime
+    source: |-
+      .metadata.project = del(.project)
+      .metadata.external_id = .metadata.project
+      parsed, err = parse_regex(.event_message, r'^(?P<time>\d+:\d+:\d+\.\d+) \[(?P<level>\w+)\] (?P<msg>.*)\$')
+      if err == null {
+          .event_message = parsed.msg
+          .metadata.level = parsed.level
+      }
+  # Function logs are unstructured messages on stderr
+  functions_logs:
+    type: remap
+    inputs:
+      - router.functions
+    source: |-
+      .metadata.project_ref = del(.project)
+  # Storage logs may contain json objects so we parse them for completeness
+  storage_logs:
+    type: remap
+    inputs:
+      - router.storage
+    source: |-
+      .metadata.project = del(.project)
+      .metadata.tenantId = .metadata.project
+      parsed, err = parse_json(.event_message)
+      if err == null {
+          .event_message = parsed.msg
+          .metadata.level = parsed.level
+          .metadata.timestamp = parsed.time
+          .metadata.context[0].host = parsed.hostname
+          .metadata.context[0].pid = parsed.pid
+      }
+  # Postgres logs some messages to stderr which we map to warning severity level
+  db_logs:
+    type: remap
+    inputs:
+      - router.db
+    source: |-
+      .metadata.host = "db-default"
+      .metadata.parsed.timestamp = .timestamp
+
+      parsed, err = parse_regex(.event_message, r'.*(?P<level>INFO|NOTICE|WARNING|ERROR|LOG|FATAL|PANIC?):.*', numeric_groups: true)
+
+      if err != null || parsed == null {
+        .metadata.parsed.error_severity = "info"
+      }
+      if parsed != null {
+       .metadata.parsed.error_severity = parsed.level
+      }
+      if .metadata.parsed.error_severity == "info" {
+          .metadata.parsed.error_severity = "log"
+      }
+      .metadata.parsed.error_severity = upcase!(.metadata.parsed.error_severity)
+
+sinks:
+  logflare_auth:
+    type: 'http'
+    inputs:
+      - auth_logs
+    encoding:
+      codec: 'json'
+    method: 'post'
+    request:
+      retry_max_duration_secs: 10
+      headers:
+        x-api-key: \${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+    uri: 'http://morphic-supabase-analytics:4000/api/logs?source_name=gotrue.logs.prod'
+  logflare_realtime:
+    type: 'http'
+    inputs:
+      - realtime_logs
+    encoding:
+      codec: 'json'
+    method: 'post'
+    request:
+      retry_max_duration_secs: 10
+      headers:
+        Authorization: "Bearer \${LOGFLARE_PUBLIC_ACCESS_TOKEN}"
+    uri: 'http://morphic-supabase-analytics:4000/api/logs?source_name=realtime.logs.prod'
+  logflare_rest:
+    type: 'http'
+    inputs:
+      - rest_logs
+    encoding:
+      codec: 'json'
+    method: 'post'
+    request:
+      retry_max_duration_secs: 10
+      headers:
+        x-api-key: \${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+    uri: 'http://morphic-supabase-analytics:4000/api/logs?source_name=postgREST.logs.prod'
+  logflare_db:
+    type: 'http'
+    inputs:
+      - db_logs
+    encoding:
+      codec: 'json'
+    method: 'post'
+    request:
+      retry_max_duration_secs: 10
+      headers:
+        x-api-key: \${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+    # We must route the sink through kong because ingesting logs before logflare is fully initialised will
+    # lead to broken queries from studio. This works by the assumption that containers are started in the
+    # following order: vector > db > logflare > kong
+    uri: 'http://morphic-supabase-kong:8000/analytics/v1/api/logs?source_name=postgres.logs'
+  logflare_functions:
+    type: 'http'
+    inputs:
+      - functions_logs
+    encoding:
+      codec: 'json'
+    method: 'post'
+    request:
+      retry_max_duration_secs: 10
+      headers:
+        x-api-key: \${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+    uri: 'http://morphic-supabase-analytics:4000/api/logs?source_name=deno-relay-logs'
+  logflare_storage:
+    type: 'http'
+    inputs:
+      - storage_logs
+    encoding:
+      codec: 'json'
+    method: 'post'
+    request:
+      retry_max_duration_secs: 10
+      headers:
+        x-api-key: \${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+    uri: 'http://morphic-supabase-analytics:4000/api/logs?source_name=storage.logs.prod.2'
+  logflare_kong:
+    type: 'http'
+    inputs:
+      - kong_logs
+      - kong_err
+    encoding:
+      codec: 'json'
+    method: 'post'
+    request:
+      retry_max_duration_secs: 10
+      headers:
+        Authorization: "Bearer \${LOGFLARE_PUBLIC_ACCESS_TOKEN}"
+    uri: 'http://morphic-supabase-analytics:4000/api/logs?source_name=cloudflare.logs.prod'
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/morphic/config/kong.yml
+_format_version: '2.1'
+_transform: true
+
+###
+### Consumers / Users
+###
+consumers:
+  - username: DASHBOARD
+  - username: anon
+    keyauth_credentials:
+      - key: \$SUPABASE_ANON_KEY
+  - username: service_role
+    keyauth_credentials:
+      - key: \$SUPABASE_SERVICE_KEY
+
+###
+### Access Control List
+###
+acls:
+  - consumer: anon
+    group: anon
+  - consumer: service_role
+    group: admin
+
+###
+### Dashboard credentials
+###
+basicauth_credentials:
+  - consumer: DASHBOARD
+    username: \$DASHBOARD_USERNAME
+    password: \$DASHBOARD_PASSWORD
+
+###
+### API Routes
+###
+services:
+  ## Open Auth routes
+  - name: auth-v1-open
+    url: http://morphic-supabase-auth:9999/verify
+    routes:
+      - name: auth-v1-open
+        strip_path: true
+        paths:
+          - /auth/v1/verify
+    plugins:
+      - name: cors
+  - name: auth-v1-open-callback
+    url: http://morphic-supabase-auth:9999/callback
+    routes:
+      - name: auth-v1-open-callback
+        strip_path: true
+        paths:
+          - /auth/v1/callback
+    plugins:
+      - name: cors
+  - name: auth-v1-open-authorize
+    url: http://morphic-supabase-auth:9999/authorize
+    routes:
+      - name: auth-v1-open-authorize
+        strip_path: true
+        paths:
+          - /auth/v1/authorize
+    plugins:
+      - name: cors
+
+  ## Secure Auth routes
+  - name: auth-v1
+    _comment: 'GoTrue: /auth/v1/* -> http://morphic-supabase-auth:9999/*'
+    url: http://morphic-supabase-auth:9999/
+    routes:
+      - name: auth-v1-all
+        strip_path: true
+        paths:
+          - /auth/v1/
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+            - anon
+
+  ## Secure REST routes
+  - name: rest-v1
+    _comment: 'PostgREST: /rest/v1/* -> http://morphic-supabase-rest:3000/*'
+    url: http://morphic-supabase-rest:3000/
+    routes:
+      - name: rest-v1-all
+        strip_path: true
+        paths:
+          - /rest/v1/
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: true
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+            - anon
+
+  ## Secure GraphQL routes
+  - name: graphql-v1
+    _comment: 'PostgREST: /graphql/v1/* -> http://morphic-supabase-rest:3000/rpc/graphql'
+    url: http://morphic-supabase-rest:3000/rpc/graphql
+    routes:
+      - name: graphql-v1-all
+        strip_path: true
+        paths:
+          - /graphql/v1
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: true
+      - name: request-transformer
+        config:
+          add:
+            headers:
+              - Content-Profile:graphql_public
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+            - anon
+
+  ## Secure Realtime routes
+  - name: realtime-v1-ws
+    _comment: 'Realtime: /realtime/v1/* -> ws://morphic-supabase-realtime:4000/socket/*'
+    url: http://realtime-dev.supabase-realtime:4000/socket
+    protocol: ws
+    routes:
+      - name: realtime-v1-ws
+        strip_path: true
+        paths:
+          - /realtime/v1/
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+            - anon
+  - name: realtime-v1-rest
+    _comment: 'Realtime: /realtime/v1/* -> ws://morphic-supabase-realtime:4000/socket/*'
+    url: http://realtime-dev.supabase-realtime:4000/api
+    protocol: http
+    routes:
+      - name: realtime-v1-rest
+        strip_path: true
+        paths:
+          - /realtime/v1/api
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+            - anon
+  ## Storage routes: the storage server manages its own auth
+  - name: storage-v1
+    _comment: 'Storage: /storage/v1/* -> http://morphic-supabase-storage:5000/*'
+    url: http://morphic-supabase-storage:5000/
+    routes:
+      - name: storage-v1-all
+        strip_path: true
+        paths:
+          - /storage/v1/
+    plugins:
+      - name: cors
+
+  ## Edge Functions routes
+  - name: functions-v1
+    _comment: 'Edge Functions: /functions/v1/* -> http://morphic-supabase-functions:9000/*'
+    url: http://morphic-supabase-functions:9000/
+    routes:
+      - name: functions-v1-all
+        strip_path: true
+        paths:
+          - /functions/v1/
+    plugins:
+      - name: cors
+
+  ## Analytics routes
+  - name: analytics-v1
+    _comment: 'Analytics: /analytics/v1/* -> http://morphic-supabase-logflare:4000/*'
+    url: http://morphic-supabase-analytics:4000/
+    routes:
+      - name: analytics-v1-all
+        strip_path: true
+        paths:
+          - /analytics/v1/
+
+  ## Secure Database routes
+  - name: meta
+    _comment: 'pg-meta: /pg/* -> http://pg-meta:8080/*'
+    url: http://morphic-supabase-meta:8080/
+    routes:
+      - name: meta-all
+        strip_path: true
+        paths:
+          - /pg/
+    plugins:
+      - name: key-auth
+        config:
+          hide_credentials: false
+      - name: acl
+        config:
+          hide_groups_header: true
+          allow:
+            - admin
+
+  ## Block access to /api/mcp
+  - name: mcp-blocker
+    _comment: 'Block direct access to /api/mcp'
+    url: http://morphic-supabase-studio:3000/api/mcp
+    routes:
+      - name: mcp-blocker-route
+        strip_path: true
+        paths:
+          - /api/mcp
+    plugins:
+      - name: request-termination
+        config:
+          status_code: 403
+          message: "Access is forbidden."
+
+  ## MCP endpoint - local access
+  - name: mcp
+    _comment: 'MCP: /mcp -> http://morphic-supabase-studio:3000/api/mcp (local access)'
+    url: http://morphic-supabase-studio:3000/api/mcp
+    routes:
+      - name: mcp
+        strip_path: true
+        paths:
+          - /mcp
+    plugins:
+      # Block access to /mcp by default
+      - name: request-termination
+        config:
+          status_code: 403
+          message: "Access is forbidden."
+      # Enable local access (danger zone!)
+      # 1. Comment out the 'request-termination' section above
+      # 2. Uncomment the entire section below, including 'deny'
+      # 3. Add your local IPs to the 'allow' list
+      #- name: cors
+      #- name: ip-restriction
+      #  config:
+      #    allow:
+      #      - 127.0.0.1
+      #      - ::1
+      #    deny: []
+
+  ## Protected Dashboard - catch all remaining routes
+  - name: dashboard
+    _comment: 'Studio: /* -> http://morphic-supabase-studio:3000/*'
+    url: http://morphic-supabase-studio:3000/
+    routes:
+      - name: dashboard-all
+        strip_path: true
+        paths:
+          - /
+    plugins:
+      - name: cors
+      - name: basic-auth
+        config:
+          hide_credentials: true
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/morphic/config/pooler.exs
+{:ok, _} = Application.ensure_all_started(:supavisor)
+
+{:ok, version} =
+  case Supavisor.Repo.query!("select version()") do
+    %{rows: [[ver]]} -> Supavisor.Helpers.parse_pg_version(ver)
+    _ -> nil
+  end
+
+params = %{
+  "external_id" => System.get_env("POOLER_TENANT_ID"),
+  "db_host" => "morphic-db",
+  "db_port" => System.get_env("POSTGRES_PORT"),
+  "db_database" => System.get_env("POSTGRES_DB"),
+  "require_user" => false,
+  "auth_query" => "SELECT * FROM pgbouncer.get_auth(\$1)",
+  "default_max_clients" => System.get_env("POOLER_MAX_CLIENT_CONN"),
+  "default_pool_size" => System.get_env("POOLER_DEFAULT_POOL_SIZE"),
+  "default_parameter_status" => %{"server_version" => version},
+  "users" => [%{
+    "db_user" => "pgbouncer",
+    "db_password" => System.get_env("POSTGRES_PASSWORD"),
+    "mode_type" => System.get_env("POOLER_POOL_MODE"),
+    "pool_size" => System.get_env("POOLER_DEFAULT_POOL_SIZE"),
+    "is_manager" => true
+  }]
+}
+
+if !Supavisor.Tenants.get_tenant_by_external_id(params["external_id"]) do
+  {:ok, _} = Supavisor.Tenants.create_tenant(params)
+end
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/morphic/functions/hello/index.ts
+// Follow this setup guide to integrate the Deno language server with your editor:
+// https://deno.land/manual/getting_started/setup_your_environment
+// This enables autocomplete, go to definition, etc.
+
+import { serve } from "https://deno.land/std@0.177.1/http/server.ts"
+
+serve(async () => {
+  return new Response(
+    \`"Hello from Edge Functions!"\`,
+    { headers: { "Content-Type": "application/json" } },
+  )
+})
+
+// To invoke:
+// curl 'http://localhost:<KONG_HTTP_PORT>/functions/v1/hello' \
+//   --header 'Authorization: Bearer <anon/service_role API key>'
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/morphic/functions/main/index.ts
+import { serve } from 'https://deno.land/std@0.131.0/http/server.ts'
+import * as jose from 'https://deno.land/x/jose@v4.14.4/index.ts'
+
+console.log('main function started')
+
+const JWT_SECRET = Deno.env.get('JWT_SECRET')
+const VERIFY_JWT = Deno.env.get('VERIFY_JWT') === 'true'
+
+function getAuthToken(req: Request) {
+  const authHeader = req.headers.get('authorization')
+  if (!authHeader) {
+    throw new Error('Missing authorization header')
+  }
+  const [bearer, token] = authHeader.split(' ')
+  if (bearer !== 'Bearer') {
+    throw new Error(\`Auth header is not 'Bearer {token}'\`)
+  }
+  return token
+}
+
+async function verifyJWT(jwt: string): Promise<boolean> {
+  const encoder = new TextEncoder()
+  const secretKey = encoder.encode(JWT_SECRET)
+  try {
+    await jose.jwtVerify(jwt, secretKey)
+  } catch (err) {
+    console.error(err)
+    return false
+  }
+  return true
+}
+
+serve(async (req: Request) => {
+  if (req.method !== 'OPTIONS' && VERIFY_JWT) {
+    try {
+      const token = getAuthToken(req)
+      const isValidJWT = await verifyJWT(token)
+
+      if (!isValidJWT) {
+        return new Response(JSON.stringify({ msg: 'Invalid JWT' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+    } catch (e) {
+      console.error(e)
+      return new Response(JSON.stringify({ msg: e.toString() }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+  }
+
+  const url = new URL(req.url)
+  const { pathname } = url
+  const path_parts = pathname.split('/')
+  const service_name = path_parts[1]
+
+  if (!service_name || service_name === '') {
+    const error = { msg: 'missing function name in request' }
+    return new Response(JSON.stringify(error), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  const servicePath = \`/home/deno/functions/\${service_name}\`
+  console.error(\`serving the request with \${servicePath}\`)
+
+  const memoryLimitMb = 150
+  const workerTimeoutMs = 1 * 60 * 1000
+  const noModuleCache = false
+  const importMapPath = null
+  const envVarsObj = Deno.env.toObject()
+  const envVars = Object.keys(envVarsObj).map((k) => [k, envVarsObj[k]])
+
+  try {
+    const worker = await EdgeRuntime.userWorkers.create({
+      servicePath,
+      memoryLimitMb,
+      workerTimeoutMs,
+      noModuleCache,
+      importMapPath,
+      envVars,
+    })
+    return await worker.fetch(req)
+  } catch (e) {
+    const error = { msg: e.toString() }
+    return new Response(JSON.stringify(error), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+})
+EOFMT
+}
+
+function performUpdateMorphic()
+{
+  perform_stack_name=morphic
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/supabase/postgres:15.14.1.071,mirror.gcr.io/timberio/vector:0.52.0-alpine,mirror.gcr.io/supabase/studio:2026.01.12-sha-4e9b718,mirror.gcr.io/kong:2.8.1,mirror.gcr.io/supabase/gotrue:v2.185.0,mirror.gcr.io/postgrest/postgrest:v14.3,mirror.gcr.io/supabase/realtime:v2.69.2,mirror.gcr.io/supabase/storage-api:v1.33.5,mirror.gcr.io/darthsim/imgproxy:v3.30.1,mirror.gcr.io/supabase/postgres-meta:v0.95.2,mirror.gcr.io/supabase/edge-runtime:v1.70.0,mirror.gcr.io/supabase/logflare:1.28.0,mirror.gcr.io/supabase/supavisor:2.7.4,ghcr.io/miurla/morphic:6443b20c1205adf233c98b67beb34a6117e1cd7a,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/supabase/postgres:15.14.1.071,mirror.gcr.io/supabase/postgres:15.14.1.071"
+      image_update_map[1]="mirror.gcr.io/timberio/vector:0.52.0-alpine,mirror.gcr.io/timberio/vector:0.52.0-alpine"
+      image_update_map[2]="mirror.gcr.io/supabase/studio:2026.01.12-sha-4e9b718,mirror.gcr.io/supabase/studio:2026.01.12-sha-4e9b718"
+      image_update_map[3]="mirror.gcr.io/kong:2.8.1,mirror.gcr.io/kong:2.8.1"
+      image_update_map[4]="mirror.gcr.io/supabase/gotrue:v2.185.0,mirror.gcr.io/supabase/gotrue:v2.185.0"
+      image_update_map[5]="mirror.gcr.io/postgrest/postgrest:v14.3,mirror.gcr.io/postgrest/postgrest:v14.3"
+      image_update_map[6]="mirror.gcr.io/supabase/realtime:v2.69.2,mirror.gcr.io/supabase/realtime:v2.69.2"
+      image_update_map[7]="mirror.gcr.io/supabase/storage-api:v1.33.5,mirror.gcr.io/supabase/storage-api:v1.33.5"
+      image_update_map[8]="mirror.gcr.io/darthsim/imgproxy:v3.30.1,mirror.gcr.io/darthsim/imgproxy:v3.30.1"
+      image_update_map[9]="mirror.gcr.io/supabase/postgres-meta:v0.95.2,mirror.gcr.io/supabase/postgres-meta:v0.95.2"
+      image_update_map[10]="mirror.gcr.io/supabase/edge-runtime:v1.70.0,mirror.gcr.io/supabase/edge-runtime:v1.70.0"
+      image_update_map[11]="mirror.gcr.io/supabase/logflare:1.28.0,mirror.gcr.io/supabase/logflare:1.28.0"
+      image_update_map[12]="mirror.gcr.io/supabase/supavisor:2.7.4,mirror.gcr.io/supabase/supavisor:2.7.4"
+      image_update_map[13]="ghcr.io/miurla/morphic:6443b20c1205adf233c98b67beb34a6117e1cd7a,ghcr.io/miurla/morphic:6443b20c1205adf233c98b67beb34a6117e1cd7a"
+      image_update_map[14]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 #ADD_NEW_SERVICE_FUNCTIONS_HERE
 
 # ExampleService
@@ -79702,7 +93779,6 @@ networks:
 EOFMT
   cat <<EOFMT > $HOME/exampleservice.env
 TZ=\${PORTAINER_TZ}
-
 EOFMT
 }
 
@@ -80137,6 +94213,22 @@ function getArgumentValue()
 
 EOFSC
 
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
+#!/bin/bash
+
+function main()
+{
+  source $HSHQ_LIB_SCRIPT lib
+  for curSource in $HSHQ_SCRIPTS_DIR/source/*; do
+    if [ -f "\$curSource" ]; then
+      source "\$curSource"
+    fi
+  done
+}
+
+main
+EOFSC
+
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkConfirm.sh
 #!/bin/bash
 
@@ -80194,7 +94286,7 @@ EOFSC
 
 function main()
 {
-  source $HSHQ_LIB_SCRIPT lib
+  source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
   stty -echo
   read -r -s -p "$config_stdin_prompt" USER_CONFIG_PW
   if [ -z "\$USER_CONFIG_PW" ]; then
@@ -80335,7 +94427,7 @@ EOFSC
 
 interfaceName="\$1"
 interfaceName=\$(echo "\$interfaceName" | cut -d" " -f1 | xargs)
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 getIPAddressOfInterface \$interfaceName
 
 EOFSC
@@ -80345,7 +94437,7 @@ EOFSC
 
 interfaceName="\$1"
 interfaceName=\$(echo "\$interfaceName" | cut -d" " -f1 | xargs)
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 getCIDRLengthOfInterface \$interfaceName
 
 EOFSC
@@ -80355,7 +94447,7 @@ EOFSC
 
 interfaceName="\$1"
 interfaceName=\$(echo "\$interfaceName" | cut -d" " -f1 | xargs)
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 getGatewayOfInterface \$interfaceName
 
 EOFSC
@@ -80437,7 +94529,7 @@ EOFSC
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 confirm=\$(getArgumentValue confirm "\$@")
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkConfirm.sh "\$confirm"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 restartAllCaddyContainers
 echo "Caddy containers successfully restarted."
 
@@ -80477,7 +94569,7 @@ EOFSC
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/restartPortainerStack.sh
 #!/bin/bash
 
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 restartPortainer
 echo "Portainer successfully restarted."
@@ -81252,7 +95344,6 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
-
 services=\$(getArgumentValue services "\$@")
 
 set +e
@@ -82357,7 +96448,7 @@ EOFSC
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkUpdateHSHQ.sh
 #!/bin/bash
 
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 
 latest_ver_wrapper=\$(getLatestVersionWrapper)
 this_ver_wrapper=\$(getThisVersionWrapper)
@@ -82580,6 +96671,11 @@ else
 fi
 
 source \$HSHQ_LIB_SCRIPT lib
+for curSource in $HSHQ_SCRIPTS_DIR/source/*; do
+  if [ -f "\$curSource" ]; then
+    source "\$curSource"
+  fi
+done
 checkUpdateVersion
 
 if ! [ "\$is_any_updated" = "true" ]; then
@@ -82686,7 +96782,7 @@ EOFSC
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 set +e
@@ -82778,7 +96874,7 @@ EOFSC
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 confirm=\$(getArgumentValue confirm "\$@")
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkConfirm.sh "\$confirm"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 
 echo "Downloading all docker images..."
 pullDockerImages
@@ -82821,7 +96917,7 @@ EOFSC
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 
 sellock=\$(getArgumentValue sellock "\$@")
 releaseLock "\$sellock" "resetMutexLock" true
@@ -82989,7 +97085,7 @@ EOFSC
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/displayAllConnections.sh
 #!/bin/bash
 
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 
 echo "  | Name | EmailAddress | NetworkType | PublicKey | IPAddress |"
 echo "---------------------------------------------------------------------------------------"
@@ -83084,7 +97180,7 @@ EOFSC
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/updateHomeServerLogoImages.sh
 #!/bin/bash
 
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 updateHomeServerLogoImages
 
 EOFSC
@@ -83446,7 +97542,7 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 checkkey=\$(getArgumentValue checkkey "\$@")
@@ -87040,7 +101136,7 @@ EOFSC
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/displayAllPortforwards.sh
 #!/bin/bash
 
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 
 echo "  | ID | PFType | Name | ExtStart | ExtEnd | IntStart | IntEnd | Protocol | InternalHost | IPAddress | LastUpdated |"
 echo "---------------------------------------------------------------------------------------"
@@ -87171,7 +101267,7 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 
 set +e
 outputAllNetworkInterfaces
@@ -87996,7 +102092,7 @@ EOFSC
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 set +e
@@ -88054,7 +102150,7 @@ EOFSC
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/getScriptSources.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 selinterface=\$(getArgumentValue selinterface "\$@")
@@ -88254,7 +102350,7 @@ EOFMT
 TZ=\${PORTAINER_TZ}
 LOGIN=$DBGATE_ADMIN_USERNAME
 PASSWORD=$DBGATE_ADMIN_PASSWORD
-CONNECTIONS=ActivePieces,Adminer,Automatisch,Budibase,Calcom,Discourse,Dolibarr,EasyAppointments,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,InvoiceNinja,InvoiceShelf,Kanboard,Keila,KillBill,KillBillAPI,Langfuse,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MindsDB,MintHCM,n8n,Nextcloud,Odoo,Ombi,OpenProject,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Rallly,Revolt,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Twenty,Vaultwarden,Wallabag,Wekan,Wikijs,WordPress,Yamtrack,Zammad,Zulip,Taiga,OpenSign,DocuSeal,ControlR,Akaunting,Axelor
+CONNECTIONS=ActivePieces,Adminer,Automatisch,Budibase,Calcom,Discourse,Dolibarr,EasyAppointments,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,InvoiceNinja,InvoiceShelf,Kanboard,Keila,KillBill,KillBillAPI,Langfuse,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MindsDB,MintHCM,n8n,Nextcloud,Odoo,Ombi,OpenProject,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Rallly,Revolt,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Twenty,Vaultwarden,Wallabag,Wekan,Wikijs,WordPress,Yamtrack,Zammad,Zulip,Taiga,OpenSign,DocuSeal,ControlR,Akaunting,Axelor,Langflow,Firecrawl,LibreChat,OpenWebUI,Khoj,LobeChat,RAGFlow,Dify,MindsDB,WaterCrawl,Flowise,NocoDB,Ente,Morphic
 LABEL_ActivePieces=ActivePieces
 ENGINE_ActivePieces=postgres@dbgate-plugin-postgres
 SERVER_ActivePieces=activepieces-db
@@ -88269,20 +102365,6 @@ DATABASE_Adminer=$ADMINER_DATABASE_NAME
 USER_Adminer=$ADMINER_DATABASE_USER
 PASSWORD_Adminer=$ADMINER_DATABASE_USER_PASSWORD
 PORT_Adminer=3306
-LABEL_MindsDB=MindsDB
-ENGINE_MindsDB=postgres@dbgate-plugin-postgres
-SERVER_MindsDB=aistack-mindsdb-db
-DATABASE_MindsDB=$AISTACK_MINDSDB_DATABASE_NAME
-USER_MindsDB=$AISTACK_MINDSDB_DATABASE_USER
-PASSWORD_MindsDB=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
-PORT_MindsDB=5432
-LABEL_Langfuse=Langfuse
-ENGINE_Langfuse=postgres@dbgate-plugin-postgres
-SERVER_Langfuse=aistack-mindsdb-db
-DATABASE_Langfuse=$AISTACK_LANGFUSE_DATABASE_NAME
-USER_Langfuse=$AISTACK_MINDSDB_DATABASE_USER
-PASSWORD_Langfuse=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
-PORT_Langfuse=5432
 LABEL_Automatisch=Automatisch
 ENGINE_Automatisch=postgres@dbgate-plugin-postgres
 SERVER_Automatisch=automatisch-db
@@ -88738,6 +102820,97 @@ DATABASE_Axelor=AXELOR_DATABASE_NAME
 USER_Axelor=AXELOR_DATABASE_USER
 PASSWORD_Axelor=AXELOR_DATABASE_USER_PASSWORD
 PORT_Axelor=5432
+LABEL_Langflow=Langflow
+ENGINE_Langflow=postgres@dbgate-plugin-postgres
+SERVER_Langflow=langflow-db
+DATABASE_Langflow=LANGFLOW_DATABASE_NAME
+USER_Langflow=LANGFLOW_DATABASE_USER
+PASSWORD_Langflow=LANGFLOW_DATABASE_USER_PASSWORD
+PORT_Langflow=5432
+LABEL_LibreChat=LibreChat
+ENGINE_LibreChat=postgres@dbgate-plugin-postgres
+SERVER_LibreChat=librechat-db
+DATABASE_LibreChat=LIBRECHAT_DATABASE_NAME
+USER_LibreChat=LIBRECHAT_DATABASE_USER
+PASSWORD_LibreChat=LIBRECHAT_DATABASE_USER_PASSWORD
+PORT_LibreChat=5432
+LABEL_OpenWebUI=OpenWebUI
+ENGINE_OpenWebUI=postgres@dbgate-plugin-postgres
+SERVER_OpenWebUI=openwebui-db
+DATABASE_OpenWebUI=OPENWEBUI_DATABASE_NAME
+USER_OpenWebUI=OPENWEBUI_DATABASE_USER
+PASSWORD_OpenWebUI=OPENWEBUI_DATABASE_USER_PASSWORD
+PORT_OpenWebUI=5432
+LABEL_Khoj=Khoj
+ENGINE_Khoj=postgres@dbgate-plugin-postgres
+SERVER_Khoj=khoj-db
+DATABASE_Khoj=KHOJ_DATABASE_NAME
+USER_Khoj=KHOJ_DATABASE_USER
+PASSWORD_Khoj=KHOJ_DATABASE_USER_PASSWORD
+PORT_Khoj=5432
+LABEL_LobeChat=LobeChat
+ENGINE_LobeChat=postgres@dbgate-plugin-postgres
+SERVER_LobeChat=lobechat-db
+DATABASE_LobeChat=LOBECHAT_DATABASE_NAME
+USER_LobeChat=LOBECHAT_DATABASE_USER
+PASSWORD_LobeChat=LOBECHAT_DATABASE_USER_PASSWORD
+PORT_LobeChat=5432
+LABEL_RAGFlow=RAGFlow
+ENGINE_RAGFlow=postgres@dbgate-plugin-postgres
+SERVER_RAGFlow=ragflow-db
+DATABASE_RAGFlow=RAGFLOW_DATABASE_NAME
+USER_RAGFlow=RAGFLOW_DATABASE_USER
+PASSWORD_RAGFlow=RAGFLOW_DATABASE_USER_PASSWORD
+PORT_RAGFlow=5432
+LABEL_Dify=Dify
+ENGINE_Dify=postgres@dbgate-plugin-postgres
+SERVER_Dify=dify-db
+DATABASE_Dify=DIFY_DATABASE_NAME
+USER_Dify=DIFY_DATABASE_USER
+PASSWORD_Dify=DIFY_DATABASE_USER_PASSWORD
+PORT_Dify=5432
+LABEL_MindsDB=MindsDB
+ENGINE_MindsDB=postgres@dbgate-plugin-postgres
+SERVER_MindsDB=mindsdb-db
+DATABASE_MindsDB=MINDSDB_DATABASE_NAME
+USER_MindsDB=MINDSDB_DATABASE_USER
+PASSWORD_MindsDB=MINDSDB_DATABASE_USER_PASSWORD
+PORT_MindsDB=5432
+LABEL_WaterCrawl=WaterCrawl
+ENGINE_WaterCrawl=postgres@dbgate-plugin-postgres
+SERVER_WaterCrawl=watercrawl-db
+DATABASE_WaterCrawl=WATERCRAWL_DATABASE_NAME
+USER_WaterCrawl=WATERCRAWL_DATABASE_USER
+PASSWORD_WaterCrawl=WATERCRAWL_DATABASE_USER_PASSWORD
+PORT_WaterCrawl=5432
+LABEL_Flowise=Flowise
+ENGINE_Flowise=postgres@dbgate-plugin-postgres
+SERVER_Flowise=flowise-db
+DATABASE_Flowise=FLOWISE_DATABASE_NAME
+USER_Flowise=FLOWISE_DATABASE_USER
+PASSWORD_Flowise=FLOWISE_DATABASE_USER_PASSWORD
+PORT_Flowise=5432
+LABEL_NocoDB=NocoDB
+ENGINE_NocoDB=postgres@dbgate-plugin-postgres
+SERVER_NocoDB=nocodb-db
+DATABASE_NocoDB=NOCODB_DATABASE_NAME
+USER_NocoDB=NOCODB_DATABASE_USER
+PASSWORD_NocoDB=NOCODB_DATABASE_USER_PASSWORD
+PORT_NocoDB=5432
+LABEL_Ente=Ente
+ENGINE_Ente=postgres@dbgate-plugin-postgres
+SERVER_Ente=ente-db
+DATABASE_Ente=ENTE_DATABASE_NAME
+USER_Ente=ENTE_DATABASE_USER
+PASSWORD_Ente=ENTE_DATABASE_USER_PASSWORD
+PORT_Ente=5432
+LABEL_Morphic=Morphic
+ENGINE_Morphic=postgres@dbgate-plugin-postgres
+SERVER_Morphic=morphic-db
+DATABASE_Morphic=MORPHIC_DATABASE_NAME
+USER_Morphic=MORPHIC_DATABASE_USER
+PASSWORD_Morphic=MORPHIC_DATABASE_USER_PASSWORD
+PORT_Morphic=5432
 EOFMT
 #DBGATE_OUTPUT_CONFIG_ENV_END
 }
@@ -88911,22 +103084,6 @@ SQLPAD_CONNECTIONS__adminer__username=$ADMINER_DATABASE_USER
 SQLPAD_CONNECTIONS__adminer__password=$ADMINER_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__adminer__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__adminer__idleTimeoutSeconds=900
-SQLPAD_CONNECTIONS__aistack-mindsdb__name=MindsDB
-SQLPAD_CONNECTIONS__aistack-mindsdb__driver=postgres
-SQLPAD_CONNECTIONS__aistack-mindsdb__host=aistack-mindsdb-db
-SQLPAD_CONNECTIONS__aistack-mindsdb__database=$AISTACK_MINDSDB_DATABASE_NAME
-SQLPAD_CONNECTIONS__aistack-mindsdb__username=$AISTACK_MINDSDB_DATABASE_USER
-SQLPAD_CONNECTIONS__aistack-mindsdb__password=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
-SQLPAD_CONNECTIONS__aistack-mindsdb__multiStatementTransactionEnabled='false'
-SQLPAD_CONNECTIONS__aistack-mindsdb__idleTimeoutSeconds=900
-SQLPAD_CONNECTIONS__aistack-langfuse__name=Langfuse
-SQLPAD_CONNECTIONS__aistack-langfuse__driver=postgres
-SQLPAD_CONNECTIONS__aistack-langfuse__host=aistack-mindsdb-db
-SQLPAD_CONNECTIONS__aistack-langfuse__database=$AISTACK_LANGFUSE_DATABASE_NAME
-SQLPAD_CONNECTIONS__aistack-langfuse__username=$AISTACK_MINDSDB_DATABASE_USER
-SQLPAD_CONNECTIONS__aistack-langfuse__password=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
-SQLPAD_CONNECTIONS__aistack-langfuse__multiStatementTransactionEnabled='false'
-SQLPAD_CONNECTIONS__aistack-langfuse__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__automatisch__name=Automatisch
 SQLPAD_CONNECTIONS__automatisch__driver=postgres
 SQLPAD_CONNECTIONS__automatisch__host=automatisch-db
@@ -89423,6 +103580,110 @@ SQLPAD_CONNECTIONS__axelor__username=$AXELOR_DATABASE_USER
 SQLPAD_CONNECTIONS__axelor__password=$AXELOR_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__axelor__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__axelor__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__langflow__name=Langflow
+SQLPAD_CONNECTIONS__langflow__driver=postgres
+SQLPAD_CONNECTIONS__langflow__host=langflow-db
+SQLPAD_CONNECTIONS__langflow__database=$LANGFLOW_DATABASE_NAME
+SQLPAD_CONNECTIONS__langflow__username=$LANGFLOW_DATABASE_USER
+SQLPAD_CONNECTIONS__langflow__password=$LANGFLOW_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__langflow__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__langflow__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__librechat__name=LibreChat
+SQLPAD_CONNECTIONS__librechat__driver=postgres
+SQLPAD_CONNECTIONS__librechat__host=librechat-db
+SQLPAD_CONNECTIONS__librechat__database=$LIBRECHAT_DATABASE_NAME
+SQLPAD_CONNECTIONS__librechat__username=$LIBRECHAT_DATABASE_USER
+SQLPAD_CONNECTIONS__librechat__password=$LIBRECHAT_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__librechat__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__librechat__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__openwebui__name=OpenWebUI
+SQLPAD_CONNECTIONS__openwebui__driver=postgres
+SQLPAD_CONNECTIONS__openwebui__host=openwebui-db
+SQLPAD_CONNECTIONS__openwebui__database=$OPENWEBUI_DATABASE_NAME
+SQLPAD_CONNECTIONS__openwebui__username=$OPENWEBUI_DATABASE_USER
+SQLPAD_CONNECTIONS__openwebui__password=$OPENWEBUI_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__openwebui__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__openwebui__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__khoj__name=Khoj
+SQLPAD_CONNECTIONS__khoj__driver=postgres
+SQLPAD_CONNECTIONS__khoj__host=khoj-db
+SQLPAD_CONNECTIONS__khoj__database=$KHOJ_DATABASE_NAME
+SQLPAD_CONNECTIONS__khoj__username=$KHOJ_DATABASE_USER
+SQLPAD_CONNECTIONS__khoj__password=$KHOJ_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__khoj__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__khoj__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__lobechat__name=LobeChat
+SQLPAD_CONNECTIONS__lobechat__driver=postgres
+SQLPAD_CONNECTIONS__lobechat__host=lobechat-db
+SQLPAD_CONNECTIONS__lobechat__database=$LOBECHAT_DATABASE_NAME
+SQLPAD_CONNECTIONS__lobechat__username=$LOBECHAT_DATABASE_USER
+SQLPAD_CONNECTIONS__lobechat__password=$LOBECHAT_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__lobechat__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__lobechat__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__ragflow__name=RAGFlow
+SQLPAD_CONNECTIONS__ragflow__driver=postgres
+SQLPAD_CONNECTIONS__ragflow__host=ragflow-db
+SQLPAD_CONNECTIONS__ragflow__database=$RAGFLOW_DATABASE_NAME
+SQLPAD_CONNECTIONS__ragflow__username=$RAGFLOW_DATABASE_USER
+SQLPAD_CONNECTIONS__ragflow__password=$RAGFLOW_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__ragflow__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__ragflow__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__dify__name=Dify
+SQLPAD_CONNECTIONS__dify__driver=postgres
+SQLPAD_CONNECTIONS__dify__host=dify-db
+SQLPAD_CONNECTIONS__dify__database=$DIFY_DATABASE_NAME
+SQLPAD_CONNECTIONS__dify__username=$DIFY_DATABASE_USER
+SQLPAD_CONNECTIONS__dify__password=$DIFY_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__dify__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__dify__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__mindsdb__name=MindsDB
+SQLPAD_CONNECTIONS__mindsdb__driver=postgres
+SQLPAD_CONNECTIONS__mindsdb__host=mindsdb-db
+SQLPAD_CONNECTIONS__mindsdb__database=$MINDSDB_DATABASE_NAME
+SQLPAD_CONNECTIONS__mindsdb__username=$MINDSDB_DATABASE_USER
+SQLPAD_CONNECTIONS__mindsdb__password=$MINDSDB_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__mindsdb__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__mindsdb__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__watercrawl__name=WaterCrawl
+SQLPAD_CONNECTIONS__watercrawl__driver=postgres
+SQLPAD_CONNECTIONS__watercrawl__host=watercrawl-db
+SQLPAD_CONNECTIONS__watercrawl__database=$WATERCRAWL_DATABASE_NAME
+SQLPAD_CONNECTIONS__watercrawl__username=$WATERCRAWL_DATABASE_USER
+SQLPAD_CONNECTIONS__watercrawl__password=$WATERCRAWL_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__watercrawl__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__watercrawl__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__flowise__name=Flowise
+SQLPAD_CONNECTIONS__flowise__driver=postgres
+SQLPAD_CONNECTIONS__flowise__host=flowise-db
+SQLPAD_CONNECTIONS__flowise__database=$FLOWISE_DATABASE_NAME
+SQLPAD_CONNECTIONS__flowise__username=$FLOWISE_DATABASE_USER
+SQLPAD_CONNECTIONS__flowise__password=$FLOWISE_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__flowise__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__flowise__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__nocodb__name=NocoDB
+SQLPAD_CONNECTIONS__nocodb__driver=postgres
+SQLPAD_CONNECTIONS__nocodb__host=nocodb-db
+SQLPAD_CONNECTIONS__nocodb__database=$NOCODB_DATABASE_NAME
+SQLPAD_CONNECTIONS__nocodb__username=$NOCODB_DATABASE_USER
+SQLPAD_CONNECTIONS__nocodb__password=$NOCODB_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__nocodb__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__nocodb__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__ente__name=Ente
+SQLPAD_CONNECTIONS__ente__driver=postgres
+SQLPAD_CONNECTIONS__ente__host=ente-db
+SQLPAD_CONNECTIONS__ente__database=$ENTE_DATABASE_NAME
+SQLPAD_CONNECTIONS__ente__username=$ENTE_DATABASE_USER
+SQLPAD_CONNECTIONS__ente__password=$ENTE_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__ente__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__ente__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__morphic__name=Morphic
+SQLPAD_CONNECTIONS__morphic__driver=postgres
+SQLPAD_CONNECTIONS__morphic__host=morphic-db
+SQLPAD_CONNECTIONS__morphic__database=$MORPHIC_DATABASE_NAME
+SQLPAD_CONNECTIONS__morphic__username=$MORPHIC_DATABASE_USER
+SQLPAD_CONNECTIONS__morphic__password=$MORPHIC_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__morphic__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__morphic__idleTimeoutSeconds=900
 EOFSP
 #SQLPAD_OUTPUT_CONFIG_ENV_END
 }
@@ -89515,7 +103776,6 @@ function checkAddDBConnection()
   sdb_username="$7"
   sdb_password="$8"
   set +e
-
   updateStackEnv sqlpad modFunAddUpdateConnectionSQLPad > /dev/null 2>&1
   usRetVal=$?
   if [ $usRetVal -eq 2 ]; then
@@ -89536,11 +103796,8 @@ function checkAddDBConnection()
   fi
   # See the importDBConnectionsAIStack() function for more details
   # This is dead code for now, but it may be revisited in some form or fashion later
-  if false && [ "$isImportAIStack" = "true" ] && [ -d $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport ]; then
-    rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME
-    cat <<EOFAS > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME
-"$sdb_formal" $sdb_driver $sdb_host $sdb_database $sdb_username $sdb_password
-EOFAS
+  if false && [ "$isImportAIStack" = "true" ] && [ -d $HSHQ_STACKS_DIR/mindsdb/dbimport ]; then
+    echo "\"$sdb_formal\" $sdb_driver $sdb_host $sdb_database $sdb_username $sdb_password" | tee -a $HSHQ_STACKS_DIR/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME >/dev/null
     importDBConnectionsAIStack
   fi
 }
@@ -90204,69 +104461,7 @@ function initCaddyCommon()
   mkdir $HSHQ_STACKS_DIR/caddy-common/snippets
   cp $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt $HSHQ_STACKS_DIR/caddy-common/files/${CERTS_ROOT_CA_NAME}.crt
   cp $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der $HSHQ_STACKS_DIR/caddy-common/files/${CERTS_ROOT_CA_NAME}.der
-  cat <<EOFCF > $HSHQ_STACKS_DIR/caddy-common/snippets/head.snip
-($CADDY_SNIPPET_SAFEHEADER) {
-  header {
-    Referrer-Policy "same-origin"
-    Strict-Transport-Security "max-age=31536000;"
-    X-XSS-Protection "1; mode=block"
-    X-Content-Type-Options "nosniff"
-    X-Frame-Options "SAMEORIGIN"
-    X-Robots-Tag "noindex, nofollow"
-    -Server
-  }
-}
-
-($CADDY_SNIPPET_SAFEHEADERALLOWFRAME) {
-  header {
-    Referrer-Policy "same-origin"
-    Strict-Transport-Security "max-age=31536000;"
-    X-XSS-Protection "1; mode=block"
-    X-Content-Type-Options "nosniff"
-    X-Robots-Tag "noindex, nofollow"
-    -Server
-  }
-}
-
-($CADDY_SNIPPET_SAFEHEADERALLOWCORS) {
-  header {
-    Access-Control-Allow-Origin *
-    Referrer-Policy "same-origin"
-    Strict-Transport-Security "max-age=31536000;"
-    X-XSS-Protection "1; mode=block"
-    X-Content-Type-Options "nosniff"
-    X-Robots-Tag "noindex, nofollow"
-    -Server
-  }
-}
-
-($CADDY_SNIPPET_SAFEHEADERCORS) {
-  @origin{args[0]} header Origin {args[0]}
-  header @origin{args[0]} {
-    Access-Control-Allow-Origin "{args[0]}"
-    Referrer-Policy "same-origin"
-    Strict-Transport-Security "max-age=31536000;"
-    X-XSS-Protection "1; mode=block"
-    X-Content-Type-Options "nosniff"
-    X-Robots-Tag "noindex, nofollow"
-    -Server
-  }
-}
-
-($CADDY_SNIPPET_TRUSTEDPROXIES) {
-  trusted_proxies $TRUSTED_PROXIES
-}
-
-($CADDY_SNIPPET_NOTHOMESUBNET) {
-  not remote_ip {\$CADDY_HSHQ_PRIVATE_IPS}
-}
-
-($CADDY_SNIPPET_RIP) {
-  @subnet remote_ip {\$CADDY_HSHQ_CA_SUBNET}
-}
-
-EOFCF
-
+  outputCaddyHeaders
   cat <<EOFCF > $HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip
 # sn-base-domain BEGIN
 (sn-base-domain) {
@@ -90285,6 +104480,10 @@ EOFCF
         body "{ \"m.homeserver\": {\"base_url\": \"https://$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN/\" } }"
         close
       }
+      header /.well-known/webfinger Access-Control-Allow-Origin "*"
+      header /.well-known/webfinger Content-Type "application/jrd+json"
+      header /.well-known/host-meta Access-Control-Allow-Origin "*"
+      header /.well-known/host-meta Content-Type "application/jrd+json"
       redir /.well-known/webfinger https://$SUB_MASTODON.$HOMESERVER_DOMAIN{uri} permanent
       redir /.well-known/host-meta https://$SUB_MASTODON.$HOMESERVER_DOMAIN{uri} permanent
       redir / https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN
@@ -90354,7 +104553,6 @@ EOFCF
 }
 # sn-sub-${SUB_HSHQSTATUS} END
 EOFCF
-
   cat <<EOFCF > $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home
 import /snippets/svcs.snip
 import sn-base-domain
@@ -90364,10 +104562,87 @@ import sn-sub-${SUB_BIND_IP}
 import sn-sub-${SUB_IMAGES}
 import sn-sub-${SUB_HSHQSTATUS}
 EOFCF
-
   cp $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Primary
   cp $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Other
   docker volume create --driver local -o device=$HSHQ_STACKS_DIR/caddy-common/primary-certs -o o=bind -o type=none caddy-primary-certs
+}
+
+function outputCaddyHeaders()
+{
+  cat <<EOFCF > $HSHQ_STACKS_DIR/caddy-common/snippets/head.snip
+($CADDY_SNIPPET_SAFEHEADER) {
+  header {
+    Referrer-Policy "same-origin"
+    Strict-Transport-Security "max-age=31536000;"
+    X-XSS-Protection "1; mode=block"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "SAMEORIGIN"
+    X-Robots-Tag "noindex, nofollow"
+    -Server
+  }
+}
+
+($CADDY_SNIPPET_SAFEHEADERALLOWFRAME) {
+  header {
+    Referrer-Policy "same-origin"
+    Strict-Transport-Security "max-age=31536000;"
+    X-XSS-Protection "1; mode=block"
+    X-Content-Type-Options "nosniff"
+    X-Robots-Tag "noindex, nofollow"
+    -Server
+  }
+}
+
+($CADDY_SNIPPET_SAFEHEADERALLOWCORS) {
+  header {
+    Access-Control-Allow-Origin *
+    Referrer-Policy "same-origin"
+    Strict-Transport-Security "max-age=31536000;"
+    X-XSS-Protection "1; mode=block"
+    X-Content-Type-Options "nosniff"
+    X-Robots-Tag "noindex, nofollow"
+    -Server
+  }
+}
+
+($CADDY_SNIPPET_SAFEHEADERCORS) {
+  @origin{args[0]} header Origin {args[0]}
+  header @origin{args[0]} {
+    Access-Control-Allow-Origin "{args[0]}"
+    Referrer-Policy "same-origin"
+    Strict-Transport-Security "max-age=31536000;"
+    X-XSS-Protection "1; mode=block"
+    X-Content-Type-Options "nosniff"
+    X-Robots-Tag "noindex, nofollow"
+    -Server
+  }
+}
+
+($CADDY_SNIPPET_SAFEHEADERCORSPREFLIGHT) {
+  @cors_preflight method OPTIONS
+  handle @cors_preflight {
+    header Access-Control-Allow-Origin "{header.origin}"
+    header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    header Access-Control-Allow-Headers "*"
+    header Access-Control-Max-Age "3600"
+    header Vary "Origin"
+    respond "" 204
+  }
+}
+
+($CADDY_SNIPPET_TRUSTEDPROXIES) {
+  trusted_proxies $TRUSTED_PROXIES
+}
+
+($CADDY_SNIPPET_NOTHOMESUBNET) {
+  not remote_ip {\$CADDY_HSHQ_PRIVATE_IPS}
+}
+
+($CADDY_SNIPPET_RIP) {
+  @subnet remote_ip {\$CADDY_HSHQ_CA_SUBNET}
+}
+
+EOFCF
 }
 
 function installCaddy()
