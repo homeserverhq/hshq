@@ -9376,7 +9376,6 @@ services:
       - no-new-privileges:true
     networks:
       - dock-ext-net
-      - dock-proxy-net
       - dock-mailrelay-net
     dns:
       - \\\${SUBNET_PREFIX}.253
@@ -10537,7 +10536,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
     ports:
       - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/tcp"
@@ -10583,7 +10581,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
     ports:
       - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/tcp"
@@ -40904,7 +40901,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-sysutils-net
-      - dock-proxy-net
       - dock-ext-net
     ports:
       - "127.0.0.1:6565:3000"
@@ -46346,7 +46342,6 @@ services:
       - MKNOD
       - SYS_ADMIN
     networks:
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -46902,7 +46897,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ldap-net
       - dock-internalmail-net
       - int-nextcloud-net
@@ -46955,7 +46949,6 @@ services:
       - no-new-privileges:true
     entrypoint: /cron.sh
     networks:
-      - dock-proxy-net
       - dock-ldap-net
       - dock-internalmail-net
       - int-nextcloud-net
@@ -47020,7 +47013,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-nextcloud-net
-      - dock-proxy-net
       - dock-ext-net
     depends_on:
       - nextcloud-app
@@ -47048,7 +47040,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-nextcloud-net
-      - dock-proxy-net
       - dock-ext-net
     depends_on:
       - nextcloud-app
@@ -47107,7 +47098,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - int-nextcloud-net
     depends_on:
@@ -47244,7 +47234,6 @@ services:
       - no-new-privileges:true
     networks:
       - dock-ldap-net
-      - dock-proxy-net
       - dock-internalmail-net
       - int-nextcloud-net
       - dock-ext-net
@@ -47278,7 +47267,6 @@ services:
     entrypoint: /cron.sh
     networks:
       - dock-ldap-net
-      - dock-proxy-net
       - dock-internalmail-net
       - int-nextcloud-net
       - dock-ext-net
@@ -47306,7 +47294,6 @@ services:
       - no-new-privileges:true
     networks:
       - dock-ldap-net
-      - dock-proxy-net
       - dock-internalmail-net
       - int-nextcloud-net
       - dock-ext-net
@@ -47353,7 +47340,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-nextcloud-net
-      - dock-proxy-net
       - dock-ext-net
     depends_on:
       - nextcloud-app
@@ -47381,7 +47367,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-nextcloud-net
-      - dock-proxy-net
       - dock-ext-net
     depends_on:
       - nextcloud-app
@@ -47440,7 +47425,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - int-nextcloud-net
     depends_on:
@@ -49033,7 +49017,6 @@ services:
     env_file: stack.env
     networks:
       - int-wikijs-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -51007,7 +50990,6 @@ services:
     env_file: stack.env
     user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-ldap-net
     ports:
@@ -51451,7 +51433,6 @@ services:
     working_dir: "/photoprism"
     networks:
       - int-photoprism-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -52663,7 +52644,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-wordpress-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -52874,7 +52854,6 @@ services:
       - ghost-db
     networks:
       - int-ghost-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -53139,7 +53118,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-peertube-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-ldap-net
       - dock-internalmail-net
@@ -54144,7 +54122,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-gitlab-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-ldap-net
       - dock-internalmail-net
@@ -54833,7 +54810,6 @@ services:
       - discourse-redis
     networks:
       - int-discourse-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -54856,7 +54832,6 @@ services:
       - discourse-redis
     networks:
       - int-discourse-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -55316,7 +55291,6 @@ services:
       --cert /certs/codeserver.crt
       --cert-key /certs/codeserver.key
     networks:
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -56099,7 +56073,6 @@ services:
       - firefly-app
     networks:
       - int-firefly-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -56120,7 +56093,6 @@ services:
       - firefly-app
     networks:
       - int-firefly-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -57426,7 +57398,6 @@ services:
       - invidious-db
     networks:
       - int-invidious-net
-      - dock-proxy-net
       - dock-ext-net
     environment:
       INVIDIOUS_CONFIG: |
@@ -57459,7 +57430,6 @@ services:
       - invidious-db
     networks:
       - int-invidious-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - v-invidious-companion:/var/tmp/youtubei.js:rw
@@ -57653,7 +57623,6 @@ services:
       - gitea-db
     networks:
       - int-gitea-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-ldap-net
       - dock-internalmail-net
@@ -57922,7 +57891,6 @@ services:
     depends_on:
       - mealie-db
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-ldap-net
       - dock-internalmail-net
@@ -58173,7 +58141,6 @@ services:
     restart: unless-stopped
     env_file: stack.env
     networks:
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -58931,7 +58898,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -59111,7 +59077,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -59131,7 +59096,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-ldap-net
       - dock-internalmail-net
@@ -59462,7 +59426,7 @@ function installLinkwarden()
   oidcBlock=$(cat $HOME/linkwarden.oidc)
   rm -f $HOME/linkwarden.oidc
   insertOIDCClientAuthelia linkwarden "$oidcBlock"
-  installStack linkwarden linkwarden "ready started server on" $HOME/linkwarden.env
+  installStack linkwarden linkwarden-app "ready started server on" $HOME/linkwarden.env
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -59544,7 +59508,6 @@ services:
       - linkwarden-db
     networks:
       - int-linkwarden-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -59931,7 +59894,6 @@ services:
       retries: 5
     networks:
       - int-bar-assistant-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -60018,7 +59980,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-bar-assistant-net
-      - dock-proxy-net
       - dock-ext-net
     depends_on:
       - bar-assistant-app
@@ -60395,7 +60356,6 @@ services:
     networks:
       - int-freshrss-net
       - dock-ext-net
-      - dock-proxy-net
     volumes:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
@@ -60946,7 +60906,6 @@ services:
       - wallabag-db
       - wallabag-redis
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - int-wallabag-net
@@ -61159,7 +61118,6 @@ services:
     tty: true
     stdin_open: true
     networks:
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -61751,7 +61709,6 @@ services:
     depends_on:
       - speedtest-tracker-local-db
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - int-speedtest-tracker-local-net
@@ -62255,7 +62212,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-changedetection-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     depends_on:
@@ -62517,7 +62473,6 @@ services:
       - huginn-db
     networks:
       - int-huginn-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -62690,7 +62645,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
     ports:
       - "$COTURN_PRIMARY_PORT:$COTURN_PRIMARY_PORT"
@@ -62923,7 +62877,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -63159,7 +63112,6 @@ services:
       - piped-api
     networks:
       - int-piped-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -63175,7 +63127,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-piped-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -63192,7 +63143,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-piped-net
-      - dock-proxy-net
       - dock-ext-net
     depends_on:
       - piped-db
@@ -63916,7 +63866,6 @@ services:
       - penpot-exporter
     networks:
       - int-penpot-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -64276,7 +64225,6 @@ services:
       - espocrm-db
     networks:
       - int-espocrm-net
-      - dock-proxy-net
       - dock-internalmail-net
       - dock-ldap-net
       - dock-ext-net
@@ -64591,7 +64539,6 @@ services:
       - immich-db
     networks:
       - int-immich-net
-      - dock-proxy-net
       - dock-internalmail-net
       - dock-ext-net
     volumes:
@@ -64616,7 +64563,6 @@ services:
       - immich-db
     networks:
       - int-immich-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -65151,7 +65097,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -65800,7 +65745,7 @@ function installSnippetBox()
   mkdir $HSHQ_STACKS_DIR/snippetbox/data
   set +e
   outputConfigSnippetBox
-  installStack snippetbox snippetbox-app "Server is working on port" $HOME/snippetbox.env
+  installStack snippetbox snippetbox "Server is working on port" $HOME/snippetbox.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -66077,7 +66022,6 @@ services:
       - aistack-mindsdb-db
     networks:
       - int-aistack-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-dbs-net
@@ -66099,7 +66043,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-aistack-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -66122,7 +66065,6 @@ services:
       - aistack-mindsdb-db
     networks:
       - int-aistack-net
-      - dock-proxy-net
       - dock-ext-net
     environment:
       - HOSTNAME=0.0.0.0
@@ -66246,7 +66188,6 @@ services:
       - aistack-mindsdb-db
     networks:
       - int-aistack-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-dbs-net
@@ -66268,7 +66209,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-aistack-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -66291,7 +66231,6 @@ services:
       - aistack-mindsdb-db
     networks:
       - int-aistack-net
-      - dock-proxy-net
       - dock-ext-net
     environment:
       - HOSTNAME=0.0.0.0
@@ -66717,7 +66656,6 @@ services:
       - pixelfed-redis
     networks:
       - int-pixelfed-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-ldap-net
@@ -66749,7 +66687,6 @@ services:
       - pixelfed-redis
     networks:
       - int-pixelfed-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-ldap-net
@@ -68885,7 +68822,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -68906,7 +68842,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -68927,7 +68862,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -68948,7 +68882,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -68969,7 +68902,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -68990,7 +68922,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -69011,7 +68942,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -69263,7 +69193,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -69431,7 +69360,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     ports:
@@ -69609,7 +69537,6 @@ services:
       - ombi-db
     networks:
       - int-ombi-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -69828,7 +69755,6 @@ services:
       - meshcentral-db
     networks:
       - int-meshcentral-net
-      - dock-proxy-net
       - dock-internalmail-net
       - dock-ldap-net
       - dock-ext-net
@@ -70085,7 +70011,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -70830,7 +70755,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-internalmail-net
       - dock-ext-net
     volumes:
@@ -71076,7 +71000,6 @@ services:
       - standardnotes-db
     networks:
       - int-standardnotes-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -71099,7 +71022,6 @@ services:
       - standardnotes-db
     networks:
       - int-standardnotes-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -71119,7 +71041,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-standardnotes-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -71562,7 +71483,6 @@ services:
       - metabase-db
     networks:
       - int-metabase-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-dbs-net
     volumes:
@@ -71756,7 +71676,6 @@ services:
     depends_on:
       - kanboard-db
     networks:
-      - dock-proxy-net
       - dock-ldap-net
       - dock-internalmail-net
       - dock-ext-net
@@ -71997,7 +71916,6 @@ services:
     depends_on:
       - wekan-db
     networks:
-      - dock-proxy-net
       - dock-ldap-net
       - dock-internalmail-net
       - dock-ext-net
@@ -72289,7 +72207,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - int-revolt-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -72382,7 +72299,6 @@ services:
       - revolt-redis
       - revolt-rabbitmq
     networks:
-      - dock-proxy-net
       - dock-internalmail-net
       - int-revolt-net
     volumes:
@@ -72405,7 +72321,6 @@ services:
       - revolt-db
       - revolt-redis
     networks:
-      - dock-proxy-net
       - dock-internalmail-net
       - int-revolt-net
     volumes:
@@ -72425,7 +72340,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - int-revolt-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -72445,7 +72359,6 @@ services:
     depends_on:
       - revolt-db
     networks:
-      - dock-proxy-net
       - dock-internalmail-net
       - int-revolt-net
     volumes:
@@ -72465,7 +72378,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-internalmail-net
       - int-revolt-net
     volumes:
@@ -73002,7 +72914,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - int-revolt-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -73095,7 +73006,6 @@ services:
       - revolt-redis
       - revolt-rabbitmq
     networks:
-      - dock-proxy-net
       - dock-internalmail-net
       - int-revolt-net
     volumes:
@@ -73118,7 +73028,6 @@ services:
       - revolt-db
       - revolt-redis
     networks:
-      - dock-proxy-net
       - dock-internalmail-net
       - int-revolt-net
     volumes:
@@ -73138,7 +73047,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - int-revolt-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -73158,7 +73066,6 @@ services:
     depends_on:
       - revolt-db
     networks:
-      - dock-proxy-net
       - dock-internalmail-net
       - int-revolt-net
     volumes:
@@ -73178,7 +73085,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-internalmail-net
       - int-revolt-net
     volumes:
@@ -73411,7 +73317,6 @@ services:
       - mariadb
     networks:
       - int-frappe-hr-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -73664,7 +73569,6 @@ services:
       - minthcm-es
     networks:
       - int-minthcm-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -74065,7 +73969,6 @@ services:
       - twenty-db
     networks:
       - int-twenty-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     environment:
@@ -74092,7 +73995,6 @@ services:
       - twenty-db
     networks:
       - int-twenty-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     environment:
@@ -74329,7 +74231,6 @@ services:
       - twenty-db
     networks:
       - int-twenty-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     environment:
@@ -74356,7 +74257,6 @@ services:
       - twenty-db
     networks:
       - int-twenty-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     environment:
@@ -74618,7 +74518,6 @@ services:
       - odoo-db
     networks:
       - int-odoo-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -74851,7 +74750,6 @@ services:
       - calcom-db
     networks:
       - int-calcom-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -74877,7 +74775,6 @@ services:
 #      - studio
 #    networks:
 #      - int-calcom-net
-#      - dock-proxy-net
 #      - dock-ext-net
 #   volumes:
 #      - /etc/localtime:/etc/localtime:ro
@@ -75122,7 +75019,6 @@ services:
       - rallly-db
     networks:
       - int-rallly-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -75349,7 +75245,6 @@ services:
       - rallly-db
     networks:
       - int-rallly-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -75546,7 +75441,6 @@ services:
       - easyappointments-db
     networks:
       - int-easyappointments-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-ldap-net
@@ -76440,7 +76334,6 @@ services:
       - openproject-seeder
     networks:
       - int-openproject-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-ldap-net
@@ -76781,7 +76674,6 @@ services:
       - openproject-seeder
     networks:
       - int-openproject-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-ldap-net
@@ -77369,7 +77261,6 @@ services:
       - zammad-db
     networks:
       - int-zammad-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -77807,7 +77698,6 @@ services:
       - zammad-db
     networks:
       - int-zammad-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -78096,7 +77986,6 @@ services:
       - zulip-redis
     networks:
       - int-zulip-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-ldap-net
@@ -79356,7 +79245,6 @@ services:
       - killbill-db
     networks:
       - int-killbill-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-ldap-net
@@ -79380,7 +79268,6 @@ services:
       - killbill-db
     networks:
       - int-killbill-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -79655,7 +79542,6 @@ services:
       - invoiceshelf-db
     networks:
       - int-invoiceshelf-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -79904,7 +79790,6 @@ services:
       - invoiceninja-db
     networks:
       - int-invoiceninja-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -80261,7 +80146,6 @@ services:
     networks:
       - int-invoiceninja-net
       - dock-proxy-net
-      - dock-ext-net
       - dock-internalmail-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -80534,7 +80418,6 @@ services:
       - dolibarr-db
     networks:
       - int-dolibarr-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-ldap-net
@@ -80564,7 +80447,6 @@ services:
       - dolibarr-db
     networks:
       - int-dolibarr-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-ldap-net
@@ -80945,7 +80827,6 @@ services:
       - n8n-db
     networks:
       - int-n8n-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -80971,7 +80852,6 @@ services:
     command: worker
     networks:
       - int-n8n-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -81271,7 +81151,6 @@ services:
       - automatisch-redis
     networks:
       - int-automatisch-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -81296,7 +81175,6 @@ services:
       - automatisch-app
     networks:
       - int-automatisch-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -81564,7 +81442,6 @@ services:
       - activepieces-redis
     networks:
       - int-activepieces-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -81806,7 +81683,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     ports:
@@ -82529,7 +82405,6 @@ services:
       - opensign-db
     networks:
       - int-opensign-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -82552,7 +82427,6 @@ services:
       - opensign-db
     networks:
       - int-opensign-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -82781,7 +82655,6 @@ services:
       - docuseal-db
     networks:
       - int-docuseal-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -82994,7 +82867,6 @@ services:
       - controlr-aspire
     networks:
       - int-controlr-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -83016,7 +82888,6 @@ services:
       - controlr-db
     networks:
       - int-controlr-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -83236,7 +83107,6 @@ services:
       - akaunting-db
     networks:
       - int-akaunting-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -83468,7 +83338,6 @@ services:
       - axelor-db
     networks:
       - int-axelor-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -83491,7 +83360,6 @@ services:
       - axelor-app
     networks:
       - int-axelor-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -84006,7 +83874,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-localai-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-aipriv-net
     healthcheck:
@@ -84088,7 +83955,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-localai-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-aipriv-net
     volumes:
@@ -84313,7 +84179,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-aipriv-net
     volumes:
@@ -84531,7 +84396,6 @@ services:
       - langflow-db
     networks:
       - int-langflow-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-aipriv-net
@@ -84688,7 +84552,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-aipriv-net
     volumes:
@@ -84819,7 +84682,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-aipriv-net
     volumes:
@@ -85023,7 +84885,6 @@ services:
       - firecrawl-rabbitmq
     networks:
       - int-firecrawl-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-aipriv-net
     volumes:
@@ -85564,7 +85425,6 @@ services:
       - librechat-redis
     networks:
       - int-librechat-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-aipriv-net
@@ -85947,7 +85807,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-aipriv-net
     healthcheck:
@@ -86106,7 +85965,6 @@ services:
       - /dev/kfd
       - /dev/dri
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-aipriv-net
     volumes:
@@ -86299,7 +86157,6 @@ services:
       - openwebui-db
     networks:
       - int-openwebui-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-aipriv-net
@@ -86613,7 +86470,6 @@ services:
       - $KHOJ_VNC_PORT:5900
     networks:
       - int-khoj-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-aipriv-net
     volumes:
@@ -86638,7 +86494,6 @@ services:
       - khoj-db
     networks:
       - int-khoj-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-aipriv-net
     volumes:
@@ -86872,7 +86727,6 @@ services:
       - lobechat-redis
     networks:
       - int-lobechat-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-aipriv-net
     entrypoint: >
@@ -87114,7 +86968,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-aipriv-net
     volumes:
@@ -87398,7 +87251,6 @@ services:
     #   - --mcp-host-api-key=ragflow-$RAGFLOW_MCPSERVER_API_KEY
     networks:
       - int-ragflow-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-aipriv-net
@@ -88227,7 +88079,6 @@ services:
       - no-new-privileges:true
     command: serve
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-aipriv-net
     volumes:
@@ -88403,7 +88254,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-aipriv-net
     volumes:
@@ -88589,7 +88439,6 @@ services:
       - no-new-privileges:true
     networks:
       - int-docling-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-aipriv-net
     volumes:
@@ -90179,7 +90028,6 @@ services:
       - mindsdb-db
     networks:
       - int-mindsdb-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-aipriv-net
@@ -91113,7 +90961,6 @@ services:
     entrypoint: /bin/sh -c "sleep 3; flowise start"
     networks:
       - int-flowise-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-aipriv-net
@@ -91434,7 +91281,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-aipriv-net
     volumes:
@@ -91633,7 +91479,6 @@ services:
       - nocodb-db
     networks:
       - int-nocodb-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -91935,7 +91780,6 @@ services:
       - ente-db
     networks:
       - int-ente-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -91959,7 +91803,6 @@ services:
       - ente-db
     networks:
       - int-ente-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -92423,7 +92266,6 @@ services:
     entrypoint: bash -c 'eval "echo \"\$\$(cat ~/temp.yml)\"" > ~/kong.yml && /docker-entrypoint.sh kong docker-start'
     networks:
       - int-morphic-net
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -92747,7 +92589,6 @@ services:
     networks:
       - int-morphic-net
       - dock-ext-net
-      - dock-proxy-net
       - dock-aipriv-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -94076,7 +93917,6 @@ services:
       - opennotebook-db
     networks:
       - int-opennotebook-net
-      - dock-proxy-net
       - dock-ext-net
       - dock-aipriv-net
     volumes:
@@ -94236,7 +94076,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
       - dock-aipriv-net
@@ -104619,7 +104458,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
