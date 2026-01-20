@@ -5108,15 +5108,15 @@ function installAllAvailableStacks()
   pullCommonImages
   stackListArr=($(echo $HSHQ_OPTIONAL_STACKS | tr "," "\n"))
   sel_svcs=()
-  is_list_emtpy=true
+  is_list_empty=true
   for curStack in "${stackListArr[@]}"
   do
     if ! [ -d $HSHQ_STACKS_DIR/$curStack ] && ! [ "$(isServiceDisabled $curStack)" = "true" ]; then
       sel_svcs+=($curStack)
-      is_list_emtpy=false
+      is_list_empty=false
     fi
   done
-  if [ "$is_list_emtpy" = "true" ]; then
+  if [ "$is_list_empty" = "true" ]; then
     if [ "$is_msgbox_prompt" = "true" ]; then
       showMessageBox "No Available Services" "There are no available services to install."
     fi
@@ -29672,6 +29672,7 @@ function loadPinnedDockerImages()
   IMG_DRAWIO_PLANTUML=mirror.gcr.io/jgraph/plantuml-server
   IMG_DRAWIO_EXPORT=mirror.gcr.io/jgraph/export-server
   IMG_DRAWIO_WEB=mirror.gcr.io/jgraph/drawio:29.2.2
+  IMG_DRAWIO_NEXTAI=ghcr.io/dayuanjiang/next-ai-draw-io:sha-5007c7b
   IMG_DUPLICATI=mirror.gcr.io/linuxserver/duplicati:v2.2.0.1_stable_2025-11-09-ls269
   IMG_EASYAPPOINTMENTS_APP=mirror.gcr.io/alextselegidis/easyappointments:1.5.2
   IMG_ESPOCRM_APP=mirror.gcr.io/espocrm/espocrm:9.2.5-apache
@@ -29896,6 +29897,9 @@ function loadPinnedDockerImages()
   IMG_ENTE_SERVER=hshq/ente-server:v1
   IMG_ENTE_WEB=ghcr.io/ente-io/web:460ee1671b08b119b894f0ddd71b4c906fb29647
   IMG_MORPHIC_APP=ghcr.io/miurla/morphic:6443b20c1205adf233c98b67beb34a6117e1cd7a
+  IMG_OPENNOTEBOOK_DB=mirror.gcr.io/surrealdb/surrealdb:v2.4
+  IMG_OPENNOTEBOOK_APP=mirror.gcr.io/lfnovo/open_notebook:1.5.2
+  IMG_APPSMITH_APP=mirror.gcr.io/appsmith/appsmith-ce:v1.94
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -29968,7 +29972,7 @@ function getScriptStackVersion()
     excalidraw)
       echo "v4" ;;
     drawio)
-      echo "v8" ;;
+      echo "v9" ;;
     invidious)
       echo "v2" ;;
     ittools)
@@ -30188,6 +30192,10 @@ function getScriptStackVersion()
     ente)
       echo "v1" ;;
     morphic)
+      echo "v1" ;;
+    opennotebook)
+      echo "v1" ;;
+    appsmith)
       echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
@@ -30443,6 +30451,9 @@ function pullDockerImages()
   pullImage $IMG_ENTE_SERVER
   pullImage $IMG_ENTE_WEB
   pullImage $IMG_MORPHIC_APP
+  pullImage $IMG_OPENNOTEBOOK_DB
+  pullImage $IMG_OPENNOTEBOOK_APP
+  pullImage $IMG_APPSMITH_APP
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -32160,6 +32171,25 @@ MORPHIC_SUPABASE_VAULT_ENC_KEY=
 MORPHIC_SUPABASE_LOGFLARE_PRIVATE_ACCESS_TOKEN=
 MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN=
 # Morphic (Service Details) END
+
+# OpenNotebook (Service Details) BEGIN
+OPENNOTEBOOK_INIT_ENV=true
+OPENNOTEBOOK_ADMIN_USERNAME=
+OPENNOTEBOOK_ADMIN_EMAIL_ADDRESS=
+OPENNOTEBOOK_ADMIN_PASSWORD=
+OPENNOTEBOOK_SURREALDB_NAME=
+OPENNOTEBOOK_SURREALDB_USER=
+OPENNOTEBOOK_SURREALDB_PASSWORD=
+# OpenNotebook (Service Details) END
+
+# Appsmith (Service Details) BEGIN
+APPSMITH_INIT_ENV=true
+APPSMITH_ADMIN_USERNAME=
+APPSMITH_ADMIN_EMAIL_ADDRESS=
+APPSMITH_ADMIN_PASSWORD=
+APPSMITH_SUPERVISOR_USER=
+APPSMITH_SUPERVISOR_PASSWORD=
+# Appsmith (Service Details) END
 
 # Service Details END
 EOFCF
@@ -36003,6 +36033,50 @@ function initServicesCredentials()
     MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN=$(openssl rand -base64 24)
     updateConfigVar MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN $MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN
   fi
+  if [ -z "$OPENNOTEBOOK_ADMIN_USERNAME" ]; then
+    OPENNOTEBOOK_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_opennotebook"
+    updateConfigVar OPENNOTEBOOK_ADMIN_USERNAME $OPENNOTEBOOK_ADMIN_USERNAME
+  fi
+  if [ -z "$OPENNOTEBOOK_ADMIN_EMAIL_ADDRESS" ]; then
+    OPENNOTEBOOK_ADMIN_EMAIL_ADDRESS=$OPENNOTEBOOK_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar OPENNOTEBOOK_ADMIN_EMAIL_ADDRESS $OPENNOTEBOOK_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$OPENNOTEBOOK_ADMIN_PASSWORD" ]; then
+    OPENNOTEBOOK_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OPENNOTEBOOK_ADMIN_PASSWORD $OPENNOTEBOOK_ADMIN_PASSWORD
+  fi
+  if [ -z "$OPENNOTEBOOK_SURREALDB_NAME" ]; then
+    OPENNOTEBOOK_SURREALDB_NAME=opennotebookdb
+    updateConfigVar OPENNOTEBOOK_SURREALDB_NAME $OPENNOTEBOOK_SURREALDB_NAME
+  fi
+  if [ -z "$OPENNOTEBOOK_SURREALDB_USER" ]; then
+    OPENNOTEBOOK_SURREALDB_USER=opennotebook-user
+    updateConfigVar OPENNOTEBOOK_SURREALDB_USER $OPENNOTEBOOK_SURREALDB_USER
+  fi
+  if [ -z "$OPENNOTEBOOK_SURREALDB_PASSWORD" ]; then
+    OPENNOTEBOOK_SURREALDB_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OPENNOTEBOOK_SURREALDB_PASSWORD $OPENNOTEBOOK_SURREALDB_PASSWORD
+  fi
+  if [ -z "$APPSMITH_ADMIN_USERNAME" ]; then
+    APPSMITH_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_appsmith"
+    updateConfigVar APPSMITH_ADMIN_USERNAME $APPSMITH_ADMIN_USERNAME
+  fi
+  if [ -z "$APPSMITH_ADMIN_EMAIL_ADDRESS" ]; then
+    APPSMITH_ADMIN_EMAIL_ADDRESS=$APPSMITH_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar APPSMITH_ADMIN_EMAIL_ADDRESS $APPSMITH_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$APPSMITH_ADMIN_PASSWORD" ]; then
+    APPSMITH_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar APPSMITH_ADMIN_PASSWORD $APPSMITH_ADMIN_PASSWORD
+  fi
+  if [ -z "$APPSMITH_SUPERVISOR_USER" ]; then
+    APPSMITH_SUPERVISOR_USER=appsmith_supervisor
+    updateConfigVar APPSMITH_SUPERVISOR_USER $APPSMITH_SUPERVISOR_USER
+  fi
+  if [ -z "$APPSMITH_SUPERVISOR_PASSWORD" ]; then
+    APPSMITH_SUPERVISOR_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar APPSMITH_SUPERVISOR_PASSWORD $APPSMITH_SUPERVISOR_PASSWORD
+  fi
 #ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
   if [ -z "$CLIENTDNS_USER1_ADMIN_USERNAME" ]; then
@@ -36314,6 +36388,7 @@ function initServiceVars()
   checkAddSvc "SVCD_DOLIBARR_APP=dolibarr,dolibarr,primary,user,Dolibarr,dolibarr,hshq"
   checkAddSvc "SVCD_DOZZLE=dozzle,dozzle,primary,admin,Dozzle,dozzle,hshq"
   checkAddSvc "SVCD_DRAWIO_WEB=drawio,drawio,primary,user,Draw.io,drawio,hshq"
+  checkAddSvc "SVCD_DRAWIO_NEXTAI=drawio,drawio-nextai,primary,user,NextAI Draw.io,drawio-nextai,hshq"
   checkAddSvc "SVCD_DUPLICATI=duplicati,duplicati,home,admin,Duplicati,duplicati,hshq"
   checkAddSvc "SVCD_EASYAPPOINTMENTS=easyappointments,easyappointments,primary,user,EasyAppointments,easyappointments,hshq"
   checkAddSvc "SVCD_ESPOCRM=espocrm,espocrm,primary,user,EspoCRM,espocrm,hshq"
@@ -36480,6 +36555,8 @@ function initServiceVars()
   checkAddSvc "SVCD_ENTE_SERVER=ente,ente-server,primary,user,Ente Server,ente-server,hshq"
   checkAddSvc "SVCD_MORPHIC_APP=morphic,morphic,primary,user,Morphic,morphic,hshq"
   checkAddSvc "SVCD_MORPHIC_SUPABASE=morphic,morphic-supabase,primary,admin,Morphic Supabase,morphic-supabase,hshq"
+  checkAddSvc "SVCD_OPENNOTEBOOK_APP=opennotebook,opennotebook,primary,user,OpenNotebook,opennotebook,hshq"
+  checkAddSvc "SVCD_APPSMITH_APP=appsmith,appsmith,primary,user,Appsmith,appsmith,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -36772,6 +36849,10 @@ function installStackByName()
       installEnte $is_integrate ;;
     morphic)
       installMorphic $is_integrate ;;
+    opennotebook)
+      installOpenNotebook $is_integrate ;;
+    appsmith)
+      installAppsmith $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -37078,6 +37159,10 @@ function performUpdateStackByName()
       performUpdateEnte ;;
     morphic)
       performUpdateMorphic ;;
+    opennotebook)
+      performUpdateOpenNotebook ;;
+    appsmith)
+      performUpdateAppsmith ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -37234,6 +37319,9 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_NOCODB_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ENTE_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MORPHIC_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_DRAWIO_NEXTAI.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_OPENNOTEBOOK_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_APPSMITH_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_PRIMARY_HERE
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -37431,6 +37519,8 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_NOCODB_APP}-Admin" https://$SUB_NOCODB_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $NOCODB_ADMIN_EMAIL_ADDRESS $NOCODB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ENTE_APP}-Admin" https://$SUB_ENTE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $ENTE_ADMIN_USERNAME $ENTE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MORPHIC_APP}-Admin" https://$SUB_MORPHIC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MORPHIC_ADMIN_USERNAME $MORPHIC_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENNOTEBOOK_APP}-Admin" https://$SUB_OPENNOTEBOOK_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENNOTEBOOK_ADMIN_USERNAME $OPENNOTEBOOK_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_APPSMITH_APP}-Admin" "\"https://$SUB_APPSMITH_APP.$HOMESERVER_DOMAIN/user/login,https://$SUB_APPSMITH_APP.$HOMESERVER_DOMAIN/setup/welcome\"" $HOMESERVER_ABBREV $APPSMITH_ADMIN_EMAIL_ADDRESS $APPSMITH_ADMIN_PASSWORD)"\n"
 #ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
@@ -37601,6 +37691,8 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_NOCODB_APP}-Admin" https://$SUB_NOCODB_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $NOCODB_ADMIN_EMAIL_ADDRESS $NOCODB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ENTE_APP}-Admin" https://$SUB_ENTE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $ENTE_ADMIN_USERNAME $ENTE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MORPHIC_APP}-Admin" https://$SUB_MORPHIC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MORPHIC_ADMIN_USERNAME $MORPHIC_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENNOTEBOOK_APP}-Admin" https://$SUB_OPENNOTEBOOK_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENNOTEBOOK_ADMIN_USERNAME $OPENNOTEBOOK_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_APPSMITH_APP}-Admin" "\"https://$SUB_APPSMITH_APP.$HOMESERVER_DOMAIN/user/login,https://$SUB_APPSMITH_APP.$HOMESERVER_DOMAIN/setup/welcome\"" $HOMESERVER_ABBREV $APPSMITH_ADMIN_EMAIL_ADDRESS $APPSMITH_ADMIN_PASSWORD)"\n"
 #ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
@@ -37843,6 +37935,9 @@ function getHeimdallOrderFromSub()
       order_num=58
       ;;
     "$SUB_DRAWIO_WEB")
+      order_num=59
+      ;;
+    "$SUB_DRAWIO_NEXTAI")
       order_num=59
       ;;
     "$SUB_MEALIE")
@@ -38151,6 +38246,12 @@ function getHeimdallOrderFromSub()
     "$SUB_MORPHIC_APP")
       order_num=160
       ;;
+    "$SUB_OPENNOTEBOOK_APP")
+      order_num=162
+      ;;
+    "$SUB_APPSMITH_APP")
+      order_num=163
+      ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=900
@@ -38201,18 +38302,18 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic,opennotebook,appsmith
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
-  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
-  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
-  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic,opennotebook,appsmith
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic,opennotebook,appsmith
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic,opennotebook,appsmith
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic,opennotebook,appsmith
+  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic,opennotebook,appsmith
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic,opennotebook,appsmith
+  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic,opennotebook,appsmith
+  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic,opennotebook,appsmith
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic,opennotebook,appsmith
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic,opennotebook,appsmith
 #INIT_SERVICE_DEFAULTS_END
 }
 
@@ -38551,6 +38652,9 @@ function getScriptImageByContainerName()
       ;;
     "drawio-web")
       container_image=$IMG_DRAWIO_WEB
+      ;;
+    "drawio-nextai")
+      container_image=$IMG_DRAWIO_NEXTAI
       ;;
     "invidious-db")
       container_image=postgres:15.0-bullseye
@@ -39569,6 +39673,15 @@ function getScriptImageByContainerName()
     "morphic-redis")
       container_image=mirror.gcr.io/valkey/valkey:alpine3.23
       ;;
+    "opennotebook-db")
+      container_image=$IMG_OPENNOTEBOOK_DB
+      ;;
+    "opennotebook-app")
+      container_image=$IMG_OPENNOTEBOOK_APP
+      ;;
+    "appsmith-app")
+      container_image=$IMG_APPSMITH_APP
+      ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
@@ -39682,6 +39795,8 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "NocoDB" "NOCODB_INIT_ENV=false,NOCODB_ADMIN_USERNAME=,NOCODB_ADMIN_EMAIL_ADDRESS=,NOCODB_ADMIN_PASSWORD=,NOCODB_DATABASE_NAME=,NOCODB_DATABASE_USER=,NOCODB_DATABASE_USER_PASSWORD=,NOCODB_DATABASE_READONLYUSER=,NOCODB_DATABASE_READONLYUSER_PASSWORD=,NOCODB_REDIS_PASSWORD=,NOCODB_AUTH_JWT_SECRET=,NOCODB_MINIO_KEY=,NOCODB_MINIO_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "Ente" "ENTE_INIT_ENV=false,ENTE_ADMIN_USERNAME=,ENTE_ADMIN_EMAIL_ADDRESS=,ENTE_ADMIN_PASSWORD=,ENTE_DATABASE_NAME=,ENTE_DATABASE_USER=,ENTE_DATABASE_USER_PASSWORD=,ENTE_DATABASE_READONLYUSER=,ENTE_DATABASE_READONLYUSER_PASSWORD=,ENTE_MINIO_KEY=,ENTE_MINIO_SECRET=,ENTE_MUSEUM_KEY=,ENTE_MUSEUM_HASH=,ENTE_MUSEUM_JWT_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "Morphic" "MORPHIC_INIT_ENV=false,MORPHIC_ADMIN_USERNAME=,MORPHIC_ADMIN_EMAIL_ADDRESS=,MORPHIC_ADMIN_PASSWORD=,MORPHIC_DATABASE_NAME=,MORPHIC_DATABASE_USER=,MORPHIC_DATABASE_USER_PASSWORD=,MORPHIC_DATABASE_READONLYUSER=,MORPHIC_DATABASE_READONLYUSER_PASSWORD=,MORPHIC_REDIS_PASSWORD=,MORPHIC_SUPABASE_DASHBOARD_USERNAME=,MORPHIC_SUPABASE_DASHBOARD_PASSWORD=,MORPHIC_SUPABASE_ANON_KEY=,MORPHIC_SUPABASE_JWT_SECRET=,MORPHIC_SUPABASE_DB_ENC_KEY=,MORPHIC_SUPABASE_PG_META_CRYPTO_KEY=,MORPHIC_SUPABASE_SECRET_KEY_BASE=,MORPHIC_SUPABASE_SERVICE_ROLE_KEY=,MORPHIC_SUPABASE_VAULT_ENC_KEY=,MORPHIC_SUPABASE_LOGFLARE_PRIVATE_ACCESS_TOKEN=,MORPHIC_SUPABASE_LOGFLARE_PUBLIC_ACCESS_TOKEN=" $CONFIG_FILE false
+  checkAddServiceToConfig "OpenNotebook" "OPENNOTEBOOK_INIT_ENV=false,OPENNOTEBOOK_ADMIN_USERNAME=,OPENNOTEBOOK_ADMIN_EMAIL_ADDRESS=,OPENNOTEBOOK_ADMIN_PASSWORD=,OPENNOTEBOOK_SURREALDB_NAME=,OPENNOTEBOOK_SURREALDB_USER=,OPENNOTEBOOK_SURREALDB_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Appsmith" "APPSMITH_INIT_ENV=false,APPSMITH_ADMIN_USERNAME=,APPSMITH_ADMIN_EMAIL_ADDRESS=,APPSMITH_ADMIN_PASSWORD=,APPSMITH_SUPERVISOR_USER=,APPSMITH_SUPERVISOR_PASSWORD=" $CONFIG_FILE false
 #ADD_NEW_ADD_SVC_CONFIG_HERE
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -56580,8 +56695,11 @@ function installDrawIO()
   if [ $? -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName drawio-nextai)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/drawio
   mkdir $HSHQ_STACKS_DIR/drawio/fonts
   outputConfigDrawIO
@@ -56592,7 +56710,6 @@ function installDrawIO()
   fi
   echo "Draw.io installed, sleeping 10 seconds..."
   sleep 10
-
   set +e
   docker container ps | grep nextcloud-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
@@ -56600,7 +56717,6 @@ function installDrawIO()
     docker exec -u www-data nextcloud-app php occ --no-warnings config:app:set drawio DrawioUrl --value="https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN"
   fi
   set -e
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -56615,8 +56731,24 @@ function installDrawIO()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_DRAWIO_WEB $MANAGETLS_DRAWIO_WEB "$is_integrate_hshq" $NETDEFAULT_DRAWIO_WEB "$inner_block"
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_DRAWIO_NEXTAI.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://drawio-nextai:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_DRAWIO_NEXTAI $MANAGETLS_DRAWIO_NEXTAI "$is_integrate_hshq" $NETDEFAULT_DRAWIO_NEXTAI "$inner_block"
+  insertSubAuthelia $SUB_DRAWIO_NEXTAI.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll drawio "$FMLNAME_DRAWIO_WEB" $USERTYPE_DRAWIO_WEB "https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN" "drawio.png" "$(getHeimdallOrderFromSub $SUB_DRAWIO_WEB $USERTYPE_DRAWIO_WEB)"
+    insertEnableSvcAll drawio "$FMLNAME_DRAWIO_NEXTAI" $USERTYPE_DRAWIO_NEXTAI "https://$SUB_DRAWIO_NEXTAI.$HOMESERVER_DOMAIN" "nextai-drawio.png" "$(getHeimdallOrderFromSub $SUB_DRAWIO_NEXTAI $USERTYPE_DRAWIO_NEXTAI)"
     restartAllCaddyContainers
   fi
 }
@@ -56675,6 +56807,26 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
 
+  drawio-nextai:
+    image: $(getScriptImageByContainerName drawio-nextai)
+    container_name: drawio-nextai
+    hostname: drawio-nextai
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - drawio-plantuml
+      - drawio-export
+      - drawio-web
+    networks:
+      - dock-proxy-net
+      - dock-aipriv-net
+      - int-drawio-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
 volumes:
   v-drawio-fonts:
     driver: local
@@ -56687,20 +56839,26 @@ networks:
   dock-proxy-net:
     name: dock-proxy
     external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
   int-drawio-net:
     driver: bridge
     internal: true
     ipam:
       driver: default
 
-
 EOFDI
-
   cat <<EOFDI > $HOME/drawio.env
 DRAWIO_SELF_CONTAINED=1
 PLANTUML_URL=http://drawio-plantuml:8080/
 EXPORT_URL=http://drawio-export:8000/
 DRAWIO_BASE_URL=https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN
+NEXT_PUBLIC_DRAWIO_BASE_URL=http://drawio-web:8080
+AI_PROVIDER=ollama
+AI_MODEL=qwen3:4b
+OLLAMA_BASE_URL=http://ollama-server:11434/api
+OLLAMA_ENABLE_THINKING=true
 EOFDI
 }
 
@@ -56761,11 +56919,22 @@ function performUpdateDrawIO()
       image_update_map[2]="mirror.gcr.io/jgraph/export-server,mirror.gcr.io/jgraph/export-server"
     ;;
     8)
-      newVer=v8
+      newVer=v9
       curImageList=mirror.gcr.io/jgraph/drawio:29.2.2,mirror.gcr.io/jgraph/plantuml-server,mirror.gcr.io/jgraph/export-server
       image_update_map[0]="mirror.gcr.io/jgraph/drawio:29.2.2,mirror.gcr.io/jgraph/drawio:29.2.2"
       image_update_map[1]="mirror.gcr.io/jgraph/plantuml-server,mirror.gcr.io/jgraph/plantuml-server"
       image_update_map[2]="mirror.gcr.io/jgraph/export-server,mirror.gcr.io/jgraph/export-server"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true addNextAIDrawIOV9
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    9)
+      newVer=v9
+      curImageList=mirror.gcr.io/jgraph/drawio:29.2.2,mirror.gcr.io/jgraph/plantuml-server,mirror.gcr.io/jgraph/export-server,ghcr.io/dayuanjiang/next-ai-draw-io:sha-5007c7b
+      image_update_map[0]="mirror.gcr.io/jgraph/drawio:29.2.2,mirror.gcr.io/jgraph/drawio:29.2.2"
+      image_update_map[1]="mirror.gcr.io/jgraph/plantuml-server,mirror.gcr.io/jgraph/plantuml-server"
+      image_update_map[2]="mirror.gcr.io/jgraph/export-server,mirror.gcr.io/jgraph/export-server"
+      image_update_map[3]="ghcr.io/dayuanjiang/next-ai-draw-io:sha-5007c7b,ghcr.io/dayuanjiang/next-ai-draw-io:sha-5007c7b"
     ;;
     *)
       is_upgrade_error=true
@@ -56775,6 +56944,136 @@ function performUpdateDrawIO()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function addNextAIDrawIOV9()
+{
+  pullImage ghcr.io/dayuanjiang/next-ai-draw-io:sha-5007c7b
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  rm -f $HOME/drawio-compose.yml
+  cat <<EOFDI > $HOME/drawio-compose.yml
+$STACK_VERSION_PREFIX drawio v9
+
+services:
+  drawio-plantuml:
+    image: mirror.gcr.io/jgraph/plantuml-server
+    container_name: drawio-plantuml
+    hostname: drawio-plantuml
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-drawio-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-drawio-fonts:/usr/share/fonts/drawio
+
+  drawio-export:
+    image: mirror.gcr.io/jgraph/export-server
+    container_name: drawio-export
+    hostname: drawio-export
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-drawio-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-drawio-fonts:/usr/share/fonts/drawio
+
+  drawio-web:
+    image: mirror.gcr.io/jgraph/drawio:29.2.2
+    container_name: drawio-web
+    hostname: drawio-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - drawio-plantuml
+      - drawio-export
+    networks:
+      - dock-proxy-net
+      - int-drawio-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  drawio-nextai:
+    image: ghcr.io/dayuanjiang/next-ai-draw-io:sha-5007c7b
+    container_name: drawio-nextai
+    hostname: drawio-nextai
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - drawio-plantuml
+      - drawio-export
+      - drawio-web
+    networks:
+      - dock-proxy-net
+      - dock-aipriv-net
+      - int-drawio-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+volumes:
+  v-drawio-fonts:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/drawio/fonts
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-drawio-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+EOFDI
+  rm -f $HOME/drawio.env
+  cat <<EOFDI > $HOME/drawio.env
+DRAWIO_SELF_CONTAINED=1
+PLANTUML_URL=http://drawio-plantuml:8080/
+EXPORT_URL=http://drawio-export:8000/
+DRAWIO_BASE_URL=https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN
+NEXT_PUBLIC_DRAWIO_BASE_URL=http://drawio-web:8080
+AI_PROVIDER=ollama
+AI_MODEL=qwen3:4b
+OLLAMA_BASE_URL=http://ollama-server:11434/api
+OLLAMA_ENABLE_THINKING=true
+EOFDI
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_DRAWIO_NEXTAI.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://drawio-nextai:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_DRAWIO_NEXTAI $MANAGETLS_DRAWIO_NEXTAI "$is_integrate_hshq"
+  insertSubAuthelia $SUB_DRAWIO_NEXTAI.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  insertEnableSvcAll drawio "$FMLNAME_DRAWIO_NEXTAI" $USERTYPE_DRAWIO_NEXTAI "https://$SUB_DRAWIO_NEXTAI.$HOMESERVER_DOMAIN" "nextai-drawio.png" "$(getHeimdallOrderFromSub $SUB_DRAWIO_NEXTAI $USERTYPE_DRAWIO_NEXTAI)"
 }
 
 # Invidious
@@ -59400,13 +59699,11 @@ function installStirlingPDF()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/stirlingpdf
   mkdir $HSHQ_STACKS_DIR/stirlingpdf/configs
   mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf
   mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf/logs
   mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf/traindata
-
   outputConfigStirlingPDF
   installStack stirlingpdf stirlingpdf "Server PID" $HOME/stirlingpdf.env
   retval=$?
@@ -59414,7 +59711,6 @@ function installStirlingPDF()
     return $retval
   fi
   sleep 3
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -80894,7 +81190,7 @@ function installAutomatisch()
   addReadOnlyUserToDatabase Automatisch postgres automatisch-db $AUTOMATISCH_DATABASE_NAME $AUTOMATISCH_DATABASE_USER $AUTOMATISCH_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/automatisch/dbexport $AUTOMATISCH_DATABASE_READONLYUSER $AUTOMATISCH_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_AUTOMATISCH_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -81187,7 +81483,7 @@ function installActivePieces()
   addReadOnlyUserToDatabase ActivePieces postgres activepieces-db $ACTIVEPIECES_DATABASE_NAME $ACTIVEPIECES_DATABASE_USER $ACTIVEPIECES_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/activepieces/dbexport $ACTIVEPIECES_DATABASE_READONLYUSER $ACTIVEPIECES_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_ACTIVEPIECES_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -81470,7 +81766,7 @@ function installBeszel()
   updateStackEnv beszel modFunBeszelUpdateKeyToken > /dev/null 2>&1
   if [ -z "$FMLNAME_BESZEL_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -81699,7 +81995,7 @@ function installTaiga()
   addReadOnlyUserToDatabase Taiga postgres taiga-db $TAIGA_DATABASE_NAME $TAIGA_DATABASE_USER $TAIGA_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/taiga/dbexport $TAIGA_DATABASE_READONLYUSER $TAIGA_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_TAIGA_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -82165,7 +82461,7 @@ function installOpenSign()
   addReadOnlyUserToDatabase OpenSign mongodb opensign-db $OPENSIGN_DATABASE_NAME $OPENSIGN_DATABASE_USER $OPENSIGN_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/opensign/dbexport $OPENSIGN_DATABASE_READONLYUSER $OPENSIGN_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_OPENSIGN_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -82405,7 +82701,7 @@ function installDocuSeal()
   addReadOnlyUserToDatabase DocuSeal postgres docuseal-db $DOCUSEAL_DATABASE_NAME $DOCUSEAL_DATABASE_USER $DOCUSEAL_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/docuseal/dbexport $DOCUSEAL_DATABASE_READONLYUSER $DOCUSEAL_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_DOCUSEAL_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -82601,7 +82897,7 @@ function installControlR()
   addReadOnlyUserToDatabase ControlR postgres controlr-db $CONTROLR_DATABASE_NAME $CONTROLR_DATABASE_USER $CONTROLR_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/controlr/dbexport $CONTROLR_DATABASE_READONLYUSER $CONTROLR_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_CONTROLR_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -82861,7 +83157,7 @@ function installAkaunting()
   addReadOnlyUserToDatabase Akaunting mysql akaunting-db $AKAUNTING_DATABASE_NAME root $AKAUNTING_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/akaunting/dbexport $AKAUNTING_DATABASE_READONLYUSER $AKAUNTING_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_AKAUNTING_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -83076,7 +83372,7 @@ function installAxelor()
   addReadOnlyUserToDatabase Axelor postgres axelor-db $AXELOR_DATABASE_NAME $AXELOR_DATABASE_USER $AXELOR_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/axelor/dbexport $AXELOR_DATABASE_READONLYUSER $AXELOR_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_AXELOR_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -83333,7 +83629,7 @@ function installConvertX()
   echo "Container restarted, continuing..."
   if [ -z "$FMLNAME_CONVERTX_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -83461,7 +83757,7 @@ function installKopia()
   sleep 3
   if [ -z "$FMLNAME_KOPIA_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -83635,7 +83931,7 @@ function installLocalAI()
   sleep 3
   if [ -z "$FMLNAME_LOCALAI_SERVER" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -83977,7 +84273,7 @@ function installComfyUI()
   sleep 3
   if [ -z "$FMLNAME_COMFYUI_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -84155,7 +84451,7 @@ function installLangflow()
   addReadOnlyUserToDatabase Langflow postgres langflow-db $LANGFLOW_DATABASE_NAME $LANGFLOW_DATABASE_USER $LANGFLOW_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/langflow/dbexport $LANGFLOW_DATABASE_READONLYUSER $LANGFLOW_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_LANGFLOW_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -84351,7 +84647,7 @@ function installAnythingLLM()
   sleep 3
   if [ -z "$FMLNAME_ANYTHINGLLM_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -84483,7 +84779,7 @@ function installPerplexica()
   sleep 3
   if [ -z "$FMLNAME_PERPLEXICA_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -84638,7 +84934,7 @@ function installFirecrawl()
   sleep 3
   if [ -z "$FMLNAME_FIRECRAWL_API" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -85165,7 +85461,7 @@ function installLibreChat()
   addReadOnlyUserToDatabase LibreChat mongodb librechat-mongodb $LIBRECHAT_MONGODB_DATABASE $LIBRECHAT_MONGODB_USER $LIBRECHAT_MONGODB_USER_PASSWORD $HSHQ_STACKS_DIR/librechat/mongoexport $LIBRECHAT_MONGODB_READONLYUSER $LIBRECHAT_MONGODB_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_LIBRECHAT_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -85611,7 +85907,7 @@ function installCrawl4AI()
   sleep 3
   if [ -z "$FMLNAME_CRAWL4AI_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -85763,7 +86059,7 @@ function installOllama()
   sleep 3
   if [ -z "$FMLNAME_OLLAMA_SERVER" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -85923,7 +86219,7 @@ function installOpenWebUI()
   addReadOnlyUserToDatabase OpenWebUI postgres openwebui-db $OPENWEBUI_DATABASE_NAME $OPENWEBUI_DATABASE_USER $OPENWEBUI_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/openwebui/dbexport $OPENWEBUI_DATABASE_READONLYUSER $OPENWEBUI_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_OPENWEBUI_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -86214,7 +86510,7 @@ function installKhoj()
   addReadOnlyUserToDatabase Khoj postgres khoj-db $KHOJ_DATABASE_NAME $KHOJ_DATABASE_USER $KHOJ_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/khoj/dbexport $KHOJ_DATABASE_READONLYUSER $KHOJ_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_KHOJ_SERVER" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -86494,7 +86790,7 @@ function installLobeChat()
   addReadOnlyUserToDatabase LobeChat postgres lobechat-db $LOBECHAT_DATABASE_NAME $LOBECHAT_DATABASE_USER $LOBECHAT_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/lobechat/dbexport $LOBECHAT_DATABASE_READONLYUSER $LOBECHAT_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_LOBECHAT_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -86778,7 +87074,7 @@ function installInvokeAI()
   sleep 3
   if [ -z "$FMLNAME_INVOKEAI_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -86952,7 +87248,7 @@ function installRAGFlow()
   addReadOnlyUserToDatabase RAGFlow postgres ragflow-db $RAGFLOW_DATABASE_NAME $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/ragflow/dbexport $RAGFLOW_DATABASE_READONLYUSER $RAGFLOW_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_RAGFLOW_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -87890,7 +88186,7 @@ function installTabbyML()
   docker container restart tabbyml-app > /dev/null 2>&1
   if [ -z "$FMLNAME_TABBYML_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -88050,7 +88346,7 @@ function installDeepWikiOpen()
   sleep 3
   if [ -z "$FMLNAME_DEEPWIKI_OPEN_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -88252,7 +88548,7 @@ function installDocling()
   sleep 3
   if [ -z "$FMLNAME_DOCLING_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -88518,7 +88814,7 @@ function installDify()
   startStopStack dify start
   if [ -z "$FMLNAME_DIFY_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -89789,7 +90085,7 @@ function installMindsDB()
   addReadOnlyUserToDatabase MindsDB postgres mindsdb-db $MINDSDB_DATABASE_NAME $MINDSDB_DATABASE_USER $MINDSDB_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/mindsdb/dbexport $MINDSDB_DATABASE_READONLYUSER $MINDSDB_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_MINDSDB_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -90204,7 +90500,7 @@ function installWaterCrawl()
   addReadOnlyUserToDatabase WaterCrawl postgres watercrawl-db $WATERCRAWL_DATABASE_NAME $WATERCRAWL_DATABASE_USER $WATERCRAWL_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/watercrawl/dbexport $WATERCRAWL_DATABASE_READONLYUSER $WATERCRAWL_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_WATERCRAWL_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -90734,7 +91030,7 @@ function installFlowise()
   addReadOnlyUserToDatabase Flowise postgres flowise-db $FLOWISE_DATABASE_NAME $FLOWISE_DATABASE_USER $FLOWISE_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/flowise/dbexport $FLOWISE_DATABASE_READONLYUSER $FLOWISE_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_FLOWISE_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -91081,7 +91377,7 @@ function installSurfSense()
   sleep 3
   if [ -z "$FMLNAME_SURFSENSE_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -91257,7 +91553,7 @@ function installNocoDB()
   addReadOnlyUserToDatabase NocoDB postgres nocodb-db $NOCODB_DATABASE_NAME $NOCODB_DATABASE_USER $NOCODB_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/nocodb/dbexport $NOCODB_DATABASE_READONLYUSER $NOCODB_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_NOCODB_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -91544,7 +91840,7 @@ function installEnte()
   addReadOnlyUserToDatabase Ente postgres ente-db $ENTE_DATABASE_NAME $ENTE_DATABASE_USER $ENTE_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/ente/dbexport $ENTE_DATABASE_READONLYUSER $ENTE_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_ENTE_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -91934,7 +92230,7 @@ function installMorphic()
   addReadOnlyUserToDatabase Morphic postgres morphic-db $MORPHIC_DATABASE_NAME $MORPHIC_DATABASE_USER $MORPHIC_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/morphic/dbexport $MORPHIC_DATABASE_READONLYUSER $MORPHIC_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_MORPHIC_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
@@ -93679,6 +93975,321 @@ function performUpdateMorphic()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# OpenNotebook
+function installOpenNotebook()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory opennotebook "OpenNotebook"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName opennotebook-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName opennotebook-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/opennotebook
+  mkdir $HSHQ_STACKS_DIR/opennotebook/db
+  mkdir $HSHQ_STACKS_DIR/opennotebook/data
+  initServicesCredentials
+  set +e
+  outputConfigOpenNotebook
+  installStack opennotebook opennotebook-app "" $HOME/opennotebook.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$OPENNOTEBOOK_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_OPENNOTEBOOK_APP Web UI Login Info" -b "$FMLNAME_OPENNOTEBOOK_APP Web UI Password: $OPENNOTEBOOK_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    OPENNOTEBOOK_INIT_ENV=true
+    updateConfigVar OPENNOTEBOOK_INIT_ENV $OPENNOTEBOOK_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_OPENNOTEBOOK_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is empty, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_OPENNOTEBOOK_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://opennotebook-app:8502 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_OPENNOTEBOOK_APP $MANAGETLS_OPENNOTEBOOK_APP "$is_integrate_hshq" $NETDEFAULT_OPENNOTEBOOK_APP "$inner_block"
+  insertSubAuthelia $SUB_OPENNOTEBOOK_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll opennotebook "$FMLNAME_OPENNOTEBOOK_APP" $USERTYPE_OPENNOTEBOOK_APP "https://$SUB_OPENNOTEBOOK_APP.$HOMESERVER_DOMAIN" "opennotebook.png" "$(getHeimdallOrderFromSub $SUB_OPENNOTEBOOK_APP $USERTYPE_OPENNOTEBOOK_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigOpenNotebook()
+{
+  cat <<EOFMT > $HOME/opennotebook-compose.yml
+$STACK_VERSION_PREFIX opennotebook $(getScriptStackVersion opennotebook)
+
+services:
+  opennotebook-db:
+    image: $(getScriptImageByContainerName opennotebook-db)
+    container_name: opennotebook-db
+    hostname: opennotebook-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    user: root
+    command: start --log info --user $OPENNOTEBOOK_SURREALDB_USER --pass $OPENNOTEBOOK_SURREALDB_PASSWORD rocksdb:/mydata/mydatabase.db
+    networks:
+      - int-opennotebook-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/opennotebook/db:/mydata
+
+  opennotebook-app:
+    image: $(getScriptImageByContainerName opennotebook-app)
+    container_name: opennotebook-app
+    hostname: opennotebook-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - opennotebook-db
+    networks:
+      - int-opennotebook-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/opennotebook/data:/app/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-opennotebook-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/opennotebook.env
+TZ=\${PORTAINER_TZ}
+API_URL=https://$SUB_OPENNOTEBOOK_APP.$HOMESERVER_DOMAIN
+INTERNAL_API_URL=http://opennotebook-app:5055
+ESPERANTO_SSL_CA_BUNDLE=/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
+OPEN_NOTEBOOK_PASSWORD=$OPENNOTEBOOK_ADMIN_PASSWORD
+OLLAMA_API_BASE=http://ollama-server:11434
+SURREAL_URL=ws://opennotebook-db/rpc:8000
+SURREAL_USER=$OPENNOTEBOOK_SURREALDB_USER
+SURREAL_PASSWORD=$OPENNOTEBOOK_SURREALDB_PASSWORD
+SURREAL_NAMESPACE=open_notebook
+SURREAL_DATABASE=$OPENNOTEBOOK_SURREALDB_NAME
+SURREAL_EXPERIMENTAL_GRAPHQL=true
+EOFMT
+}
+
+function performUpdateOpenNotebook()
+{
+  perform_stack_name=opennotebook
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/surrealdb/surrealdb:v2.4,mirror.gcr.io/lfnovo/open_notebook:1.5.2
+      image_update_map[0]="mirror.gcr.io/surrealdb/surrealdb:v2.4,mirror.gcr.io/surrealdb/surrealdb:v2.4"
+      image_update_map[1]="mirror.gcr.io/lfnovo/open_notebook:1.5.2,mirror.gcr.io/lfnovo/open_notebook:1.5.2"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Appsmith
+function installAppsmith()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory appsmith "Appsmith"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName appsmith-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/appsmith
+  mkdir $HSHQ_STACKS_DIR/appsmith/data
+  initServicesCredentials
+  set +e
+  addUserMailu alias $APPSMITH_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  APPSMITH_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $APPSMITH_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigAppsmith
+  installStack appsmith appsmith-app "Started ServerApplication" $HOME/appsmith.env 10
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$APPSMITH_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_APPSMITH_APP Admin Login Info" -b "$FMLNAME_APPSMITH_APP Admin Email: $APPSMITH_ADMIN_EMAIL_ADDRESS\n$FMLNAME_APPSMITH_APP Admin Password: $APPSMITH_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    APPSMITH_INIT_ENV=true
+    updateConfigVar APPSMITH_INIT_ENV $APPSMITH_INIT_ENV
+  fi
+  sleep 3
+  startStopStack appsmith stop
+  sleep 2
+  sudo sed -i "s|^APPSMITH_MAIL_ENABLED=.*|APPSMITH_MAIL_ENABLED=true|g" $HSHQ_STACKS_DIR/appsmith/data/configuration/docker.env
+  sudo sed -i "s|^APPSMITH_MAIL_HOST=.*|APPSMITH_MAIL_HOST=$SMTP_HOSTNAME|g" $HSHQ_STACKS_DIR/appsmith/data/configuration/docker.env
+  sudo sed -i "s|^APPSMITH_MAIL_PORT=.*|APPSMITH_MAIL_PORT=$SMTP_HOSTPORT|g" $HSHQ_STACKS_DIR/appsmith/data/configuration/docker.env
+  sudo sed -i "s|^APPSMITH_MAIL_FROM=.*|APPSMITH_MAIL_FROM=$EMAIL_ADMIN_EMAIL_ADDRESS|g" $HSHQ_STACKS_DIR/appsmith/data/configuration/docker.env
+  sudo sed -i "s|^APPSMITH_REPLY_TO=.*|APPSMITH_REPLY_TO=$EMAIL_ADMIN_EMAIL_ADDRESS|g" $HSHQ_STACKS_DIR/appsmith/data/configuration/docker.env
+  sudo sed -i "s|^APPSMITH_MAIL_SMTP_AUTH=.*|APPSMITH_MAIL_SMTP_AUTH=none|g" $HSHQ_STACKS_DIR/appsmith/data/configuration/docker.env
+  sudo sed -i "s|^APPSMITH_DISABLE_TELEMETRY=.*|APPSMITH_DISABLE_TELEMETRY=true|g" $HSHQ_STACKS_DIR/appsmith/data/configuration/docker.env
+  sudo sed -i "s|^APPSMITH_RECAPTCHA_ENABLED=.*|APPSMITH_RECAPTCHA_ENABLED=false|g" $HSHQ_STACKS_DIR/appsmith/data/configuration/docker.env
+  sudo sed -i "s|^APPSMITH_SEGMENT_KEY=.*|APPSMITH_SEGMENT_KEY=|g" $HSHQ_STACKS_DIR/appsmith/data/configuration/docker.env
+  echo "APPSMITH_DISABLE_INTERCOM=true" | sudo tee -a $HSHQ_STACKS_DIR/appsmith/data/configuration/docker.env > /dev/null 2>&1
+  echo "APPSMITH_BASE_URL=https://$SUB_APPSMITH_APP.$HOMESERVER_DOMAIN" | sudo tee -a $HSHQ_STACKS_DIR/appsmith/data/configuration/docker.env > /dev/null 2>&1
+  echo "APPSMITH_DISABLE_TELEMETRY=true" | sudo tee -a $HSHQ_STACKS_DIR/appsmith/data/configuration/docker.env > /dev/null 2>&1
+  startStopStack appsmith start
+  if [ -z "$FMLNAME_APPSMITH_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is empty, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_APPSMITH_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://appsmith-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_APPSMITH_APP $MANAGETLS_APPSMITH_APP "$is_integrate_hshq" $NETDEFAULT_APPSMITH_APP "$inner_block"
+  insertSubAuthelia $SUB_APPSMITH_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll appsmith "$FMLNAME_APPSMITH_APP" $USERTYPE_APPSMITH_APP "https://$SUB_APPSMITH_APP.$HOMESERVER_DOMAIN" "appsmith.png" "$(getHeimdallOrderFromSub $SUB_APPSMITH_APP $USERTYPE_APPSMITH_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigAppsmith()
+{
+  cat <<EOFMT > $HOME/appsmith-compose.yml
+$STACK_VERSION_PREFIX appsmith $(getScriptStackVersion appsmith)
+
+services:
+  appsmith-app:
+    image: $(getScriptImageByContainerName appsmith-app)
+    container_name: appsmith-app
+    hostname: appsmith-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/appsmith/data:/appsmith-stacks
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+EOFMT
+  cat <<EOFMT > $HOME/appsmith.env
+TZ=\${PORTAINER_TZ}
+APPSMITH_DISABLE_TELEMETRY=true
+EOFMT
+
+}
+
+function performUpdateAppsmith()
+{
+  perform_stack_name=appsmith
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/appsmith/appsmith-ce:v1.94
+      image_update_map[0]="mirror.gcr.io/appsmith/appsmith-ce:v1.94,mirror.gcr.io/appsmith/appsmith-ce:v1.94"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 #ADD_NEW_SERVICE_FUNCTIONS_HERE
 
 # ExampleService
@@ -93724,7 +94335,7 @@ function installExampleService()
   sleep 3
   if [ -z "$FMLNAME_EXAMPLESERVICE_APP" ]; then
     set +e
-    echo "ERROR: Formal name is emtpy, returning..."
+    echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
   set -e
