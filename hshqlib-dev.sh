@@ -38299,7 +38299,7 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic,opennotebook,appsmith
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,morphic,opennotebook,appsmith,ente
   DS_MEM_LOW=minimal
   DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic,opennotebook,appsmith
   DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic,opennotebook,appsmith
@@ -55901,7 +55901,7 @@ function installFirefly()
     updateConfigVar FIREFLY_INITIAL_API_KEY $FIREFLY_INITIAL_API_KEY
   fi
   outputConfigFirefly
-  installStack firefly firefly "ready to handle connections" $HOME/firefly.env
+  installStack firefly firefly-app "ready to handle connections" $HOME/firefly.env
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -59426,7 +59426,7 @@ function installLinkwarden()
   oidcBlock=$(cat $HOME/linkwarden.oidc)
   rm -f $HOME/linkwarden.oidc
   insertOIDCClientAuthelia linkwarden "$oidcBlock"
-  installStack linkwarden linkwarden-app "ready started server on" $HOME/linkwarden.env
+  installStack linkwarden linkwarden-app "ready started server on" $HOME/linkwarden.env 3
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -59668,7 +59668,7 @@ function installStirlingPDF()
   mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf/logs
   mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf/traindata
   outputConfigStirlingPDF
-  installStack stirlingpdf stirlingpdf "Server PID" $HOME/stirlingpdf.env
+  installStack stirlingpdf stirlingpdf "Server PID" $HOME/stirlingpdf.env 5
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -60552,7 +60552,7 @@ function installKeila()
     updateConfigVar KEILA_INIT_ENV $KEILA_INIT_ENV
   fi
   outputConfigKeila
-  installStack keila keila-app "Access KeilaWeb.Endpoint at" $HOME/keila.env
+  installStack keila keila-app "Access KeilaWeb.Endpoint at" $HOME/keila.env 3
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -62391,7 +62391,7 @@ function installHuginn()
     updateConfigVar HUGINN_INIT_ENV $HUGINN_INIT_ENV
   fi
   outputConfigHuginn
-  installStack huginn huginn-app "stdout entered RUNNING state" $HOME/huginn.env
+  installStack huginn huginn-app "stdout entered RUNNING state" $HOME/huginn.env 3
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -70328,7 +70328,7 @@ function installBudibase()
   set +e
   addUserMailu alias $ADMIN_USERNAME_BASE"_budibase" $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigBudibase
-  installStack budibase budibase-app "Admin account automatically created" $HOME/budibase.env 3
+  installStack budibase budibase-app "Admin account automatically created" $HOME/budibase.env 5
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -71394,7 +71394,7 @@ function installMetabase()
   set +e
   addUserMailu alias $METABASE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigMetabase
-  installStack metabase metabase-app "Starting listener" $HOME/metabase.env 5
+  installStack metabase metabase-app "Starting listener" $HOME/metabase.env 10
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -84446,7 +84446,7 @@ POSTGRES_USER=$LANGFLOW_DATABASE_USER
 POSTGRES_PASSWORD=$LANGFLOW_DATABASE_USER_PASSWORD
 LANGFLOW_CONFIG_DIR=/app/langflow
 LANGFLOW_DATABASE_URL=postgresql://$LANGFLOW_DATABASE_USER:$LANGFLOW_DATABASE_USER_PASSWORD@langflow-db:5432/$LANGFLOW_DATABASE_NAME
-OPENAI_API_BASE=https://localai.homeserverbox.com/v1
+OPENAI_API_BASE=https://$SUB_LOCALAI_SERVER.$HOMESERVER_DOMAIN/v1
 LANGFLOW_AUTO_LOGIN=False
 LANGFLOW_SUPERUSER=$LANGFLOW_ADMIN_USERNAME
 LANGFLOW_SUPERUSER_PASSWORD=$LANGFLOW_ADMIN_PASSWORD
@@ -105726,7 +105726,7 @@ function checkAddLineToFile()
   add_line=$1
   sn_file=$2
   set +e
-  grep "$add_line" $sn_file > /dev/null 2>&1
+  grep -q -x "$add_line" $sn_file > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     echo -e "$add_line" >> $sn_file
   fi
