@@ -36283,7 +36283,14 @@ function checkCreateNonbackupDirByStack()
       mkdir -p $HSHQ_NONBACKUP_DIR/kopia/snapshots
       ;;
     "localai")
-      mkdir -p $HSHQ_NONBACKUP_DIR/aimodels
+      mkdir -p $HSHQ_NONBACKUP_DIR/aimodels/localai
+      ;;
+    "ollama")
+      mkdir -p $HSHQ_NONBACKUP_DIR/aimodels/ollama
+      ;;
+    "comfyui")
+      mkdir -p $HSHQ_NONBACKUP_DIR/aimodels/comfyui
+      mkdir -p $HSHQ_NONBACKUP_DIR/comfyui/cache
       ;;
     "firecrawl")
       mkdir -p $HSHQ_NONBACKUP_DIR/firecrawl/redis
@@ -36305,6 +36312,13 @@ function checkCreateNonbackupDirByStack()
       ;;
     "dify")
       mkdir -p $HSHQ_NONBACKUP_DIR/dify/redis
+      ;;
+    "khoj")
+      mkdir -p $HSHQ_NONBACKUP_DIR/aimodels/khoj
+      ;;
+    "invokeai")
+      mkdir -p $HSHQ_NONBACKUP_DIR/aimodels/invokeai/models
+      mkdir -p $HSHQ_NONBACKUP_DIR/aimodels/invokeai/cache/{download,convert}
       ;;
     "mindsdb")
       mkdir -p $HSHQ_NONBACKUP_DIR/mindsdb/redis
@@ -38299,7 +38313,7 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,morphic,opennotebook,appsmith,ente
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,morphic,opennotebook,appsmith,ente
   DS_MEM_LOW=minimal
   DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic,opennotebook,appsmith
   DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,ente,morphic,opennotebook,appsmith
@@ -55901,7 +55915,7 @@ function installFirefly()
     updateConfigVar FIREFLY_INITIAL_API_KEY $FIREFLY_INITIAL_API_KEY
   fi
   outputConfigFirefly
-  installStack firefly firefly-app "ready to handle connections" $HOME/firefly.env
+  installStack firefly firefly-app "ready to handle connections" $HOME/firefly.env 5
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -83782,7 +83796,7 @@ function installLocalAI()
   mkdir $HSHQ_STACKS_DIR/localai/db
   mkdir $HSHQ_STACKS_DIR/localai/dind
   mkdir $HSHQ_STACKS_DIR/localai/images
-  mkdir -p $HSHQ_NONBACKUP_DIR/aimodels
+  mkdir -p $HSHQ_NONBACKUP_DIR/aimodels/localai
   initServicesCredentials
   set +e
   outputConfigLocalAI
@@ -84117,12 +84131,12 @@ function installComfyUI()
   fi
   set -e
   mkdir $HSHQ_STACKS_DIR/comfyui
-  mkdir $HSHQ_STACKS_DIR/comfyui/models
   mkdir $HSHQ_STACKS_DIR/comfyui/input
   mkdir $HSHQ_STACKS_DIR/comfyui/output
   mkdir $HSHQ_STACKS_DIR/comfyui/custom_nodes
   mkdir $HSHQ_STACKS_DIR/comfyui/user
   mkdir -p $HSHQ_NONBACKUP_DIR/comfyui/cache
+  mkdir -p $HSHQ_NONBACKUP_DIR/aimodels/comfyui
   initServicesCredentials
   set +e
   outputConfigComfyUI
@@ -85956,14 +85970,8 @@ services:
     hostname: ollama-server
     restart: unless-stopped
     env_file: stack.env
-    tty: true
     security_opt:
-      - seccomp:unconfined
-    cap_add:
-      - SYS_PTRACE
-    devices:
-      - /dev/kfd
-      - /dev/dri
+      - no-new-privileges:true
     networks:
       - dock-ext-net
       - dock-aipriv-net
@@ -86977,6 +86985,8 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - v-invokeai-data:/invokeai
+      - v-invokeai-models:/models
+      - v-invokeai-cache:/iaicache
 
 volumes:
   v-invokeai-data:
@@ -86985,6 +86995,18 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/invokeai/data
+  v-invokeai-models:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/invokeai
+  v-invokeai-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/invokeai/cache
 
 networks:
   dock-proxy-net:
