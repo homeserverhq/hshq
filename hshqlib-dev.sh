@@ -10403,13 +10403,17 @@ EOFDM
   }
 }
 
-(default-csp) {
-  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org *.${HOMESERVER_DOMAIN} data:; frame-src 'self' *.${HOMESERVER_DOMAIN} data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
+($CADDY_SNIPPET_DEFAULTCSP) {
+  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org *.${HOMESERVER_DOMAIN} data:; frame-src 'self' *.${HOMESERVER_DOMAIN} data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
+}
+
+($CADDY_SNIPPET_RELAXEDCSP) {
+  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com *.${HOMESERVER_DOMAIN} data:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
 }
 
 (safe-header) {
   import base-header
-  import default-csp
+  import $CADDY_SNIPPET_DEFAULTCSP
 }
 
 ($CADDY_SNIPPET_TRUSTEDPROXIES) {
@@ -24379,6 +24383,7 @@ function version236Update()
 
 function version237Update()
 {
+  CADDY_SNIPPET_RELAXEDCSP=relaxed-csp
   outputCaddyHeaders
 }
 
@@ -30892,7 +30897,9 @@ function loadPinnedDockerImages()
   IMG_AUTOKB_OWUISYNC=hshq/autokb-owuisync:v1
   IMG_SUITECRM_APP=ghcr.io/homeserverhq/suitecrm-core:v8.10.1
   IMG_SUITECRM_MCP=ghcr.io/homeserverhq/suitecrm-mcp:v1
-  IMG_HEDGEDOC_APP=quay.io/hedgedoc/hedgedoc:1.11.0
+  IMG_HEDGEDOC_FRONTEND=ghcr.io/homeserverhq/hedgedoc-frontend:v2.0.1-alpha
+  IMG_HEDGEDOC_BACKEND=ghcr.io/homeserverhq/hedgedoc-backend:v2.0.1-alpha
+  IMG_HEDGEDOC_MCP=ghcr.io/homeserverhq/hedgedoc-mcp:v1
   IMG_PRESENTON_APP=ghcr.io/presenton/presenton:v0.9.0-beta
 #ADD_NEW_IMAGES_HERE
 }
@@ -31570,7 +31577,9 @@ function pullDockerImages()
   buildOrPullImage $IMG_AUTOKB_OWUISYNC
   buildOrPullImage $IMG_SUITECRM_APP
   buildOrPullImage $IMG_SUITECRM_MCP
-  buildOrPullImage $IMG_HEDGEDOC_APP
+  buildOrPullImage $IMG_HEDGEDOC_FRONTEND
+  buildOrPullImage $IMG_HEDGEDOC_BACKEND
+  buildOrPullImage $IMG_HEDGEDOC_MCP
   buildOrPullImage $IMG_PRESENTON_APP
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
@@ -32219,6 +32228,7 @@ CADDY_SNIPPET_SAFEHEADERCORSPREFLIGHT=safe-header-cors-preflight
 CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED=safe-header-cors-automated
 CADDY_SNIPPET_BASEHEADER=base-header
 CADDY_SNIPPET_DEFAULTCSP=default-csp
+CADDY_SNIPPET_RELAXEDCSP=relaxed-csp
 # Caddy (Service Details) END
 
 # Calibre (Service Details) BEGIN
@@ -43004,8 +43014,14 @@ function getScriptImageByContainerName()
     "hedgedoc-db")
       container_image=mirror.gcr.io/postgres:17.6
       ;;
-    "hedgedoc-app")
-      container_image=$IMG_HEDGEDOC_APP
+    "hedgedoc-frontend")
+      container_image=$IMG_HEDGEDOC_FRONTEND
+      ;;
+    "hedgedoc-backend")
+      container_image=$IMG_HEDGEDOC_BACKEND
+      ;;
+    "hedgedoc-mcp")
+      container_image=$IMG_HEDGEDOC_MCP
       ;;
     "presenton-app")
       container_image=$IMG_PRESENTON_APP
@@ -43196,7 +43212,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Dolibarr" "DOLIBARR_INSTANCE_UNIQUE_ID=,DOLIBARR_API_KEY=,DOLIBARR_MCP_API_KEY=,DOLIBARR_MCP_REDIS_PASSWORD=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_TOKEN_ENCRYPTION_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Immich" "IMMICH_API_KEY=" $CONFIG_FILE false
-  checkAddVarsToServiceConfig "Caddy" "CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED=safe-header-cors-automated,CADDY_SNIPPET_BASEHEADER=base-header,CADDY_SNIPPET_DEFAULTCSP=default-csp" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Caddy" "CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED=safe-header-cors-automated,CADDY_SNIPPET_BASEHEADER=base-header,CADDY_SNIPPET_DEFAULTCSP=default-csp,CADDY_SNIPPET_RELAXEDCSP=relaxed-csp" $CONFIG_FILE false
   checkAddVarsToServiceConfig "OpenProject" "OPENPROJECT_SECRET_KEY_BASE=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Twenty" "TWENTY_APP_SECRET=,TWENTY_ENCRYPTION_KEY=" $CONFIG_FILE false
   initServicesCredentials
@@ -96353,9 +96369,7 @@ function installOpenWebUI()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_BASEHEADER\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED\n"
   inner_block=$inner_block">>>>@owuiFiles path /api/v1/files/*/content\n"
-  inner_block=$inner_block">>>>header {\n"
-  inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' *.$HOMESERVER_DOMAIN img.shields.io i.ytimg.com data:; frame-src 'self' *.$HOMESERVER_DOMAIN www.youtube-nocookie.com www.youtube.com data: blob:; connect-src 'self' *.$HOMESERVER_DOMAIN data:; object-src 'none'; frame-ancestors 'self' *.$HOMESERVER_DOMAIN; upgrade-insecure-requests;\"\n"
-  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>#OWUI_FILES_REPLACE_LINE_1\n"
   inner_block=$inner_block">>>>#OWUI_FILES_REPLACE_LINE_2\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
@@ -117161,13 +117175,20 @@ function installHedgeDoc()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  buildOrPullImage $(getScriptImageByContainerName hedgedoc-app)
+  buildOrPullImage $(getScriptImageByContainerName hedgedoc-frontend)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName hedgedoc-backend)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName hedgedoc-mcp)
   if [ $? -ne 0 ]; then
     return 1
   fi
   set -e
   mkdir $HSHQ_STACKS_DIR/hedgedoc
-  mkdir $HSHQ_STACKS_DIR/hedgedoc/config
   mkdir $HSHQ_STACKS_DIR/hedgedoc/uploads
   mkdir $HSHQ_STACKS_DIR/hedgedoc/db
   mkdir $HSHQ_STACKS_DIR/hedgedoc/dbexport
@@ -117176,7 +117197,7 @@ function installHedgeDoc()
   set +e
   addUserMailu alias $HEDGEDOC_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigHedgeDoc
-  installStack hedgedoc hedgedoc-app "" $HOME/hedgedoc.env
+  installStack hedgedoc hedgedoc-backend "" $HOME/hedgedoc.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -117186,6 +117207,7 @@ function installHedgeDoc()
     updateConfigVar HEDGEDOC_INIT_ENV $HEDGEDOC_INIT_ENV
   fi
   sleep 3
+  addMCPServerLiteLLM "hedgedoc" "hdoc" "http://hedgedoc-mcp:80/mcp" http none ""
   addReadOnlyUserToDatabase HedgeDoc postgres hedgedoc-db $HEDGEDOC_DATABASE_NAME $HEDGEDOC_DATABASE_USER $HEDGEDOC_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/hedgedoc/dbexport $HEDGEDOC_DATABASE_READONLYUSER $HEDGEDOC_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_HEDGEDOC_APP" ]; then
     set +e
@@ -117199,8 +117221,16 @@ function installHedgeDoc()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
+  inner_block=$inner_block">>>>header /media/* Content-Disposition inline\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://hedgedoc-app:3000 {\n"
+  inner_block=$inner_block">>>>>>@hedgedoc-backend {\n"
+  inner_block=$inner_block">>>>>>>>path /realtime /api/* /public/* /uploads/* /apidoc/* /media/*\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>reverse_proxy @hedgedoc-backend http://hedgedoc-backend:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>reverse_proxy /* http://hedgedoc-frontend:3001 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>}\n"
@@ -117257,10 +117287,29 @@ services:
       - "ofelia.job-exec.hedgedoc-monthly-db.email-from=HedgeDoc Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.hedgedoc-monthly-db.mail-only-on-error=false"
 
-  hedgedoc-app:
-    image: $(getScriptImageByContainerName hedgedoc-app)
-    container_name: hedgedoc-app
-    hostname: hedgedoc-app
+  hedgedoc-frontend:
+    image: $(getScriptImageByContainerName hedgedoc-frontend)
+    container_name: hedgedoc-frontend
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - hedgedoc-db
+    networks:
+      - int-hedgedoc-net
+      - dock-proxy-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  hedgedoc-backend:
+    image: $(getScriptImageByContainerName hedgedoc-backend)
+    container_name: hedgedoc-backend
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -117278,7 +117327,23 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - v-hedgedoc-uploads:/hedgedoc/public/uploads
-      - \${PORTAINER_HSHQ_STACKS_DIR}/hedgedoc/config/config.json:/hedgedoc/config.json:ro
+
+  hedgedoc-mcp:
+    image: $(getScriptImageByContainerName hedgedoc-mcp)
+    container_name: hedgedoc-mcp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-hedgedoc-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 
 volumes:
   v-hedgedoc-uploads:
@@ -117310,43 +117375,55 @@ networks:
 EOFMT
   cat <<EOFMT > $HOME/hedgedoc.env
 TZ=\${PORTAINER_TZ}
+HOSTNAME=0.0.0.0
+HD_RATE_LIMIT_GLOBAL_MAX=0
+HD_RATE_LIMIT_AUTH_MAX=0
+HD_RATE_LIMIT_NOTES_MAX=0
+HD_BACKEND_BIND_IP=0.0.0.0
 POSTGRES_DB=$HEDGEDOC_DATABASE_NAME
 POSTGRES_USER=$HEDGEDOC_DATABASE_USER
 POSTGRES_PASSWORD=$HEDGEDOC_DATABASE_USER_PASSWORD
 NODE_ENV=production
 NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
-CMD_DB_URL=postgres://$HEDGEDOC_DATABASE_USER:$HEDGEDOC_DATABASE_USER_PASSWORD@hedgedoc-db:5432/$HEDGEDOC_DATABASE_NAME
-CMD_CONFIG_FILE=/hedgedoc/config.json
-EOFMT
-  cat <<EOFMT > $HSHQ_STACKS_DIR/hedgedoc/config/config.json
-{
-  "production": {
-    "domain": "$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN",
-    "protocolUseSSL": true,
-    "urlAddPort": false,
-    "allowAnonymous": false,
-    "allowEmailRegister": false,
-    "allowFreeURL": true,
-    "requireFreeURLAuthentication": true,
-    "ldap": {
-      "providerName": "LDAP",
-      "url": "ldaps://ldapserver:636",
-      "bindDn": "$LDAP_READONLY_USER_BIND_DN",
-      "bindCredentials": "$LDAP_READONLY_USER_PASSWORD",
-      "searchBase": "ou=people,$LDAP_BASE_DN",
-      "searchFilter": "(&(uid={{username}})(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))",
-      "searchAttributes": [ "*", "memberOf" ],
-      "useridField": "uid",
-      "usernameField": "displayName",
-      "emailField": "mail",
-      "tlsca": "/etc/ssl/certs/ca-certificates.crt",
-      "tlsOptions": {
-        "ca": [ "/etc/ssl/certs/ca-certificates.crt" ]
-      }
-    },
-    "sessionSecret": "$HEDGEDOC_SESSION_SECRET"
-  }
-}
+HD_NOTE_PERMISSIONS_MAX_GUEST_LEVEL=read
+HD_NOTE_PERMISSIONS_DEFAULT_EVERYONE=deny
+HD_PERMISSION_DEFAULT_EVERYONE=deny
+HD_PERMISSION_DEFAULT_LOGGED_IN=deny
+HD_BASE_URL=https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN
+HD_SESSION_SECRET=$HEDGEDOC_SESSION_SECRET
+HD_AUTH_SESSION_SECRET=$HEDGEDOC_SESSION_SECRET
+HD_DATABASE_TYPE=postgres
+HD_DATABASE_HOST=hedgedoc-db
+HD_DATABASE_PORT=5432
+HD_DATABASE_NAME=$HEDGEDOC_DATABASE_NAME
+HD_DATABASE_USERNAME=$HEDGEDOC_DATABASE_USER
+HD_DATABASE_PASSWORD=$HEDGEDOC_DATABASE_USER_PASSWORD
+HD_DATABASE_USER=$HEDGEDOC_DATABASE_USER
+HD_DATABASE_PASS=$HEDGEDOC_DATABASE_USER_PASSWORD
+HD_MEDIA_BACKEND_TYPE=filesystem
+HD_MEDIA_BACKEND=filesystem
+HD_MEDIA_BACKEND_FILESYSTEM_UPLOAD_PATH=uploads/
+HD_INTERNAL_API_URL=http://hedgedoc-backend:3000
+HD_RENDERER_BASE_URL=https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN
+HD_AUTH_LOCAL_ENABLE_LOGIN=true
+HD_AUTH_LOCAL_ENABLE_REGISTER=false
+HD_AUTH_SYNC_SOURCE=HSHQ
+HD_AUTH_LDAP_SERVERS=HSHQ
+HD_AUTH_LDAP_HSHQ_URL=ldaps://ldapserver:636
+HD_AUTH_LDAP_HSHQ_SEARCH_BASE=ou=people,$LDAP_BASE_DN
+HD_AUTH_LDAP_HSHQ_BIND_DN=$LDAP_READONLY_USER_BIND_DN
+HD_AUTH_LDAP_HSHQ_BIND_CREDENTIALS=$LDAP_READONLY_USER_PASSWORD
+HD_AUTH_LDAP_HSHQ_PROVIDER_NAME=LDAP
+HD_AUTH_LDAP_HSHQ_SEARCH_FILTER=(&(uid={{username}})(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
+HD_AUTH_LDAP_HSHQ_SEARCH_ATTRIBUTES=uid,cn,mail,jpegPhoto
+HD_AUTH_LDAP_HSHQ_TLS_CERT_PATHS=/etc/ssl/certs/ca-certificates.crt
+HD_AUTH_LDAP_HSHQ_DISPLAY_NAME_FIELD=cn
+HD_AUTH_LDAP_HSHQ_PROFILE_PICTURE_FIELD=jpegPhoto
+HEDGEDOC_BASE_URL=http://hedgedoc-backend:3000
+MCP_SERVER_PORT=80
+ALLOW_ALL_AGGREGATE=false
+IS_STATEFUL=false
+HEDGEDOC_PUBLIC_URL=https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN
 EOFMT
 }
 
@@ -117359,9 +117436,11 @@ function performUpdateHedgeDoc()
   case "$perform_stack_ver" in
     1)
       newVer=v1
-      curImageList=mirror.gcr.io/postgres:17.6,quay.io/hedgedoc/hedgedoc:1.11.0
+      curImageList=mirror.gcr.io/postgres:17.6,ghcr.io/homeserverhq/hedgedoc-backend:v2.0.1-alpha,ghcr.io/homeserverhq/hedgedoc-frontend:v2.0.1-alpha,ghcr.io/homeserverhq/hedgedoc-mcp:v1
       image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
-      image_update_map[1]="quay.io/hedgedoc/hedgedoc:1.11.0,quay.io/hedgedoc/hedgedoc:1.11.0"
+      image_update_map[1]="ghcr.io/homeserverhq/hedgedoc-backend:v2.0.1-alpha,ghcr.io/homeserverhq/hedgedoc-backend:v2.0.1-alpha"
+      image_update_map[2]="ghcr.io/homeserverhq/hedgedoc-frontend:v2.0.1-alpha,ghcr.io/homeserverhq/hedgedoc-frontend:v2.0.1-alpha"
+      image_update_map[3]="ghcr.io/homeserverhq/hedgedoc-mcp:v1,ghcr.io/homeserverhq/hedgedoc-mcp:v1"
     ;;
     *)
       is_upgrade_error=true
@@ -128995,7 +129074,11 @@ function outputCaddyHeaders()
 }
 
 ($CADDY_SNIPPET_DEFAULTCSP) {
-  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org *.${HOMESERVER_DOMAIN} data:; frame-src 'self' *.${HOMESERVER_DOMAIN} data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
+  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' *.${HOMESERVER_DOMAIN} data:; frame-src 'self' *.${HOMESERVER_DOMAIN} data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
+}
+
+($CADDY_SNIPPET_RELAXEDCSP) {
+  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com *.${HOMESERVER_DOMAIN} data:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
 }
 
 # At some point we'll fix the svcs.snip and collapse these two
