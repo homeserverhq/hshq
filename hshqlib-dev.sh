@@ -30900,7 +30900,8 @@ function loadPinnedDockerImages()
   IMG_HEDGEDOC_FRONTEND=ghcr.io/homeserverhq/hedgedoc-frontend:v2.0.1-alpha
   IMG_HEDGEDOC_BACKEND=ghcr.io/homeserverhq/hedgedoc-backend:v2.0.1-alpha
   IMG_HEDGEDOC_MCP=ghcr.io/homeserverhq/hedgedoc-mcp:v1
-  IMG_PRESENTON_APP=ghcr.io/presenton/presenton:v0.9.0-beta
+  IMG_PRESENTON_APP=ghcr.io/presenton/presenton:v0.9.3-beta
+  IMG_PRESENTON_MCP=ghcr.io/homeserverhq/presenton-mcp:v1
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -31581,6 +31582,7 @@ function pullDockerImages()
   buildOrPullImage $IMG_HEDGEDOC_BACKEND
   buildOrPullImage $IMG_HEDGEDOC_MCP
   buildOrPullImage $IMG_PRESENTON_APP
+  buildOrPullImage $IMG_PRESENTON_MCP
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -43025,6 +43027,9 @@ function getScriptImageByContainerName()
       ;;
     "presenton-app")
       container_image=$IMG_PRESENTON_APP
+      ;;
+    "presenton-mcp")
+      container_image=$IMG_PRESENTON_MCP
       ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
@@ -117466,6 +117471,10 @@ function installPresenton()
   if [ $? -ne 0 ]; then
     return 1
   fi
+  buildOrPullImage $(getScriptImageByContainerName presenton-mcp)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/presenton
   mkdir $HSHQ_STACKS_DIR/presenton/data
@@ -117527,6 +117536,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
+      - int-presenton-net
       - dock-ext-net
       - dock-aipriv-net
     volumes:
@@ -117535,7 +117545,33 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/presenton/data:/app_data
+      - v-presenton-data:/app_data
+
+  presenton-mcp:
+    image: $(getScriptImageByContainerName presenton-mcp)
+    container_name: presenton-mcp
+    hostname: presenton-mcp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-presenton-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+volumes:
+  v-presenton-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/presenton/data
 
 networks:
   dock-ext-net:
@@ -117544,6 +117580,11 @@ networks:
   dock-aipriv-net:
     name: dock-aipriv
     external: true
+  int-presenton-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
 
 EOFMT
   cat <<EOFMT > $HOME/presenton.env
@@ -117555,6 +117596,7 @@ LLM=litellm
 LITELLM_BASE_URL=http://litellm-proxy:4000/v1
 LITELLM_API_KEY=$LITELLM_MASTER_KEY
 LITELLM_MODEL=LongContext
+VISION_MODEL=Vision
 IMAGE_PROVIDER=comfyui
 COMFYUI_URL=http://ivbox-app:8188
 COMFYUI_WORKFLOW='{\\n  "60": {\\n    "inputs": {\\n      "filename_prefix": "z-image-turbo",\\n      "images": [\\n        "83:8",\\n        0\\n      ]\\n    },\\n    "class_type": "SaveImage",\\n    "_meta": {\\n      "title": "Save Image"\\n    }\\n  },\\n  "83:30": {\\n    "inputs": {\\n      "clip_name": "qwen_3_4b.safetensors",\\n      "type": "lumina2",\\n      "device": "default"\\n    },\\n    "class_type": "CLIPLoader",\\n    "_meta": {\\n      "title": "Load CLIP"\\n    }\\n  },\\n  "83:29": {\\n    "inputs": {\\n      "vae_name": "ae.safetensors"\\n    },\\n    "class_type": "VAELoader",\\n    "_meta": {\\n      "title": "Load VAE"\\n    }\\n  },\\n  "83:13": {\\n    "inputs": {\\n      "width": 512,\\n      "height": 512,\\n      "batch_size": 1\\n    },\\n    "class_type": "EmptySD3LatentImage",\\n    "_meta": {\\n      "title": "EmptySD3LatentImage"\\n    }\\n  },\\n  "83:33": {\\n    "inputs": {\\n      "conditioning": [\\n        "83:27",\\n        0\\n      ]\\n    },\\n    "class_type": "ConditioningZeroOut",\\n    "_meta": {\\n      "title": "ConditioningZeroOut"\\n    }\\n  },\\n  "83:8": {\\n    "inputs": {\\n      "samples": [\\n        "83:3",\\n        0\\n      ],\\n      "vae": [\\n        "83:29",\\n        0\\n      ]\\n    },\\n    "class_type": "VAEDecode",\\n    "_meta": {\\n      "title": "VAE Decode"\\n    }\\n  },\\n  "83:3": {\\n    "inputs": {\\n      "seed": 528562900154240,\\n      "steps": 4,\\n      "cfg": 1,\\n      "sampler_name": "res_multistep",\\n      "scheduler": "simple",\\n      "denoise": 1,\\n      "model": [\\n        "83:28",\\n        0\\n      ],\\n      "positive": [\\n        "83:27",\\n        0\\n      ],\\n      "negative": [\\n        "83:33",\\n        0\\n      ],\\n      "latent_image": [\\n        "83:13",\\n        0\\n      ]\\n    },\\n    "class_type": "KSampler",\\n    "_meta": {\\n      "title": "KSampler"\\n    }\\n  },\\n  "83:27": {\\n    "inputs": {\\n      "text": "placeholder prompt",\\n      "clip": [\\n        "83:30",\\n        0\\n      ]\\n    },\\n    "class_type": "CLIPTextEncode",\\n    "_meta": {\\n      "title": "Input Prompt"\\n    }\\n  },\\n  "83:28": {\\n    "inputs": {\\n      "unet_name": "z_image_turbo_bf16.safetensors",\\n      "weight_dtype": "default"\\n    },\\n    "class_type": "UNETLoader",\\n    "_meta": {\\n      "title": "Load Diffusion Model"\\n    }\\n  }\\n}'
@@ -117563,6 +117605,11 @@ WEB_SEARCH_PROVIDER=searxng
 SEARXNG_BASE_URL=http://searxng-app:8080
 WEB_SEARCH_MAX_RESULTS=5
 DISABLE_ANONYMOUS_TRACKING=true
+PRESENTON_BASE_URL=http://presenton-app:80
+MCP_SERVER_PORT=80
+ALLOW_ALL_AGGREGATE=false
+IS_STATEFUL=false
+PRESENTON_PUBLIC_URL=https://$SUB_PRESENTON_APP.$HOMESERVER_DOMAIN
 EOFMT
 }
 
@@ -117575,8 +117622,9 @@ function performUpdatePresenton()
   case "$perform_stack_ver" in
     1)
       newVer=v1
-      curImageList=ghcr.io/presenton/presenton:v0.9.0-beta
-      image_update_map[0]="ghcr.io/presenton/presenton:v0.9.0-beta,ghcr.io/presenton/presenton:v0.9.0-beta"
+      curImageList=ghcr.io/presenton/presenton:v0.9.3-beta,ghcr.io/homeserverhq/presenton-mcp:v1
+      image_update_map[0]="ghcr.io/presenton/presenton:v0.9.3-beta,ghcr.io/presenton/presenton:v0.9.3-beta"
+      image_update_map[1]="ghcr.io/homeserverhq/presenton-mcp:v1,ghcr.io/homeserverhq/presenton-mcp:v1"
     ;;
     *)
       is_upgrade_error=true
