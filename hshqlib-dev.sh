@@ -30643,7 +30643,8 @@ function loadPinnedDockerImages()
   IMG_INVIDIOUS_COMPANION=quay.io/invidious/invidious-companion:latest
   IMG_INVIDIOUS_SESSIONGEN=quay.io/invidious/youtube-trusted-session-generator
   IMG_INVOICENINJA_APP=mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37
-  IMG_INVOICESHELF_APP=mirror.gcr.io/invoiceshelf/invoiceshelf:2.2.0-alpha2
+  IMG_INVOICESHELF_APP=mirror.gcr.io/invoiceshelf/invoiceshelf:2.4.2
+  IMG_INVOICESHELF_MCP=ghcr.io/homeserverhq/invoiceshelf-mcp:v1
   IMG_ITTOOLS=ghcr.io/corentinth/it-tools:latest
   IMG_JELLYFIN=mirror.gcr.io/jellyfin/jellyfin:10.11.4
   IMG_JITSI_WEB=jitsi/web:stable-10655
@@ -30653,7 +30654,8 @@ function loadPinnedDockerImages()
   IMG_JUPYTER=continuumio/anaconda3:2024.10-1
   IMG_KANBOARD_APP=mirror.gcr.io/kanboard/kanboard:v1.2.48
   IMG_KASM=mirror.gcr.io/linuxserver/kasm:1.18.0-ls108
-  IMG_KEILA=pentacent/keila:0.17.1
+  IMG_KEILA_APP=mirror.gcr.io/pentacent/keila:0.30.2
+  IMG_KEILA_MCP=ghcr.io/homeserverhq/keila-mcp:v1
   IMG_KILLBILL_DB=mirror.gcr.io/killbill/mariadb:0.24
   IMG_KILLBILL_APP=mirror.gcr.io/killbill/killbill:0.24.15
   IMG_KILLBILL_WEB=mirror.gcr.io/killbill/kaui:3.0.23
@@ -30683,7 +30685,7 @@ function loadPinnedDockerImages()
   IMG_MEALIE_APP=ghcr.io/mealie-recipes/mealie:v3.20.1
   IMG_MEALIE_MCP=ghcr.io/homeserverhq/mealie-mcp:v1
   IMG_MESHCENTRAL=ghcr.io/ylianst/meshcentral:1.1.53
-  IMG_METABASE=mirror.gcr.io/metabase/metabase:v0.58.5.4
+  IMG_METABASE=mirror.gcr.io/metabase/metabase:v0.63.2
   IMG_MINTHCM_WEB=mirror.gcr.io/minthcm/minthcm:latest
   IMG_MINTHCM_ELASTICSEARCH=docker.elastic.co/elasticsearch/elasticsearch:7.9.3
   IMG_N8N_APP=mirror.gcr.io/n8nio/n8n:1.122.5
@@ -30810,7 +30812,7 @@ function loadPinnedDockerImages()
   IMG_FIRECRAWL_API=ghcr.io/firecrawl/firecrawl:latest
   IMG_LIBRECHAT_APP=ghcr.io/danny-avila/librechat:v0.8.1
   IMG_LIBRECHAT_RAGAPI=ghcr.io/danny-avila/librechat-rag-api-dev-lite:v0.7.0
-  IMG_CRAWL4AI_APP=mirror.gcr.io/unclecode/crawl4ai:0.9.2
+  IMG_CRAWL4AI_APP=mirror.gcr.io/unclecode/crawl4ai:0.8.6
   IMG_CRAWL4AI_PROXY=ghcr.io/lennyerik/crawl4ai-proxy:latest
   IMG_OLLAMA_SERVER=mirror.gcr.io/ollama/ollama:0.20.5
   IMG_OPENWEBUI_APP=hshq/openwebui-app:v3
@@ -30924,7 +30926,7 @@ function getScriptStackVersion()
     collabora)
       echo "v9" ;;
     nextcloud)
-      echo "v15" ;;
+      echo "v14" ;;
     jitsi)
       echo "v9" ;;
     matrix)
@@ -31002,7 +31004,7 @@ function getScriptStackVersion()
     freshrss)
       echo "v6" ;;
     keila)
-      echo "v5" ;;
+      echo "v6" ;;
     wallabag)
       echo "v5" ;;
     jupyter)
@@ -31068,7 +31070,7 @@ function getScriptStackVersion()
     standardnotes)
       echo "v2" ;;
     metabase)
-      echo "v3" ;;
+      echo "v4" ;;
     kanboard)
       echo "v2" ;;
     wekan)
@@ -31368,7 +31370,8 @@ function pullDockerImages()
   buildOrPullImage $IMG_MEILISEARCH
   buildOrPullImage $IMG_BARASSISTANT_SALTRIM
   buildOrPullImage $IMG_FRESHRSS
-  buildOrPullImage $IMG_KEILA
+  buildOrPullImage $IMG_KEILA_APP
+  buildOrPullImage $IMG_KEILA_MCP
   buildOrPullImage $IMG_WALLABAG
   buildOrPullImage $IMG_JUPYTER
   buildOrPullImage $IMG_PAPERLESS_APP
@@ -31454,6 +31457,7 @@ function pullDockerImages()
   buildOrPullImage $IMG_KILLBILL_APP
   buildOrPullImage $IMG_KILLBILL_WEB
   buildOrPullImage $IMG_INVOICESHELF_APP
+  buildOrPullImage $IMG_INVOICESHELF_MCP
   buildOrPullImage $IMG_INVOICENINJA_APP
   buildOrPullImage $IMG_DOLIBARR_APP
   buildOrPullImage $IMG_DOLIBARR_MCP
@@ -41320,6 +41324,11 @@ function initServiceDefaults()
 
 function getScriptImageByContainerName()
 {
+  imgOverride=$(getImageOverride "$1")
+  if ! [ -z "$imgOverride" ]; then
+    echo "$imgOverride"
+    return
+  fi
   case "$1" in
     "portainer")
       container_image=$IMG_PORTAINER
@@ -41763,10 +41772,13 @@ function getScriptImageByContainerName()
       container_image=$IMG_FRESHRSS
       ;;
     "keila-db")
-      container_image=postgres:15.0-bullseye
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "keila-app")
-      container_image=$IMG_KEILA
+      container_image=$IMG_KEILA_APP
+      ;;
+    "keila-mcp")
+      container_image=$IMG_KEILA_MCP
       ;;
     "wallabag-db")
       container_image=mirror.gcr.io/postgres:15.0-bullseye
@@ -42277,6 +42289,9 @@ function getScriptImageByContainerName()
       ;;
     "invoiceshelf-app")
       container_image=$IMG_INVOICESHELF_APP
+      ;;
+    "invoiceshelf-mcp")
+      container_image=$IMG_INVOICESHELF_MCP
       ;;
     "invoiceninja-db")
       container_image=mirror.gcr.io/mariadb:10.7.3
@@ -43036,6 +43051,11 @@ function getScriptImageByContainerName()
       ;;
   esac
   echo "$container_image"
+}
+
+function getImageOverride()
+{
+  return
 }
 
 function performPostStackRemoval()
@@ -51778,21 +51798,7 @@ function performUpdateNextcloud()
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[2]="mirror.gcr.io/nextcloud:33.0.2-fpm-alpine,mirror.gcr.io/nextcloud:34.0.1-fpm-alpine"
       image_update_map[3]="mirror.gcr.io/nextcloud/aio-imaginary:20260409_094910,mirror.gcr.io/nextcloud/aio-imaginary:20260702_083546"
-      image_update_map[4]="mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/nginx:1.30.0-alpine"
-      image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20260409_094910,ghcr.io/nextcloud-releases/aio-talk:20260702_083546"
-      image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20260409_094910,ghcr.io/nextcloud-releases/aio-talk-recording:20260702_083546"
-      image_update_map[7]="ghcr.io/nextcloud/nextcloud-appapi-harp:v0.3.2,ghcr.io/nextcloud/nextcloud-appapi-harp:v0.4.2"
-      image_update_map[8]="ghcr.io/cbcoutinho/nextcloud-mcp-server:0.72.1,ghcr.io/homeserverhq/nextcloud-mcp:v1"
-      return
-    ;;
-    14)
-      newVer=v15
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/nextcloud:33.0.2-fpm-alpine,mirror.gcr.io/nextcloud/aio-imaginary:20260409_094910,mirror.gcr.io/nginx:1.30.0-alpine,ghcr.io/nextcloud-releases/aio-talk:20260409_094910,ghcr.io/nextcloud-releases/aio-talk-recording:20260409_094910,ghcr.io/nextcloud/nextcloud-appapi-harp:v0.3.2,ghcr.io/cbcoutinho/nextcloud-mcp-server:0.72.1
-      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
-      image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[2]="mirror.gcr.io/nextcloud:33.0.2-fpm-alpine,mirror.gcr.io/nextcloud:34.0.1-fpm-alpine"
-      image_update_map[3]="mirror.gcr.io/nextcloud/aio-imaginary:20260409_094910,mirror.gcr.io/nextcloud/aio-imaginary:20260702_083546"
-      image_update_map[4]="mirror.gcr.io/nginx:1.30.0-alpine,mirror.gcr.io/nginx:1.31.2-alpine"
+      image_update_map[4]="mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/nginx:1.31.2-alpine"
       image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20260409_094910,ghcr.io/nextcloud-releases/aio-talk:20260702_083546"
       image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20260409_094910,ghcr.io/nextcloud-releases/aio-talk-recording:20260702_083546"
       image_update_map[7]="ghcr.io/nextcloud/nextcloud-appapi-harp:v0.3.2,ghcr.io/nextcloud/nextcloud-appapi-harp:v0.4.2"
@@ -51802,8 +51808,8 @@ function performUpdateNextcloud()
       performMaintenanceNextcloud
       return
     ;;
-    15)
-      newVer=v15
+    14)
+      newVer=v14
       curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/nextcloud:34.0.1-fpm-alpine,mirror.gcr.io/nextcloud/aio-imaginary:20260702_083546,mirror.gcr.io/nginx:1.31.2-alpine,ghcr.io/nextcloud-releases/aio-talk:20260702_083546,ghcr.io/nextcloud-releases/aio-talk-recording:20260702_083546,ghcr.io/nextcloud/nextcloud-appapi-harp:v0.4.2,ghcr.io/homeserverhq/nextcloud-mcp:v1
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
@@ -58741,7 +58747,6 @@ function installHomeAssistant()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/homeassistant
   mkdir $HSHQ_STACKS_DIR/homeassistant/config
   mkdir $HSHQ_STACKS_DIR/homeassistant/config/www
@@ -58754,6 +58759,7 @@ function installHomeAssistant()
   mkdir $HSHQ_STACKS_DIR/homeassistant/dbexport
   mkdir $HSHQ_STACKS_DIR/homeassistant/media
   mkdir $HSHQ_STACKS_DIR/homeassistant/nodered
+  mkdir $HSHQ_STACKS_DIR/homeassistant/mcp
   chmod 777 $HSHQ_STACKS_DIR/homeassistant/dbexport
   sudo chown 1000:1000 $HSHQ_STACKS_DIR/homeassistant/nodered
   initServicesCredentials
@@ -58781,6 +58787,9 @@ function installHomeAssistant()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>header {\n"
+  inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com; img-src 'self' cdnjs.cloudflare.com *.githubusercontent.com *.$HOMESERVER_DOMAIN data:; frame-src 'self' *.$HOMESERVER_DOMAIN data: blob:; connect-src 'self' catalogue.nodered.org api.github.com cdnjs.cloudflare.com *.$HOMESERVER_DOMAIN wss://*.$HOMESERVER_DOMAIN data:; object-src 'none'; frame-ancestors 'self' *.$HOMESERVER_DOMAIN; upgrade-insecure-requests; font-src 'self' cdnjs.cloudflare.com data:;\"\n"
+  inner_block=$inner_block"}>>>>\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://host.docker.internal:$HOMEASSISTANT_LOCALHOST_PORT {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -58796,6 +58805,9 @@ function installHomeAssistant()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
+  inner_block=$inner_block">>>>header {\n"
+  inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com; img-src 'self' cdnjs.cloudflare.com *.githubusercontent.com *.$HOMESERVER_DOMAIN data:; frame-src 'self' *.$HOMESERVER_DOMAIN data: blob:; connect-src 'self' catalogue.nodered.org api.github.com cdnjs.cloudflare.com *.$HOMESERVER_DOMAIN wss://*.$HOMESERVER_DOMAIN data:; object-src 'none'; frame-ancestors 'self' *.$HOMESERVER_DOMAIN; upgrade-insecure-requests; font-src 'self' cdnjs.cloudflare.com data:;\"\n"
+  inner_block=$inner_block"}>>>>\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://homeassistant-configurator {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -58826,6 +58838,9 @@ function installHomeAssistant()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
+  inner_block=$inner_block">>>>header {\n"
+  inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com; img-src 'self' cdnjs.cloudflare.com *.githubusercontent.com *.$HOMESERVER_DOMAIN data:; frame-src 'self' *.$HOMESERVER_DOMAIN data: blob:; connect-src 'self' catalogue.nodered.org api.github.com cdnjs.cloudflare.com *.$HOMESERVER_DOMAIN wss://*.$HOMESERVER_DOMAIN data:; object-src 'none'; frame-ancestors 'self' *.$HOMESERVER_DOMAIN; upgrade-insecure-requests; font-src 'self' cdnjs.cloudflare.com data:;\"\n"
+  inner_block=$inner_block"}>>>>\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://homeassistant-tasmoadmin {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -58849,9 +58864,11 @@ function outputConfigHomeAssistant()
   cat <<EOFHA > $HOME/homeassistant.env
 UID=$USERID
 GID=$GROUPID
-PYTHON_VER=python3.13
+PYTHON_VER=python3.14
 HOMEASSISTANT_URL=https://host.docker.internal:$HOMEASSISTANT_LOCALHOST_PORT
 HOMEASSISTANT_TOKEN=your_long_lived_access_token_here
+HOMEASSISTANT_VERIFY_SSL=false
+SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 HA_VERIFY_SSL=false
 HA_TIMEOUT=30
 HA_MAX_RETRIES=3
@@ -58864,7 +58881,9 @@ ENABLE_TOOL_SEARCH=false
 ENABLE_YAML_CONFIG_EDITING=false
 DISABLED_TOOLS=
 PINNED_TOOLS=
-MCP_SERVER_NAME=ha-mcp
+MCP_SERVER_NAME=homeassistant-mcp
+MCP_TRANSPORT=http
+MCP_HOST=0.0.0.0
 EOFHA
   cat <<EOFCF > $HSHQ_STACKS_DIR/homeassistant/configurator/settings.conf
 {
@@ -59059,12 +59078,20 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    command: ha-mcp-web
+    extra_hosts:
+      - host.docker.internal:host-gateway
     networks:
       - dock-privateip-net
       - dock-aipriv-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/python3.13/site-packages/certifi/cacert.pem:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/homeassistant/mcp:/home/mcpuser/.ha-mcp
 
 networks:
   dock-proxy-net:
@@ -59362,6 +59389,7 @@ function mfHomeAssistantV10Update()
 
 function mfHomeAssistantV11Update()
 {
+  mkdir -p $HSHQ_STACKS_DIR/homeassistant/mcp
   rm -f $HOME/homeassistant-compose.yml
   cat <<EOFHA > $HOME/homeassistant-compose.yml
 $STACK_VERSION_PREFIX homeassistant v11
@@ -59505,12 +59533,20 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    command: ha-mcp-web
+    extra_hosts:
+      - host.docker.internal:host-gateway
     networks:
       - dock-privateip-net
       - dock-aipriv-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/python3.13/site-packages/certifi/cacert.pem:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/homeassistant/mcp:/home/mcpuser/.ha-mcp
 
 networks:
   dock-proxy-net:
@@ -59536,9 +59572,11 @@ EOFHA
   cat <<EOFHA > $HOME/homeassistant.env
 UID=$USERID
 GID=$GROUPID
-PYTHON_VER=python3.13
+PYTHON_VER=python3.14
 HOMEASSISTANT_URL=https://host.docker.internal:$HOMEASSISTANT_LOCALHOST_PORT
 HOMEASSISTANT_TOKEN=your_long_lived_access_token_here
+HOMEASSISTANT_VERIFY_SSL=false
+SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 HA_VERIFY_SSL=false
 HA_TIMEOUT=30
 HA_MAX_RETRIES=3
@@ -59551,8 +59589,63 @@ ENABLE_TOOL_SEARCH=false
 ENABLE_YAML_CONFIG_EDITING=false
 DISABLED_TOOLS=
 PINNED_TOOLS=
-MCP_SERVER_NAME=ha-mcp
+MCP_SERVER_NAME=homeassistant-mcp
+MCP_TRANSPORT=http
+MCP_HOST=0.0.0.0
 EOFHA
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>header {\n"
+  inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com; img-src 'self' cdnjs.cloudflare.com *.githubusercontent.com *.$HOMESERVER_DOMAIN data:; frame-src 'self' *.$HOMESERVER_DOMAIN data: blob:; connect-src 'self' catalogue.nodered.org api.github.com cdnjs.cloudflare.com *.$HOMESERVER_DOMAIN wss://*.$HOMESERVER_DOMAIN data:; object-src 'none'; frame-ancestors 'self' *.$HOMESERVER_DOMAIN; upgrade-insecure-requests; font-src 'self' cdnjs.cloudflare.com data:;\"\n"
+  inner_block=$inner_block"}>>>>\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy https://host.docker.internal:$HOMEASSISTANT_LOCALHOST_PORT {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_HOMEASSISTANT_APP $MANAGETLS_HOMEASSISTANT_APP "$is_integrate_hshq" $NETDEFAULT_HOMEASSISTANT_APP "$inner_block"
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
+  inner_block=$inner_block">>>>header {\n"
+  inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com; img-src 'self' cdnjs.cloudflare.com *.githubusercontent.com *.$HOMESERVER_DOMAIN data:; frame-src 'self' *.$HOMESERVER_DOMAIN data: blob:; connect-src 'self' catalogue.nodered.org api.github.com cdnjs.cloudflare.com *.$HOMESERVER_DOMAIN wss://*.$HOMESERVER_DOMAIN data:; object-src 'none'; frame-ancestors 'self' *.$HOMESERVER_DOMAIN; upgrade-insecure-requests; font-src 'self' cdnjs.cloudflare.com data:;\"\n"
+  inner_block=$inner_block"}>>>>\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy https://homeassistant-configurator {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_HOMEASSISTANT_CONFIGURATOR $MANAGETLS_HOMEASSISTANT_CONFIGURATOR "$is_integrate_hshq" $NETDEFAULT_HOMEASSISTANT_CONFIGURATOR "$inner_block"
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
+  inner_block=$inner_block">>>>header {\n"
+  inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com; img-src 'self' cdnjs.cloudflare.com *.githubusercontent.com *.$HOMESERVER_DOMAIN data:; frame-src 'self' *.$HOMESERVER_DOMAIN data: blob:; connect-src 'self' catalogue.nodered.org api.github.com cdnjs.cloudflare.com *.$HOMESERVER_DOMAIN wss://*.$HOMESERVER_DOMAIN data:; object-src 'none'; frame-ancestors 'self' *.$HOMESERVER_DOMAIN; upgrade-insecure-requests; font-src 'self' cdnjs.cloudflare.com data:;\"\n"
+  inner_block=$inner_block"}>>>>\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://homeassistant-tasmoadmin {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_HOMEASSISTANT_TASMOADMIN $MANAGETLS_HOMEASSISTANT_TASMOADMIN "$is_integrate_hshq" $NETDEFAULT_HOMEASSISTANT_TASMOADMIN "$inner_block"
 }
 
 # Gitlab
@@ -67431,6 +67524,10 @@ function installKeila()
   if [ $? -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName keila-mcp)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/keila
   mkdir $HSHQ_STACKS_DIR/keila/db
@@ -67539,6 +67636,22 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - v-keila-uploads:/uploads
 
+  keila-mcp:
+    image: $(getScriptImageByContainerName keila-mcp)
+    container_name: keila-app
+    hostname: keila-app
+    restart: unless-stopped
+    env_file: stack.env
+    networks:
+      - int-keila-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
 volumes:
   v-keila-db:
     driver: local
@@ -67563,6 +67676,9 @@ networks:
   dock-internalmail-net:
     name: dock-internalmail
     external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
   int-keila-net:
     driver: bridge
     internal: true
@@ -67571,7 +67687,6 @@ networks:
 
 
 EOFBA
-
   cat <<EOFBA > $HOME/keila.env
 TZ=\${PORTAINER_TZ}
 UID=$USERID
@@ -67593,8 +67708,12 @@ KEILA_USER=$KEILA_ADMIN_EMAIL_ADDRESS
 KEILA_PASSWORD=$KEILA_ADMIN_PASSWORD
 DISABLE_REGISTRATION=true
 USER_CONTENT_DIR=/uploads
+KEILA_BASE_URL=http://keila-app:4000
+MCP_SERVER_PORT=80
+ALLOW_ALL_AGGREGATE=false
+IS_STATEFUL=false
+KEILA_PUBLIC_URL=$SUB_KEILA.$HOMESERVER_DOMAIN
 EOFBA
-
 }
 
 function performUpdateKeila()
@@ -67629,10 +67748,20 @@ function performUpdateKeila()
       image_update_map[1]="pentacent/keila:0.15.0,pentacent/keila:0.17.1"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=postgres:15.0-bullseye,pentacent/keila:0.17.1
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="pentacent/keila:0.17.1,pentacent/keila:0.17.1"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="pentacent/keila:0.17.1,mirror.gcr.io/pentacent/keila:0.30.2"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfKeilaV6AddMCP
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/pentacent/keila:0.30.2,ghcr.io/homeserverhq/keila-mcp:v1
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/pentacent/keila:0.30.2,mirror.gcr.io/pentacent/keila:0.30.2"
+      image_update_map[2]="ghcr.io/homeserverhq/keila-mcp:v1,ghcr.io/homeserverhq/keila-mcp:v1"
     ;;
     *)
       is_upgrade_error=true
@@ -67642,6 +67771,148 @@ function performUpdateKeila()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfKeilaV6AddMCP()
+{
+  cat <<EOFBA > $HOME/keila-compose.yml
+$STACK_VERSION_PREFIX keila $(getScriptStackVersion keila)
+
+services:
+  keila-db:
+    image: mirror.gcr.io/postgres:15.0-bullseye
+    container_name: keila-db
+    hostname: keila-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-keila-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/keila/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/keila/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.keila-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.keila-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.keila-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.keila-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.keila-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.keila-hourly-db.email-from=Keila Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.keila-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.keila-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.keila-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.keila-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.keila-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.keila-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.keila-monthly-db.email-from=Keila Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.keila-monthly-db.mail-only-on-error=false"
+
+  keila-app:
+    image: mirror.gcr.io/pentacent/keila:0.30.2
+    container_name: keila-app
+    hostname: keila-app
+    restart: unless-stopped
+    env_file: stack.env
+    depends_on:
+      - keila-db
+    networks:
+      - int-keila-net
+      - dock-proxy-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-keila-uploads:/uploads
+
+  keila-mcp:
+    image: ghcr.io/homeserverhq/keila-mcp:v1
+    container_name: keila-app
+    hostname: keila-app
+    restart: unless-stopped
+    env_file: stack.env
+    networks:
+      - int-keila-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+volumes:
+  v-keila-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/keila/db
+  v-keila-uploads:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/keila/uploads
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-keila-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+
+EOFBA
+  cat <<EOFBA > $HOME/keila.env
+TZ=\${PORTAINER_TZ}
+UID=$USERID
+GID=$GROUPID
+POSTGRES_DB=$KEILA_DATABASE_NAME
+POSTGRES_USER=$KEILA_DATABASE_USER
+POSTGRES_PASSWORD=$KEILA_DATABASE_USER_PASSWORD
+SECRET_KEY_BASE=$KEILA_SECRET_KEY_BASE
+DB_URL=postgres://$KEILA_DATABASE_USER:$KEILA_DATABASE_USER_PASSWORD@keila-db/$KEILA_DATABASE_NAME
+URL_HOST=$SUB_KEILA.$HOMESERVER_DOMAIN
+URL_SCHEMA=https
+MAILER_SMTP_HOST=$SMTP_HOSTNAME
+MAILER_SMTP_PORT=$SMTP_HOSTPORT
+MAILER_SMTP_USER=$EMAIL_SMTP_EMAIL_ADDRESS
+MAILER_SMTP_PASSWORD=$EMAIL_SMTP_PASSWORD
+MAILER_SMTP_FROM_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
+MAILER_ENABLE_STARTTLS=true
+KEILA_USER=$KEILA_ADMIN_EMAIL_ADDRESS
+KEILA_PASSWORD=$KEILA_ADMIN_PASSWORD
+DISABLE_REGISTRATION=true
+USER_CONTENT_DIR=/uploads
+KEILA_BASE_URL=http://keila-app:4000
+MCP_SERVER_PORT=80
+ALLOW_ALL_AGGREGATE=false
+IS_STATEFUL=false
+KEILA_PUBLIC_URL=$SUB_KEILA.$HOMESERVER_DOMAIN
+EOFBA
 }
 
 # Wallabag
@@ -80337,10 +80608,16 @@ function performUpdateMetabase()
       image_update_map[1]="mirror.gcr.io/metabase/metabase:v0.57.5.3,mirror.gcr.io/metabase/metabase:v0.58.5.4"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/metabase/metabase:v0.58.5.4
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
-      image_update_map[1]="mirror.gcr.io/metabase/metabase:v0.58.5.4,mirror.gcr.io/metabase/metabase:v0.58.5.4"
+      image_update_map[1]="mirror.gcr.io/metabase/metabase:v0.58.5.4,mirror.gcr.io/metabase/metabase:v0.63.2"
+    ;;
+    4)
+      newVer=v4
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/metabase/metabase:v0.63.2
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/metabase/metabase:v0.63.2,mirror.gcr.io/metabase/metabase:v0.63.2"
     ;;
     *)
       is_upgrade_error=true
@@ -88897,6 +89174,10 @@ function installInvoiceShelf()
   if [ $? -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName invoiceshelf-mcp)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/invoiceshelf
   mkdir $HSHQ_STACKS_DIR/invoiceshelf/db
@@ -89064,6 +89345,24 @@ services:
       - v-invoiceshelf-storage:/var/www/html/storage
       - v-invoiceshelf-modules:/var/www/html/Modules
 
+  invoiceshelf-mcp:
+    image: $(getScriptImageByContainerName invoiceshelf-mcp)
+    container_name: invoiceshelf-mcp
+    hostname: invoiceshelf-mcp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-invoiceshelf-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
 volumes:
   v-invoiceshelf-storage:
     driver: local
@@ -89120,6 +89419,11 @@ SESSION_DRIVER=file
 SESSION_DOMAIN=$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN
 SANCTUM_STATEFUL_DOMAINS=$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN
 TRUSTED_PROXIES=$DOCKER_NETWORK_RESERVED_RANGE
+INVOICESHELF_BASE_URL=http://invoiceshelf-app:8080
+MCP_SERVER_PORT=80
+ALLOW_ALL_AGGREGATE=false
+IS_STATEFUL=false
+INVOICESHELF_PUBLIC_URL=$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN
 EOFMT
   cat <<EOFPC > $HSHQ_STACKS_DIR/invoiceshelf/dbimport/addreadonly.sql
 DO \$do\$
@@ -89147,10 +89451,20 @@ function performUpdateInvoiceShelf()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/invoiceshelf/invoiceshelf:2.2.0-alpha2
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
-      image_update_map[1]="mirror.gcr.io/invoiceshelf/invoiceshelf:2.2.0-alpha2,mirror.gcr.io/invoiceshelf/invoiceshelf:2.2.0-alpha2"
+      image_update_map[1]="mirror.gcr.io/invoiceshelf/invoiceshelf:2.2.0-alpha2,mirror.gcr.io/invoiceshelf/invoiceshelf:2.4.2"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfInvoiceShelfV2AddMCP
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/invoiceshelf/invoiceshelf:2.4.2
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/invoiceshelf/invoiceshelf:2.4.2,mirror.gcr.io/invoiceshelf/invoiceshelf:2.4.2"
+      image_update_map[2]="ghcr.io/homeserverhq/invoiceshelf-mcp:v1,ghcr.io/homeserverhq/invoiceshelf-mcp:v1"
     ;;
     *)
       is_upgrade_error=true
@@ -89160,6 +89474,157 @@ function performUpdateInvoiceShelf()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfInvoiceShelfV2AddMCP()
+{
+  cat <<EOFMT > $HOME/invoiceshelf-compose.yml
+$STACK_VERSION_PREFIX invoiceshelf $(getScriptStackVersion invoiceshelf)
+
+services:
+  invoiceshelf-db:
+    image: mirror.gcr.io/postgres:16.9-bookworm
+    container_name: invoiceshelf-db
+    hostname: invoiceshelf-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-invoiceshelf-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceshelf/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceshelf/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceshelf/dbimport:/dbimport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.invoiceshelf-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.invoiceshelf-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.invoiceshelf-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.invoiceshelf-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.invoiceshelf-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.invoiceshelf-hourly-db.email-from=InvoiceShelf Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.invoiceshelf-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.invoiceshelf-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.invoiceshelf-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.invoiceshelf-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.invoiceshelf-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.invoiceshelf-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.invoiceshelf-monthly-db.email-from=InvoiceShelf Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.invoiceshelf-monthly-db.mail-only-on-error=false"
+
+  invoiceshelf-app:
+    image: mirror.gcr.io/invoiceshelf/invoiceshelf:2.4.2
+    container_name: invoiceshelf-app
+    hostname: invoiceshelf-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - invoiceshelf-db
+    networks:
+      - int-invoiceshelf-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-invoiceshelf-storage:/var/www/html/storage
+      - v-invoiceshelf-modules:/var/www/html/Modules
+
+  invoiceshelf-mcp:
+    image: ghcr.io/homeserverhq/invoiceshelf-mcp:v1
+    container_name: invoiceshelf-mcp
+    hostname: invoiceshelf-mcp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-invoiceshelf-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+volumes:
+  v-invoiceshelf-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/invoiceshelf/storage
+  v-invoiceshelf-modules:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/invoiceshelf/modules
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-invoiceshelf-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/invoiceshelf.env
+TZ=\${PORTAINER_TZ}
+PHP_TZ=\${PORTAINER_TZ}
+TIMEZONE=\${PORTAINER_TZ}
+POSTGRES_DB=$INVOICESHELF_DATABASE_NAME
+POSTGRES_USER=$INVOICESHELF_DATABASE_USER
+POSTGRES_PASSWORD=$INVOICESHELF_DATABASE_USER_PASSWORD
+APP_NAME=InvoiceShelf
+APP_ENV=production
+APP_DEBUG=true
+APP_URL=https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN
+DB_CONNECTION=pgsql
+DB_HOST=invoiceshelf-db
+DB_PORT=5432
+DB_DATABASE=$INVOICESHELF_DATABASE_NAME
+DB_USERNAME=$INVOICESHELF_DATABASE_USER
+DB_PASSWORD=$INVOICESHELF_DATABASE_USER_PASSWORD
+CACHE_STORE=file
+SESSION_DRIVER=file
+SESSION_DOMAIN=$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN
+SANCTUM_STATEFUL_DOMAINS=$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN
+TRUSTED_PROXIES=$DOCKER_NETWORK_RESERVED_RANGE
+INVOICESHELF_BASE_URL=http://invoiceshelf-app:8080
+MCP_SERVER_PORT=80
+ALLOW_ALL_AGGREGATE=false
+IS_STATEFUL=false
+INVOICESHELF_PUBLIC_URL=$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN
+EOFMT
 }
 
 # InvoiceNinja
@@ -96091,13 +96556,13 @@ function performUpdateCrawl4AI()
     1)
       newVer=v1
       curImageList=mirror.gcr.io/unclecode/crawl4ai:0.7.8,ghcr.io/lennyerik/crawl4ai-proxy:latest
-      image_update_map[0]="mirror.gcr.io/unclecode/crawl4ai:0.7.8,mirror.gcr.io/unclecode/crawl4ai:0.9.2"
+      image_update_map[0]="mirror.gcr.io/unclecode/crawl4ai:0.7.8,mirror.gcr.io/unclecode/crawl4ai:0.8.6"
       image_update_map[1]="ghcr.io/lennyerik/crawl4ai-proxy:latest,ghcr.io/lennyerik/crawl4ai-proxy:latest"
     ;;
     2)
       newVer=v2
-      curImageList=mirror.gcr.io/unclecode/crawl4ai:0.9.2,ghcr.io/lennyerik/crawl4ai-proxy:latest
-      image_update_map[0]="mirror.gcr.io/unclecode/crawl4ai:0.9.2,mirror.gcr.io/unclecode/crawl4ai:0.9.2"
+      curImageList=mirror.gcr.io/unclecode/crawl4ai:0.8.6,ghcr.io/lennyerik/crawl4ai-proxy:latest
+      image_update_map[0]="mirror.gcr.io/unclecode/crawl4ai:0.8.6,mirror.gcr.io/unclecode/crawl4ai:0.8.6"
       image_update_map[1]="ghcr.io/lennyerik/crawl4ai-proxy:latest,ghcr.io/lennyerik/crawl4ai-proxy:latest"
     ;;
     *)
