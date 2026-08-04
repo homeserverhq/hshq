@@ -30580,7 +30580,7 @@ function loadPinnedDockerImages()
   IMG_AUTOMATISCH_APP=mirror.gcr.io/automatischio/automatisch:0.15.0
   IMG_BARASSISTANT_APP=mirror.gcr.io/barassistant/server:5.15.3
   IMG_BARASSISTANT_SALTRIM=mirror.gcr.io/barassistant/salt-rim:4.15.0
-  IMG_BARASSISTANT_MCP=ghcr.io/homeserverhq/barassistant-mcp:v1
+  IMG_BARASSISTANT_MCP=ghcr.io/homeserverhq/barassistant-mcp:v2
   IMG_BUDIBASE_APP=mirror.gcr.io/budibase/apps:3.23.36
   IMG_BUDIBASE_WORKER=mirror.gcr.io/budibase/worker:3.23.36
   IMG_BUDIBASE_PROXY=mirror.gcr.io/budibase/proxy:3.23.36
@@ -30599,7 +30599,7 @@ function loadPinnedDockerImages()
   IMG_DISCOURSE=mirror.gcr.io/bitnami/discourse:3.4.7
   IMG_DNSMASQ=mirror.gcr.io/jpillora/dnsmasq:1.1
   IMG_DOLIBARR_APP=mirror.gcr.io/dolibarr/dolibarr:23.0.3-php8.2
-  IMG_DOLIBARR_MCP=ghcr.io/homeserverhq/dolibarr-mcp:v1
+  IMG_DOLIBARR_MCP=ghcr.io/homeserverhq/dolibarr-mcp:v2
   IMG_DOZZLE=mirror.gcr.io/amir20/dozzle:v6.1.1
   IMG_DRAWIO_PLANTUML=mirror.gcr.io/jgraph/plantuml-server
   IMG_DRAWIO_EXPORT=mirror.gcr.io/jgraph/export-server
@@ -30637,14 +30637,14 @@ function loadPinnedDockerImages()
   IMG_IMMICH_DB=ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
   IMG_IMMICH_APP=ghcr.io/immich-app/immich-server:v3.0.2
   IMG_IMMICH_ML=ghcr.io/immich-app/immich-machine-learning:v3.0.2
-  IMG_IMMICH_MCP=ghcr.io/homeserverhq/immich-mcp:v1
+  IMG_IMMICH_MCP=ghcr.io/homeserverhq/immich-mcp:v2
   IMG_INFLUXDB=mirror.gcr.io/influxdb:2.7.12-alpine
   IMG_INVIDIOUS_WEB=quay.io/invidious/invidious:master
   IMG_INVIDIOUS_COMPANION=quay.io/invidious/invidious-companion:latest
   IMG_INVIDIOUS_SESSIONGEN=quay.io/invidious/youtube-trusted-session-generator
   IMG_INVOICENINJA_APP=mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37
   IMG_INVOICESHELF_APP=mirror.gcr.io/invoiceshelf/invoiceshelf:2.4.2
-  IMG_INVOICESHELF_MCP=ghcr.io/homeserverhq/invoiceshelf-mcp:v1
+  IMG_INVOICESHELF_MCP=ghcr.io/homeserverhq/invoiceshelf-mcp:v2
   IMG_ITTOOLS=ghcr.io/corentinth/it-tools:latest
   IMG_JELLYFIN=mirror.gcr.io/jellyfin/jellyfin:10.11.4
   IMG_JITSI_WEB=jitsi/web:stable-10655
@@ -30655,12 +30655,12 @@ function loadPinnedDockerImages()
   IMG_KANBOARD_APP=mirror.gcr.io/kanboard/kanboard:v1.2.48
   IMG_KASM=mirror.gcr.io/linuxserver/kasm:1.18.0-ls108
   IMG_KEILA_APP=mirror.gcr.io/pentacent/keila:0.30.2
-  IMG_KEILA_MCP=ghcr.io/homeserverhq/keila-mcp:v1
+  IMG_KEILA_MCP=ghcr.io/homeserverhq/keila-mcp:v2
   IMG_KILLBILL_DB=mirror.gcr.io/killbill/mariadb:0.24
   IMG_KILLBILL_APP=mirror.gcr.io/killbill/killbill:0.24.15
   IMG_KILLBILL_WEB=mirror.gcr.io/killbill/kaui:3.0.23
   IMG_LINKWARDEN_APP=ghcr.io/linkwarden/linkwarden:v2.15.1
-  IMG_LINKWARDEN_MCP=ghcr.io/homeserverhq/linkwarden-mcp:v1
+  IMG_LINKWARDEN_MCP=ghcr.io/homeserverhq/linkwarden-mcp:v2
   IMG_MAIL_RELAY_POSTFIX=ghcr.io/homeserverhq/mail-relay-postfix:v1
   IMG_MAIL_RELAY_RSPAMD=ghcr.io/homeserverhq/mail-relay-rspamd:v1
   IMG_MAIL_RELAY_CLAMAV=clamav/clamav:1.2.1
@@ -30683,7 +30683,7 @@ function loadPinnedDockerImages()
   IMG_MATRIX_SYNAPSE=mirror.gcr.io/matrixdotorg/synapse:v1.143.0
   IMG_MATOMO_APP=mirror.gcr.io/matomo:5.6.1-fpm-alpine
   IMG_MEALIE_APP=ghcr.io/mealie-recipes/mealie:v3.20.1
-  IMG_MEALIE_MCP=ghcr.io/homeserverhq/mealie-mcp:v1
+  IMG_MEALIE_MCP=ghcr.io/homeserverhq/mealie-mcp:v2
   IMG_MESHCENTRAL=ghcr.io/ylianst/meshcentral:1.1.53
   IMG_METABASE=mirror.gcr.io/metabase/metabase:v0.63.2
   IMG_MINTHCM_WEB=mirror.gcr.io/minthcm/minthcm:latest
@@ -30696,7 +30696,7 @@ function loadPinnedDockerImages()
   IMG_NEXTCLOUD_IMAGINARY=mirror.gcr.io/nextcloud/aio-imaginary:20260702_083546
   IMG_NEXTCLOUD_TALKHPB=ghcr.io/nextcloud-releases/aio-talk:20260702_083546
   IMG_NEXTCLOUD_TALKRECORD=ghcr.io/nextcloud-releases/aio-talk-recording:20260702_083546
-  IMG_NEXTCLOUD_MCP=ghcr.io/homeserverhq/nextcloud-mcp:v1
+  IMG_NEXTCLOUD_MCP=ghcr.io/homeserverhq/nextcloud-mcp:v2
   IMG_NTFY=mirror.gcr.io/binwiederhier/ntfy:v2.15.0
   IMG_NODE_EXPORTER=mirror.gcr.io/prom/node-exporter:v1.12.0
   IMG_ODOO_APP=mirror.gcr.io/odoo:19.0-20251121
@@ -30706,13 +30706,13 @@ function loadPinnedDockerImages()
   IMG_OPENLDAP_PHP=osixia/phpldapadmin:stable
   IMG_OPENLDAP_SERVER=osixia/openldap:1.5.0
   IMG_OPENPROJECT_APP=mirror.gcr.io/openproject/openproject:17.6.0-slim
-  IMG_OPENPROJECT_MCP=ghcr.io/homeserverhq/openproject-mcp:v1
-  IMG_PAPERLESS_APP=ghcr.io/paperless-ngx/paperless-ngx:2.20.15
+  IMG_OPENPROJECT_MCP=ghcr.io/homeserverhq/openproject-mcp:v2
+  IMG_PAPERLESS_APP=ghcr.io/paperless-ngx/paperless-ngx:3.0.5
   IMG_PAPERLESS_GOTENBERG=mirror.gcr.io/gotenberg/gotenberg:8.34.0
   IMG_PAPERLESS_TIKA=mirror.gcr.io/apache/tika:3.3.1.0-full
   IMG_PAPERLESS_AI=hshq/paperless-ai-next:v1
   IMG_PAPERLESS_GPT=ghcr.io/icereed/paperless-gpt:v0.26.1
-  IMG_PAPERLESS_MCP=ghcr.io/homeserverhq/paperless-mcp:v1
+  IMG_PAPERLESS_MCP=ghcr.io/homeserverhq/paperless-mcp:v2
   IMG_PASTEFY=mirror.gcr.io/interaapps/pastefy:7.1.5
   IMG_PEERTUBE_APP=mirror.gcr.io/chocobozzz/peertube:v7.3.0-bookworm
   IMG_PENPOT_BACKEND=mirror.gcr.io/penpotapp/backend:2.11.1
@@ -30760,7 +30760,7 @@ function loadPinnedDockerImages()
   IMG_SYNCTHING=mirror.gcr.io/syncthing/syncthing:2.1.2
   IMG_TOMCAT=tomcat:11
   IMG_TWENTY_APP=mirror.gcr.io/twentycrm/twenty:v2.21.0
-  IMG_TWENTY_MCP=ghcr.io/homeserverhq/twenty-mcp:v1
+  IMG_TWENTY_MCP=ghcr.io/homeserverhq/twenty-mcp:v2
   IMG_UPTIMEKUMA=mirror.gcr.io/louislam/uptime-kuma:2.4.0
   IMG_VAULTWARDEN_APP=mirror.gcr.io/vaultwarden/server:1.36.0-alpine
   IMG_VAULTWARDEN_LDAP=mirror.gcr.io/vividboarder/vaultwarden_ldap:2.2.1
@@ -30771,11 +30771,11 @@ function loadPinnedDockerImages()
   IMG_WEKAN_APP=ghcr.io/wekan/wekan:v8.17
   IMG_WGPORTAL=wgportal/wg-portal:1.0.19
   IMG_WIKIJS_APP=mirror.gcr.io/requarks/wiki:2.5.314
-  IMG_WIKIJS_MCP=ghcr.io/homeserverhq/wikijs-mcp:v1
+  IMG_WIKIJS_MCP=ghcr.io/homeserverhq/wikijs-mcp:v2
   IMG_WIREGUARD=mirror.gcr.io/linuxserver/wireguard:1.0.20250521-r0-ls93
   IMG_WORDPRESS_APP=mirror.gcr.io/wordpress:php8.5-apache
   IMG_WORDPRESS_CLI=mirror.gcr.io/wordpress:cli-php8.3
-  IMG_WORDPRESS_MCP=ghcr.io/homeserverhq/wordpress-mcp:v1
+  IMG_WORDPRESS_MCP=ghcr.io/homeserverhq/wordpress-mcp:v2
   IMG_YAMTRACK_APP=ghcr.io/fuzzygrim/yamtrack:0.24.8
   IMG_ZAMMAD=ghcr.io/zammad/zammad:6.5.2-49
   IMG_ZULIP_APP=mirror.gcr.io/zulip/docker-zulip:11.4-0
@@ -30894,16 +30894,17 @@ function loadPinnedDockerImages()
   IMG_HERMES_TERMINAL=hshq/hermes-terminal:v1
   IMG_HERMES_CAMOFOX=ghcr.io/jo-inc/camofox-browser:1.11.2
   IMG_HERMES_WEBUI=ghcr.io/nesquena/hermes-webui:0.51.137
-  IMG_AUTOKB_APP=hshq/autokb-app:v1
-  IMG_AUTOKB_MCP=hshq/autokb-mcp:v1
+  IMG_AUTOKB_APP=ghcr.io/homeserverhq/autokb-app:v3
+  IMG_AUTOKB_MCP=ghcr.io/homeserverhq/autokb-mcp:v3
   IMG_AUTOKB_OWUISYNC=hshq/autokb-owuisync:v1
   IMG_SUITECRM_APP=ghcr.io/homeserverhq/suitecrm-core:v8.10.1
-  IMG_SUITECRM_MCP=ghcr.io/homeserverhq/suitecrm-mcp:v1
+  IMG_SUITECRM_MCP=ghcr.io/homeserverhq/suitecrm-mcp:v2
   IMG_HEDGEDOC_FRONTEND=ghcr.io/homeserverhq/hedgedoc-frontend:v2.0.1-alpha
   IMG_HEDGEDOC_BACKEND=ghcr.io/homeserverhq/hedgedoc-backend:v2.0.1-alpha
-  IMG_HEDGEDOC_MCP=ghcr.io/homeserverhq/hedgedoc-mcp:v1
+  IMG_HEDGEDOC_MCP=ghcr.io/homeserverhq/hedgedoc-mcp:v2
   IMG_PRESENTON_APP=ghcr.io/presenton/presenton:v0.9.3-beta
-  IMG_PRESENTON_MCP=ghcr.io/homeserverhq/presenton-mcp:v1
+  IMG_PRESENTON_MCP=ghcr.io/homeserverhq/presenton-mcp:v2
+  IMG_BASICMEMORY_APP=ghcr.io/basicmachines-co/basic-memory:0.22.1
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -31259,6 +31260,8 @@ function getScriptStackVersion()
       echo "v1" ;;
     presenton)
       echo "v1" ;;
+    basicmemory)
+      echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
 }
@@ -31587,6 +31590,7 @@ function pullDockerImages()
   buildOrPullImage $IMG_HEDGEDOC_MCP
   buildOrPullImage $IMG_PRESENTON_APP
   buildOrPullImage $IMG_PRESENTON_MCP
+  buildOrPullImage $IMG_BASICMEMORY_APP
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -33703,6 +33707,18 @@ PRESENTON_ADMIN_USERNAME=
 PRESENTON_ADMIN_EMAIL_ADDRESS=
 PRESENTON_ADMIN_PASSWORD=
 # Presenton (Service Details) END
+
+# BasicMemory (Service Details) BEGIN
+BASICMEMORY_INIT_ENV=true
+BASICMEMORY_ADMIN_USERNAME=
+BASICMEMORY_ADMIN_EMAIL_ADDRESS=
+BASICMEMORY_ADMIN_PASSWORD=
+BASICMEMORY_DATABASE_NAME=
+BASICMEMORY_DATABASE_USER=
+BASICMEMORY_DATABASE_USER_PASSWORD=
+BASICMEMORY_DATABASE_READONLYUSER=
+BASICMEMORY_DATABASE_READONLYUSER_PASSWORD=
+# BasicMemory (Service Details) END
 
 # Service Details END
 EOFCF
@@ -38606,6 +38622,38 @@ function initServicesCredentials()
     PRESENTON_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar PRESENTON_ADMIN_PASSWORD $PRESENTON_ADMIN_PASSWORD
   fi
+  if [ -z "$BASICMEMORY_ADMIN_USERNAME" ]; then
+    BASICMEMORY_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_basicmemory"
+    updateConfigVar BASICMEMORY_ADMIN_USERNAME $BASICMEMORY_ADMIN_USERNAME
+  fi
+  if [ -z "$BASICMEMORY_ADMIN_EMAIL_ADDRESS" ]; then
+    BASICMEMORY_ADMIN_EMAIL_ADDRESS=$BASICMEMORY_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar BASICMEMORY_ADMIN_EMAIL_ADDRESS $BASICMEMORY_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$BASICMEMORY_ADMIN_PASSWORD" ]; then
+    BASICMEMORY_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar BASICMEMORY_ADMIN_PASSWORD $BASICMEMORY_ADMIN_PASSWORD
+  fi
+  if [ -z "$BASICMEMORY_DATABASE_NAME" ]; then
+    BASICMEMORY_DATABASE_NAME=basicmemorydb
+    updateConfigVar BASICMEMORY_DATABASE_NAME $BASICMEMORY_DATABASE_NAME
+  fi
+  if [ -z "$BASICMEMORY_DATABASE_USER" ]; then
+    BASICMEMORY_DATABASE_USER=basicmemory-user
+    updateConfigVar BASICMEMORY_DATABASE_USER $BASICMEMORY_DATABASE_USER
+  fi
+  if [ -z "$BASICMEMORY_DATABASE_USER_PASSWORD" ]; then
+    BASICMEMORY_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar BASICMEMORY_DATABASE_USER_PASSWORD $BASICMEMORY_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$BASICMEMORY_DATABASE_READONLYUSER" ]; then
+    BASICMEMORY_DATABASE_READONLYUSER=basicmemory-readonly
+    updateConfigVar BASICMEMORY_DATABASE_READONLYUSER $BASICMEMORY_DATABASE_READONLYUSER
+  fi
+  if [ -z "$BASICMEMORY_DATABASE_READONLYUSER_PASSWORD" ]; then
+    BASICMEMORY_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar BASICMEMORY_DATABASE_READONLYUSER_PASSWORD $BASICMEMORY_DATABASE_READONLYUSER_PASSWORD
+  fi
 #ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
   if [ -z "$CLIENTDNS_USER1_ADMIN_USERNAME" ]; then
@@ -39185,6 +39233,7 @@ function initServiceVars()
   checkAddSvc "SVCD_SUITECRM_APP=suitecrm,suitecrm,primary,user,SuiteCRM,suitecrm,hshq"
   checkAddSvc "SVCD_HEDGEDOC_APP=hedgedoc,hedgedoc,primary,user,HedgeDoc,hedgedoc,hshq"
   checkAddSvc "SVCD_PRESENTON_APP=presenton,presenton,primary,user,Presenton,presenton,hshq"
+  checkAddSvc "SVCD_BASICMEMORY_APP=basicmemory,basicmemory,primary,user,BasicMemory,basicmemory,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -39539,6 +39588,8 @@ function installStackByName()
       installHedgeDoc $is_integrate ;;
     presenton)
       installPresenton $is_integrate ;;
+    basicmemory)
+      installBasicMemory $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -39907,6 +39958,8 @@ function performUpdateStackByName()
       performUpdateHedgeDoc ;;
     presenton)
       performUpdatePresenton ;;
+    basicmemory)
+      performUpdateBasicMemory ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -40107,6 +40160,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_SUITECRM_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PRESENTON_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_PRIMARY_HERE
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -40347,6 +40401,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SUITECRM_APP}-Admin" https://$SUB_SUITECRM_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SUITECRM_ADMIN_USERNAME $SUITECRM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEDGEDOC_APP}-Admin" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PRESENTON_APP}-Admin" https://$SUB_PRESENTON_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $PRESENTON_ADMIN_USERNAME $PRESENTON_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_BASICMEMORY_APP}-Admin" https://$SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $BASICMEMORY_ADMIN_USERNAME $BASICMEMORY_ADMIN_PASSWORD)"\n"
 #ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
@@ -40550,6 +40605,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SUITECRM_APP}-Admin" https://$SUB_SUITECRM_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SUITECRM_ADMIN_USERNAME $SUITECRM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HEDGEDOC_APP}-Admin" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PRESENTON_APP}-Admin" https://$SUB_PRESENTON_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $PRESENTON_ADMIN_USERNAME $PRESENTON_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_BASICMEMORY_APP}-Admin" https://$SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $BASICMEMORY_ADMIN_USERNAME $BASICMEMORY_ADMIN_PASSWORD)"\n"
 #ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
@@ -41254,6 +41310,9 @@ function getHeimdallOrderFromSub()
     "$SUB_PRESENTON_APP")
       order_num=199
       ;;
+    "$SUB_BASICMEMORY_APP")
+      order_num=200
+      ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=900
@@ -41304,18 +41363,18 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,morphic,opennotebook,appsmith,trilium,memos,sillytavern,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,wger,workoutcool,voicebox,opencode,emailclassifierai,suitecrm,hedgedoc,presenton
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,morphic,opennotebook,appsmith,trilium,memos,sillytavern,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,wger,workoutcool,voicebox,opencode,emailclassifierai,suitecrm,hedgedoc,presenton,basicmemory
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton
-  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton
-  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton
-  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
+  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
+  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
+  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
 #INIT_SERVICE_DEFAULTS_END
   if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
     HSHQ_OPTIONAL_STACKS=${HSHQ_OPTIONAL_STACKS},surfsense,ente,comfyui,insanelyfastwhisper,ivbox,skyvern,openrag,openskills,hermes-agent,autokb
@@ -43046,6 +43105,12 @@ function getScriptImageByContainerName()
     "presenton-mcp")
       container_image=$IMG_PRESENTON_MCP
       ;;
+    "basicmemory-db")
+      container_image=mirror.gcr.io/pgvector/pgvector:pg17
+      ;;
+    "basicmemory-app")
+      container_image=$IMG_BASICMEMORY_APP
+      ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
@@ -43198,6 +43263,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "SuiteCRM" "SUITECRM_INIT_ENV=false,SUITECRM_ADMIN_USERNAME=,SUITECRM_ADMIN_EMAIL_ADDRESS=,SUITECRM_ADMIN_PASSWORD=,SUITECRM_DATABASE_NAME=,SUITECRM_DATABASE_ROOT_PASSWORD=,SUITECRM_DATABASE_USER=,SUITECRM_DATABASE_USER_PASSWORD=,SUITECRM_DATABASE_READONLYUSER=,SUITECRM_DATABASE_READONLYUSER_PASSWORD=,SUITECRM_REDIS_PASSWORD=,SUITECRM_APP_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "HedgeDoc" "HEDGEDOC_INIT_ENV=false,HEDGEDOC_ADMIN_USERNAME=,HEDGEDOC_ADMIN_EMAIL_ADDRESS=,HEDGEDOC_ADMIN_PASSWORD=,HEDGEDOC_DATABASE_NAME=,HEDGEDOC_DATABASE_USER=,HEDGEDOC_DATABASE_USER_PASSWORD=,HEDGEDOC_DATABASE_READONLYUSER=,HEDGEDOC_DATABASE_READONLYUSER_PASSWORD=,HEDGEDOC_SESSION_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "Presenton" "PRESENTON_INIT_ENV=false,PRESENTON_ADMIN_USERNAME=,PRESENTON_ADMIN_EMAIL_ADDRESS=,PRESENTON_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "BasicMemory" "BASICMEMORY_INIT_ENV=false,BASICMEMORY_ADMIN_USERNAME=,BASICMEMORY_ADMIN_EMAIL_ADDRESS=,BASICMEMORY_ADMIN_PASSWORD=,BASICMEMORY_DATABASE_NAME=,BASICMEMORY_DATABASE_USER=,BASICMEMORY_DATABASE_USER_PASSWORD=,BASICMEMORY_DATABASE_READONLYUSER=,BASICMEMORY_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
 #ADD_NEW_ADD_SVC_CONFIG_HERE
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -51802,7 +51868,7 @@ function performUpdateNextcloud()
       image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20260409_094910,ghcr.io/nextcloud-releases/aio-talk:20260702_083546"
       image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20260409_094910,ghcr.io/nextcloud-releases/aio-talk-recording:20260702_083546"
       image_update_map[7]="ghcr.io/nextcloud/nextcloud-appapi-harp:v0.3.2,ghcr.io/nextcloud/nextcloud-appapi-harp:v0.4.2"
-      image_update_map[8]="ghcr.io/cbcoutinho/nextcloud-mcp-server:0.72.1,ghcr.io/homeserverhq/nextcloud-mcp:v1"
+      image_update_map[8]="ghcr.io/cbcoutinho/nextcloud-mcp-server:0.72.1,ghcr.io/homeserverhq/nextcloud-mcp:v2"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateNextcloudV14
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       performMaintenanceNextcloud
@@ -51810,7 +51876,7 @@ function performUpdateNextcloud()
     ;;
     14)
       newVer=v14
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/nextcloud:34.0.1-fpm-alpine,mirror.gcr.io/nextcloud/aio-imaginary:20260702_083546,mirror.gcr.io/nginx:1.31.2-alpine,ghcr.io/nextcloud-releases/aio-talk:20260702_083546,ghcr.io/nextcloud-releases/aio-talk-recording:20260702_083546,ghcr.io/nextcloud/nextcloud-appapi-harp:v0.4.2,ghcr.io/homeserverhq/nextcloud-mcp:v1
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/nextcloud:34.0.1-fpm-alpine,mirror.gcr.io/nextcloud/aio-imaginary:20260702_083546,mirror.gcr.io/nginx:1.31.2-alpine,ghcr.io/nextcloud-releases/aio-talk:20260702_083546,ghcr.io/nextcloud-releases/aio-talk-recording:20260702_083546,ghcr.io/nextcloud/nextcloud-appapi-harp:v0.4.2,ghcr.io/homeserverhq/nextcloud-mcp:v2
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[2]="mirror.gcr.io/nextcloud:34.0.1-fpm-alpine,mirror.gcr.io/nextcloud:34.0.1-fpm-alpine"
@@ -51819,7 +51885,7 @@ function performUpdateNextcloud()
       image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20260702_083546,ghcr.io/nextcloud-releases/aio-talk:20260702_083546"
       image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20260702_083546,ghcr.io/nextcloud-releases/aio-talk-recording:20260702_083546"
       image_update_map[7]="ghcr.io/nextcloud/nextcloud-appapi-harp:v0.4.2,ghcr.io/nextcloud/nextcloud-appapi-harp:v0.4.2"
-      image_update_map[8]="ghcr.io/homeserverhq/nextcloud-mcp:v1,ghcr.io/homeserverhq/nextcloud-mcp:v1"
+      image_update_map[8]="ghcr.io/homeserverhq/nextcloud-mcp:v2,ghcr.io/homeserverhq/nextcloud-mcp:v2"
     ;;
     *)
       is_upgrade_error=true
@@ -52652,7 +52718,7 @@ services:
       - NC_INSTANCE_URL=https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
 
   nextcloud-mcp:
-    image: ghcr.io/homeserverhq/nextcloud-mcp:v1
+    image: ghcr.io/homeserverhq/nextcloud-mcp:v2
     container_name: nextcloud-mcp
     hostname: nextcloud-mcp
     restart: unless-stopped
@@ -53936,10 +54002,10 @@ function performUpdateWikijs()
     ;;
     6)
       newVer=v6
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/requarks/wiki:2.5.314,ghcr.io/homeserverhq/wikijs-mcp:v1
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/requarks/wiki:2.5.314,ghcr.io/homeserverhq/wikijs-mcp:v2
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="mirror.gcr.io/requarks/wiki:2.5.314,mirror.gcr.io/requarks/wiki:2.5.314"
-      image_update_map[2]="ghcr.io/homeserverhq/wikijs-mcp:v1,ghcr.io/homeserverhq/wikijs-mcp:v1"
+      image_update_map[2]="ghcr.io/homeserverhq/wikijs-mcp:v2,ghcr.io/homeserverhq/wikijs-mcp:v2"
     ;;
     *)
       is_upgrade_error=true
@@ -54012,7 +54078,7 @@ services:
       - v-wikijs-web:/wiki/data/content
 
   wikijs-mcp:
-    image: ghcr.io/homeserverhq/wikijs-mcp:v1
+    image: ghcr.io/homeserverhq/wikijs-mcp:v2
     container_name: wikijs-mcp
     hostname: wikijs-mcp
     restart: unless-stopped
@@ -57943,10 +58009,10 @@ function performUpdateWordPress()
     ;;
     5)
       newVer=v5
-      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/wordpress:php8.5-apache,ghcr.io/homeserverhq/wordpress-mcp:v1
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/wordpress:php8.5-apache,ghcr.io/homeserverhq/wordpress-mcp:v2
       image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
       image_update_map[1]="mirror.gcr.io/wordpress:php8.5-apache,mirror.gcr.io/wordpress:php8.5-apache"
-      image_update_map[2]="ghcr.io/homeserverhq/wordpress-mcp:v1,ghcr.io/homeserverhq/wordpress-mcp:v1"
+      image_update_map[2]="ghcr.io/homeserverhq/wordpress-mcp:v2,ghcr.io/homeserverhq/wordpress-mcp:v2"
     ;;
     *)
       is_upgrade_error=true
@@ -58019,7 +58085,7 @@ services:
       - v-wordpress-web:/var/www/html
 
   wordpress-mcp:
-    image: ghcr.io/homeserverhq/wordpress-mcp:v1
+    image: ghcr.io/homeserverhq/wordpress-mcp:v2
     container_name: wordpress-mcp
     hostname: wordpress-mcp
     restart: unless-stopped
@@ -64114,10 +64180,10 @@ function performUpdateMealie()
     ;;
     11)
       newVer=v11
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/mealie-recipes/mealie:v3.20.1,ghcr.io/homeserverhq/mealie-mcp:v1
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/mealie-recipes/mealie:v3.20.1,ghcr.io/homeserverhq/mealie-mcp:v2
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="ghcr.io/mealie-recipes/mealie:v3.20.1,ghcr.io/mealie-recipes/mealie:v3.20.1"
-      image_update_map[2]="ghcr.io/homeserverhq/mealie-mcp:v1,ghcr.io/homeserverhq/mealie-mcp:v1"
+      image_update_map[2]="ghcr.io/homeserverhq/mealie-mcp:v2,ghcr.io/homeserverhq/mealie-mcp:v2"
     ;;
     *)
       is_upgrade_error=true
@@ -64196,7 +64262,7 @@ services:
       - v-mealie-app:/app/data
 
   mealie-mcp:
-    image: ghcr.io/homeserverhq/mealie-mcp:v1
+    image: ghcr.io/homeserverhq/mealie-mcp:v2
     container_name: mealie-mcp
     hostname: mealie-mcp
     restart: unless-stopped
@@ -65933,17 +65999,17 @@ function performUpdateLinkwarden()
       curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.14.1,hshq/linkwarden-mcp:v1
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.14.1,ghcr.io/linkwarden/linkwarden:v2.15.1"
-      image_update_map[2]="hshq/linkwarden-mcp:v1,ghcr.io/homeserverhq/linkwarden-mcp:v1"
+      image_update_map[2]="hshq/linkwarden-mcp:v1,ghcr.io/homeserverhq/linkwarden-mcp:v2"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfLinkwardenV10Update
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     10)
       newVer=v10
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.15.1,ghcr.io/homeserverhq/linkwarden-mcp:v1
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.15.1,ghcr.io/homeserverhq/linkwarden-mcp:v2
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.15.1,ghcr.io/linkwarden/linkwarden:v2.15.1"
-      image_update_map[2]="ghcr.io/homeserverhq/linkwarden-mcp:v1,ghcr.io/homeserverhq/linkwarden-mcp:v1"
+      image_update_map[2]="ghcr.io/homeserverhq/linkwarden-mcp:v2,ghcr.io/homeserverhq/linkwarden-mcp:v2"
     ;;
     *)
       is_upgrade_error=true
@@ -66686,20 +66752,20 @@ function performUpdateBarAssistant()
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[3]="mirror.gcr.io/barassistant/salt-rim:4.15.0,mirror.gcr.io/barassistant/salt-rim:4.15.0"
       image_update_map[4]="mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/nginx:1.31.2-alpine"
-      image_update_map[5]="hshq/barassistant-mcp:v1,ghcr.io/homeserverhq/barassistant-mcp:v1"
+      image_update_map[5]="hshq/barassistant-mcp:v1,ghcr.io/homeserverhq/barassistant-mcp:v2"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearMeiliData true mfBarAssistantV11Update
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     11)
       newVer=v11
-      curImageList=mirror.gcr.io/barassistant/server:5.15.3,mirror.gcr.io/getmeili/meilisearch:v1.49.0,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/barassistant/salt-rim:4.15.0,mirror.gcr.io/nginx:1.31.2-alpine,ghcr.io/homeserverhq/barassistant-mcp:v1
+      curImageList=mirror.gcr.io/barassistant/server:5.15.3,mirror.gcr.io/getmeili/meilisearch:v1.49.0,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/barassistant/salt-rim:4.15.0,mirror.gcr.io/nginx:1.31.2-alpine,ghcr.io/homeserverhq/barassistant-mcp:v2
       image_update_map[0]="mirror.gcr.io/barassistant/server:5.15.3,mirror.gcr.io/barassistant/server:5.15.3"
       image_update_map[1]="mirror.gcr.io/getmeili/meilisearch:v1.49.0,mirror.gcr.io/getmeili/meilisearch:v1.49.0"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[3]="mirror.gcr.io/barassistant/salt-rim:4.15.0,mirror.gcr.io/barassistant/salt-rim:4.15.0"
       image_update_map[4]="mirror.gcr.io/nginx:1.31.2-alpine,mirror.gcr.io/nginx:1.31.2-alpine"
-      image_update_map[5]="ghcr.io/homeserverhq/barassistant-mcp:v1,ghcr.io/homeserverhq/barassistant-mcp:v1"
+      image_update_map[5]="ghcr.io/homeserverhq/barassistant-mcp:v2,ghcr.io/homeserverhq/barassistant-mcp:v2"
     ;;
     *)
       is_upgrade_error=true
@@ -67120,7 +67186,7 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/bar-assistant/web/nginx.conf:/etc/nginx/conf.d/default.conf
 
   bar-assistant-mcp:
-    image: ghcr.io/homeserverhq/barassistant-mcp:v1
+    image: ghcr.io/homeserverhq/barassistant-mcp:v2
     container_name: bar-assistant-mcp
     hostname: bar-assistant-mcp
     restart: unless-stopped
@@ -67758,10 +67824,10 @@ function performUpdateKeila()
     ;;
     6)
       newVer=v6
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/pentacent/keila:0.30.2,ghcr.io/homeserverhq/keila-mcp:v1
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/pentacent/keila:0.30.2,ghcr.io/homeserverhq/keila-mcp:v2
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="mirror.gcr.io/pentacent/keila:0.30.2,mirror.gcr.io/pentacent/keila:0.30.2"
-      image_update_map[2]="ghcr.io/homeserverhq/keila-mcp:v1,ghcr.io/homeserverhq/keila-mcp:v1"
+      image_update_map[2]="ghcr.io/homeserverhq/keila-mcp:v2,ghcr.io/homeserverhq/keila-mcp:v2"
     ;;
     *)
       is_upgrade_error=true
@@ -67836,7 +67902,7 @@ services:
       - v-keila-uploads:/uploads
 
   keila-mcp:
-    image: ghcr.io/homeserverhq/keila-mcp:v1
+    image: ghcr.io/homeserverhq/keila-mcp:v2
     container_name: keila-app
     hostname: keila-app
     restart: unless-stopped
@@ -69099,26 +69165,26 @@ function performUpdatePaperless()
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="mirror.gcr.io/gotenberg/gotenberg:8.30.1,mirror.gcr.io/gotenberg/gotenberg:8.34.0"
       image_update_map[2]="mirror.gcr.io/apache/tika:3.3.0.0-full,mirror.gcr.io/apache/tika:3.3.1.0-full"
-      image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.20.13,ghcr.io/paperless-ngx/paperless-ngx:2.20.15"
+      image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.20.13,ghcr.io/paperless-ngx/paperless-ngx:3.0.5"
       image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[5]="mirror.gcr.io/clusterzx/paperless-ai:3.0.9,hshq/paperless-ai-next:v1"
       image_update_map[6]="mirror.gcr.io/icereed/paperless-gpt:v0.25.1,ghcr.io/icereed/paperless-gpt:v0.26.1"
-      image_update_map[7]="hshq/paperless-mcp:v1,ghcr.io/homeserverhq/paperless-mcp:v1"
+      image_update_map[7]="hshq/paperless-mcp:v1,ghcr.io/homeserverhq/paperless-mcp:v2"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfPaperlessV10Update
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     10)
       newVer=v10
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/gotenberg/gotenberg:8.34.0,mirror.gcr.io/apache/tika:3.3.1.0-full,ghcr.io/paperless-ngx/paperless-ngx:2.20.15,mirror.gcr.io/valkey/valkey:alpine3.23,hshq/paperless-ai-next:v1,ghcr.io/icereed/paperless-gpt:v0.26.1,ghcr.io/homeserverhq/paperless-mcp:v1
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/gotenberg/gotenberg:8.34.0,mirror.gcr.io/apache/tika:3.3.1.0-full,ghcr.io/paperless-ngx/paperless-ngx:3.0.5,mirror.gcr.io/valkey/valkey:alpine3.23,hshq/paperless-ai-next:v1,ghcr.io/icereed/paperless-gpt:v0.26.1,ghcr.io/homeserverhq/paperless-mcp:v2
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="mirror.gcr.io/gotenberg/gotenberg:8.34.0,mirror.gcr.io/gotenberg/gotenberg:8.34.0"
       image_update_map[2]="mirror.gcr.io/apache/tika:3.3.1.0-full,mirror.gcr.io/apache/tika:3.3.1.0-full"
-      image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.20.15,ghcr.io/paperless-ngx/paperless-ngx:2.20.15"
+      image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:3.0.5,ghcr.io/paperless-ngx/paperless-ngx:3.0.5"
       image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[5]="hshq/paperless-ai-next:v1,hshq/paperless-ai-next:v1"
       image_update_map[6]="ghcr.io/icereed/paperless-gpt:v0.26.1,ghcr.io/icereed/paperless-gpt:v0.26.1"
-      image_update_map[7]="ghcr.io/homeserverhq/paperless-mcp:v1,ghcr.io/homeserverhq/paperless-mcp:v1"
+      image_update_map[7]="ghcr.io/homeserverhq/paperless-mcp:v2,ghcr.io/homeserverhq/paperless-mcp:v2"
     ;;
     *)
       is_upgrade_error=true
@@ -73614,7 +73680,7 @@ function performUpdateImmich()
       image_update_map[1]="ghcr.io/immich-app/immich-server:v2.7.5,ghcr.io/immich-app/immich-server:v3.0.2"
       image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v2.7.5,ghcr.io/immich-app/immich-machine-learning:v3.0.2"
       image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[4]="hshq/immich-mcp:v1,ghcr.io/homeserverhq/immich-mcp:v1"
+      image_update_map[4]="hshq/immich-mcp:v1,ghcr.io/homeserverhq/immich-mcp:v2"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfImmichV10Update
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       immichUpdateRestartStack
@@ -73622,12 +73688,12 @@ function performUpdateImmich()
     ;;
     9)
       newVer=v9
-      curImageList=ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0,ghcr.io/immich-app/immich-server:v3.0.2,ghcr.io/immich-app/immich-machine-learning:v3.0.2,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/immich-mcp:v1
+      curImageList=ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0,ghcr.io/immich-app/immich-server:v3.0.2,ghcr.io/immich-app/immich-machine-learning:v3.0.2,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/immich-mcp:v2
       image_update_map[0]="ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0,ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0"
       image_update_map[1]="ghcr.io/immich-app/immich-server:v3.0.2,ghcr.io/immich-app/immich-server:v3.0.2"
       image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v3.0.2,ghcr.io/immich-app/immich-machine-learning:v3.0.2"
       image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[4]="ghcr.io/homeserverhq/immich-mcp:v1,ghcr.io/homeserverhq/immich-mcp:v1"
+      image_update_map[4]="ghcr.io/homeserverhq/immich-mcp:v2,ghcr.io/homeserverhq/immich-mcp:v2"
     ;;
     *)
       is_upgrade_error=true
@@ -83292,12 +83358,12 @@ function performUpdateTwenty()
     ;;
     5)
       newVer=v5
-      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/twentycrm/twenty:v2.21.0,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/twenty-mcp:v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/twentycrm/twenty:v2.21.0,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/twenty-mcp:v2
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[2]="mirror.gcr.io/twentycrm/twenty:v2.21.0,mirror.gcr.io/twentycrm/twenty:v2.21.0"
       image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
-      image_update_map[4]="ghcr.io/homeserverhq/twenty-mcp:v1,ghcr.io/homeserverhq/twenty-mcp:v1"
+      image_update_map[4]="ghcr.io/homeserverhq/twenty-mcp:v2,ghcr.io/homeserverhq/twenty-mcp:v2"
     ;;
     *)
       is_upgrade_error=true
@@ -83624,7 +83690,7 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/twenty/minio:/data
 
   twenty-mcp:
-    image: ghcr.io/homeserverhq/twenty-mcp:v1
+    image: ghcr.io/homeserverhq/twenty-mcp:v2
     container_name: twenty-mcp
     hostname: twenty-mcp
     restart: unless-stopped
@@ -86043,12 +86109,12 @@ function performUpdateOpenProject()
     ;;
     5)
       newVer=v5
-      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/openproject/openproject:17.6.0-slim,mirror.gcr.io/memcached:1.6.45-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/openproject-mcp:v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/openproject/openproject:17.6.0-slim,mirror.gcr.io/memcached:1.6.45-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/openproject-mcp:v2
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="mirror.gcr.io/openproject/openproject:17.6.0-slim,mirror.gcr.io/openproject/openproject:17.6.0-slim"
       image_update_map[2]="mirror.gcr.io/memcached:1.6.45-alpine,mirror.gcr.io/memcached:1.6.45-alpine"
       image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
-      image_update_map[4]="ghcr.io/homeserverhq/openproject-mcp:v1,ghcr.io/homeserverhq/openproject-mcp:v1"
+      image_update_map[4]="ghcr.io/homeserverhq/openproject-mcp:v2,ghcr.io/homeserverhq/openproject-mcp:v2"
     ;;
     *)
       is_upgrade_error=true
@@ -86488,7 +86554,7 @@ services:
 #      - \${PORTAINER_HSHQ_STACKS_DIR}/openproject/minio:/data
 
   openproject-mcp:
-    image: ghcr.io/homeserverhq/openproject-mcp:v1
+    image: ghcr.io/homeserverhq/openproject-mcp:v2
     container_name: openproject-mcp
     hostname: openproject-mcp
     restart: unless-stopped
@@ -89461,10 +89527,10 @@ function performUpdateInvoiceShelf()
     ;;
     2)
       newVer=v2
-      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/invoiceshelf/invoiceshelf:2.4.2
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/invoiceshelf/invoiceshelf:2.4.2,ghcr.io/homeserverhq/invoiceshelf-mcp:v2
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="mirror.gcr.io/invoiceshelf/invoiceshelf:2.4.2,mirror.gcr.io/invoiceshelf/invoiceshelf:2.4.2"
-      image_update_map[2]="ghcr.io/homeserverhq/invoiceshelf-mcp:v1,ghcr.io/homeserverhq/invoiceshelf-mcp:v1"
+      image_update_map[2]="ghcr.io/homeserverhq/invoiceshelf-mcp:v2,ghcr.io/homeserverhq/invoiceshelf-mcp:v2"
     ;;
     *)
       is_upgrade_error=true
@@ -89543,7 +89609,7 @@ services:
       - v-invoiceshelf-modules:/var/www/html/Modules
 
   invoiceshelf-mcp:
-    image: ghcr.io/homeserverhq/invoiceshelf-mcp:v1
+    image: ghcr.io/homeserverhq/invoiceshelf-mcp:v2
     container_name: invoiceshelf-mcp
     hostname: invoiceshelf-mcp
     restart: unless-stopped
@@ -90971,18 +91037,18 @@ function performUpdateDolibarr()
       image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
       image_update_map[1]="mirror.gcr.io/dolibarr/dolibarr:23.0.1-php8.2,mirror.gcr.io/dolibarr/dolibarr:23.0.3-php8.2"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[3]="hshq/dolibarr-mcp:v1,ghcr.io/homeserverhq/dolibarr-mcp:v1"
+      image_update_map[3]="hshq/dolibarr-mcp:v1,ghcr.io/homeserverhq/dolibarr-mcp:v2"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfDolibarrUpdateV4
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     4)
       newVer=v4
-      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/dolibarr/dolibarr:23.0.3-php8.2,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/dolibarr-mcp:v1
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/dolibarr/dolibarr:23.0.3-php8.2,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/dolibarr-mcp:v2
       image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
       image_update_map[1]="mirror.gcr.io/dolibarr/dolibarr:23.0.3-php8.2,mirror.gcr.io/dolibarr/dolibarr:23.0.3-php8.2"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[3]="ghcr.io/homeserverhq/dolibarr-mcp:v1,ghcr.io/homeserverhq/dolibarr-mcp:v1"
+      image_update_map[3]="ghcr.io/homeserverhq/dolibarr-mcp:v2,ghcr.io/homeserverhq/dolibarr-mcp:v2"
     ;;
     *)
       is_upgrade_error=true
@@ -91183,7 +91249,7 @@ services:
       - v-dolibarr-redis:/data
 
   dolibarr-mcp:
-    image: ghcr.io/homeserverhq/dolibarr-mcp:v1
+    image: ghcr.io/homeserverhq/dolibarr-mcp:v2
     container_name: dolibarr-mcp
     hostname: dolibarr-mcp
     restart: unless-stopped
@@ -103003,7 +103069,7 @@ function outputDBsList()
 "Immich" postgres immich-db $IMMICH_DATABASE_NAME $IMMICH_DATABASE_READONLYUSER $IMMICH_DATABASE_READONLYUSER_PASSWORD
 "Invidious" postgres invidious-db $INVIDIOUS_DATABASE_NAME $INVIDIOUS_DATABASE_READONLYUSER $INVIDIOUS_DATABASE_READONLYUSER_PASSWORD
 "InvoiceNinja" mysql invoiceninja-db $INVOICENINJA_DATABASE_NAME $INVOICENINJA_DATABASE_READONLYUSER $INVOICENINJA_DATABASE_READONLYUSER_PASSWORD
-"InvoiceShelf" mysql invoiceshelf-db $INVOICESHELF_DATABASE_NAME $INVOICESHELF_DATABASE_READONLYUSER $INVOICESHELF_DATABASE_READONLYUSER_PASSWORD
+"InvoiceShelf" postgres invoiceshelf-db $INVOICESHELF_DATABASE_NAME $INVOICESHELF_DATABASE_READONLYUSER $INVOICESHELF_DATABASE_READONLYUSER_PASSWORD
 "Kanboard" postgres kanboard-db $KANBOARD_DATABASE_NAME $KANBOARD_DATABASE_READONLYUSER $KANBOARD_DATABASE_READONLYUSER_PASSWORD
 "Keila" postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_READONLYUSER $KEILA_DATABASE_READONLYUSER_PASSWORD
 "KillBillAPI" mysql killbill-db $KILLBILL_KB_DATABASE_NAME $KILLBILL_KB_DATABASE_READONLYUSER $KILLBILL_KB_DATABASE_READONLYUSER_PASSWORD
@@ -103078,6 +103144,7 @@ function outputDBsList()
 "WorkoutCool" postgres workoutcool-db $WORKOUTCOOL_DATABASE_NAME $WORKOUTCOOL_DATABASE_READONLYUSER $WORKOUTCOOL_DATABASE_READONLYUSER_PASSWORD
 "SuiteCRM" mysql suitecrm-db $SUITECRM_DATABASE_NAME $SUITECRM_DATABASE_READONLYUSER $SUITECRM_DATABASE_READONLYUSER_PASSWORD
 "HedgeDoc" postgres hedgedoc-db $HEDGEDOC_DATABASE_NAME $HEDGEDOC_DATABASE_READONLYUSER $HEDGEDOC_DATABASE_READONLYUSER_PASSWORD
+"BasicMemory" postgres basicmemory-db $BASICMEMORY_DATABASE_NAME $BASICMEMORY_DATABASE_READONLYUSER $BASICMEMORY_DATABASE_READONLYUSER_PASSWORD
 #ADD_NEW_AISTACK_DB_IMPORT_HERE
 EOFAS
 }
@@ -117054,10 +117121,10 @@ function performUpdateAutoKB()
   case "$perform_stack_ver" in
     1)
       newVer=v1
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,hshq/autokb-app:v1,hshq/autokb-mcp:v1,mirror.gcr.io/valkey/valkey:alpine3.23,hshq/autokb-owuisync:v1
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/homeserverhq/autokb-app:v3,ghcr.io/homeserverhq/autokb-mcp:v3,mirror.gcr.io/valkey/valkey:alpine3.23,hshq/autokb-owuisync:v1
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
-      image_update_map[0]="hshq/autokb-app:v1,hshq/autokb-app:v1"
-      image_update_map[0]="hshq/autokb-mcp:v1,hshq/autokb-mcp:v1"
+      image_update_map[0]="ghcr.io/homeserverhq/autokb-app:v3,ghcr.io/homeserverhq/autokb-app:v3"
+      image_update_map[0]="ghcr.io/homeserverhq/autokb-mcp:v3,ghcr.io/homeserverhq/autokb-mcp:v3"
       image_update_map[1]="hshq/autokb-owuisync:v1,hshq/autokb-owuisync:v1"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
@@ -117551,18 +117618,18 @@ function performUpdateSuiteCRM()
       image_update_map[0]="mirror.gcr.io/mariadb:10.11,mirror.gcr.io/mariadb:10.11"
       image_update_map[1]="ghcr.io/homeserverhq/suitecrm-core:v8.10.1,ghcr.io/homeserverhq/suitecrm-core:v8.10.1"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[3]="hshq/suitecrm-mcp:v1,ghcr.io/homeserverhq/suitecrm-mcp:v1"
+      image_update_map[3]="hshq/suitecrm-mcp:v1,ghcr.io/homeserverhq/suitecrm-mcp:v2"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfSuiteCRMUpdateV2
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     2)
       newVer=v2
-      curImageList=mirror.gcr.io/mariadb:10.11,ghcr.io/homeserverhq/suitecrm-core:v8.10.1,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/suitecrm-mcp:v1
+      curImageList=mirror.gcr.io/mariadb:10.11,ghcr.io/homeserverhq/suitecrm-core:v8.10.1,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/suitecrm-mcp:v2
       image_update_map[0]="mirror.gcr.io/mariadb:10.11,mirror.gcr.io/mariadb:10.11"
       image_update_map[1]="ghcr.io/homeserverhq/suitecrm-core:v8.10.1,ghcr.io/homeserverhq/suitecrm-core:v8.10.1"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[3]="ghcr.io/homeserverhq/suitecrm-mcp:v1,ghcr.io/homeserverhq/suitecrm-mcp:v1"
+      image_update_map[3]="ghcr.io/homeserverhq/suitecrm-mcp:v2,ghcr.io/homeserverhq/suitecrm-mcp:v2"
     ;;
     *)
       is_upgrade_error=true
@@ -117906,11 +117973,11 @@ function performUpdateHedgeDoc()
   case "$perform_stack_ver" in
     1)
       newVer=v1
-      curImageList=mirror.gcr.io/postgres:17.6,ghcr.io/homeserverhq/hedgedoc-backend:v2.0.1-alpha,ghcr.io/homeserverhq/hedgedoc-frontend:v2.0.1-alpha,ghcr.io/homeserverhq/hedgedoc-mcp:v1
+      curImageList=mirror.gcr.io/postgres:17.6,ghcr.io/homeserverhq/hedgedoc-backend:v2.0.1-alpha,ghcr.io/homeserverhq/hedgedoc-frontend:v2.0.1-alpha,ghcr.io/homeserverhq/hedgedoc-mcp:v2
       image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
       image_update_map[1]="ghcr.io/homeserverhq/hedgedoc-backend:v2.0.1-alpha,ghcr.io/homeserverhq/hedgedoc-backend:v2.0.1-alpha"
       image_update_map[2]="ghcr.io/homeserverhq/hedgedoc-frontend:v2.0.1-alpha,ghcr.io/homeserverhq/hedgedoc-frontend:v2.0.1-alpha"
-      image_update_map[3]="ghcr.io/homeserverhq/hedgedoc-mcp:v1,ghcr.io/homeserverhq/hedgedoc-mcp:v1"
+      image_update_map[3]="ghcr.io/homeserverhq/hedgedoc-mcp:v2,ghcr.io/homeserverhq/hedgedoc-mcp:v2"
     ;;
     *)
       is_upgrade_error=true
@@ -118087,9 +118154,214 @@ function performUpdatePresenton()
   case "$perform_stack_ver" in
     1)
       newVer=v1
-      curImageList=ghcr.io/presenton/presenton:v0.9.3-beta,ghcr.io/homeserverhq/presenton-mcp:v1
+      curImageList=ghcr.io/presenton/presenton:v0.9.3-beta,ghcr.io/homeserverhq/presenton-mcp:v2
       image_update_map[0]="ghcr.io/presenton/presenton:v0.9.3-beta,ghcr.io/presenton/presenton:v0.9.3-beta"
-      image_update_map[1]="ghcr.io/homeserverhq/presenton-mcp:v1,ghcr.io/homeserverhq/presenton-mcp:v1"
+      image_update_map[1]="ghcr.io/homeserverhq/presenton-mcp:v2,ghcr.io/homeserverhq/presenton-mcp:v2"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# BasicMemory
+function installBasicMemory()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory basicmemory "BasicMemory"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName basicmemory-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName basicmemory-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/basicmemory
+  mkdir $HSHQ_STACKS_DIR/basicmemory/config
+  mkdir $HSHQ_STACKS_DIR/basicmemory/data
+  mkdir $HSHQ_STACKS_DIR/basicmemory/db
+  mkdir $HSHQ_STACKS_DIR/basicmemory/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/basicmemory/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $BASICMEMORY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  BASICMEMORY_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $BASICMEMORY_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigBasicMemory
+  installStack basicmemory basicmemory-app "" $HOME/basicmemory.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$BASICMEMORY_INIT_ENV" = "true" ]; then
+    BASICMEMORY_INIT_ENV=true
+    updateConfigVar BASICMEMORY_INIT_ENV $BASICMEMORY_INIT_ENV
+  fi
+  sleep 3
+  addReadOnlyUserToDatabase BasicMemory postgres basicmemory-db $BASICMEMORY_DATABASE_NAME $BASICMEMORY_DATABASE_USER $BASICMEMORY_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/basicmemory/dbexport $BASICMEMORY_DATABASE_READONLYUSER $BASICMEMORY_DATABASE_READONLYUSER_PASSWORD
+  if [ -z "$FMLNAME_BASICMEMORY_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is empty, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://basicmemory-app:8000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_BASICMEMORY_APP $MANAGETLS_BASICMEMORY_APP "$is_integrate_hshq" $NETDEFAULT_BASICMEMORY_APP "$inner_block"
+  insertSubAuthelia $SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll basicmemory "$FMLNAME_BASICMEMORY_APP" $USERTYPE_BASICMEMORY_APP "https://$SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN" "basicmemory.png" "$(getHeimdallOrderFromSub $SUB_BASICMEMORY_APP $USERTYPE_BASICMEMORY_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true basicmemory "$FMLNAME_BASICMEMORY_APP" postgres basicmemory-db $BASICMEMORY_DATABASE_NAME $BASICMEMORY_DATABASE_USER $BASICMEMORY_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigBasicMemory()
+{
+  cat <<EOFMT > $HOME/basicmemory-compose.yml
+$STACK_VERSION_PREFIX basicmemory $(getScriptStackVersion basicmemory)
+
+services:
+  basicmemory-db:
+    image: $(getScriptImageByContainerName basicmemory-db)
+    container_name: basicmemory-db
+    hostname: basicmemory-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-basicmemory-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/basicmemory/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/basicmemory/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.basicmemory-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.basicmemory-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.basicmemory-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.basicmemory-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.basicmemory-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.basicmemory-hourly-db.email-from=BasicMemory Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.basicmemory-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.basicmemory-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.basicmemory-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.basicmemory-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.basicmemory-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.basicmemory-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.basicmemory-monthly-db.email-from=BasicMemory Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.basicmemory-monthly-db.mail-only-on-error=false"
+
+  basicmemory-app:
+    image: $(getScriptImageByContainerName basicmemory-app)
+    container_name: basicmemory-app
+    hostname: basicmemory-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - basicmemory-db
+    command: ["basic-memory", "mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]
+    networks:
+      - int-basicmemory-net
+      - dock-proxy-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-basicmemory-config:/home/appuser/.basic-memory:rw
+      - \${PORTAINER_HSHQ_STACKS_DIR}/basicmemory/data:/app/data:rw
+    healthcheck:
+      test: ["CMD", "basic-memory", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  v-basicmemory-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/basicmemory/config
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-basicmemory-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/basicmemory.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$BASICMEMORY_DATABASE_NAME
+POSTGRES_USER=$BASICMEMORY_DATABASE_USER
+POSTGRES_PASSWORD=$BASICMEMORY_DATABASE_USER_PASSWORD
+BASIC_MEMORY_HOME=/app/data/basic-memory
+BASIC_MEMORY_PROJECT_ROOT=/app/data
+BASIC_MEMORY_DEFAULT_PROJECT=main
+BASIC_MEMORY_SYNC_CHANGES=true
+BASIC_MEMORY_LOG_LEVEL=INFO
+BASIC_MEMORY_SYNC_DELAY=1000
+BASIC_MEMORY_DATABASE_BACKEND=postgres
+BASIC_MEMORY_DATABASE_URL=postgresql+asyncpg://$BASICMEMORY_DATABASE_USER:$BASICMEMORY_DATABASE_USER_PASSWORD@basicmemory-db:5432/$BASICMEMORY_DATABASE_NAME
+EOFMT
+}
+
+function performUpdateBasicMemory()
+{
+  perform_stack_name=basicmemory
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/pgvector/pgvector:pg17,ghcr.io/basicmachines-co/basic-memory:0.22.1
+      image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
+      image_update_map[1]="ghcr.io/basicmachines-co/basic-memory:0.22.1,ghcr.io/basicmachines-co/basic-memory:0.22.1"
     ;;
     *)
       is_upgrade_error=true
@@ -127123,7 +127395,7 @@ EOFMT
 TZ=\${PORTAINER_TZ}
 LOGIN=$DBGATE_ADMIN_USERNAME
 PASSWORD=$DBGATE_ADMIN_PASSWORD
-CONNECTIONS=ActivePieces,Adminer,Automatisch,Budibase,Calcom,Discourse,Dolibarr,EasyAppointments,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,InvoiceNinja,InvoiceShelf,Kanboard,Keila,KillBill,KillBillAPI,Langfuse,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MindsDB,MintHCM,n8n,Nextcloud,Odoo,Ombi,OpenProject,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Rallly,Revolt,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Twenty,Vaultwarden,Wallabag,Wekan,Wikijs,WordPress,Yamtrack,Zammad,Zulip,Taiga,OpenSign,DocuSeal,ControlR,Akaunting,Axelor,Langflow,Firecrawl,LibreChat,OpenWebUI,Khoj,LobeChat,RAGFlow,Dify,MindsDB,WaterCrawl,Flowise,NocoDB,Ente,Morphic,DocsGPT,Memos,Speakr,Monica,AFFiNE,Joplin,Superset,LiteLLM,Langfuse,Skyvern,Wger,WorkoutCool,SuiteCRM,HedgeDoc
+CONNECTIONS=ActivePieces,Adminer,Automatisch,Budibase,Calcom,Discourse,Dolibarr,EasyAppointments,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,InvoiceNinja,InvoiceShelf,Kanboard,Keila,KillBill,KillBillAPI,Langfuse,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MindsDB,MintHCM,n8n,Nextcloud,Odoo,Ombi,OpenProject,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Rallly,Revolt,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Twenty,Vaultwarden,Wallabag,Wekan,Wikijs,WordPress,Yamtrack,Zammad,Zulip,Taiga,OpenSign,DocuSeal,ControlR,Akaunting,Axelor,Langflow,Firecrawl,LibreChat,OpenWebUI,Khoj,LobeChat,RAGFlow,Dify,MindsDB,WaterCrawl,Flowise,NocoDB,Ente,Morphic,DocsGPT,Memos,Speakr,Monica,AFFiNE,Joplin,Superset,LiteLLM,Langfuse,Skyvern,Wger,WorkoutCool,SuiteCRM,HedgeDoc,BasicMemory
 LABEL_ActivePieces=ActivePieces
 ENGINE_ActivePieces=postgres@dbgate-plugin-postgres
 SERVER_ActivePieces=activepieces-db
@@ -127789,6 +128061,13 @@ DATABASE_HedgeDoc=HEDGEDOC_DATABASE_NAME
 USER_HedgeDoc=HEDGEDOC_DATABASE_USER
 PASSWORD_HedgeDoc=HEDGEDOC_DATABASE_USER_PASSWORD
 PORT_HedgeDoc=5432
+LABEL_BasicMemory=BasicMemory
+ENGINE_BasicMemory=postgres@dbgate-plugin-postgres
+SERVER_BasicMemory=basicmemory-db
+DATABASE_BasicMemory=BASICMEMORY_DATABASE_NAME
+USER_BasicMemory=BASICMEMORY_DATABASE_USER
+PASSWORD_BasicMemory=BASICMEMORY_DATABASE_USER_PASSWORD
+PORT_BasicMemory=5432
 EOFMT
 #DBGATE_OUTPUT_CONFIG_ENV_END
 }
@@ -128673,6 +128952,14 @@ SQLPAD_CONNECTIONS__hedgedoc__username=$HEDGEDOC_DATABASE_USER
 SQLPAD_CONNECTIONS__hedgedoc__password=$HEDGEDOC_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__hedgedoc__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__hedgedoc__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__basicmemory__name=BasicMemory
+SQLPAD_CONNECTIONS__basicmemory__driver=postgres
+SQLPAD_CONNECTIONS__basicmemory__host=basicmemory-db
+SQLPAD_CONNECTIONS__basicmemory__database=$BASICMEMORY_DATABASE_NAME
+SQLPAD_CONNECTIONS__basicmemory__username=$BASICMEMORY_DATABASE_USER
+SQLPAD_CONNECTIONS__basicmemory__password=$BASICMEMORY_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__basicmemory__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__basicmemory__idleTimeoutSeconds=900
 EOFSP
 #SQLPAD_OUTPUT_CONFIG_ENV_END
 }
