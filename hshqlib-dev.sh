@@ -30762,7 +30762,7 @@ function loadPinnedDockerImages()
   IMG_TWENTY_APP=mirror.gcr.io/twentycrm/twenty:v2.21.0
   IMG_TWENTY_MCP=ghcr.io/homeserverhq/twenty-mcp:v2
   IMG_UPTIMEKUMA=mirror.gcr.io/louislam/uptime-kuma:2.4.0
-  IMG_VAULTWARDEN_APP=mirror.gcr.io/vaultwarden/server:1.36.0-alpine
+  IMG_VAULTWARDEN_APP=mirror.gcr.io/vaultwarden/server:1.37.1-alpine
   IMG_VAULTWARDEN_LDAP=mirror.gcr.io/vividboarder/vaultwarden_ldap:2.2.1
   IMG_WALLABAG=mirror.gcr.io/wallabag/wallabag:2.6.14
   IMG_WAZUH_MANAGER=wazuh/wazuh-manager:4.11.2
@@ -30851,7 +30851,8 @@ function loadPinnedDockerImages()
   IMG_ENTE_WEB=ghcr.io/ente-io/web:460ee1671b08b119b894f0ddd71b4c906fb29647
   IMG_MORPHIC_APP=ghcr.io/miurla/morphic:6443b20c1205adf233c98b67beb34a6117e1cd7a
   IMG_OPENNOTEBOOK_DB=mirror.gcr.io/surrealdb/surrealdb:v2.4
-  IMG_OPENNOTEBOOK_APP=mirror.gcr.io/lfnovo/open_notebook:1.5.2
+  IMG_OPENNOTEBOOK_APP=ghcr.io/lfnovo/open-notebook:1.14.0
+  IMG_OPENNOTEBOOK_MCP=ghcr.io/homeserverhq/opennotebook-mcp:v1
   IMG_APPSMITH_APP=mirror.gcr.io/appsmith/appsmith-ce:v1.94
   IMG_TRILIUM=mirror.gcr.io/triliumnext/trilium:v0.101.3
   IMG_DOCSGPT_FRONTEND=hshq/docsgpt-frontend:v1
@@ -30963,7 +30964,7 @@ function getScriptStackVersion()
     gitlab)
       echo "v8" ;;
     vaultwarden)
-      echo "v10" ;;
+      echo "v11" ;;
     discourse)
       echo "v7" ;;
     syncthing)
@@ -31199,7 +31200,7 @@ function getScriptStackVersion()
     morphic)
       echo "v1" ;;
     opennotebook)
-      echo "v1" ;;
+      echo "v2" ;;
     appsmith)
       echo "v1" ;;
     trilium)
@@ -31539,6 +31540,7 @@ function pullDockerImages()
   buildOrPullImage $IMG_MORPHIC_APP
   buildOrPullImage $IMG_OPENNOTEBOOK_DB
   buildOrPullImage $IMG_OPENNOTEBOOK_APP
+  buildOrPullImage $IMG_OPENNOTEBOOK_MCP
   buildOrPullImage $IMG_APPSMITH_APP
   buildOrPullImage $IMG_TRILIUM
   buildOrPullImage $IMG_DOCSGPT_BACKEND
@@ -42822,6 +42824,9 @@ function getScriptImageByContainerName()
       ;;
     "opennotebook-app")
       container_image=$IMG_OPENNOTEBOOK_APP
+      ;;
+    "opennotebook-mcp")
+      container_image=$IMG_OPENNOTEBOOK_MCP
       ;;
     "appsmith-app")
       container_image=$IMG_APPSMITH_APP
@@ -60412,17 +60417,23 @@ function performUpdateVaultwarden()
       image_update_map[2]="mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2"
     ;;
     9)
-      newVer=v10
+      newVer=v11
       curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/vaultwarden/server:1.35.4-alpine,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
-      image_update_map[1]="mirror.gcr.io/vaultwarden/server:1.35.4-alpine,mirror.gcr.io/vaultwarden/server:1.36.0-alpine"
+      image_update_map[1]="mirror.gcr.io/vaultwarden/server:1.35.4-alpine,mirror.gcr.io/vaultwarden/server:1.37.1-alpine"
       image_update_map[2]="mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.2.1"
     ;;
     10)
-      newVer=v10
+      newVer=v11
       curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/vaultwarden/server:1.36.0-alpine,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.2.1
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
-      image_update_map[1]="mirror.gcr.io/vaultwarden/server:1.36.0-alpine,mirror.gcr.io/vaultwarden/server:1.36.0-alpine"
+      image_update_map[1]="mirror.gcr.io/vaultwarden/server:1.36.0-alpine,mirror.gcr.io/vaultwarden/server:1.37.1-alpine"
+      image_update_map[2]="mirror.gcr.io/vividboarder/vaultwarden_ldap:2.2.1,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.2.1"
+    11)
+      newVer=v11
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/vaultwarden/server:1.37.1-alpine,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.2.1
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/vaultwarden/server:1.37.1-alpine,mirror.gcr.io/vaultwarden/server:1.37.1-alpine"
       image_update_map[2]="mirror.gcr.io/vividboarder/vaultwarden_ldap:2.2.1,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.2.1"
     ;;
     *)
@@ -106944,6 +106955,10 @@ function installOpenNotebook()
   if [ $? -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName opennotebook-mcp)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/opennotebook
   mkdir $HSHQ_STACKS_DIR/opennotebook/db
@@ -107036,6 +107051,23 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/opennotebook/data:/app/data
 
+  opennotebook-mcp:
+    image: $(getScriptImageByContainerName opennotebook-mcp)
+    container_name: opennotebook-mcp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-opennotebook-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
 networks:
   dock-proxy-net:
     name: dock-proxy
@@ -107072,6 +107104,11 @@ SURREAL_NAMESPACE=open_notebook
 SURREAL_DATABASE=$OPENNOTEBOOK_SURREALDB_NAME
 SURREAL_EXPERIMENTAL_GRAPHQL=true
 OPEN_NOTEBOOK_ENCRYPTION_KEY=$OPENNOTEBOOK_ENCRYPTION_KEY
+OPENNOTEBOOK_BASE_URL=http://opennotebook-app:5055
+MCP_SERVER_PORT=80
+ALLOW_ALL_AGGREGATE=false
+IS_STATEFUL=false
+OPENNOTEBOOK_PUBLIC_URL=https://$SUB_OPENNOTEBOOK_APP.$HOMESERVER_DOMAIN
 EOFMT
 }
 
@@ -107083,10 +107120,20 @@ function performUpdateOpenNotebook()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=mirror.gcr.io/surrealdb/surrealdb:v2.4,mirror.gcr.io/lfnovo/open_notebook:1.5.2
       image_update_map[0]="mirror.gcr.io/surrealdb/surrealdb:v2.4,mirror.gcr.io/surrealdb/surrealdb:v2.4"
-      image_update_map[1]="mirror.gcr.io/lfnovo/open_notebook:1.5.2,mirror.gcr.io/lfnovo/open_notebook:1.5.2"
+      image_update_map[1]="mirror.gcr.io/lfnovo/open_notebook:1.5.2,ghcr.io/lfnovo/open-notebook:1.14.0"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfOpenNotebookV2Update
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/surrealdb/surrealdb:v2.4,ghcr.io/lfnovo/open-notebook:1.14.0,ghcr.io/homeserverhq/opennotebook-mcp:v1
+      image_update_map[0]="mirror.gcr.io/surrealdb/surrealdb:v2.4,mirror.gcr.io/surrealdb/surrealdb:v2.4"
+      image_update_map[1]="ghcr.io/lfnovo/open-notebook:1.14.0,ghcr.io/lfnovo/open-notebook:1.14.0"
+      image_update_map[2]="ghcr.io/homeserverhq/opennotebook-mcp:v1,ghcr.io/homeserverhq/opennotebook-mcp:v1"
     ;;
     *)
       is_upgrade_error=true
@@ -107096,6 +107143,114 @@ function performUpdateOpenNotebook()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfOpenNotebookV2Update()
+{
+  cat <<EOFMT > $HOME/opennotebook-compose.yml
+$STACK_VERSION_PREFIX opennotebook v2
+
+services:
+  opennotebook-db:
+    image: mirror.gcr.io/surrealdb/surrealdb:v2.4
+    container_name: opennotebook-db
+    hostname: opennotebook-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    user: root
+    command: start --log info --user $OPENNOTEBOOK_SURREALDB_USER --pass $OPENNOTEBOOK_SURREALDB_PASSWORD rocksdb:/mydata/mydatabase.db
+    networks:
+      - int-opennotebook-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/opennotebook/db:/mydata
+
+  opennotebook-app:
+    image: ghcr.io/lfnovo/open-notebook:1.14.0
+    container_name: opennotebook-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - opennotebook-db
+    networks:
+      - int-opennotebook-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/opennotebook/data:/app/data
+
+  opennotebook-mcp:
+    image: ghcr.io/homeserverhq/opennotebook-mcp:v1
+    container_name: opennotebook-mcp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-opennotebook-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-opennotebook-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/opennotebook.env
+TZ=\${PORTAINER_TZ}
+HOSTNAME=0.0.0.0
+API_URL=https://$SUB_OPENNOTEBOOK_APP.$HOMESERVER_DOMAIN
+INTERNAL_API_URL=http://opennotebook-app:5055
+ESPERANTO_SSL_CA_BUNDLE=/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
+OPEN_NOTEBOOK_PASSWORD=$OPENNOTEBOOK_ADMIN_PASSWORD
+OPENAI_COMPATIBLE_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_COMPATIBLE_BASE_URL=http://litellm-proxy:4000/v1
+SURREAL_URL=ws://opennotebook-db/rpc:8000
+SURREAL_USER=$OPENNOTEBOOK_SURREALDB_USER
+SURREAL_PASSWORD=$OPENNOTEBOOK_SURREALDB_PASSWORD
+SURREAL_NAMESPACE=open_notebook
+SURREAL_DATABASE=$OPENNOTEBOOK_SURREALDB_NAME
+SURREAL_EXPERIMENTAL_GRAPHQL=true
+OPEN_NOTEBOOK_ENCRYPTION_KEY=$OPENNOTEBOOK_ENCRYPTION_KEY
+OPENNOTEBOOK_BASE_URL=http://opennotebook-app:5055
+MCP_SERVER_PORT=80
+ALLOW_ALL_AGGREGATE=false
+IS_STATEFUL=false
+OPENNOTEBOOK_PUBLIC_URL=https://$SUB_OPENNOTEBOOK_APP.$HOMESERVER_DOMAIN
+EOFMT
 }
 
 # Appsmith
