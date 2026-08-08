@@ -60429,6 +60429,7 @@ function performUpdateVaultwarden()
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="mirror.gcr.io/vaultwarden/server:1.36.0-alpine,mirror.gcr.io/vaultwarden/server:1.37.1-alpine"
       image_update_map[2]="mirror.gcr.io/vividboarder/vaultwarden_ldap:2.2.1,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.2.1"
+    ;;
     11)
       newVer=v11
       curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/vaultwarden/server:1.37.1-alpine,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.2.1
