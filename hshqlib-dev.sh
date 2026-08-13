@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=237
+HSHQ_LIB_SCRIPT_VERSION=238
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -20626,11 +20626,13 @@ function createInitialEnv()
   sudo groupadd -g 82 nextwrite >/dev/null 2>&1
   set -e
   sudo usermod -a -G 82 $USERNAME >/dev/null 2>&1
-  mkdir -p $HSHQ_STACKS_DIR/shared/{Images,SharedConsume,SharedProcessed,PersonalConsume,PersonalProcessed,PersonalTranscribeOutput}
+  mkdir -p $HSHQ_STACKS_DIR/shared/{Images,SharedConsume,SharedProcessed,PersonalConsume,PersonalProcessed,PersonalTranscribeInput,PersonalTranscribeOutput}
   mkdir -p $HSHQ_STACKS_DIR/shared/KnowledgeBases/{Bible,YouTube,Paperless,Speakr,WebScrapes,Email,HSHQ}
   sudo chown -R 1000:82 $HSHQ_STACKS_DIR/shared
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/SharedProcessed
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalProcessed
+  sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput
+  sudo chown -R 1000:82 $HSHQ_STACKS_DIR/shared/PersonalTranscribeOutput
   sudo chmod -R 775 $HSHQ_STACKS_DIR/shared
   sudo mkdir -p $HSHQ_SCRIPTS_DIR/root
   sudo chmod 700 $HSHQ_SCRIPTS_DIR/root
@@ -21284,6 +21286,12 @@ function checkUpdateVersion()
     echo "Updating to Version 237..."
     version237Update
     HSHQ_VERSION=237
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 238 ]; then
+    echo "Updating to Version 238..."
+    version238Update
+    HSHQ_VERSION=238
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
@@ -24387,6 +24395,17 @@ function version237Update()
   outputCaddyHeaders
 }
 
+function version238Update()
+{
+  mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput
+  sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput
+  mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$SPEAKR_ADMIN_USERNAME
+  sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$SPEAKR_ADMIN_USERNAME
+  mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$NEXTCLOUD_ADMIN_USERNAME
+  sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$NEXTCLOUD_ADMIN_USERNAME
+  outputNextcloudInotifyScan
+}
+
 function pruneAndUpdateDocker()
 {
   set +e
@@ -27438,11 +27457,13 @@ function addUserShareDirectories()
   mkdir -p $HSHQ_STACKS_DIR/shared/SharedConsume/$usernameAdd/SharedConsume
   mkdir -p $HSHQ_STACKS_DIR/shared/PersonalConsume/$usernameAdd/PersonalConsume
   sudo mkdir -p $HSHQ_STACKS_DIR/shared/PersonalProcessed/$usernameAdd/PersonalProcessed
+  mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$usernameAdd
   mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeOutput/$usernameAdd
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/Images/$usernameAdd
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/SharedConsume/$usernameAdd
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalConsume/$usernameAdd
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalProcessed/$usernameAdd
+  sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$usernameAdd
   sudo chown -R 1000:82 $HSHQ_STACKS_DIR/shared/PersonalTranscribeOutput/$usernameAdd
   sudo chmod -R 775 $HSHQ_STACKS_DIR/shared
 }
@@ -30004,6 +30025,7 @@ MONITOR_PATH_1="\$BASE_SHARED_PATH/PersonalConsume"
 MONITOR_PATH_2="\$BASE_SHARED_PATH/PersonalProcessed"
 MONITOR_PATH_3="\$BASE_SHARED_PATH/SharedConsume"
 MONITOR_PATH_4="\$BASE_SHARED_PATH/SharedProcessed"
+MONITOR_PATH_5="\$BASE_SHARED_PATH/PersonalTranscribeInput"
 
 function main()
 {
@@ -30015,7 +30037,7 @@ function main()
 
 function startProducer()
 {
-  inotifywait -m -r -e create,delete,move --timefmt '%s' --format '%T' "\$MONITOR_PATH_1" "\$MONITOR_PATH_2" "\$MONITOR_PATH_3" "\$MONITOR_PATH_4" | while read -r event_time
+  inotifywait -m -r -e create,delete,move --timefmt '%s' --format '%T' "\$MONITOR_PATH_1" "\$MONITOR_PATH_2" "\$MONITOR_PATH_3" "\$MONITOR_PATH_4" "\$MONITOR_PATH_5" | while read -r event_time
   do
     echo "\$event_time" > "\$STAMP"
     runFullScan &
@@ -30707,11 +30729,11 @@ function loadPinnedDockerImages()
   IMG_OPENLDAP_SERVER=osixia/openldap:1.5.0
   IMG_OPENPROJECT_APP=mirror.gcr.io/openproject/openproject:17.6.0-slim
   IMG_OPENPROJECT_MCP=ghcr.io/homeserverhq/openproject-mcp:v2
-  IMG_PAPERLESS_APP=ghcr.io/paperless-ngx/paperless-ngx:3.0.5
+  IMG_PAPERLESS_APP=ghcr.io/homeserverhq/paperless-ngx:v3.0.5
   IMG_PAPERLESS_GOTENBERG=mirror.gcr.io/gotenberg/gotenberg:8.34.0
   IMG_PAPERLESS_TIKA=mirror.gcr.io/apache/tika:3.3.1.0-full
   IMG_PAPERLESS_AI=hshq/paperless-ai-next:v1
-  IMG_PAPERLESS_GPT=ghcr.io/icereed/paperless-gpt:v0.26.1
+  IMG_PAPERLESS_GPT=ghcr.io/icereed/paperless-gpt:v0.27.0
   IMG_PAPERLESS_MCP=ghcr.io/homeserverhq/paperless-mcp:v2
   IMG_PASTEFY=mirror.gcr.io/interaapps/pastefy:7.1.5
   IMG_PEERTUBE_APP=mirror.gcr.io/chocobozzz/peertube:v7.3.0-bookworm
@@ -30860,7 +30882,7 @@ function loadPinnedDockerImages()
   IMG_MEMOS_APP=mirror.gcr.io/neosmemo/memos:0.25.3
   IMG_SILLYTAVERN=ghcr.io/sillytavern/sillytavern:1.15.0
   IMG_LEMONADE_SERVER=ghcr.io/lemonade-sdk/lemonade-server:v9.2.0
-  IMG_SPEAKR_APP=mirror.gcr.io/learnedmachine/speakr:0.10.0-alpha
+  IMG_SPEAKR_APP=ghcr.io/homeserverhq/speakr:v0.10.3-alpha
   IMG_SPEAKR_WHISPERX=mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1
   IMG_INSANELYFASTWHISPER_APP=hshq/insanelyfastwhisper:v1
   IMG_IVBOX_APP=hshq/ivbox:v1
@@ -30906,6 +30928,10 @@ function loadPinnedDockerImages()
   IMG_PRESENTON_APP=ghcr.io/presenton/presenton:v0.9.3-beta
   IMG_PRESENTON_MCP=ghcr.io/homeserverhq/presenton-mcp:v2
   IMG_BASICMEMORY_APP=ghcr.io/basicmachines-co/basic-memory:0.22.1
+  IMG_COGNEE_APP=ghcr.io/homeserverhq/cognee-app:v1.4.2
+  IMG_COGNEE_FRONTEND=ghcr.io/homeserverhq/cognee-frontend:v1.4.2
+  IMG_COGNEE_MCP=ghcr.io/homeserverhq/cognee-mcp:v1.4.2
+  IMG_LIGHTRAG_APP=ghcr.io/hkuds/lightrag:v1.5.6
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -31012,7 +31038,7 @@ function getScriptStackVersion()
     jupyter)
       echo "v4" ;;
     paperless)
-      echo "v10" ;;
+      echo "v11" ;;
     speedtest-tracker-local)
       echo "v7" ;;
     speedtest-tracker-vpn)
@@ -31214,7 +31240,7 @@ function getScriptStackVersion()
     lemonade)
       echo "v1" ;;
     speakr)
-      echo "v3" ;;
+      echo "v4" ;;
     insanelyfastwhisper)
       echo "v1" ;;
     ivbox)
@@ -31262,6 +31288,10 @@ function getScriptStackVersion()
     presenton)
       echo "v1" ;;
     basicmemory)
+      echo "v1" ;;
+    cognee)
+      echo "v1" ;;
+    lightrag)
       echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
@@ -31593,6 +31623,10 @@ function pullDockerImages()
   buildOrPullImage $IMG_PRESENTON_APP
   buildOrPullImage $IMG_PRESENTON_MCP
   buildOrPullImage $IMG_BASICMEMORY_APP
+  buildOrPullImage $IMG_COGNEE_APP
+  buildOrPullImage $IMG_COGNEE_FRONTEND
+  buildOrPullImage $IMG_COGNEE_MCP
+  buildOrPullImage $IMG_LIGHTRAG_APP
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -33721,6 +33755,40 @@ BASICMEMORY_DATABASE_USER_PASSWORD=
 BASICMEMORY_DATABASE_READONLYUSER=
 BASICMEMORY_DATABASE_READONLYUSER_PASSWORD=
 # BasicMemory (Service Details) END
+
+# Cognee (Service Details) BEGIN
+COGNEE_INIT_ENV=true
+COGNEE_ADMIN_USERNAME=
+COGNEE_ADMIN_EMAIL_ADDRESS=
+COGNEE_ADMIN_PASSWORD=
+COGNEE_DATABASE_NAME=
+COGNEE_DATABASE_USER=
+COGNEE_DATABASE_USER_PASSWORD=
+COGNEE_DATABASE_READONLYUSER=
+COGNEE_DATABASE_READONLYUSER_PASSWORD=
+COGNEE_REDIS_PASSWORD=
+COGNEE_JWT_SECRET=
+COGNEE_VERIFICATION_TOKEN_SECRET=
+COGNEE_RESET_PASSWORD_TOKEN_SECRET=
+# Cognee (Service Details) END
+
+# LightRAG (Service Details) BEGIN
+LIGHTRAG_INIT_ENV=true
+LIGHTRAG_ADMIN_USERNAME=
+LIGHTRAG_ADMIN_EMAIL_ADDRESS=
+LIGHTRAG_ADMIN_PASSWORD=
+LIGHTRAG_DATABASE_NAME=
+LIGHTRAG_DATABASE_USER=
+LIGHTRAG_DATABASE_USER_PASSWORD=
+LIGHTRAG_DATABASE_READONLYUSER=
+LIGHTRAG_DATABASE_READONLYUSER_PASSWORD=
+LIGHTRAG_TOKEN_SECRET=
+LIGHTRAG_API_KEY=
+LIGHTRAG_QDRANT_API_KEY=
+LIGHTRAG_MEMGRAPH_DATABASE=
+LIGHTRAG_MEMGRAPH_USER=
+LIGHTRAG_MEMGRAPH_PASSWORD=
+# LightRAG (Service Details) END
 
 # Service Details END
 EOFCF
@@ -38656,6 +38724,110 @@ function initServicesCredentials()
     BASICMEMORY_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar BASICMEMORY_DATABASE_READONLYUSER_PASSWORD $BASICMEMORY_DATABASE_READONLYUSER_PASSWORD
   fi
+  if [ -z "$COGNEE_ADMIN_USERNAME" ]; then
+    COGNEE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_cognee"
+    updateConfigVar COGNEE_ADMIN_USERNAME $COGNEE_ADMIN_USERNAME
+  fi
+  if [ -z "$COGNEE_ADMIN_EMAIL_ADDRESS" ]; then
+    COGNEE_ADMIN_EMAIL_ADDRESS=$COGNEE_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar COGNEE_ADMIN_EMAIL_ADDRESS $COGNEE_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$COGNEE_ADMIN_PASSWORD" ]; then
+    COGNEE_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar COGNEE_ADMIN_PASSWORD $COGNEE_ADMIN_PASSWORD
+  fi
+  if [ -z "$COGNEE_DATABASE_NAME" ]; then
+    COGNEE_DATABASE_NAME=cogneedb
+    updateConfigVar COGNEE_DATABASE_NAME $COGNEE_DATABASE_NAME
+  fi
+  if [ -z "$COGNEE_DATABASE_USER" ]; then
+    COGNEE_DATABASE_USER=cognee-user
+    updateConfigVar COGNEE_DATABASE_USER $COGNEE_DATABASE_USER
+  fi
+  if [ -z "$COGNEE_DATABASE_USER_PASSWORD" ]; then
+    COGNEE_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar COGNEE_DATABASE_USER_PASSWORD $COGNEE_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$COGNEE_DATABASE_READONLYUSER" ]; then
+    COGNEE_DATABASE_READONLYUSER=cognee-readonly
+    updateConfigVar COGNEE_DATABASE_READONLYUSER $COGNEE_DATABASE_READONLYUSER
+  fi
+  if [ -z "$COGNEE_DATABASE_READONLYUSER_PASSWORD" ]; then
+    COGNEE_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar COGNEE_DATABASE_READONLYUSER_PASSWORD $COGNEE_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$COGNEE_REDIS_PASSWORD" ]; then
+    COGNEE_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar COGNEE_REDIS_PASSWORD $COGNEE_REDIS_PASSWORD
+  fi
+  if [ -z "$COGNEE_JWT_SECRET" ]; then
+    COGNEE_JWT_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar COGNEE_JWT_SECRET $COGNEE_JWT_SECRET
+  fi
+  if [ -z "$COGNEE_VERIFICATION_TOKEN_SECRET" ]; then
+    COGNEE_VERIFICATION_TOKEN_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar COGNEE_VERIFICATION_TOKEN_SECRET $COGNEE_VERIFICATION_TOKEN_SECRET
+  fi
+  if [ -z "$COGNEE_RESET_PASSWORD_TOKEN_SECRET" ]; then
+    COGNEE_RESET_PASSWORD_TOKEN_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar COGNEE_RESET_PASSWORD_TOKEN_SECRET $COGNEE_RESET_PASSWORD_TOKEN_SECRET
+  fi
+  if [ -z "$LIGHTRAG_ADMIN_USERNAME" ]; then
+    LIGHTRAG_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_lightrag"
+    updateConfigVar LIGHTRAG_ADMIN_USERNAME $LIGHTRAG_ADMIN_USERNAME
+  fi
+  if [ -z "$LIGHTRAG_ADMIN_EMAIL_ADDRESS" ]; then
+    LIGHTRAG_ADMIN_EMAIL_ADDRESS=$LIGHTRAG_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar LIGHTRAG_ADMIN_EMAIL_ADDRESS $LIGHTRAG_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$LIGHTRAG_ADMIN_PASSWORD" ]; then
+    LIGHTRAG_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LIGHTRAG_ADMIN_PASSWORD $LIGHTRAG_ADMIN_PASSWORD
+  fi
+  if [ -z "$LIGHTRAG_DATABASE_NAME" ]; then
+    LIGHTRAG_DATABASE_NAME=lightragdb
+    updateConfigVar LIGHTRAG_DATABASE_NAME $LIGHTRAG_DATABASE_NAME
+  fi
+  if [ -z "$LIGHTRAG_DATABASE_USER" ]; then
+    LIGHTRAG_DATABASE_USER=lightrag-user
+    updateConfigVar LIGHTRAG_DATABASE_USER $LIGHTRAG_DATABASE_USER
+  fi
+  if [ -z "$LIGHTRAG_DATABASE_USER_PASSWORD" ]; then
+    LIGHTRAG_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LIGHTRAG_DATABASE_USER_PASSWORD $LIGHTRAG_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$LIGHTRAG_DATABASE_READONLYUSER" ]; then
+    LIGHTRAG_DATABASE_READONLYUSER=lightrag-readonly
+    updateConfigVar LIGHTRAG_DATABASE_READONLYUSER $LIGHTRAG_DATABASE_READONLYUSER
+  fi
+  if [ -z "$LIGHTRAG_DATABASE_READONLYUSER_PASSWORD" ]; then
+    LIGHTRAG_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LIGHTRAG_DATABASE_READONLYUSER_PASSWORD $LIGHTRAG_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$LIGHTRAG_TOKEN_SECRET" ]; then
+    LIGHTRAG_TOKEN_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar LIGHTRAG_TOKEN_SECRET $LIGHTRAG_TOKEN_SECRET
+  fi
+  if [ -z "$LIGHTRAG_API_KEY" ]; then
+    LIGHTRAG_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar LIGHTRAG_API_KEY $LIGHTRAG_API_KEY
+  fi
+  if [ -z "$LIGHTRAG_QDRANT_API_KEY" ]; then
+    LIGHTRAG_QDRANT_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar LIGHTRAG_QDRANT_API_KEY $LIGHTRAG_QDRANT_API_KEY
+  fi
+  if [ -z "$LIGHTRAG_MEMGRAPH_DATABASE" ]; then
+    LIGHTRAG_MEMGRAPH_DATABASE=memgraph
+    updateConfigVar LIGHTRAG_MEMGRAPH_DATABASE $LIGHTRAG_MEMGRAPH_DATABASE
+  fi
+  if [ -z "$LIGHTRAG_MEMGRAPH_USER" ]; then
+    LIGHTRAG_MEMGRAPH_USER=lightrag-user
+    updateConfigVar LIGHTRAG_MEMGRAPH_USER $LIGHTRAG_MEMGRAPH_USER
+  fi
+  if [ -z "$LIGHTRAG_MEMGRAPH_PASSWORD" ]; then
+    LIGHTRAG_MEMGRAPH_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LIGHTRAG_MEMGRAPH_PASSWORD $LIGHTRAG_MEMGRAPH_PASSWORD
+  fi
 #ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
   if [ -z "$CLIENTDNS_USER1_ADMIN_USERNAME" ]; then
@@ -38947,6 +39119,9 @@ function checkCreateNonbackupDirByStack()
     "suitecrm")
       mkdir -p $HSHQ_NONBACKUP_DIR/suitecrm/redis
       ;;
+    "cognee")
+      mkdir -p $HSHQ_NONBACKUP_DIR/cognee/redis
+      ;;
 #ADD_NEW_NONBACKUP_DIRS_HERE
     *)
       ;;
@@ -39236,6 +39411,10 @@ function initServiceVars()
   checkAddSvc "SVCD_HEDGEDOC_APP=hedgedoc,hedgedoc,primary,user,HedgeDoc,hedgedoc,hshq"
   checkAddSvc "SVCD_PRESENTON_APP=presenton,presenton,primary,user,Presenton,presenton,hshq"
   checkAddSvc "SVCD_BASICMEMORY_APP=basicmemory,basicmemory,primary,user,BasicMemory,basicmemory,hshq"
+  checkAddSvc "SVCD_COGNEE_APP=cognee,cognee-api,primary,admin,Cognee API,cognee-api,hshq"
+  checkAddSvc "SVCD_COGNEE_FRONTEND=cognee,cognee,primary,admin,Cognee,cognee,hshq"
+  checkAddSvc "SVCD_LIGHTRAG_APP=lightrag,lightrag,primary,admin,LightRAG,lightrag,hshq"
+  checkAddSvc "SVCD_LIGHTRAG_QDRANT=lightrag,lightrag-qdrant,primary,admin,Qdrant (LightRAG),lightrag-qdrant,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -39592,6 +39771,10 @@ function installStackByName()
       installPresenton $is_integrate ;;
     basicmemory)
       installBasicMemory $is_integrate ;;
+    cognee)
+      installCognee $is_integrate ;;
+    lightrag)
+      installLightRAG $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -39962,6 +40145,10 @@ function performUpdateStackByName()
       performUpdatePresenton ;;
     basicmemory)
       performUpdateBasicMemory ;;
+    cognee)
+      performUpdateCognee ;;
+    lightrag)
+      performUpdateLightRAG ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -40074,6 +40261,8 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_SKYVERN_API.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SKYVERN_ARTIFACT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HERMES_AGENT_API.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_COGNEE_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_BYPASS_HERE
   retval="${retval}# Authelia bypass END\n"
   retval="${retval}      policy: bypass\n"
@@ -40162,7 +40351,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_SUITECRM_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PRESENTON_APP.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_PRIMARY_HERE
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -40229,6 +40417,9 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_HERMES_AGENT_DASHBOARD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HERMES_AGENT_WEBUI.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_AUTOKB_WEB.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_COGNEE_FRONTEND.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_ADMIN_HERE
   retval="${retval}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -40362,7 +40553,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ANYTHINGLLM_APP}-Admin" "\"https://$SUB_ANYTHINGLLM_APP.$HOMESERVER_DOMAIN/login,https://$SUB_ANYTHINGLLM_APP.$HOMESERVER_DOMAIN/onboarding/user-setup\"" $HOMESERVER_ABBREV $ANYTHINGLLM_ADMIN_USERNAME $ANYTHINGLLM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LIBRECHAT_APP}-Admin" https://$SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LIBRECHAT_ADMIN_EMAIL_ADDRESS $LIBRECHAT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENWEBUI_APP}-Admin" https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/auth $HOMESERVER_ABBREV $OPENWEBUI_ADMIN_EMAIL_ADDRESS $OPENWEBUI_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENWEBUI_QDRANT}" https://$SUB_OPENWEBUI_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $OPENWEBUI_ADMIN_EMAIL_ADDRESS $OPENWEBUI_QDRANT_API_KEY)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENWEBUI_QDRANT}-Admin" https://$SUB_OPENWEBUI_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $OPENWEBUI_ADMIN_EMAIL_ADDRESS $OPENWEBUI_QDRANT_API_KEY)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
@@ -40404,6 +40595,9 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEDGEDOC_APP}-Admin" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PRESENTON_APP}-Admin" https://$SUB_PRESENTON_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $PRESENTON_ADMIN_USERNAME $PRESENTON_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_BASICMEMORY_APP}-Admin" https://$SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $BASICMEMORY_ADMIN_USERNAME $BASICMEMORY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_COGNEE_FRONTEND}-Admin" https://$SUB_COGNEE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $COGNEE_ADMIN_USERNAME $COGNEE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LIGHTRAG_APP}-Admin" https://$SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_USERNAME $LIGHTRAG_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LIGHTRAG_QDRANT}-Admin" https://$SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_EMAIL_ADDRESS $LIGHTRAG_QDRANT_API_KEY)"\n"
 #ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
@@ -40567,7 +40761,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ANYTHINGLLM_APP}-Admin" "\"https://$SUB_ANYTHINGLLM_APP.$HOMESERVER_DOMAIN/login,https://$SUB_ANYTHINGLLM_APP.$HOMESERVER_DOMAIN/onboarding/user-setup\"" $HOMESERVER_ABBREV $ANYTHINGLLM_ADMIN_USERNAME $ANYTHINGLLM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LIBRECHAT_APP}-Admin" https://$SUB_LIBRECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LIBRECHAT_ADMIN_EMAIL_ADDRESS $LIBRECHAT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENWEBUI_APP}-Admin" https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/auth $HOMESERVER_ABBREV $OPENWEBUI_ADMIN_EMAIL_ADDRESS $OPENWEBUI_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENWEBUI_QDRANT}" https://$SUB_OPENWEBUI_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $OPENWEBUI_ADMIN_EMAIL_ADDRESS $OPENWEBUI_QDRANT_API_KEY)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENWEBUI_QDRANT}-Admin" https://$SUB_OPENWEBUI_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $OPENWEBUI_ADMIN_EMAIL_ADDRESS $OPENWEBUI_QDRANT_API_KEY)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
@@ -40608,6 +40802,9 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HEDGEDOC_APP}-Admin" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PRESENTON_APP}-Admin" https://$SUB_PRESENTON_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $PRESENTON_ADMIN_USERNAME $PRESENTON_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_BASICMEMORY_APP}-Admin" https://$SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $BASICMEMORY_ADMIN_USERNAME $BASICMEMORY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_COGNEE_FRONTEND}-Admin" https://$SUB_COGNEE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $COGNEE_ADMIN_USERNAME $COGNEE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LIGHTRAG_APP}-Admin" https://$SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_USERNAME $LIGHTRAG_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LIGHTRAG_QDRANT}-Admin" https://$SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_EMAIL_ADDRESS $LIGHTRAG_QDRANT_API_KEY)"\n"
 #ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
@@ -41315,6 +41512,18 @@ function getHeimdallOrderFromSub()
     "$SUB_BASICMEMORY_APP")
       order_num=200
       ;;
+    "$SUB_COGNEE_APP")
+      order_num=201
+      ;;
+    "$SUB_COGNEE_FRONTEND")
+      order_num=202
+      ;;
+    "$SUB_LIGHTRAG_APP")
+      order_num=203
+      ;;
+    "$SUB_LIGHTRAG_QDRANT")
+      order_num=204
+      ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=900
@@ -41365,18 +41574,18 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,morphic,opennotebook,appsmith,trilium,memos,sillytavern,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,wger,workoutcool,voicebox,opencode,emailclassifierai,suitecrm,hedgedoc,presenton,basicmemory
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,morphic,opennotebook,appsmith,trilium,memos,sillytavern,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,wger,workoutcool,voicebox,opencode,emailclassifierai,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
-  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
-  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
-  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
+  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
+  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
+  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
 #INIT_SERVICE_DEFAULTS_END
   if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
     HSHQ_OPTIONAL_STACKS=${HSHQ_OPTIONAL_STACKS},surfsense,ente,comfyui,insanelyfastwhisper,ivbox,skyvern,openrag,openskills,hermes-agent,autokb
@@ -43116,6 +43325,33 @@ function getScriptImageByContainerName()
     "basicmemory-app")
       container_image=$IMG_BASICMEMORY_APP
       ;;
+    "cognee-db")
+      container_image=mirror.gcr.io/pgvector/pgvector:pg17
+      ;;
+    "cognee-app")
+      container_image=$IMG_COGNEE_APP
+      ;;
+    "cognee-frontend")
+      container_image=$IMG_COGNEE_FRONTEND
+      ;;
+    "cognee-mcp")
+      container_image=$IMG_COGNEE_MCP
+      ;;
+    "cognee-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "lightrag-db")
+      container_image=mirror.gcr.io/pgvector/pgvector:pg18
+      ;;
+    "lightrag-app")
+      container_image=$IMG_LIGHTRAG_APP
+      ;;
+    "lightrag-qdrant")
+      container_image=mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged
+      ;;
+    "lightrag-memgraph")
+      container_image=mirror.gcr.io/memgraph/memgraph-mage:3.12.0
+      ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
@@ -43269,6 +43505,8 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "HedgeDoc" "HEDGEDOC_INIT_ENV=false,HEDGEDOC_ADMIN_USERNAME=,HEDGEDOC_ADMIN_EMAIL_ADDRESS=,HEDGEDOC_ADMIN_PASSWORD=,HEDGEDOC_DATABASE_NAME=,HEDGEDOC_DATABASE_USER=,HEDGEDOC_DATABASE_USER_PASSWORD=,HEDGEDOC_DATABASE_READONLYUSER=,HEDGEDOC_DATABASE_READONLYUSER_PASSWORD=,HEDGEDOC_SESSION_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "Presenton" "PRESENTON_INIT_ENV=false,PRESENTON_ADMIN_USERNAME=,PRESENTON_ADMIN_EMAIL_ADDRESS=,PRESENTON_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "BasicMemory" "BASICMEMORY_INIT_ENV=false,BASICMEMORY_ADMIN_USERNAME=,BASICMEMORY_ADMIN_EMAIL_ADDRESS=,BASICMEMORY_ADMIN_PASSWORD=,BASICMEMORY_DATABASE_NAME=,BASICMEMORY_DATABASE_USER=,BASICMEMORY_DATABASE_USER_PASSWORD=,BASICMEMORY_DATABASE_READONLYUSER=,BASICMEMORY_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Cognee" "COGNEE_INIT_ENV=false,COGNEE_ADMIN_USERNAME=,COGNEE_ADMIN_EMAIL_ADDRESS=,COGNEE_ADMIN_PASSWORD=,COGNEE_DATABASE_NAME=,COGNEE_DATABASE_USER=,COGNEE_DATABASE_USER_PASSWORD=,COGNEE_DATABASE_READONLYUSER=,COGNEE_DATABASE_READONLYUSER_PASSWORD=,COGNEE_REDIS_PASSWORD=,COGNEE_JWT_SECRET=,COGNEE_VERIFICATION_TOKEN_SECRET=,COGNEE_RESET_PASSWORD_TOKEN_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "LightRAG" "LIGHTRAG_INIT_ENV=false,LIGHTRAG_ADMIN_USERNAME=,LIGHTRAG_ADMIN_EMAIL_ADDRESS=,LIGHTRAG_ADMIN_PASSWORD=,LIGHTRAG_DATABASE_NAME=,LIGHTRAG_DATABASE_USER=,LIGHTRAG_DATABASE_USER_PASSWORD=,LIGHTRAG_DATABASE_READONLYUSER=,LIGHTRAG_DATABASE_READONLYUSER_PASSWORD=,LIGHTRAG_TOKEN_SECRET=,LIGHTRAG_API_KEY=,LIGHTRAG_QDRANT_API_KEY=,LIGHTRAG_MEMGRAPH_DATABASE=,LIGHTRAG_MEMGRAPH_USER=,LIGHTRAG_MEMGRAPH_PASSWORD=" $CONFIG_FILE false
 #ADD_NEW_ADD_SVC_CONFIG_HERE
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -52836,6 +53074,8 @@ function addSharedDirsNextcloud()
   docker exec -u www-data -it nextcloud-app php occ files_external:option $curID readonly true > /dev/null 2>&1
   docker exec -u www-data -it nextcloud-app php occ files_external:applicable --remove-all $curID > /dev/null 2>&1
   curID=$(docker exec -u www-data nextcloud-app php occ files_external:create PersonalConsume local null::null -c datadir=/shared/PersonalConsume/\$user/PersonalConsume | rev | cut -d" " -f1 | rev)
+  docker exec -u www-data -it nextcloud-app php occ files_external:applicable --remove-all $curID > /dev/null 2>&1
+  curID=$(docker exec -u www-data nextcloud-app php occ files_external:create PersonalTranscribeInput local null::null -c datadir=/shared/PersonalTranscribeInput/\$user | rev | cut -d" " -f1 | rev)
   docker exec -u www-data -it nextcloud-app php occ files_external:applicable --remove-all $curID > /dev/null 2>&1
   curID=$(docker exec -u www-data nextcloud-app php occ files_external:create PersonalProcessed local null::null -c datadir=/shared/PersonalProcessed/\$user/PersonalProcessed | rev | cut -d" " -f1 | rev)
   docker exec -u www-data -it nextcloud-app php occ files_external:option $curID readonly true > /dev/null 2>&1
@@ -63767,7 +64007,6 @@ networks:
       driver: default
 
 EOFGL
-
   cat <<EOFGL > $HOME/gitea.env
 USER_UID=$USERID
 USER_GID=$GROUPID
@@ -63790,7 +64029,6 @@ GITEA__mailer__SMTP_PORT=$SMTP_HOSTPORT
 GITEA__service__DISABLE_REGISTRATION=true
 GITEA__security__INSTALL_LOCK=true
 EOFGL
-
 }
 
 function performUpdateGitea()
@@ -68642,7 +68880,9 @@ PDF_COPY_METADATA=true
 PDF_OCR_TAGGING=true
 PDF_OCR_COMPLETE_TAG=paperless-gpt-ocr-complete
 AUTO_OCR_TAG=paperless-gpt-ocr-auto
-OCR_LIMIT_PAGES=5
+PAPERLESS_OCR_PAGES=0
+PAPERLESS_OCR_MODE=force
+OCR_LIMIT_PAGES=0
 LOG_LEVEL=info
 PAPERLESS_API_KEY=$PAPERLESS_API_TOKEN
 USERMAP_UID=82
@@ -68653,7 +68893,7 @@ PAPERLESS_AI_PORT=3000
 RAG_SERVICE_URL=http://localhost:8000
 RAG_SERVICE_ENABLED=true
 PAPERLESS_API_URL=http://paperless-app:8000
-PAPERLESS_EXTRA_TEXT_MIMETYPES={"text/markdown": ".md"}
+PAPERLESS_EXTRA_TEXT_MIMETYPES={"text/markdown": ".md", "text/x-markdown": ".md"}
 MCP_SERVER_PORT=80
 ALLOW_ALL_AGGREGATE=false
 IS_STATEFUL=false
@@ -68801,6 +69041,7 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/paperless/consume:/usr/src/paperless/consume
       - \${PORTAINER_HSHQ_STACKS_DIR}/shared/SharedConsume:/usr/src/paperless/consume/SharedConsume
       - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalConsume:/usr/src/paperless/consume/PersonalConsume
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalTranscribeOutput:/usr/src/paperless/consume/PersonalTranscribeOutput
       - \${PORTAINER_HSHQ_STACKS_DIR}/shared/SharedProcessed:/usr/src/paperless/media/documents/originals/SharedProcessed
       - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalProcessed:/usr/src/paperless/media/documents/originals/PersonalProcessed
 
@@ -69187,15 +69428,30 @@ function performUpdatePaperless()
       return
     ;;
     10)
-      newVer=v10
+      newVer=v11
       curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/gotenberg/gotenberg:8.34.0,mirror.gcr.io/apache/tika:3.3.1.0-full,ghcr.io/paperless-ngx/paperless-ngx:3.0.5,mirror.gcr.io/valkey/valkey:alpine3.23,hshq/paperless-ai-next:v1,ghcr.io/icereed/paperless-gpt:v0.26.1,ghcr.io/homeserverhq/paperless-mcp:v2
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="mirror.gcr.io/gotenberg/gotenberg:8.34.0,mirror.gcr.io/gotenberg/gotenberg:8.34.0"
       image_update_map[2]="mirror.gcr.io/apache/tika:3.3.1.0-full,mirror.gcr.io/apache/tika:3.3.1.0-full"
-      image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:3.0.5,ghcr.io/paperless-ngx/paperless-ngx:3.0.5"
+      image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:3.0.5,ghcr.io/homeserverhq/paperless-ngx:v3.0.5"
       image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[5]="hshq/paperless-ai-next:v1,hshq/paperless-ai-next:v1"
-      image_update_map[6]="ghcr.io/icereed/paperless-gpt:v0.26.1,ghcr.io/icereed/paperless-gpt:v0.26.1"
+      image_update_map[6]="ghcr.io/icereed/paperless-gpt:v0.26.1,ghcr.io/icereed/paperless-gpt:v0.27.0"
+      image_update_map[7]="ghcr.io/homeserverhq/paperless-mcp:v2,ghcr.io/homeserverhq/paperless-mcp:v2"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfPaperlessV11Update
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    11)
+      newVer=v11
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/gotenberg/gotenberg:8.34.0,mirror.gcr.io/apache/tika:3.3.1.0-full,ghcr.io/homeserverhq/paperless-ngx:v3.0.5,mirror.gcr.io/valkey/valkey:alpine3.23,hshq/paperless-ai-next:v1,ghcr.io/icereed/paperless-gpt:v0.27.0,ghcr.io/homeserverhq/paperless-mcp:v2
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/gotenberg/gotenberg:8.34.0,mirror.gcr.io/gotenberg/gotenberg:8.34.0"
+      image_update_map[2]="mirror.gcr.io/apache/tika:3.3.1.0-full,mirror.gcr.io/apache/tika:3.3.1.0-full"
+      image_update_map[3]="ghcr.io/homeserverhq/paperless-ngx:v3.0.5,ghcr.io/homeserverhq/paperless-ngx:v3.0.5"
+      image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[5]="hshq/paperless-ai-next:v1,hshq/paperless-ai-next:v1"
+      image_update_map[6]="ghcr.io/icereed/paperless-gpt:v0.27.0,ghcr.io/icereed/paperless-gpt:v0.27.0"
       image_update_map[7]="ghcr.io/homeserverhq/paperless-mcp:v2,ghcr.io/homeserverhq/paperless-mcp:v2"
     ;;
     *)
@@ -70039,7 +70295,9 @@ function mfPaperlessV8AddGPT()
     echo "PDF_OCR_TAGGING=true" >> $HOME/paperless.env
     echo "PDF_OCR_COMPLETE_TAG=paperless-gpt-ocr-complete" >> $HOME/paperless.env
     echo "AUTO_OCR_TAG=paperless-gpt-ocr-auto" >> $HOME/paperless.env
-    echo "OCR_LIMIT_PAGES=5" >> $HOME/paperless.env
+    echo "PAPERLESS_OCR_PAGES=0" >> $HOME/paperless.env
+    echo "PAPERLESS_OCR_MODE=force" >> $HOME/paperless.env
+    echo "OCR_LIMIT_PAGES=0" >> $HOME/paperless.env
     echo "LOG_LEVEL=info" >> $HOME/paperless.env
   fi
   inner_block=""
@@ -70180,7 +70438,9 @@ PDF_COPY_METADATA=true
 PDF_OCR_TAGGING=true
 PDF_OCR_COMPLETE_TAG=paperless-gpt-ocr-complete
 AUTO_OCR_TAG=paperless-gpt-ocr-auto
-OCR_LIMIT_PAGES=5
+PAPERLESS_OCR_PAGES=0
+PAPERLESS_OCR_MODE=force
+OCR_LIMIT_PAGES=0
 LOG_LEVEL=info
 PAPERLESS_API_KEY=$PAPERLESS_API_TOKEN
 USERMAP_UID=82
@@ -70191,7 +70451,7 @@ PAPERLESS_AI_PORT=3000
 RAG_SERVICE_URL=http://localhost:8000
 RAG_SERVICE_ENABLED=true
 PAPERLESS_API_URL=http://paperless-app:8000
-PAPERLESS_EXTRA_TEXT_MIMETYPES={"text/markdown": ".md"}
+PAPERLESS_EXTRA_TEXT_MIMETYPES={"text/markdown": ".md", "text/x-markdown": ".md"}
 MCP_SERVER_PORT=80
 ALLOW_ALL_AGGREGATE=false
 IS_STATEFUL=false
@@ -70237,6 +70497,253 @@ OCR_API_KEY=$LITELLM_MASTER_KEY
 MISTRAL_OCR_MODEL=Vision
 EOFPA
   mv $HSHQ_STACKS_DIR/paperless/ai.env $HSHQ_STACKS_DIR/paperless/ai/.env
+}
+
+function mfPaperlessV11Update()
+{
+  rm -f $HOME/paperless-compose.yml
+  cat <<EOFJT > $HOME/paperless-compose.yml
+$STACK_VERSION_PREFIX paperless v11
+
+services:
+  paperless-db:
+    image: mirror.gcr.io/postgres:15.0-bullseye
+    container_name: paperless-db
+    hostname: paperless-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-paperless-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/paperless/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/paperless/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.paperless-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.paperless-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.paperless-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.paperless-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.paperless-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.paperless-hourly-db.email-from=Paperless Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.paperless-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.paperless-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.paperless-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.paperless-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.paperless-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.paperless-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.paperless-monthly-db.email-from=Paperless Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.paperless-monthly-db.mail-only-on-error=false"
+
+  paperless-gotenberg:
+    image: mirror.gcr.io/gotenberg/gotenberg:8.34.0
+    container_name: paperless-gotenberg
+    hostname: paperless-gotenberg
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - "gotenberg"
+      - "--chromium-disable-javascript=true"
+      - "--chromium-allow-list=file:///tmp/.*"
+    networks:
+      - int-paperless-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  paperless-tika:
+    image: mirror.gcr.io/apache/tika:3.3.1.0-full
+    container_name: paperless-tika
+    hostname: paperless-tika
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-paperless-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  paperless-app:
+    image: ghcr.io/homeserverhq/paperless-ngx:v3.0.5
+    container_name: paperless-app
+    hostname: paperless-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - paperless-db
+      - paperless-redis
+      - paperless-gotenberg
+      - paperless-tika
+    networks:
+      - dock-proxy-net
+      - dock-internalmail-net
+      - dock-privateip-net
+      - dock-aipriv-net
+      - int-paperless-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+      - v-paperless-data:/usr/src/paperless/data
+      - v-paperless-media:/usr/src/paperless/media
+      - \${PORTAINER_HSHQ_STACKS_DIR}/paperless/export:/usr/src/paperless/export
+      - \${PORTAINER_HSHQ_STACKS_DIR}/paperless/consume:/usr/src/paperless/consume
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/SharedConsume:/usr/src/paperless/consume/SharedConsume
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalConsume:/usr/src/paperless/consume/PersonalConsume
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalTranscribeOutput:/usr/src/paperless/consume/PersonalTranscribeOutput
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/SharedProcessed:/usr/src/paperless/media/documents/originals/SharedProcessed
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalProcessed:/usr/src/paperless/media/documents/originals/PersonalProcessed
+
+  paperless-ai:
+    image: hshq/paperless-ai-next:v1
+    container_name: paperless-ai
+    hostname: paperless-ai
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-ext-net
+      - dock-aipriv-net
+      - int-paperless-net
+    depends_on:
+      - paperless-app
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/huggingface:/root/.cache/huggingface
+      - v-paperless-ai:/app/data
+
+  paperless-gpt:
+    image: ghcr.io/icereed/paperless-gpt:v0.27.0
+    container_name: paperless-gpt
+    hostname: paperless-gpt
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-ext-net
+      - dock-aipriv-net
+      - int-paperless-net
+    depends_on:
+      - paperless-app
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/paperless/gpt/prompts:/app/prompts
+      - \${PORTAINER_HSHQ_STACKS_DIR}/paperless/gpt/hocr:/app/hocr
+      - \${PORTAINER_HSHQ_STACKS_DIR}/paperless/gpt/pdf:/app/pdf
+
+  paperless-mcp:
+    image: ghcr.io/homeserverhq/paperless-mcp:v2
+    container_name: paperless-mcp
+    hostname: paperless-mcp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-paperless-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  paperless-redis:
+    image: mirror.gcr.io/valkey/valkey:alpine3.23
+    container_name: paperless-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $PAPERLESS_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-paperless-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-paperless-redis:/data
+
+volumes:
+  v-paperless-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/paperless/data
+  v-paperless-media:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/paperless/media
+  v-paperless-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/paperless/redis
+  v-paperless-ai:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/paperless/ai
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-privateip-net:
+    name: dock-privateip
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-paperless-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFJT
 }
 
 # Speedtest Tracker Local
@@ -101562,7 +102069,6 @@ EOFMT
   cat <<EOFMT > $HOME/docling.env
 TZ=\${PORTAINER_TZ}
 DOCLING_SERVE_ENABLE_UI=true
-DOCLING_SERVE_API_KEY=$DOCLING_API_KEY
 DOCLING_SERVE_ENG_RQ_REDIS_URL=redis://:$DOCLING_REDIS_PASSWORD@docling-redis:6379
 EOFMT
 }
@@ -103157,6 +103663,8 @@ function outputDBsList()
 "SuiteCRM" mysql suitecrm-db $SUITECRM_DATABASE_NAME $SUITECRM_DATABASE_READONLYUSER $SUITECRM_DATABASE_READONLYUSER_PASSWORD
 "HedgeDoc" postgres hedgedoc-db $HEDGEDOC_DATABASE_NAME $HEDGEDOC_DATABASE_READONLYUSER $HEDGEDOC_DATABASE_READONLYUSER_PASSWORD
 "BasicMemory" postgres basicmemory-db $BASICMEMORY_DATABASE_NAME $BASICMEMORY_DATABASE_READONLYUSER $BASICMEMORY_DATABASE_READONLYUSER_PASSWORD
+"Cognee" postgres cognee-db $COGNEE_DATABASE_NAME $COGNEE_DATABASE_READONLYUSER $COGNEE_DATABASE_READONLYUSER_PASSWORD
+"LightRAG" postgres lightrag-db $LIGHTRAG_DATABASE_NAME $LIGHTRAG_DATABASE_READONLYUSER $LIGHTRAG_DATABASE_READONLYUSER_PASSWORD
 #ADD_NEW_AISTACK_DB_IMPORT_HERE
 EOFAS
 }
@@ -108650,9 +109158,9 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/uploads:/data/uploads
       - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/instance:/data/instance
       - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/exports:/data/exports
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalTranscribeInput:/data/auto-process
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalTranscribeInput/$NEXTCLOUD_ADMIN_USERNAME:/data/auto-process/$SPEAKR_ADMIN_USERNAME
       - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalTranscribeOutput:/data/consume
-      - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/autoprocess:/data/auto-process
-      - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/file_exporter.py:/app/src/file_exporter.py
       - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/huggingface:/.cache/huggingface
       - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
 
@@ -108729,594 +109237,6 @@ EOFMT
         token_endpoint_auth_method: client_secret_basic
 # Authelia OIDC Client speakr END
 EOFIM
-  cat <<EOFIM > $HSHQ_STACKS_DIR/speakr/file_exporter.py
-#!/usr/bin/env python3
-"""
-File Exporter for Automated Recording Export
-
-Exports transcriptions and summaries as markdown files to a configured directory.
-Supports per-user subdirectories based on username.
-Supports customizable export templates with localized labels.
-"""
-
-import os
-import re
-import json
-import logging
-from datetime import datetime, timedelta
-from pathlib import Path
-from werkzeug.utils import secure_filename
-
-# Configuration from environment
-ENABLE_AUTO_EXPORT = os.environ.get('ENABLE_AUTO_EXPORT', 'false').lower() == 'true'
-AUTO_EXPORT_DIR = os.environ.get('AUTO_EXPORT_DIR', '/data/exports')
-AUTO_EXPORT_TRANSCRIPTION = os.environ.get('AUTO_EXPORT_TRANSCRIPTION', 'true').lower() == 'true'
-AUTO_EXPORT_SUMMARY = os.environ.get('AUTO_EXPORT_SUMMARY', 'true').lower() == 'true'
-EXPORT_CONSUME_DIR = os.environ.get('AUTO_CONSUME_DIR', '/data/consume')
-
-# Setup logging
-logger = logging.getLogger('file_exporter')
-logger.setLevel(logging.INFO)
-
-
-def format_transcription_with_template(transcription_text, user):
-    """
-    Format transcription using the user's default template.
-
-    Args:
-        transcription_text: Raw transcription (JSON or plain text)
-        user: User object to get template from
-
-    Returns:
-        Formatted transcription string
-    """
-    # Import here to avoid circular imports
-    from src.models import TranscriptTemplate
-
-    # Try to parse as JSON
-    try:
-        transcription_data = json.loads(transcription_text)
-        if not isinstance(transcription_data, list):
-            # Not our expected format, return as-is
-            return transcription_text
-    except (json.JSONDecodeError, TypeError):
-        # Not JSON, return as-is
-        return transcription_text
-
-    # Get user's default template
-    template = TranscriptTemplate.query.filter_by(
-        user_id=user.id,
-        is_default=True
-    ).first()
-
-    # Default format if no template set
-    if not template:
-        template_format = "[{{speaker}}]: {{text}}"
-    else:
-        template_format = template.template
-
-    # Helper functions for formatting
-    def format_time(seconds):
-        """Format seconds to HH:MM:SS"""
-        if seconds is None:
-            return "00:00:00"
-        td = timedelta(seconds=seconds)
-        hours = int(td.total_seconds() // 3600)
-        minutes = int((td.total_seconds() % 3600) // 60)
-        secs = int(td.total_seconds() % 60)
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
-
-    def format_srt_time(seconds):
-        """Format seconds to SRT format HH:MM:SS,mmm"""
-        if seconds is None:
-            return "00:00:00,000"
-        td = timedelta(seconds=seconds)
-        hours = int(td.total_seconds() // 3600)
-        minutes = int((td.total_seconds() % 3600) // 60)
-        secs = int(td.total_seconds() % 60)
-        millis = int((td.total_seconds() % 1) * 1000)
-        return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
-
-    # Generate formatted transcript
-    output_lines = []
-    for index, segment in enumerate(transcription_data, 1):
-        line = template_format
-
-        # Replace variables
-        replacements = {
-            '{{index}}': str(index),
-            '{{speaker}}': segment.get('speaker', 'Unknown'),
-            '{{text}}': segment.get('sentence', ''),
-            '{{start_time}}': format_time(segment.get('start_time')),
-            '{{end_time}}': format_time(segment.get('end_time')),
-        }
-
-        for key, value in replacements.items():
-            line = line.replace(key, value)
-
-        # Handle filters
-        # Upper case filter
-        line = re.sub(r'{{(.*?)\|upper}}', lambda m: replacements.get('{{' + m.group(1) + '}}', '').upper(), line)
-        # SRT time filter
-        line = re.sub(r'{{start_time\|srt}}', format_srt_time(segment.get('start_time')), line)
-        line = re.sub(r'{{end_time\|srt}}', format_srt_time(segment.get('end_time')), line)
-
-        output_lines.append(line)
-
-    return '\n'.join(output_lines)
-
-
-def get_export_directory(user):
-    """Get the export directory for a user, creating if needed."""
-    base_dir = Path(AUTO_EXPORT_DIR)
-    # Create per-user subdirectory based on username
-    user_dir = base_dir / secure_filename(user.username)
-    user_dir.mkdir(parents=True, exist_ok=True)
-    return user_dir
-
-def get_consume_directory(user):
-    """Get the consume directory for a user, creating if needed."""
-    base_dir = Path(EXPORT_CONSUME_DIR)
-    # Create per-user subdirectory based on username
-    user_dir = base_dir / secure_filename(user.username)
-    user_dir.mkdir(parents=True, exist_ok=True)
-    return user_dir
-
-def generate_safe_filename(recording):
-    """Generate a safe filename for the export based on recording ID only."""
-    # Use only recording ID for consistent filename that doesn't change
-    return f"recording_{recording.id}"
-
-
-def get_export_filepath(user, recording):
-    """Get the full export filepath for a recording."""
-    export_dir = get_export_directory(user)
-    filename = generate_safe_filename(recording)
-    return export_dir / f"{filename}.md"
-
-
-def mark_export_as_deleted(recording_id):
-    """
-    Rename the export file to indicate the recording was deleted.
-
-    Args:
-        recording_id: ID of the deleted recording
-
-    Returns:
-        New filepath if renamed, None otherwise
-    """
-    if not ENABLE_AUTO_EXPORT:
-        return None
-
-    # Import here to avoid circular imports
-    from src.app import app, db
-    from src.models import Recording, User
-
-    with app.app_context():
-        try:
-            # We need to find the file - check all user directories
-            base_dir = Path(AUTO_EXPORT_DIR)
-            if not base_dir.exists():
-                return None
-
-            # Look for the file in all user subdirectories
-            for user_dir in base_dir.iterdir():
-                if user_dir.is_dir():
-                    old_filepath = user_dir / f"recording_{recording_id}.md"
-                    if old_filepath.exists():
-                        new_filepath = user_dir / f"[deleted]_recording_{recording_id}.md"
-                        # I have no clue what this use-case is. When someone deletes something, they acutally expect it will be deleted...
-                        #old_filepath.rename(new_filepath)
-                        os.remove(old_filepath)
-                        logger.info(f"Deleted file: {old_filepath}")
-                        return str(new_filepath)
-
-            return None
-
-        except Exception as e:
-            logger.error(f"Failed to mark export as deleted for recording {recording_id}: {e}")
-            return None
-
-
-def format_duration(seconds):
-    """Format duration in seconds to human-readable string."""
-    if not seconds:
-        return ""
-
-    hours = seconds // 3600
-    minutes = (seconds % 3600) // 60
-    secs = seconds % 60
-
-    if hours > 0:
-        return f"{hours}h {minutes}m {secs}s"
-    elif minutes > 0:
-        return f"{minutes}m {secs}s"
-    else:
-        return f"{secs}s"
-
-
-def format_file_size(bytes_size):
-    """Format file size in bytes to human-readable string."""
-    if not bytes_size:
-        return ""
-
-    for unit in ['B', 'KB', 'MB', 'GB']:
-        if bytes_size < 1024:
-            return f"{bytes_size:.1f} {unit}"
-        bytes_size /= 1024
-    return f"{bytes_size:.1f} TB"
-
-
-def get_user_export_template(user, recording=None):
-    """
-    Get the export template to use for a recording.
-
-    Resolution order:
-    1. Folder's export_template_id (if recording is in a folder)
-    2. Tag's export_template_id (first matching tag with an export template)
-    3. User's default export template (is_default=True)
-
-    Args:
-        user: User object
-        recording: Optional Recording object (for folder/tag lookup)
-
-    Returns:
-        ExportTemplate object or None
-    """
-    from src.models import ExportTemplate
-
-    # 1. Check folder's export template
-    if recording and recording.folder and recording.folder.export_template_id:
-        template = ExportTemplate.query.get(recording.folder.export_template_id)
-        if template:
-            return template
-
-    # 2. Check tags' export templates
-    if recording and recording.tags:
-        for tag in recording.tags:
-            if tag.export_template_id:
-                template = ExportTemplate.query.get(tag.export_template_id)
-                if template:
-                    return template
-
-    # 3. Fall back to user's default
-    return ExportTemplate.query.filter_by(
-        user_id=user.id,
-        is_default=True
-    ).first()
-
-
-def render_export_template(template_str, context, labels):
-    """
-    Render an export template with variable substitution and conditionals.
-
-    Args:
-        template_str: Template string with {{variables}} and {{#if var}}...{{/if}} blocks
-        context: Dictionary of variable values
-        labels: Dictionary of localized labels
-
-    Returns:
-        Rendered string
-    """
-    result = template_str
-
-    # Process conditionals first: {{#if variable}}content{{/if}}
-    def replace_conditional(match):
-        var_name = match.group(1)
-        content = match.group(2)
-        # Check if the variable exists and is truthy
-        value = context.get(var_name, '')
-        if value:
-            return content
-        return ''
-
-    # Match {{#if var}}...{{/if}} blocks (non-greedy)
-    conditional_pattern = r'\{\{#if\s+(\w+)\}\}(.*?)\{\{/if\}\}'
-    result = re.sub(conditional_pattern, replace_conditional, result, flags=re.DOTALL)
-
-    # Replace label variables: {{label.key}}
-    def replace_label(match):
-        key = match.group(1)
-        return labels.get(key, key)
-
-    result = re.sub(r'\{\{label\.(\w+)\}\}', replace_label, result)
-
-    # Replace context variables: {{variable}}
-    for key, value in context.items():
-        placeholder = '{{' + key + '}}'
-        result = result.replace(placeholder, str(value) if value else '')
-
-    return result
-
-
-def generate_markdown_content(recording, user, include_transcription=True, include_summary=True):
-    """Generate markdown content for a recording export.
-
-    Args:
-        recording: Recording object to export
-        user: User object for getting template preferences
-        include_transcription: Whether to include transcription
-        include_summary: Whether to include summary
-    """
-    from src.utils.localization import get_export_labels, format_date_localized, format_datetime_localized
-
-    # Get user's language preference (default to English)
-    user_language = getattr(user, 'ui_language', 'en') or 'en'
-
-    # Get localized labels
-    labels = get_export_labels(user_language)
-
-    # Get export template (checks folder, tags, then user default)
-    export_template = get_user_export_template(user, recording)
-
-    if export_template:
-        # Use custom template
-        return generate_from_template(
-            recording, user, export_template.template, labels, user_language,
-            include_transcription, include_summary
-        )
-    else:
-        # Use default (backwards compatible) behavior
-        return generate_default_markdown(
-            recording, user, labels, user_language,
-            include_transcription, include_summary
-        )
-
-
-def generate_from_template(recording, user, template_str, labels, user_language,
-                           include_transcription=True, include_summary=True):
-    """
-    Generate markdown content using a custom template.
-
-    Args:
-        recording: Recording object
-        user: User object
-        template_str: Template string
-        labels: Localized labels dictionary
-        user_language: User's language code
-        include_transcription: Whether to include transcription
-        include_summary: Whether to include summary
-
-    Returns:
-        Rendered markdown string
-    """
-    from src.utils.localization import format_date_localized, format_datetime_localized
-
-    # Build context with all available variables
-    context = {
-        'title': recording.title or f"Recording {recording.id}",
-        'meeting_date': format_date_localized(recording.meeting_date, user_language) if recording.meeting_date else '',
-        'created_at': format_datetime_localized(recording.created_at, user_language) if recording.created_at else '',
-        'original_filename': recording.original_filename or '',
-        'file_size': format_file_size(recording.file_size) if recording.file_size else '',
-        'participants': recording.participants or '',
-        'tags': ', '.join([tag.name for tag in recording.tags]) if recording.tags else '',
-        'transcription_duration': format_duration(recording.transcription_duration_seconds) if recording.transcription_duration_seconds else '',
-        'summarization_duration': format_duration(recording.summarization_duration_seconds) if recording.summarization_duration_seconds else '',
-        'notes': recording.notes or '' if include_summary else '',  # Notes included with summary setting
-        'summary': recording.summary or '' if include_summary else '',
-        'transcription': '',  # Will be set below
-    }
-
-    # Format transcription if included
-    if include_transcription and recording.transcription:
-        context['transcription'] = format_transcription_with_template(recording.transcription, user)
-
-    # Render template
-    rendered = render_export_template(template_str, context, labels)
-
-    # Always append hardcoded footer
-    footer = labels.get('footer', 'Generated with [Speakr](https://github.com/learnedmachine/speakr)')
-    rendered += f"\n\n---\n\n*{footer}*\n"
-
-    return rendered
-
-
-def generate_default_markdown(recording, user, labels, user_language,
-                              include_transcription=True, include_summary=True):
-    """
-    Generate markdown using the default (backwards compatible) format.
-
-    Args:
-        recording: Recording object
-        user: User object
-        labels: Localized labels dictionary
-        user_language: User's language code
-        include_transcription: Whether to include transcription
-        include_summary: Whether to include summary
-
-    Returns:
-        Rendered markdown string
-    """
-    from src.utils.localization import format_date_localized, format_datetime_localized
-
-    lines = []
-
-    # Header with title
-    title = recording.title or f"Recording {recording.id}"
-    lines.append(f"# {title}")
-    lines.append("")
-
-    # Metadata section
-    lines.append(f"## {labels.get('metadata', 'Metadata')}")
-    lines.append("")
-
-    if recording.meeting_date:
-        date_str = format_date_localized(recording.meeting_date, user_language)
-        lines.append(f"- **{labels.get('date', 'Date')}:** {date_str}")
-
-    if recording.created_at:
-        created_str = format_datetime_localized(recording.created_at, user_language)
-        lines.append(f"- **{labels.get('created', 'Created')}:** {created_str}")
-
-    if recording.original_filename:
-        lines.append(f"- **{labels.get('originalFile', 'Original File')}:** {recording.original_filename}")
-
-    if recording.file_size:
-        lines.append(f"- **{labels.get('fileSize', 'File Size')}:** {format_file_size(recording.file_size)}")
-
-    if recording.participants:
-        lines.append(f"- **{labels.get('participants', 'Participants')}:** {recording.participants}")
-
-    if recording.tags:
-        tag_names = [tag.name for tag in recording.tags]
-        lines.append(f"- **{labels.get('tags', 'Tags')}:** {', '.join(tag_names)}")
-
-    if recording.transcription_duration_seconds:
-        lines.append(f"- **{labels.get('transcriptionTime', 'Transcription Time')}:** {format_duration(recording.transcription_duration_seconds)}")
-
-    if recording.summarization_duration_seconds:
-        lines.append(f"- **{labels.get('summarizationTime', 'Summarization Time')}:** {format_duration(recording.summarization_duration_seconds)}")
-
-    lines.append("")
-
-    # Notes section (if available)
-    if recording.notes:
-        lines.append(f"## {labels.get('notes', 'Notes')}")
-        lines.append("")
-        lines.append(recording.notes)
-        lines.append("")
-
-    # Summary section
-    if include_summary and recording.summary:
-        lines.append(f"## {labels.get('summary', 'Summary')}")
-        lines.append("")
-        lines.append(recording.summary)
-        lines.append("")
-
-    # Transcription section
-    if include_transcription and recording.transcription:
-        lines.append(f"## {labels.get('transcription', 'Transcription')}")
-        lines.append("")
-        # Format transcription using user's template
-        formatted_transcription = format_transcription_with_template(recording.transcription, user)
-        lines.append(formatted_transcription)
-        lines.append("")
-
-    # Footer
-    lines.append("---")
-    lines.append("")
-    footer = labels.get('footer', 'Generated with [Speakr](https://github.com/learnedmachine/speakr)')
-    lines.append(f"*{footer}*")
-    lines.append("")
-
-    return "\n".join(lines)
-
-
-def export_recording(recording_id):
-    """
-    Export a recording to markdown file.
-
-    Args:
-        recording_id: ID of the recording to export
-
-    Returns:
-        Path to the exported file, or None if export failed/disabled
-    """
-    if not ENABLE_AUTO_EXPORT and not EXPORT_CONSUME_DIR:
-        return None
-
-    # Check if we should export anything
-    if not AUTO_EXPORT_TRANSCRIPTION and not AUTO_EXPORT_SUMMARY:
-        logger.warning("Auto-export is enabled but both transcription and summary export are disabled")
-        return None
-
-    # Import here to avoid circular imports
-    from src.app import app, db
-    from src.models import Recording, User
-
-    with app.app_context():
-        try:
-            recording = db.session.get(Recording, recording_id)
-            if not recording:
-                logger.error(f"Recording {recording_id} not found for export")
-                return None
-
-            # Get the owner
-            user = db.session.get(User, recording.user_id)
-            if not user:
-                logger.error(f"User not found for recording {recording_id}")
-                return None
-
-            # Check if we have content to export
-            has_transcription = bool(recording.transcription) and AUTO_EXPORT_TRANSCRIPTION
-            has_summary = bool(recording.summary) and AUTO_EXPORT_SUMMARY
-
-            if not has_transcription and not has_summary:
-                logger.debug(f"Recording {recording_id} has no content to export")
-                return None
-
-            # Get export directory for user
-            export_dir = get_export_directory(user)
-            consume_dir = get_consume_directory(user)
-
-            # Generate filename and path
-            filename = generate_safe_filename(recording)
-            export_filepath = export_dir / f"{filename}.md"
-            consume_filepath = consume_dir / f"{filename}.txt"
-
-            # Generate content
-            content = generate_markdown_content(
-                recording,
-                user,
-                include_transcription=AUTO_EXPORT_TRANSCRIPTION,
-                include_summary=AUTO_EXPORT_SUMMARY
-            )
-            if ENABLE_AUTO_EXPORT:
-                # Write to file (overwrites if exists)
-                export_filepath.write_text(content, encoding='utf-8')
-                logger.info(f"Exported recording {recording_id} to {export_filepath}")
-
-            if EXPORT_CONSUME_DIR:
-                # Write to file (overwrites if exists)
-                consume_filepath.write_text(content, encoding='utf-8')
-                logger.info(f"Exported consume recording {recording_id} to {consume_filepath}")
-
-            if ENABLE_AUTO_EXPORT:
-                return str(export_filepath)
-            else:
-                return None
-
-        except Exception as e:
-            logger.error(f"Failed to export recording {recording_id}: {e}")
-            return None
-
-
-def initialize_export_directory():
-    """Initialize the export directory on startup."""
-    if not ENABLE_AUTO_EXPORT and not EXPORT_CONSUME_DIR:
-        return
-    try:
-        if ENABLE_AUTO_EXPORT:
-            export_dir = Path(AUTO_EXPORT_DIR)
-            export_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Auto-export enabled, directory: {AUTO_EXPORT_DIR}")
-            if AUTO_EXPORT_TRANSCRIPTION and AUTO_EXPORT_SUMMARY:
-                logger.info("Exporting: transcription and summary")
-            elif AUTO_EXPORT_TRANSCRIPTION:
-                logger.info("Exporting: transcription only")
-            elif AUTO_EXPORT_SUMMARY:
-                logger.info("Exporting: summary only")
-            else:
-                logger.warning("Auto-export enabled but no content types selected")
-
-        if EXPORT_CONSUME_DIR:
-            consume_dir = Path(EXPORT_CONSUME_DIR)
-            consume_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Export consume enabled, directory: {EXPORT_CONSUME_DIR}")
-            if AUTO_EXPORT_TRANSCRIPTION and AUTO_EXPORT_SUMMARY:
-                logger.info("Consume Export: transcription and summary")
-            elif AUTO_EXPORT_TRANSCRIPTION:
-                logger.info("Consume Export: transcription only")
-            elif AUTO_EXPORT_SUMMARY:
-                logger.info("Consume Export: summary only")
-            else:
-                logger.warning("Consume export enabled but no content types selected")
-
-    except Exception as e:
-        logger.error(f"Failed to initialize export directory: {e}")
-
-EOFIM
 }
 
 function outputEnvSpeakr()
@@ -109370,7 +109290,7 @@ AUTO_EXPORT_DIR=/data/exports
 AUTO_EXPORT_TRANSCRIPTION=true
 AUTO_EXPORT_SUMMARY=true
 AUTO_CONSUME_DIR=/data/consume
-AUTO_PROCESS_MODE=admin_only
+AUTO_PROCESS_MODE=user_directories
 AUTO_PROCESS_WATCH_DIR=/data/auto-process
 AUTO_PROCESS_CHECK_INTERVAL=30
 AUTO_PROCESS_DEFAULT_USERNAME=$SPEAKR_ADMIN_USERNAME
@@ -109424,7 +109344,7 @@ function performUpdateSpeakr()
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="mirror.gcr.io/learnedmachine/speakr:0.8.6,mirror.gcr.io/learnedmachine/speakr:0.8.15-alpha"
       image_update_map[2]="mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1,mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfSpeakrV2
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateSpeakrV2
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -109436,10 +109356,20 @@ function performUpdateSpeakr()
       image_update_map[2]="mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1,mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/learnedmachine/speakr:0.10.0-alpha,mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
-      image_update_map[1]="mirror.gcr.io/learnedmachine/speakr:0.10.0-alpha,mirror.gcr.io/learnedmachine/speakr:0.10.0-alpha"
+      image_update_map[1]="mirror.gcr.io/learnedmachine/speakr:0.10.0-alpha,ghcr.io/homeserverhq/speakr:v0.10.3-alpha"
+      image_update_map[2]="mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1,mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateSpeakrV4
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    4)
+      newVer=v4
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/speakr:v0.10.3-alpha,mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="ghcr.io/homeserverhq/speakr:v0.10.3-alpha,ghcr.io/homeserverhq/speakr:v0.10.3-alpha"
       image_update_map[2]="mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1,mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1"
     ;;
     *)
@@ -109452,7 +109382,7 @@ function performUpdateSpeakr()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
-function outputComposeV2Speakr()
+function mfUpdateSpeakrV2()
 {
   rm -f $HOME/speakr-compose.yml
   cat <<EOFMT > $HOME/speakr-compose.yml
@@ -109574,9 +109504,127 @@ networks:
 EOFMT
 }
 
-function mfSpeakrV2()
+function mfUpdateSpeakrV4()
 {
-  outputComposeV2Speakr
+  rm -f $HOME/speakr-compose.yml
+  cat <<EOFMT > $HOME/speakr-compose.yml
+$STACK_VERSION_PREFIX speakr v4
+
+services:
+  speakr-db:
+    image: mirror.gcr.io/postgres:16.9-bookworm
+    container_name: speakr-db
+    hostname: speakr-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-speakr-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.speakr-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.speakr-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.speakr-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.speakr-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.speakr-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.speakr-hourly-db.email-from=Speakr Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.speakr-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.speakr-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.speakr-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.speakr-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.speakr-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.speakr-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.speakr-monthly-db.email-from=Speakr Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.speakr-monthly-db.mail-only-on-error=false"
+
+  speakr-app:
+    image: ghcr.io/homeserverhq/speakr:v0.10.3-alpha
+    container_name: speakr-app
+    hostname: speakr-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - speakr-db
+    networks:
+      - int-speakr-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/uploads:/data/uploads
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/instance:/data/instance
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/exports:/data/exports
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalTranscribeInput:/data/auto-process
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalTranscribeInput/$NEXTCLOUD_ADMIN_USERNAME:/data/auto-process/$SPEAKR_ADMIN_USERNAME
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalTranscribeOutput:/data/consume
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/huggingface:/.cache/huggingface
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+
+  speakr-whisperx:
+    image: mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1
+    container_name: speakr-whisperx
+    hostname: speakr-whisperx
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-speakr-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-speakr-whisperx-cache:/root/.cache
+
+volumes:
+  v-speakr-whisperx-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/whisperx
+
+networks:
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-speakr-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+EOFMT
+  sed -i "s/AUTO_PROCESS_MODE=.*/AUTO_PROCESS_MODE=user_directories/" $HOME/speakr.env
 }
 
 # InsanelyFastWhisper
@@ -118385,9 +118433,9 @@ function installBasicMemory()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_BASICMEMORY_APP $MANAGETLS_BASICMEMORY_APP "$is_integrate_hshq" $NETDEFAULT_BASICMEMORY_APP "$inner_block"
-  insertSubAuthelia $SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN bypass
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll basicmemory "$FMLNAME_BASICMEMORY_APP" $USERTYPE_BASICMEMORY_APP "https://$SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN" "basicmemory.png" "$(getHeimdallOrderFromSub $SUB_BASICMEMORY_APP $USERTYPE_BASICMEMORY_APP)"
+    insertEnableSvcUptimeKuma basicmemory "$FMLNAME_BASICMEMORY_APP" $USERTYPE_BASICMEMORY_APP "https://$SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN"
     restartAllCaddyContainers
     checkAddDBConnection true basicmemory "$FMLNAME_BASICMEMORY_APP" postgres basicmemory-db $BASICMEMORY_DATABASE_NAME $BASICMEMORY_DATABASE_USER $BASICMEMORY_DATABASE_USER_PASSWORD
   fi
@@ -118518,6 +118566,749 @@ function performUpdateBasicMemory()
       curImageList=mirror.gcr.io/pgvector/pgvector:pg17,ghcr.io/basicmachines-co/basic-memory:0.22.1
       image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
       image_update_map[1]="ghcr.io/basicmachines-co/basic-memory:0.22.1,ghcr.io/basicmachines-co/basic-memory:0.22.1"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Cognee
+function installCognee()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory cognee "Cognee"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName cognee-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName cognee-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName cognee-frontend)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName cognee-mcp)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName cognee-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/cognee
+  mkdir $HSHQ_STACKS_DIR/cognee/data
+  mkdir $HSHQ_STACKS_DIR/cognee/frontend
+  mkdir $HSHQ_STACKS_DIR/cognee/frontend/src
+  mkdir $HSHQ_STACKS_DIR/cognee/frontend/public
+  mkdir $HSHQ_STACKS_DIR/cognee/db
+  mkdir $HSHQ_STACKS_DIR/cognee/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/cognee/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/cognee
+  mkdir $HSHQ_NONBACKUP_DIR/cognee/redis
+  initServicesCredentials
+  set +e
+  addUserMailu alias $COGNEE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  COGNEE_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $COGNEE_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigCognee
+  installStack cognee cognee-app "" $HOME/cognee.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$COGNEE_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_COGNEE_FRONTEND Admin Login Info" -b "$FMLNAME_COGNEE_FRONTEND Admin Email: $COGNEE_ADMIN_EMAIL_ADDRESS\n$FMLNAME_COGNEE_FRONTEND Admin Password: $COGNEE_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    COGNEE_INIT_ENV=true
+    updateConfigVar COGNEE_INIT_ENV $COGNEE_INIT_ENV
+  fi
+  sleep 3
+  addReadOnlyUserToDatabase Cognee postgres cognee-db $COGNEE_DATABASE_NAME $COGNEE_DATABASE_USER $COGNEE_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/cognee/dbexport $COGNEE_DATABASE_READONLYUSER $COGNEE_DATABASE_READONLYUSER_PASSWORD
+  if [ -z "$FMLNAME_COGNEE_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is empty, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_COGNEE_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://cognee-app:8000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_COGNEE_APP $MANAGETLS_COGNEE_APP "$is_integrate_hshq" $NETDEFAULT_COGNEE_APP "$inner_block"
+  insertSubAuthelia $SUB_COGNEE_APP.$HOMESERVER_DOMAIN bypass
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_COGNEE_FRONTEND.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>handle /api/v1/* {\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://cognee-app:8000 {\n"
+  inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>>>}\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>handle /health {\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://cognee-app:8000 {\n"
+  inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>>>}\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>handle {\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://cognee-frontend:3000 {\n"
+  inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>>>}\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_COGNEE_FRONTEND $MANAGETLS_COGNEE_FRONTEND "$is_integrate_hshq" $NETDEFAULT_COGNEE_FRONTEND "$inner_block"
+  insertSubAuthelia $SUB_COGNEE_FRONTEND.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll cognee "$FMLNAME_COGNEE_FRONTEND" $USERTYPE_COGNEE_FRONTEND "https://$SUB_COGNEE_FRONTEND.$HOMESERVER_DOMAIN" "cognee.png" "$(getHeimdallOrderFromSub $SUB_COGNEE_FRONTEND $USERTYPE_COGNEE_FRONTEND)"
+    restartAllCaddyContainers
+    checkAddDBConnection true cognee "$FMLNAME_COGNEE_FRONTEND" postgres cognee-db $COGNEE_DATABASE_NAME $COGNEE_DATABASE_USER $COGNEE_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigCognee()
+{
+  cat <<EOFMT > $HOME/cognee-compose.yml
+$STACK_VERSION_PREFIX cognee $(getScriptStackVersion cognee)
+
+services:
+  cognee-db:
+    image: $(getScriptImageByContainerName cognee-db)
+    container_name: cognee-db
+    hostname: cognee-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-cognee-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/cognee/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/cognee/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.cognee-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.cognee-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.cognee-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.cognee-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.cognee-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.cognee-hourly-db.email-from=Cognee Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.cognee-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.cognee-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.cognee-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.cognee-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.cognee-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.cognee-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.cognee-monthly-db.email-from=Cognee Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.cognee-monthly-db.mail-only-on-error=false"
+
+  cognee-app:
+    image: $(getScriptImageByContainerName cognee-app)
+    container_name: cognee-app
+    hostname: cognee-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - cognee-db
+    networks:
+      - int-cognee-net
+      - dock-ext-net
+      - dock-aipriv-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8GB
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-cognee-data:/app/cognee
+      - \${PORTAINER_HSHQ_STACKS_DIR}/cognee/cognee.env:/app/.env
+
+  cognee-frontend:
+    image: $(getScriptImageByContainerName cognee-frontend)
+    container_name: cognee-frontend
+    hostname: cognee-frontend
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-cognee-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-cognee-frontend-src:/app/src
+      - v-cognee-frontend-public:/app/public
+
+  cognee-mcp:
+    image: $(getScriptImageByContainerName cognee-mcp)
+    container_name: cognee-mcp
+    hostname: cognee-mcp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: --no-migration
+    networks:
+      - int-cognee-net
+      - dock-aipriv-net
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4GB
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-cognee-data:/app/cognee
+      - \${PORTAINER_HSHQ_STACKS_DIR}/cognee/cognee.env:/app/.env
+
+  cognee-redis:
+    image: $(getScriptImageByContainerName cognee-redis)
+    container_name: cognee-redis
+    hostname: cognee-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $COGNEE_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - dock-dbs-net
+      - int-cognee-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-cognee-redis:/data
+
+volumes:
+  v-cognee-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/cognee/data
+  v-cognee-frontend-src:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/cognee/frontend/src
+  v-cognee-frontend-public:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/cognee/frontend/public
+  v-cognee-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/cognee/redis
+
+networks:
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-cognee-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/cognee.env
+TZ=\${PORTAINER_TZ}
+NEXT_TELEMETRY_DISABLED=1
+POSTGRES_DB=$COGNEE_DATABASE_NAME
+POSTGRES_USER=$COGNEE_DATABASE_USER
+POSTGRES_PASSWORD=$COGNEE_DATABASE_USER_PASSWORD
+DB_PROVIDER=postgres
+DB_HOST=cognee-db
+DB_PORT=5432
+DB_NAME=$COGNEE_DATABASE_NAME
+DB_USERNAME=$COGNEE_DATABASE_USER
+DB_PASSWORD=$COGNEE_DATABASE_USER_PASSWORD
+TRANSPORT_MODE=http
+PYTHONUNBUFFERED=1
+BIND_ADDRESS=0.0.0.0
+DEBUG=false
+ENV=local
+LOG_LEVEL=INFO
+CORS_ALLOWED_ORIGINS=*
+NEXT_PUBLIC_BACKEND_API_URL=http://cognee-app:8000
+NEXT_PUBLIC_LOCAL_API_URL=https://$SUB_COGNEE_FRONTEND.$HOMESERVER_DOMAIN
+NEXT_PUBLIC_IS_CLOUD_ENVIRONMENT=false
+LLM_PROVIDER=openai
+LLM_MODEL=openai/LongContext
+LLM_ENDPOINT=http://litellm-proxy:4000/v1
+LLM_API_KEY=$LITELLM_MASTER_KEY
+EMBEDDING_PROVIDER=openai_compatible
+EMBEDDING_MODEL=bge-m3-embed
+EMBEDDING_ENDPOINT=http://llamacpp-bgem3embed-server:8080/v1
+EMBEDDING_API_KEY=$LITELLM_MASTER_KEY
+EMBEDDING_DIMENSIONS=1024
+GRAPH_DATABASE_PROVIDER=ladybug
+VECTOR_DB_PROVIDER=pgvector
+VECTOR_DB_HOST=cognee-db
+VECTOR_DB_PORT=5432
+VECTOR_DB_NAME=$COGNEE_DATABASE_NAME
+VECTOR_DB_USERNAME=$COGNEE_DATABASE_USER
+VECTOR_DB_PASSWORD=$COGNEE_DATABASE_USER_PASSWORD
+LLM_INSTRUCTOR_MODE=json_mode
+LLM_EXTRACTION_PROVIDER=openai
+LLM_EXTRACTION_MODEL=openai/LongContext
+LLM_EXTRACTION_ENDPOINT=http://litellm-proxy:4000/v1
+LLM_EXTRACTION_API_KEY=$LITELLM_MASTER_KEY
+LLM_SUMMARIZATION_PROVIDER=openai
+LLM_SUMMARIZATION_MODEL=openai/LongContext
+LLM_SUMMARIZATION_ENDPOINT=http://litellm-proxy:4000/v1
+LLM_SUMMARIZATION_API_KEY=$LITELLM_MASTER_KEY
+LLM_QUERY_PROVIDER=openai
+LLM_QUERY_MODEL=openai/LongContext
+LLM_QUERY_ENDPOINT=http://litellm-proxy:4000/v1
+LLM_QUERY_API_KEY=$LITELLM_MASTER_KEY
+STORAGE_BACKEND=local
+TRANSLATION_PROVIDER=llm
+TARGET_LANGUAGE=en
+CONFIDENCE_THRESHOLD=0.8
+FASTAPI_USERS_JWT_SECRET=$COGNEE_JWT_SECRET
+FASTAPI_USERS_VERIFICATION_TOKEN_SECRET=$COGNEE_VERIFICATION_TOKEN_SECRET
+FASTAPI_USERS_RESET_PASSWORD_TOKEN_SECRET=$COGNEE_RESET_PASSWORD_TOKEN_SECRET
+JWT_LIFETIME_SECONDS=3600
+ENABLE_BACKEND_ACCESS_CONTROL=True
+UI_APP_URL=https://$SUB_COGNEE_FRONTEND.$HOMESERVER_DOMAIN
+LITELLM_LOG=ERROR
+TELEMETRY_DISABLED=1
+DEFAULT_USER_EMAIL=$COGNEE_ADMIN_EMAIL_ADDRESS
+DEFAULT_USER_PASSWORD=$COGNEE_ADMIN_PASSWORD
+CACHING=true
+CACHE_BACKEND=redis
+CACHE_HOST=cognee-redis
+CACHE_PORT=6379
+CACHE_PASSWORD=$COGNEE_REDIS_PASSWORD
+EOFMT
+  cp $HOME/cognee.env $HSHQ_STACKS_DIR/cognee/
+}
+
+function performUpdateCognee()
+{
+  perform_stack_name=cognee
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/pgvector/pgvector:pg17,ghcr.io/homeserverhq/cognee-app:v1.4.2,ghcr.io/homeserverhq/cognee-frontend:v1.4.2,ghcr.io/homeserverhq/cognee-mcp:v1.4.2,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
+      image_update_map[1]="ghcr.io/homeserverhq/cognee-app:v1.4.2,ghcr.io/homeserverhq/cognee-app:v1.4.2"
+      image_update_map[2]="ghcr.io/homeserverhq/cognee-frontend:v1.4.2,ghcr.io/homeserverhq/cognee-frontend:v1.4.2"
+      image_update_map[3]="ghcr.io/homeserverhq/cognee-mcp:v1.4.2,ghcr.io/homeserverhq/cognee-mcp:v1.4.2"
+      image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# LightRAG
+function installLightRAG()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory lightrag "LightRAG"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName lightrag-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName lightrag-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName lightrag-qdrant)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName lightrag-memgraph)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/lightrag
+  mkdir $HSHQ_STACKS_DIR/lightrag/config
+  mkdir $HSHQ_STACKS_DIR/lightrag/rag_storage
+  mkdir $HSHQ_STACKS_DIR/lightrag/inputs
+  mkdir $HSHQ_STACKS_DIR/lightrag/prompts
+  mkdir $HSHQ_STACKS_DIR/lightrag/qdrant
+  mkdir $HSHQ_STACKS_DIR/lightrag/memgraph
+  mkdir $HSHQ_STACKS_DIR/lightrag/db
+  mkdir $HSHQ_STACKS_DIR/lightrag/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/lightrag/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $LIGHTRAG_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  LIGHTRAG_ADMIN_PASSWORD_HASH=$(htpasswd -nbB -C 12 $LIGHTRAG_ADMIN_USERNAME $LIGHTRAG_ADMIN_PASSWORD | sed 's/\$2y\$/{bcrypt}\$2b\$/')
+  outputConfigLightRAG
+  installStack lightrag lightrag-app "" $HOME/lightrag.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$LIGHTRAG_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_LIGHTRAG_APP Admin Login Info" -b "$FMLNAME_LIGHTRAG_APP Admin Username: $LIGHTRAG_ADMIN_USERNAME\n$FMLNAME_LIGHTRAG_APP Admin Email: $LIGHTRAG_ADMIN_EMAIL_ADDRESS\n$FMLNAME_LIGHTRAG_APP Admin Password: $LIGHTRAG_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    LIGHTRAG_INIT_ENV=true
+    updateConfigVar LIGHTRAG_INIT_ENV $LIGHTRAG_INIT_ENV
+  fi
+  sleep 3
+  addReadOnlyUserToDatabase LightRAG postgres lightrag-db $LIGHTRAG_DATABASE_NAME $LIGHTRAG_DATABASE_USER $LIGHTRAG_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/lightrag/dbexport $LIGHTRAG_DATABASE_READONLYUSER $LIGHTRAG_DATABASE_READONLYUSER_PASSWORD
+  if [ -z "$FMLNAME_LIGHTRAG_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is empty, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://lightrag-app:9621 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_LIGHTRAG_APP $MANAGETLS_LIGHTRAG_APP "$is_integrate_hshq" $NETDEFAULT_LIGHTRAG_APP "$inner_block"
+  insertSubAuthelia $SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://lightrag-qdrant:6333 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_LIGHTRAG_QDRANT $MANAGETLS_LIGHTRAG_QDRANT "$is_integrate_hshq" $NETDEFAULT_LIGHTRAG_QDRANT "$inner_block"
+  insertSubAuthelia $SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll lightrag "$FMLNAME_LIGHTRAG_APP" $USERTYPE_LIGHTRAG_APP "https://$SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN" "lightrag.png" "$(getHeimdallOrderFromSub $SUB_LIGHTRAG_APP $USERTYPE_LIGHTRAG_APP)"
+    insertEnableSvcAll lightrag "$FMLNAME_LIGHTRAG_QDRANT" $USERTYPE_LIGHTRAG_QDRANT "https://$SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN/dashboard" "qdrant.png" "$(getHeimdallOrderFromSub $SUB_LIGHTRAG_QDRANT $USERTYPE_LIGHTRAG_QDRANT)"
+    restartAllCaddyContainers
+    checkAddDBConnection true lightrag "$FMLNAME_LIGHTRAG_APP" postgres lightrag-db $LIGHTRAG_DATABASE_NAME $LIGHTRAG_DATABASE_USER $LIGHTRAG_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigLightRAG()
+{
+  cat <<EOFMT > $HOME/lightrag-compose.yml
+$STACK_VERSION_PREFIX lightrag $(getScriptStackVersion lightrag)
+
+services:
+  lightrag-db:
+    image: $(getScriptImageByContainerName lightrag-db)
+    container_name: lightrag-db
+    hostname: lightrag-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-lightrag-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/lightrag/db:/var/lib/postgresql
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/lightrag/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.lightrag-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.lightrag-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.lightrag-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.lightrag-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.lightrag-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.lightrag-hourly-db.email-from=LightRAG Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.lightrag-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.lightrag-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.lightrag-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.lightrag-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.lightrag-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.lightrag-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.lightrag-monthly-db.email-from=LightRAG Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.lightrag-monthly-db.mail-only-on-error=false"
+
+  lightrag-app:
+    image: $(getScriptImageByContainerName lightrag-app)
+    container_name: lightrag-app
+    hostname: lightrag-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - lightrag-db
+      - lightrag-qdrant
+      - lightrag-memgraph
+    networks:
+      - int-lightrag-net
+      - dock-proxy-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/lightrag/config/config.ini:/app/config.ini
+      - \${PORTAINER_HSHQ_STACKS_DIR}/lightrag/config/lightrag.env:/app/.env
+      - \${PORTAINER_HSHQ_STACKS_DIR}/lightrag/rag_storage:/app/data/rag_storage
+      - \${PORTAINER_HSHQ_STACKS_DIR}/lightrag/inputs:/app/data/inputs
+      - \${PORTAINER_HSHQ_STACKS_DIR}/lightrag/prompts:/app/data/prompts
+
+  lightrag-qdrant:
+    image: $(getScriptImageByContainerName lightrag-qdrant)
+    container_name: lightrag-qdrant
+    hostname: lightrag-qdrant
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-lightrag-net
+      - dock-proxy-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-lightrag-qdrant:/qdrant/storage
+
+  lightrag-memgraph:
+    image: $(getScriptImageByContainerName lightrag-memgraph)
+    container_name: lightrag-memgraph
+    hostname: lightrag-memgraph
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-lightrag-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-lightrag-memgraph:/var/lib/memgraph
+
+volumes:
+  v-lightrag-qdrant:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/lightrag/qdrant
+  v-lightrag-memgraph:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/lightrag/memgraph
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-lightrag-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/lightrag.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_HOST=lightrag-db
+POSTGRES_DATABASE=$LIGHTRAG_DATABASE_NAME
+POSTGRES_DB=$LIGHTRAG_DATABASE_NAME
+POSTGRES_USER=$LIGHTRAG_DATABASE_USER
+POSTGRES_PASSWORD=$LIGHTRAG_DATABASE_USER_PASSWORD
+LIGHTRAG_RUNTIME_TARGET=compose
+HOST=0.0.0.0
+PORT=9621
+WEBUI_TITLE=LightRAG Graph KB
+WEBUI_DESCRIPTION=Simple and Fast Graph-Based RAG System
+WORKERS=8
+TIMEOUT=150
+CORS_ORIGINS=https://$SUB_LIGHTRAG.$HOMESERVER_DOMAIN
+SSL=false
+MAX_GRAPH_NODES=1000
+LOG_LEVEL=INFO
+VERBOSE=False
+AUTH_ACCOUNTS=$LIGHTRAG_ADMIN_USERNAME:$LIGHTRAG_ADMIN_PASSWORD
+TOKEN_SECRET=$LIGHTRAG_TOKEN_SECRET
+JWT_ALGORITHM=HS256
+TOKEN_EXPIRE_HOURS=48
+GUEST_TOKEN_EXPIRE_HOURS=24
+LIGHTRAG_API_KEY=$LIGHTRAG_API_KEY
+ENABLE_LLM_CACHE=true
+ENABLE_CONTENT_HEADINGS=True
+RERANK_BINDING=cohere
+RERANK_MODEL=Rerank
+RERANK_BINDING_HOST=http://litellm-proxy:4000/v1/rerank
+RERANK_BINDING_API_KEY=$LITELLM_MASTER_KEY
+EMBEDDING_BINDING=openai
+EMBEDDING_MODEL=Embed
+EMBEDDING_DIM=1024
+EMBEDDING_BINDING_HOST=http://litellm-proxy:4000/v1
+EMBEDDING_BINDING_API_KEY=$LITELLM_MASTER_KEY
+SUMMARY_LANGUAGE=English
+ENTITY_EXTRACTION_USE_JSON=true
+LIGHTRAG_PARSER=*:docling-iteP;*:native-teP;*:legacy-R
+DOCLING_ENDPOINT=http://docling-app:5001
+DOCLING_DO_OCR=true
+DOCLING_FORCE_OCR=true
+DOCLING_OCR_ENGINE=auto
+DOCLING_OCR_PRESET=auto
+DOCLING_OCR_LANG=en
+DOCLING_DO_FORMULA_ENRICHMENT=true
+DOCLING_ADDITIONAL_SUFFIXES=doc,xls,ppt
+DOCLING_POLL_INTERVAL_SECONDS=5
+DOCLING_MAX_POLLS=240
+LIGHTRAG_FORCE_REPARSE_DOCLING=false
+MAX_PARALLEL_PARSE_DOCLING=4
+VLM_PROCESS_ENABLE=true
+VLM_LLM_BINDING=openai
+VLM_LLM_MODEL=Vision
+VLM_LLM_BINDING_HOST=http://litellm-proxy:4000/v1
+VLM_LLM_BINDING_API_KEY=$LITELLM_MASTER_KEY
+VLM_MAX_ASYNC_LLM=1
+VLM_LLM_TIMEOUT=120
+VLM_MAX_IMAGE_BYTES=5242880
+VLM_MIN_IMAGE_PIXEL=16
+LLM_BINDING=openai
+LLM_BINDING_HOST=http://litellm-proxy:4000/v1
+LLM_BINDING_API_KEY=$LITELLM_MASTER_KEY
+LLM_MODEL=LongContext
+LIGHTRAG_KV_STORAGE=PGKVStorage
+LIGHTRAG_DOC_STATUS_STORAGE=PGDocStatusStorage
+LIGHTRAG_GRAPH_STORAGE=MemgraphStorage
+LIGHTRAG_VECTOR_STORAGE=QdrantVectorDBStorage
+POSTGRES_URI=postgresql://$LIGHTRAG_DATABASE_USER:$LIGHTRAG_DATABASE_USER_PASSWORD@lightrag-db:5432/$LIGHTRAG_DATABASE_NAME
+QDRANT_URL=http://lightrag-qdrant:6333
+QDRANT_API_KEY=$LIGHTRAG_QDRANT_API_KEY
+QDRANT__SERVICE__API_KEY=$LIGHTRAG_QDRANT_API_KEY
+MEMGRAPH_URI=bolt://lightrag-memgraph:7687
+MEMGRAPH_USER=$LIGHTRAG_MEMGRAPH_USER
+MEMGRAPH_USERNAME=$LIGHTRAG_MEMGRAPH_USER
+MEMGRAPH_PASSWORD=$LIGHTRAG_MEMGRAPH_PASSWORD
+MEMGRAPH_DATABASE=$LIGHTRAG_MEMGRAPH_DATABASE
+LIGHTRAG_SETUP_POSTGRES_DEPLOYMENT=docker
+LIGHTRAG_SETUP_REDIS_DEPLOYMENT=docker
+LIGHTRAG_SETUP_QDRANT_DEPLOYMENT=docker
+LIGHTRAG_SETUP_MEMGRAPH_DEPLOYMENT=docker
+EOFMT
+  cp $HOME/lightrag.env $HSHQ_STACKS_DIR/lightrag/config/lightrag.env
+}
+
+function performUpdateLightRAG()
+{
+  perform_stack_name=lightrag
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/pgvector/pgvector:pg18,ghcr.io/hkuds/lightrag:v1.5.6,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,mirror.gcr.io/memgraph/memgraph-mage:3.12.0
+      image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg18,mirror.gcr.io/pgvector/pgvector:pg18"
+      image_update_map[1]="ghcr.io/hkuds/lightrag:v1.5.6,ghcr.io/hkuds/lightrag:v1.5.6"
+      image_update_map[2]="mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged"
+      image_update_map[3]="mirror.gcr.io/memgraph/memgraph-mage:3.12.0,mirror.gcr.io/memgraph/memgraph-mage:3.12.0"
     ;;
     *)
       is_upgrade_error=true
@@ -127551,7 +128342,7 @@ EOFMT
 TZ=\${PORTAINER_TZ}
 LOGIN=$DBGATE_ADMIN_USERNAME
 PASSWORD=$DBGATE_ADMIN_PASSWORD
-CONNECTIONS=ActivePieces,Adminer,Automatisch,Budibase,Calcom,Discourse,Dolibarr,EasyAppointments,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,InvoiceNinja,InvoiceShelf,Kanboard,Keila,KillBill,KillBillAPI,Langfuse,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MindsDB,MintHCM,n8n,Nextcloud,Odoo,Ombi,OpenProject,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Rallly,Revolt,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Twenty,Vaultwarden,Wallabag,Wekan,Wikijs,WordPress,Yamtrack,Zammad,Zulip,Taiga,OpenSign,DocuSeal,ControlR,Akaunting,Axelor,Langflow,Firecrawl,LibreChat,OpenWebUI,Khoj,LobeChat,RAGFlow,Dify,MindsDB,WaterCrawl,Flowise,NocoDB,Ente,Morphic,DocsGPT,Memos,Speakr,Monica,AFFiNE,Joplin,Superset,LiteLLM,Langfuse,Skyvern,Wger,WorkoutCool,SuiteCRM,HedgeDoc,BasicMemory
+CONNECTIONS=ActivePieces,Adminer,Automatisch,Budibase,Calcom,Discourse,Dolibarr,EasyAppointments,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,InvoiceNinja,InvoiceShelf,Kanboard,Keila,KillBill,KillBillAPI,Langfuse,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MindsDB,MintHCM,n8n,Nextcloud,Odoo,Ombi,OpenProject,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Rallly,Revolt,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Twenty,Vaultwarden,Wallabag,Wekan,Wikijs,WordPress,Yamtrack,Zammad,Zulip,Taiga,OpenSign,DocuSeal,ControlR,Akaunting,Axelor,Langflow,Firecrawl,LibreChat,OpenWebUI,Khoj,LobeChat,RAGFlow,Dify,MindsDB,WaterCrawl,Flowise,NocoDB,Ente,Morphic,DocsGPT,Memos,Speakr,Monica,AFFiNE,Joplin,Superset,LiteLLM,Langfuse,Skyvern,Wger,WorkoutCool,SuiteCRM,HedgeDoc,BasicMemory,Cognee,LightRAG
 LABEL_ActivePieces=ActivePieces
 ENGINE_ActivePieces=postgres@dbgate-plugin-postgres
 SERVER_ActivePieces=activepieces-db
@@ -128224,6 +129015,20 @@ DATABASE_BasicMemory=BASICMEMORY_DATABASE_NAME
 USER_BasicMemory=BASICMEMORY_DATABASE_USER
 PASSWORD_BasicMemory=BASICMEMORY_DATABASE_USER_PASSWORD
 PORT_BasicMemory=5432
+LABEL_Cognee=Cognee
+ENGINE_Cognee=postgres@dbgate-plugin-postgres
+SERVER_Cognee=cognee-db
+DATABASE_Cognee=COGNEE_DATABASE_NAME
+USER_Cognee=COGNEE_DATABASE_USER
+PASSWORD_Cognee=COGNEE_DATABASE_USER_PASSWORD
+PORT_Cognee=5432
+LABEL_LightRAG=LightRAG
+ENGINE_LightRAG=postgres@dbgate-plugin-postgres
+SERVER_LightRAG=lightrag-db
+DATABASE_LightRAG=LIGHTRAG_DATABASE_NAME
+USER_LightRAG=LIGHTRAG_DATABASE_USER
+PASSWORD_LightRAG=LIGHTRAG_DATABASE_USER_PASSWORD
+PORT_LightRAG=5432
 EOFMT
 #DBGATE_OUTPUT_CONFIG_ENV_END
 }
@@ -129116,6 +129921,22 @@ SQLPAD_CONNECTIONS__basicmemory__username=$BASICMEMORY_DATABASE_USER
 SQLPAD_CONNECTIONS__basicmemory__password=$BASICMEMORY_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__basicmemory__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__basicmemory__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__cognee__name=Cognee
+SQLPAD_CONNECTIONS__cognee__driver=postgres
+SQLPAD_CONNECTIONS__cognee__host=cognee-db
+SQLPAD_CONNECTIONS__cognee__database=$COGNEE_DATABASE_NAME
+SQLPAD_CONNECTIONS__cognee__username=$COGNEE_DATABASE_USER
+SQLPAD_CONNECTIONS__cognee__password=$COGNEE_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__cognee__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__cognee__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__lightrag__name=LightRAG
+SQLPAD_CONNECTIONS__lightrag__driver=postgres
+SQLPAD_CONNECTIONS__lightrag__host=lightrag-db
+SQLPAD_CONNECTIONS__lightrag__database=$LIGHTRAG_DATABASE_NAME
+SQLPAD_CONNECTIONS__lightrag__username=$LIGHTRAG_DATABASE_USER
+SQLPAD_CONNECTIONS__lightrag__password=$LIGHTRAG_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__lightrag__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__lightrag__idleTimeoutSeconds=900
 EOFSP
 #SQLPAD_OUTPUT_CONFIG_ENV_END
 }
