@@ -67954,8 +67954,8 @@ services:
 
   keila-mcp:
     image: $(getScriptImageByContainerName keila-mcp)
-    container_name: keila-app
-    hostname: keila-app
+    container_name: keila-mcp
+    hostname: keila-mcp
     restart: unless-stopped
     env_file: stack.env
     networks:
@@ -86477,6 +86477,9 @@ networks:
   dock-ldap-net:
     name: dock-ldap
     external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
   int-openproject-net:
     driver: bridge
     internal: true
@@ -89971,6 +89974,9 @@ networks:
     external: true
   dock-ext-net:
     name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
     external: true
   dock-dbs-net:
     name: dock-dbs
@@ -115021,7 +115027,7 @@ EOFMT
 
 function performIntegrationOpenRag()
 {
-  addProjectToLangfuse OpenRag $OPENRAG_LANGFUSE_PUBLIC_KEY $OPENRAG_LANGFUSE_SECRET_KEY
+  return
 }
 
 function performUpdateOpenRag()
