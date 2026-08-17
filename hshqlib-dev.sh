@@ -24404,6 +24404,18 @@ function version238Update()
   mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$NEXTCLOUD_ADMIN_USERNAME
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$NEXTCLOUD_ADMIN_USERNAME
   outputNextcloudInotifyScan
+  set +e
+  docker ps | grep -q paperless-app > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    PAPERLESS_EMAIL_PROCESSED_TAG_NAME="Email Processed"
+    PAPERLESS_EMAIL_PROCESSED_TAG_ID=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_EMAIL_PROCESSED_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
+    if [ -z "$PAPERLESS_EMAIL_PROCESSED_TAG_ID" ] || [ "$PAPERLESS_EMAIL_PROCESSED_TAG_ID" = "null" ]; then
+      jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_TAG_NAME\", \"color\": \"#299aa5\" }"
+      PAPERLESS_EMAIL_PROCESSED_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+    fi
+    updateConfigVar PAPERLESS_EMAIL_PROCESSED_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_TAG_NAME"
+    updateConfigVar PAPERLESS_EMAIL_PROCESSED_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_TAG_ID"
+  fi
 }
 
 function pruneAndUpdateDocker()
@@ -30339,7 +30351,16 @@ function addPrimaryUserPaperless()
   fi
   jsonbody="{\"username\": \"$addUserPaper_uid\",\"email\": \"$addUserPaper_email\",\"password\": \"$addUserPaper_password\",\"first_name\": \"$addUserPaper_firstname\",\"last_name\": \"$addUserPaper_lastname\",\"is_staff\": false,\"is_active\": true,\"is_superuser\": false,\"groups\": [$primary_user_gid]}"
   add_user_id=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/users/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
-  jsonbody="{ \"name\": \"${addUserPaper_uid}_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/${addUserPaper_uid}/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
+  if [ -z "$add_user_id" ] || ! [[ $add_user_id =~ ^[+-]?[0-9]+$ ]]; then
+    return
+  fi
+  jsonbody="{ \"name\": \"${addUserPaper_uid} Email\", \"imap_server\": \"$SMTP_HOSTNAME\", \"imap_port\": 143, \"imap_security\": 3, \"username\": \"$addUserPaper_email\", \"password\": \"$addUserPaper_password\", \"account_type\": 1, \"owner\": $add_user_id, \"user_can_change\": true }"
+  mail_account_id=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  if [ -n "$mail_account_id" ]; then
+    jsonbody="{ \"name\": \"${addUserPaper_uid} Email Personal\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"INBOX\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 1, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $add_user_id, \"user_can_change\": true, \"stop_processing\": false }"
+    curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  fi
+  jsonbody="{ \"name\": \"${addUserPaper_uid}_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/${addUserPaper_uid}/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{ \"name\": \"${addUserPaper_uid}_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/${addUserPaper_uid}/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
@@ -30732,7 +30753,7 @@ function loadPinnedDockerImages()
   IMG_PAPERLESS_APP=ghcr.io/homeserverhq/paperless-ngx:v3.0.5
   IMG_PAPERLESS_GOTENBERG=mirror.gcr.io/gotenberg/gotenberg:8.34.0
   IMG_PAPERLESS_TIKA=mirror.gcr.io/apache/tika:3.3.1.0-full
-  IMG_PAPERLESS_AI=hshq/paperless-ai-next:v1
+  IMG_PAPERLESS_AI=mirror.gcr.io/admonstrator/zettelrobbe:v2026.08.03
   IMG_PAPERLESS_GPT=ghcr.io/icereed/paperless-gpt:v0.27.0
   IMG_PAPERLESS_MCP=ghcr.io/homeserverhq/paperless-mcp:v2
   IMG_PASTEFY=mirror.gcr.io/interaapps/pastefy:7.1.5
@@ -30932,6 +30953,7 @@ function loadPinnedDockerImages()
   IMG_COGNEE_FRONTEND=ghcr.io/homeserverhq/cognee-frontend:v1.4.2
   IMG_COGNEE_MCP=ghcr.io/homeserverhq/cognee-mcp:v1.4.2
   IMG_LIGHTRAG_APP=ghcr.io/hkuds/lightrag:v1.5.6
+  IMG_OPENSERP_APP=mirror.gcr.io/karust/openserp:0.8
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -31038,7 +31060,7 @@ function getScriptStackVersion()
     jupyter)
       echo "v4" ;;
     paperless)
-      echo "v11" ;;
+      echo "v12" ;;
     speedtest-tracker-local)
       echo "v7" ;;
     speedtest-tracker-vpn)
@@ -31292,6 +31314,8 @@ function getScriptStackVersion()
     cognee)
       echo "v1" ;;
     lightrag)
+      echo "v1" ;;
+    openserp)
       echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
@@ -31627,6 +31651,7 @@ function pullDockerImages()
   buildOrPullImage $IMG_COGNEE_FRONTEND
   buildOrPullImage $IMG_COGNEE_MCP
   buildOrPullImage $IMG_LIGHTRAG_APP
+  buildOrPullImage $IMG_OPENSERP_APP
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -32365,6 +32390,8 @@ PAPERLESS_AI_JWT_SECRET=
 PAPERLESS_GPT_ADMIN_USERNAME=
 PAPERLESS_GPT_ADMIN_PASSWORD=
 PAPERLESS_API_TOKEN=
+PAPERLESS_EMAIL_PROCESSED_TAG_NAME=
+PAPERLESS_EMAIL_PROCESSED_TAG_ID=
 # Paperless (Service Details) END
 
 # SpeedtestTrackerLocal (Service Details) BEGIN
@@ -33789,6 +33816,10 @@ LIGHTRAG_MEMGRAPH_DATABASE=
 LIGHTRAG_MEMGRAPH_USER=
 LIGHTRAG_MEMGRAPH_PASSWORD=
 # LightRAG (Service Details) END
+
+# OpenSERP (Service Details) BEGIN
+OPENSERP_INIT_ENV=true
+# OpenSERP (Service Details) END
 
 # Service Details END
 EOFCF
@@ -39415,6 +39446,7 @@ function initServiceVars()
   checkAddSvc "SVCD_COGNEE_FRONTEND=cognee,cognee,primary,admin,Cognee,cognee,hshq"
   checkAddSvc "SVCD_LIGHTRAG_APP=lightrag,lightrag,primary,admin,LightRAG,lightrag,hshq"
   checkAddSvc "SVCD_LIGHTRAG_QDRANT=lightrag,lightrag-qdrant,primary,admin,Qdrant (LightRAG),lightrag-qdrant,hshq"
+  checkAddSvc "SVCD_OPENSERP_APP=openserp,openserp,primary,user,OpenSERP,openserp,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -39775,6 +39807,8 @@ function installStackByName()
       installCognee $is_integrate ;;
     lightrag)
       installLightRAG $is_integrate ;;
+    openserp)
+      installOpenSERP $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -40149,6 +40183,8 @@ function performUpdateStackByName()
       performUpdateCognee ;;
     lightrag)
       performUpdateLightRAG ;;
+    openserp)
+      performUpdateOpenSERP ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -41524,6 +41560,9 @@ function getHeimdallOrderFromSub()
     "$SUB_LIGHTRAG_QDRANT")
       order_num=204
       ;;
+    "$SUB_OPENSERP_APP")
+      order_num=205
+      ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=900
@@ -41574,18 +41613,18 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,morphic,opennotebook,appsmith,trilium,memos,sillytavern,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,wger,workoutcool,voicebox,opencode,emailclassifierai,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,morphic,opennotebook,appsmith,trilium,memos,sillytavern,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,wger,workoutcool,voicebox,opencode,emailclassifierai,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
-  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
-  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
-  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
+  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
+  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
+  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
 #INIT_SERVICE_DEFAULTS_END
   if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
     HSHQ_OPTIONAL_STACKS=${HSHQ_OPTIONAL_STACKS},surfsense,ente,comfyui,insanelyfastwhisper,ivbox,skyvern,openrag,openskills,hermes-agent,autokb
@@ -43352,6 +43391,9 @@ function getScriptImageByContainerName()
     "lightrag-memgraph")
       container_image=mirror.gcr.io/memgraph/memgraph-mage:3.12.0
       ;;
+    "openserp-app")
+      container_image=$IMG_OPENSERP_APP
+      ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
@@ -43391,7 +43433,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Keila" "KEILA_INIT_ENV=false,KEILA_ADMIN_USERNAME=,KEILA_ADMIN_EMAIL_ADDRESS=,KEILA_ADMIN_PASSWORD=,KEILA_DATABASE_NAME=,KEILA_DATABASE_USER=,KEILA_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Wallabag" "WALLABAG_INIT_ENV=false,WALLABAG_ADMIN_USERNAME=,WALLABAG_ADMIN_EMAIL_ADDRESS=,WALLABAG_ADMIN_PASSWORD=,WALLABAG_DATABASE_NAME=,WALLABAG_DATABASE_USER=,WALLABAG_DATABASE_USER_PASSWORD=,WALLABAG_ENV_SECRET=,WALLABAG_REDIS_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Jupyter" "JUPYTER_INIT_ENV=false,JUPYTER_ADMIN_PASSWORD=" $CONFIG_FILE false
-  checkAddServiceToConfig "Paperless" "PAPERLESS_INIT_ENV=false,PAPERLESS_SECRET_KEY=,PAPERLESS_CLIENT_SECRET=,PAPERLESS_REDIS_PASSWORD=,PAPERLESS_ADMIN_USERNAME=,PAPERLESS_ADMIN_EMAIL_ADDRESS=,PAPERLESS_ADMIN_PASSWORD=,PAPERLESS_DATABASE_NAME=,PAPERLESS_DATABASE_USER=,PAPERLESS_DATABASE_USER_PASSWORD=,PAPERLESS_AI_ADMIN_USERNAME=,PAPERLESS_AI_ADMIN_PASSWORD=,PAPERLESS_AI_API_KEY=,PAPERLESS_AI_JWT_SECRET=,PAPERLESS_GPT_ADMIN_USERNAME=,PAPERLESS_GPT_ADMIN_PASSWORD=,PAPERLESS_API_TOKEN=" $CONFIG_FILE false
+  checkAddServiceToConfig "Paperless" "PAPERLESS_INIT_ENV=false,PAPERLESS_SECRET_KEY=,PAPERLESS_CLIENT_SECRET=,PAPERLESS_REDIS_PASSWORD=,PAPERLESS_ADMIN_USERNAME=,PAPERLESS_ADMIN_EMAIL_ADDRESS=,PAPERLESS_ADMIN_PASSWORD=,PAPERLESS_DATABASE_NAME=,PAPERLESS_DATABASE_USER=,PAPERLESS_DATABASE_USER_PASSWORD=,PAPERLESS_AI_ADMIN_USERNAME=,PAPERLESS_AI_ADMIN_PASSWORD=,PAPERLESS_AI_API_KEY=,PAPERLESS_AI_JWT_SECRET=,PAPERLESS_GPT_ADMIN_USERNAME=,PAPERLESS_GPT_ADMIN_PASSWORD=,PAPERLESS_API_TOKEN=,PAPERLESS_EMAIL_PROCESSED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_TAG_ID=" $CONFIG_FILE false
   checkAddServiceToConfig "SpeedtestTrackerLocal" "SPEEDTEST_TRACKER_LOCAL_INIT_ENV=false,SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME=,SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "SpeedtestTrackerVPN" "SPEEDTEST_TRACKER_VPN_INIT_ENV=false,SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME=,SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_VPN_DATABASE_NAME=,SPEEDTEST_TRACKER_VPN_DATABASE_USER=,SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Change Detection" "CHANGEDETECTION_INIT_ENV=false,CHANGEDETECTION_ADMIN_PASSWORD=" $CONFIG_FILE false
@@ -43507,6 +43549,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "BasicMemory" "BASICMEMORY_INIT_ENV=false,BASICMEMORY_ADMIN_USERNAME=,BASICMEMORY_ADMIN_EMAIL_ADDRESS=,BASICMEMORY_ADMIN_PASSWORD=,BASICMEMORY_DATABASE_NAME=,BASICMEMORY_DATABASE_USER=,BASICMEMORY_DATABASE_USER_PASSWORD=,BASICMEMORY_DATABASE_READONLYUSER=,BASICMEMORY_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Cognee" "COGNEE_INIT_ENV=false,COGNEE_ADMIN_USERNAME=,COGNEE_ADMIN_EMAIL_ADDRESS=,COGNEE_ADMIN_PASSWORD=,COGNEE_DATABASE_NAME=,COGNEE_DATABASE_USER=,COGNEE_DATABASE_USER_PASSWORD=,COGNEE_DATABASE_READONLYUSER=,COGNEE_DATABASE_READONLYUSER_PASSWORD=,COGNEE_REDIS_PASSWORD=,COGNEE_JWT_SECRET=,COGNEE_VERIFICATION_TOKEN_SECRET=,COGNEE_RESET_PASSWORD_TOKEN_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "LightRAG" "LIGHTRAG_INIT_ENV=false,LIGHTRAG_ADMIN_USERNAME=,LIGHTRAG_ADMIN_EMAIL_ADDRESS=,LIGHTRAG_ADMIN_PASSWORD=,LIGHTRAG_DATABASE_NAME=,LIGHTRAG_DATABASE_USER=,LIGHTRAG_DATABASE_USER_PASSWORD=,LIGHTRAG_DATABASE_READONLYUSER=,LIGHTRAG_DATABASE_READONLYUSER_PASSWORD=,LIGHTRAG_TOKEN_SECRET=,LIGHTRAG_API_KEY=,LIGHTRAG_QDRANT_API_KEY=,LIGHTRAG_MEMGRAPH_DATABASE=,LIGHTRAG_MEMGRAPH_USER=,LIGHTRAG_MEMGRAPH_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "OpenSERP" "OPENSERP_INIT_ENV=false" $CONFIG_FILE false
 #ADD_NEW_ADD_SVC_CONFIG_HERE
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -43549,6 +43592,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Caddy" "CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED=safe-header-cors-automated,CADDY_SNIPPET_BASEHEADER=base-header,CADDY_SNIPPET_DEFAULTCSP=default-csp,CADDY_SNIPPET_RELAXEDCSP=relaxed-csp" $CONFIG_FILE false
   checkAddVarsToServiceConfig "OpenProject" "OPENPROJECT_SECRET_KEY_BASE=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Twenty" "TWENTY_APP_SECRET=,TWENTY_ENCRYPTION_KEY=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Paperless" "PAPERLESS_EMAIL_PROCESSED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_TAG_ID=" $CONFIG_FILE false
   initServicesCredentials
 }
 
@@ -68897,6 +68941,15 @@ PAPERLESS_EXTRA_TEXT_MIMETYPES={"text/markdown": ".md", "text/x-markdown": ".md"
 MCP_SERVER_PORT=80
 ALLOW_ALL_AGGREGATE=false
 IS_STATEFUL=false
+PAPERLESS_AI_ENABLED=false
+PAPERLESS_AI_LLM_EMBEDDING_BACKEND=openai-like
+PAPERLESS_AI_LLM_EMBEDDING_MODEL=Embed
+PAPERLESS_AI_LLM_EMBEDDING_ENDPOINT=http://litellm-proxy:4000/v1
+PAPERLESS_AI_LLM_BACKEND=openai-like
+PAPERLESS_AI_LLM_MODEL=LongContext
+PAPERLESS_AI_LLM_API_KEY=$LITELLM_MASTER_KEY
+PAPERLESS_AI_LLM_ENDPOINT=http://litellm-proxy:4000/v1
+PAPERLESS_AI_LLM_ALLOW_INTERNAL_ENDPOINTS=true
 EOFJT
   rm -f $HOME/paperless.oidc
   cat <<EOFIM > $HOME/paperless.oidc
@@ -69268,6 +69321,15 @@ function performWorkflowsIntegrationPaperless()
     echo "ERROR: Could not connect to Paperless API, returning..."
     return
   fi
+  PAPERLESS_EMAIL_PROCESSED_TAG_NAME="Email Processed"
+  jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_TAG_NAME\", \"color\": \"#299aa5\" }"
+  PAPERLESS_EMAIL_PROCESSED_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  updateConfigVar PAPERLESS_EMAIL_PROCESSED_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_TAG_NAME"
+  updateConfigVar PAPERLESS_EMAIL_PROCESSED_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_TAG_ID"
+  jsonbody="{ \"name\": \"HSHQAdmin Email\", \"imap_server\": \"$SMTP_HOSTNAME\", \"imap_port\": 143, \"imap_security\": 3, \"username\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\", \"password\": \"$EMAIL_ADMIN_PASSWORD\", \"account_type\": 1, \"owner\": 3, \"user_can_change\": true }"
+  ADMIN_MAIL_ACCOUNT_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  jsonbody="{ \"name\": \"HSHQAdmin Email Personal\", \"account\": $ADMIN_MAIL_ACCOUNT_ID, \"enabled\": true, \"folder\": \"INBOX\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 1, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": 3, \"user_can_change\": true, \"stop_processing\": false }"
+  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{\"name\": \"$LDAP_PRIMARY_USER_GROUP_NAME\", \"permissions\": [\"view_logentry\",\"view_group\",\"view_user\",\"add_correspondent\",\"change_correspondent\",\"delete_correspondent\",\"view_correspondent\",\"add_document\",\"change_document\",\"delete_document\",\"view_document\",\"view_documenttype\",\"add_note\",\"change_note\",\"delete_note\",\"view_note\",\"add_savedview\",\"change_savedview\",\"delete_savedview\",\"view_savedview\",\"add_sharelink\",\"change_sharelink\",\"delete_sharelink\",\"view_sharelink\",\"add_tag\",\"change_tag\",\"delete_tag\",\"view_tag\",\"add_uisettings\",\"change_uisettings\",\"delete_uisettings\",\"view_uisettings\",\"view_workflow\",\"add_mailaccount\",\"change_mailaccount\",\"delete_mailaccount\",\"view_mailaccount\",\"add_mailrule\",\"change_mailrule\",\"delete_mailrule\",\"view_mailrule\",\"add_processedmail\",\"change_processedmail\",\"delete_processedmail\",\"view_processedmail\"]}"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{\"name\": \"PersonalProcessed\",\"path\": \"PersonalProcessed/{{owner_username}}/PersonalProcessed/{{title}}\",\"match\": \"\",\"matching_algorithm\": 6,\"is_insensitive\": true,\"owner\": 3}"
@@ -69287,7 +69349,7 @@ function performWorkflowsIntegrationPaperless()
   fi
   jsonbody="{ \"name\": \"sharedconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/SharedConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 2, \"assign_owner\": 3, \"assign_view_users\": [], \"assign_view_groups\": [ 1 ], \"assign_change_users\": [], \"assign_change_groups\": [ 1 ], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"admin_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/$NEXTCLOUD_ADMIN_USERNAME/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": 3 }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
+  jsonbody="{ \"name\": \"admin_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/$NEXTCLOUD_ADMIN_USERNAME/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": 3 }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{ \"name\": \"admin_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/$SPEAKR_ADMIN_USERNAME/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": 3 }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
@@ -69443,14 +69505,29 @@ function performUpdatePaperless()
       return
     ;;
     11)
-      newVer=v11
+      newVer=v12
       curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/gotenberg/gotenberg:8.34.0,mirror.gcr.io/apache/tika:3.3.1.0-full,ghcr.io/homeserverhq/paperless-ngx:v3.0.5,mirror.gcr.io/valkey/valkey:alpine3.23,hshq/paperless-ai-next:v1,ghcr.io/icereed/paperless-gpt:v0.27.0,ghcr.io/homeserverhq/paperless-mcp:v2
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="mirror.gcr.io/gotenberg/gotenberg:8.34.0,mirror.gcr.io/gotenberg/gotenberg:8.34.0"
       image_update_map[2]="mirror.gcr.io/apache/tika:3.3.1.0-full,mirror.gcr.io/apache/tika:3.3.1.0-full"
       image_update_map[3]="ghcr.io/homeserverhq/paperless-ngx:v3.0.5,ghcr.io/homeserverhq/paperless-ngx:v3.0.5"
       image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[5]="hshq/paperless-ai-next:v1,hshq/paperless-ai-next:v1"
+      image_update_map[5]="hshq/paperless-ai-next:v1,mirror.gcr.io/admonstrator/zettelrobbe:v2026.08.03"
+      image_update_map[6]="ghcr.io/icereed/paperless-gpt:v0.27.0,ghcr.io/icereed/paperless-gpt:v0.27.0"
+      image_update_map[7]="ghcr.io/homeserverhq/paperless-mcp:v2,ghcr.io/homeserverhq/paperless-mcp:v2"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfPaperlessV12Update
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    12)
+      newVer=v12
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/gotenberg/gotenberg:8.34.0,mirror.gcr.io/apache/tika:3.3.1.0-full,ghcr.io/homeserverhq/paperless-ngx:v3.0.5,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/admonstrator/zettelrobbe:v2026.08.03,ghcr.io/icereed/paperless-gpt:v0.27.0,ghcr.io/homeserverhq/paperless-mcp:v2
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/gotenberg/gotenberg:8.34.0,mirror.gcr.io/gotenberg/gotenberg:8.34.0"
+      image_update_map[2]="mirror.gcr.io/apache/tika:3.3.1.0-full,mirror.gcr.io/apache/tika:3.3.1.0-full"
+      image_update_map[3]="ghcr.io/homeserverhq/paperless-ngx:v3.0.5,ghcr.io/homeserverhq/paperless-ngx:v3.0.5"
+      image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[5]="mirror.gcr.io/admonstrator/zettelrobbe:v2026.08.03,mirror.gcr.io/admonstrator/zettelrobbe:v2026.08.03"
       image_update_map[6]="ghcr.io/icereed/paperless-gpt:v0.27.0,ghcr.io/icereed/paperless-gpt:v0.27.0"
       image_update_map[7]="ghcr.io/homeserverhq/paperless-mcp:v2,ghcr.io/homeserverhq/paperless-mcp:v2"
     ;;
@@ -70343,7 +70420,7 @@ function mfPaperlessV9AddMCP()
   sudo rm -fr $HSHQ_NONBACKUP_DIR/paperless/redis/*
   grep -q "PAPERLESS_API_KEY" $HOME/paperless.env
   if [ $? -ne 0 ]; then
-    echo "PAPERLESS_API_KEY=$PAPERLESS_API_TOKEN=" >> $HOME/paperless.env
+    echo "PAPERLESS_API_KEY=$PAPERLESS_API_TOKEN" >> $HOME/paperless.env
   fi
   outputComposeV9Paperless
   addMCPServerLiteLLM "paperless" "pap" "http://paperless-mcp:80/mcp" http none ""
@@ -70501,6 +70578,7 @@ EOFPA
 
 function mfPaperlessV11Update()
 {
+  set +e
   rm -f $HOME/paperless-compose.yml
   cat <<EOFJT > $HOME/paperless-compose.yml
 $STACK_VERSION_PREFIX paperless v11
@@ -70744,6 +70822,23 @@ networks:
       driver: default
 
 EOFJT
+}
+
+function mfPaperlessV12Update()
+{
+  set +e
+  grep -q "PAPERLESS_AI_ENABLED" $HOME/paperless.env
+  if [ $? -ne 0 ]; then
+    echo "PAPERLESS_AI_ENABLED=false" >> $HOME/paperless.env
+    echo "PAPERLESS_AI_LLM_EMBEDDING_BACKEND=openai-like" >> $HOME/paperless.env
+    echo "PAPERLESS_AI_LLM_EMBEDDING_MODEL=Embed" >> $HOME/paperless.env
+    echo "PAPERLESS_AI_LLM_EMBEDDING_ENDPOINT=http://litellm-proxy:4000/v1" >> $HOME/paperless.env
+    echo "PAPERLESS_AI_LLM_BACKEND=openai-like" >> $HOME/paperless.env
+    echo "PAPERLESS_AI_LLM_MODEL=LongContext" >> $HOME/paperless.env
+    echo "PAPERLESS_AI_LLM_API_KEY=$LITELLM_MASTER_KEY" >> $HOME/paperless.env
+    echo "PAPERLESS_AI_LLM_ENDPOINT=http://litellm-proxy:4000/v1" >> $HOME/paperless.env
+    echo "PAPERLESS_AI_LLM_ALLOW_INTERNAL_ENDPOINTS=true" >> $HOME/paperless.env
+  fi
 }
 
 # Speedtest Tracker Local
@@ -119315,6 +119410,212 @@ function performUpdateLightRAG()
       image_update_map[1]="ghcr.io/hkuds/lightrag:v1.5.6,ghcr.io/hkuds/lightrag:v1.5.6"
       image_update_map[2]="mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged"
       image_update_map[3]="mirror.gcr.io/memgraph/memgraph-mage:3.12.0,mirror.gcr.io/memgraph/memgraph-mage:3.12.0"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# OpenSERP
+function installOpenSERP()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory openserp "OpenSERP"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName openserp-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/openserp
+  initServicesCredentials
+  set +e
+  outputConfigOpenSERP
+  installStack openserp openserp-app "" $HOME/openserp.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$OPENSERP_INIT_ENV" = "true" ]; then
+    OPENSERP_INIT_ENV=true
+    updateConfigVar OPENSERP_INIT_ENV $OPENSERP_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_OPENSERP_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is empty, returning..."
+    return 1
+  fi
+  set -e
+}
+
+function outputConfigOpenSERP()
+{
+  cat <<EOFMT > $HOME/openserp-compose.yml
+$STACK_VERSION_PREFIX openserp $(getScriptStackVersion openserp)
+
+services:
+  openserp-app:
+    image: $(getScriptImageByContainerName openserp-app)
+    container_name: openserp-app
+    hostname: openserp-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    shm_size: 2gb
+    command: serve -l
+    networks:
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openserp/config.yaml:/usr/src/app/config.yaml:ro
+
+networks:
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+EOFMT
+  cat <<EOFMT > $HOME/openserp.env
+TZ=\${PORTAINER_TZ}
+OPENSERP_SERVER_HOST=0.0.0.0
+OPENSERP_SERVER_PORT=7000
+OPENSERP_BAIDU_RATE_REQUESTS=6
+OPENSERP_BAIDU_RATE_BURST=2
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/openserp/config.yaml
+server:
+  host: 0.0.0.0 # API host to bind
+  port: 7000 # API port to bind
+  debug: false # Enable debug logs and force browser UI mode
+  verbose: false # Enable debug-level request logs
+  raw_requests: false # true = raw HTTP mode, false = browser mode
+  insecure: true # Allow insecure TLS connections
+
+app:
+  log_format: "text" # json|text
+  timeout: 15 # Browser/search timeout in seconds, per attempt; the request deadline is derived from this x retries
+  browser_path: "" # Custom browser binary path (chrome/chromium/edge..)
+  profiles: "" # Overriding built-in browser profiles
+  head: false # Headful mode
+  leakless: false # Force browser process cleanup after request
+  leave_head: false # Keep tabs open after request
+  block_resources: "image,font,css,media" # Block heavy subresources in browser mode
+  block_trackers: true # Block known tracker domains
+  max_processes: 6 # Concurrent Chrome processes
+  idle_ttl: 5m # close a Chrome that has not served traffic for this long
+  mega_timeout: 90s # max total wait for /mega/* requests; slow engines return partial results
+
+extract:
+  enabled: true
+  default_mode: auto # auto|fast|rendered
+  timeout: 20s
+  max_bytes: 2000000
+  max_concurrent: 2
+
+proxies:
+  allow_request_proxy_url: true
+  # Force a single proxy for all engines.
+  # Same behavior as passing --proxy on the CLI.
+  #global: http://127.0.0.1:8080
+  # Advanced mode: define tagged proxy pools and opt engines in with proxy: <tag>.
+  #entries:
+  #  - url: http://127.0.0.1:8080
+  #    tags: [default, us]
+  #  - url: socks5h://127.0.0.1:1080
+  #    tags: [eu]
+  health:
+    failure_threshold: 2 # Disable proxy after this many consecutive failures
+  lanes:
+    enabled: true # Reuse browser profile/cookies per engine + proxy session ID
+    max_lanes: 100 # LRU cap for sticky lanes kept in worker memory
+    drop_cookies_on_challenge: true # Clear lane cookies on captcha/challenge only
+
+cache:
+  ttl_seconds: 120 # Dedicated endpoint cache TTL in seconds (0 disables cache)
+  max_size: 1000 # Maximum cached dedicated responses before oldest-entry eviction
+
+resilience:
+  max_retries: 1 # Retry attempts per engine request (0 disables retries)
+  allow_endpoint_fallback: false # Keep dedicated endpoints engine-pure by default
+
+# circuit_breaker:
+#   failures: 5 # Consecutive failures required to open circuit
+#   recovery_seconds: 60 # Wait time before moving open circuit to half-open
+#   successes: 2 # Consecutive half-open successes required to close circuit
+
+cors:
+  enabled: true
+  allow_origins: "*"
+  allow_methods: "GET, POST, OPTIONS"
+  allow_headers: "Origin, Content-Type, Accept, Authorization, X-Use-Proxy, X-Proxy-URL, X-Proxy-Country, X-Proxy-Class, X-Proxy-Provider, X-Proxy-Session-ID, X-Request-ID, X-Tenant, X-Use-Profile"
+  max_age: 86400
+
+# 2captcha:
+#   apikey: "123123123123123"
+
+captcha:
+  solver_enabled: false # Global captcha solver gate (requires 2captcha.apikey)
+
+google:
+  rate_requests: 60 # Allowed average requests per minute
+  rate_burst: 3 # Burst requests before limiter applies
+  #captcha: true # Engine-level solver flag (also requires captcha.solver_enabled=true)
+
+yandex:
+  rate_requests: 60
+  rate_burst: 3
+
+baidu:
+  rate_requests: 60
+  rate_burst: 3
+  # No proxy tag means direct traffic
+
+bing:
+  rate_requests: 60
+  rate_burst: 3
+  # No proxy tag means direct traffic
+
+duckduckgo:
+  rate_requests: 60
+  rate_burst: 3
+
+ecosia:
+  rate_requests: 60
+  rate_burst: 3
+  # No proxy tag means direct traffic
+EOFMT
+}
+
+function performUpdateOpenSERP()
+{
+  perform_stack_name=openserp
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/karust/openserp:0.8
+      image_update_map[0]="mirror.gcr.io/karust/openserp:0.8,mirror.gcr.io/karust/openserp:0.8"
     ;;
     *)
       is_upgrade_error=true
