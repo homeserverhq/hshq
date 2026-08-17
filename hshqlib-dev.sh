@@ -2,7 +2,6 @@
 HSHQ_LIB_SCRIPT_VERSION=238
 LOG_LEVEL=info
 
-
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
 # This program is free software: you can redistribute it and/or modify
