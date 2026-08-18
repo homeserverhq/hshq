@@ -30938,9 +30938,8 @@ function loadPinnedDockerImages()
   IMG_HERMES_TERMINAL=hshq/hermes-terminal:v1
   IMG_HERMES_CAMOFOX=ghcr.io/jo-inc/camofox-browser:1.11.2
   IMG_HERMES_WEBUI=ghcr.io/nesquena/hermes-webui:0.51.137
-  IMG_AUTOKB_APP=ghcr.io/homeserverhq/autokb-app:v3
-  IMG_AUTOKB_MCP=ghcr.io/homeserverhq/autokb-mcp:v3
-  IMG_AUTOKB_OWUISYNC=hshq/autokb-owuisync:v1
+  IMG_AUTOKB_APP=ghcr.io/homeserverhq/autokb-app:v4
+  IMG_AUTOKB_MCP=ghcr.io/homeserverhq/autokb-mcp:v4
   IMG_SUITECRM_APP=ghcr.io/homeserverhq/suitecrm-core:v8.10.1
   IMG_SUITECRM_MCP=ghcr.io/homeserverhq/suitecrm-mcp:v2
   IMG_HEDGEDOC_FRONTEND=ghcr.io/homeserverhq/hedgedoc-frontend:v2.0.1-alpha
@@ -31638,7 +31637,6 @@ function pullDockerImages()
   buildOrPullImage $IMG_HERMES_WEBUI
   buildOrPullImage $IMG_AUTOKB_APP
   buildOrPullImage $IMG_AUTOKB_MCP
-  buildOrPullImage $IMG_AUTOKB_OWUISYNC
   buildOrPullImage $IMG_SUITECRM_APP
   buildOrPullImage $IMG_SUITECRM_MCP
   buildOrPullImage $IMG_HEDGEDOC_FRONTEND
@@ -41627,7 +41625,7 @@ function initServiceDefaults()
   BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
 #INIT_SERVICE_DEFAULTS_END
   if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
-    HSHQ_OPTIONAL_STACKS=${HSHQ_OPTIONAL_STACKS},surfsense,ente,comfyui,insanelyfastwhisper,ivbox,skyvern,openrag,openskills,hermes-agent,autokb
+    HSHQ_OPTIONAL_STACKS=${HSHQ_OPTIONAL_STACKS},surfsense,ente,comfyui,insanelyfastwhisper,ivbox,skyvern,openrag,openskills,hermes-agent
   fi
 }
 
@@ -43325,9 +43323,6 @@ function getScriptImageByContainerName()
     "autokb-redis")
       container_image=mirror.gcr.io/valkey/valkey:alpine3.23
       ;;
-    "autokb-owuisync")
-      container_image=$IMG_AUTOKB_OWUISYNC
-      ;;
     "suitecrm-db")
       container_image=mirror.gcr.io/mariadb:10.11
       ;;
@@ -43723,12 +43718,6 @@ function buildOrPullImage()
     "hshq/hermes-terminal:v1")
       buildImageHermesTerminalV1
       ;;
-    "hshq/autokb-app:v1")
-      buildImageAutoKBAppV1
-      ;;
-    "hshq/autokb-owuisync:v1")
-      buildImageAutoKBOWUISyncV1
-      ;;
     "hshq/paperless-ai-next:v1")
       buildImagePaperlessAINextV1
       ;;
@@ -43840,12 +43829,6 @@ function checkIsCustomImage()
       echo "true"
       ;;
     "hshq/hermes-terminal:v1")
-      echo "true"
-      ;;
-    "hshq/autokb-app:v1")
-      echo "true"
-      ;;
-    "hshq/autokb-owuisync:v1")
       echo "true"
       ;;
     "hshq/paperless-ai-next:v1")
@@ -113180,8 +113163,8 @@ general_settings:
 litellm_settings:
   turn_off_message_logging: False
   drop_params: True
-  callbacks: ["prometheus"]
-  success_callback: ["prometheus"]
+  callbacks: []
+  success_callback: []
   num_retries: 5
   request_timeout: 900
   telemetry: False
@@ -116535,10 +116518,6 @@ function installAutoKB()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  buildOrPullImage $(getScriptImageByContainerName autokb-owuisync)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/autokb
   mkdir $HSHQ_STACKS_DIR/autokb/db
@@ -116546,7 +116525,6 @@ function installAutoKB()
   mkdir $HSHQ_STACKS_DIR/autokb/plugins
   mkdir $HSHQ_STACKS_DIR/autokb/assets
   mkdir $HSHQ_STACKS_DIR/autokb/logs
-  mkdir $HSHQ_STACKS_DIR/autokb/owuisync
   initServicesCredentials
   set +e
   addUserMailu alias $AUTOKB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -116679,6 +116657,7 @@ services:
       - v-autokb-plugins:/src/plugins
       - v-autokb-logs:/logs
       - v-autokb-output:/output
+      - \${HSHQ_STACKS_DIR}/script-server/conf/runners:/scriptserver_hshq:ro
 
   autokb-web:
     image: $(getScriptImageByContainerName autokb-web)
@@ -116732,25 +116711,6 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-
-  autokb-owuisync:
-    image: $(getScriptImageByContainerName autokb-owuisync)
-    container_name: autokb-owuisync
-    hostname: autokb-owuisync
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - dock-aipriv-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/autokb/owuisync:/config
-      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/KnowledgeBases:/kb_source:ro
 
 volumes:
   v-autokb-plugins:
@@ -116830,591 +116790,10 @@ ENCRYPTION_KEY=$AUTOKB_ENCRYPTION_KEY
 MAX_STARTUP_RETRIES=100
 STARTUP_RETRY_SLEEP=1
 LOG_LEVEL=INFO
-BASE_URL=http://openwebui-app:8080
-API_TOKEN=$OPENWEBUI_ADMIN_API_KEY
-MODE=watch
+OPENWEBUI_API_KEY=$OPENWEBUI_ADMIN_API_KEY
+PAPERLESS_TOKEN=$PAPERLESS_API_KEY
+DOCLING_API_KEY=$DOCLING_API_KEY
 EOFMT
-}
-
-function buildImageAutoKBAppV1()
-{
-  set +e
-  echo -e "\n========================================================================"
-  echo -e "  The AutoKB App image is being built. It can take a while"
-  echo -e "  for the process to complete, so please be patient."
-  echo -e "========================================================================\n"
-  rtval=$?
-  cd
-  return $rtval
-}
-
-function buildImageAutoKBOWUISyncV1()
-{
-  set +e
-  echo -e "\n========================================================================"
-  echo -e "  The AutoKB OWUI Sync image is being built. It can take a while"
-  echo -e "  for the process to complete, so please be patient."
-  echo -e "========================================================================\n"
-  sudo rm -fr $HSHQ_BUILD_DIR/autokb-owuisync
-  mkdir -p $HSHQ_BUILD_DIR/autokb-owuisync
-  cd $HSHQ_BUILD_DIR/autokb-owuisync
-  cat <<EOFMT > $HSHQ_BUILD_DIR/autokb-owuisync/requirements.txt
-requests
-watchdog
-EOFMT
-  cat <<EOFMT > $HSHQ_BUILD_DIR/autokb-owuisync/owui_sync.py
-"""
-owui_sync.py
-Synchronizes a top-level directory of Knowledge Bases with Open WebUI.
-Structure: /root_dir/kb_source/kb_instance/subdir1/subdir2/file.txt
-The KB name on OpenWebUI will be: kb_source_kb_instance
-The Filename on OpenWebUI will be: autokb_kb_source_kb_instance_subdir1_subdir2_file.txt
-
-Features:
-- Unified Engine: perform_kb_sync handles Add, Update, and Delete in one pass.
-- Namespace Protection: 'autokb_' prefix ensures uniqueness and safety.
-- Dual-Stage Garbage Collection:
-    - Stage 1: Filesystem-to-Global (Ghost Cleanup)
-    - Stage 2: Global-to-KB (Limbo Audit)
-- Post-Upload Integrity Verification: Verifies KB attachment immediately after upload.
-- Real-time monitoring via 'watchdog'.
-- Process locking for data integrity.
-- Event debouncing with maxWait guarantees no starvation.
-- Single-worker flush ensures no events are lost during sync.
-"""
-
-import argparse
-import hashlib
-import requests
-import os
-import sys
-import time
-import logging
-import mimetypes
-import sqlite3
-import queue
-import threading
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
-from concurrent.futures import ThreadPoolExecutor
-
-LOG_LEVEL = logging.INFO
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=LOG_LEVEL)
-logger = logging.getLogger(__name__)
-
-class LockManager:
-    def __init__(self, lock_dir, mode, max_retries=5, sleep_interval=10):
-        if not os.path.exists(lock_dir):
-            os.makedirs(lock_dir, exist_ok=True)
-        self.lock_file = os.path.join(lock_dir, ".sync.lock")
-        self.max_retries = max_retries
-        self.sleep_interval = sleep_interval
-        if os.path.exists(self.lock_file) and mode == 'watch':
-            try:
-                os.remove(self.lock_file)
-                logger.info(f"Cleaned up stale lock file: {self.lock_file}")
-            except Exception as e:
-                logger.error(f"Failed to clean up stale lock file: {e}")
-
-    def acquire(self):
-        retries = 0
-        while retries < self.max_retries:
-            if not os.path.exists(self.lock_file):
-                try:
-                    with open(self.lock_file, 'w') as f:
-                        f.write(f"Locked by process PID: {os.getpid()}")
-                    logger.info(f"Lock acquired: {self.lock_file}")
-                    return True
-                except Exception as e:
-                    logger.error(f"Error creating lock file: {e}")
-            else:
-                retries += 1
-                if retries < self.max_retries:
-                    logger.info(f"Lock file exists. Retrying in {self.sleep_interval}s ({retries}/{self.max_retries})...")
-                    time.sleep(self.sleep_interval)
-                else:
-                    logger.error("Could not acquire lock after maximum retries.")
-        return False
-
-    def release(self):
-        if os.path.exists(self.lock_file):
-            try:
-                os.remove(self.lock_file)
-                logger.info("Lock released.")
-            except Exception as e:
-                logger.error(f"Error releasing lock: {e}")
-
-class ManifestManager:
-    def __init__(self, db_path):
-        self.db_path = db_path
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS file_sync_state (
-                    encoded_filename TEXT PRIMARY KEY,
-                    last_known_hash TEXT NOT NULL,
-                    last_sync_timestamp INTEGER NOT NULL
-                )
-            """)
-
-    def get_hash(self, filename):
-        with sqlite3.connect(self.db_path) as conn:
-            res = conn.execute("SELECT last_known_hash FROM file_sync_state WHERE encoded_filename = ?", (filename,)).fetchone()
-            return res[0] if res else None
-
-    def update(self, filename, file_hash):
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                INSERT OR REPLACE INTO file_sync_state (encoded_filename, last_known_hash, last_sync_timestamp)
-                VALUES (?, ?, ?)
-            """, (filename, file_hash, int(time.time())))
-
-class KnowledgeUploader:
-    def __init__(self, base_url, api_key, lock_manager, manifest):
-        self.api_root = base_url.rstrip('/') + '/api/v1'
-        self.api_key = api_key
-        self.lock_manager = lock_manager
-        self.manifest = manifest
-
-    def _build_url(self, endpoint):
-        clean_endpoint = endpoint.lstrip('/')
-        if clean_endpoint == "knowledge":
-            return f"{self.api_root}/knowledge/"
-        if clean_endpoint == "files":
-            return f"{self.api_root}/files/"
-        return f"{self.api_root}/{clean_endpoint}"
-
-    def _fetch_all_paginated(self, endpoint):
-        all_items = []
-        current_page = 1
-        while True:
-            url = f"{self._build_url(endpoint)}?page={current_page}"
-            resp = requests.get(url, headers=self._generate_headers())
-            if resp.status_code != 200:
-                logger.error(f"Pagination error at page {current_page} for {endpoint}: {resp.text}")
-                break
-            data = resp.json()
-            items = []
-            if isinstance(data, dict):
-                items = data.get('items', data.get('files', []))
-            elif isinstance(data, list):
-                items = data
-            if not items or len(items) == 0:
-                break
-            all_items.extend(items)
-            current_page += 1
-        return all_items
-
-    def _generate_headers(self):
-        return {
-            'Authorization': f'Bearer {self.api_key}',
-            'Accept': 'application/json'
-        }
-
-    def _calculate_sha256(self, file_path):
-        sha256_hash = hashlib.sha256()
-        try:
-            with open(file_path, "rb") as f:
-                for byte_block in iter(lambda: f.read(4096), b""):
-                    sha256_hash.update(byte_block)
-            return sha256_hash.hexdigest()
-        except Exception as e:
-            logger.error(f"Hash calculation failed for {file_path}: {e}")
-            return None
-
-    def _wait_for_file_processing(self, file_id, timeout=300, interval=1):
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            try:
-                resp = requests.get(self._build_url(f"files/{file_id}/process/status"), headers=self._generate_headers())
-                if resp.status_code == 200:
-                    status_data = resp.json()
-                    logger.debug(f"Status check for {file_id}: {status_data}")
-                    status = status_data.get('status') if isinstance(status_data, dict) else None
-                    if status == 'completed':
-                        return True
-                    elif status in ['failed', 'error']:
-                        logger.error(f"File {file_id} processing failed: {status}. Full response: {resp.text}")
-                        return False
-            except Exception as e:
-                logger.error(f"Status check error for {file_id}: {e}")
-            time.sleep(interval)
-        return False
-
-    def find_knowledge_id(self, name):
-        items = self._fetch_all_paginated("knowledge")
-        if items:
-            kb = next((k for k in items if isinstance(k, dict) and k.get('name') == name), None)
-            if kb: return kb.get('id')
-        return None
-
-    def create_knowledge_base(self, name):
-        if not name.startswith("AutoKB_"):
-            name = f"AutoKB_{name}"
-        logger.info(f"Creating Knowledge Base: {name}")
-        payload = {"name": name, "description": f"AutoKB sync: {name}"}
-        resp = requests.post(self._build_url("knowledge/create"), headers=self._generate_headers(), json=payload)
-        if resp.status_code in [200, 201]:
-            return resp.json().get('id')
-        return None
-
-    def get_kb_info(self, abs_path, root_kb_dir):
-        rel_to_root = os.path.relpath(abs_path, root_kb_dir)
-        parts = rel_to_root.split(os.sep)
-        if len(parts) >= 2:
-            source, instance = parts[0], parts[1]
-            kb_name = f"AutoKB_{source}_{instance}"
-            kb_path = os.path.join(root_kb_dir, source, instance)
-            return kb_name, kb_path, source, instance
-        return None, None, None, None
-
-    def cleanup_knowledge_bases(self, root_kb_dir):
-        logger.info("Starting Knowledge Base Cleanup (Removing empty/missing KBs)...")
-        valid_local_kb_names = set()
-        for source_dir in os.listdir(root_kb_dir):
-            source_path = os.path.join(root_kb_dir, source_dir)
-            if not os.path.isdir(source_path): continue
-            for instance_dir in os.listdir(source_path):
-                instance_path = os.path.join(source_path, instance_dir)
-                if not os.path.isdir(instance_path): continue
-                valid_local_kb_names.add(f"AutoKB_{source_dir}_{instance_dir}")
-        remote_kbs = self._fetch_all_paginated("knowledge")
-        for kb in remote_kbs:
-            kb_name = kb.get('name', '')
-            kb_id = kb.get('id')
-            if kb_name.startswith("AutoKB_"):
-                is_orphaned = kb_name not in valid_local_kb_names
-                kb_files = self._fetch_all_paginated(f"knowledge/{kb_id}/files")
-                is_empty = len(kb_files) == 0
-                if is_orphaned or is_empty:
-                    reason = "orphaned" if is_orphaned else "empty"
-                    logger.warning(f"KB Cleanup: Found {reason} Knowledge Base: {kb_name}. Draining and Deleting.")
-                    kb_files = self._fetch_all_paginated(f"knowledge/{kb_id}/files")
-                    for f in kb_files:
-                        if isinstance(f, dict) and f.get('filename') and f.get('id'):
-                            self.delete_file(f.get('id'), f.get('filename'))
-                    resp = requests.delete(
-                        self._build_url(f"knowledge/{kb_id}/delete"),
-                        headers=self._generate_headers()
-                    )
-                    if resp.status_code in [200, 201, 204]:
-                        logger.info(f"Successfully deleted KB: {kb_name}")
-                    else:
-                        logger.error(f"Failed to delete KB {kb_name}: {resp.status_code} - {resp.text}")
-
-    def encode_path(self, abs_path, kb_path, source, instance):
-        rel_path = os.path.relpath(abs_path, kb_path)
-        encoded_rel = rel_path.replace(os.sep, '_')
-        return f"autokb_{source}_{instance}_{encoded_rel}"
-
-    def upload_file(self, knowledge_id, abs_path, encoded_name):
-        try:
-            with open(abs_path, 'rb') as f:
-                mime_type, _ = mimetypes.guess_type(encoded_name)
-                mime_type = mime_type or 'application/octet-stream'
-                files = {'file': (encoded_name, f, mime_type)}
-                up_resp = requests.post(self._build_url("files"), headers=self._generate_headers(), files=files)
-                if up_resp.status_code in [200, 201]:
-                    logger.debug(f"Upload response: {up_resp.json()}")
-                    file_id = up_resp.json().get('id')
-                    if file_id and self._wait_for_file_processing(file_id):
-                        add_resp = requests.post(
-                            self._build_url(f"knowledge/{knowledge_id}/file/add"),
-                            headers=self._generate_headers(),
-                            json={'file_id': file_id}
-                        )
-                        if add_resp.status_code in [200, 201]:
-                            logger.info(f"Uploaded & Linked: {encoded_name} (UUID: {file_id})")
-                            return True
-            logger.error(f"Upload failed for {encoded_name}")
-            return False
-        except Exception as e:
-            logger.error(f"Exception in upload: {e}")
-            return False
-
-    def delete_file(self, file_id, encoded_name):
-        try:
-            resp = requests.delete(self._build_url(f"files/{file_id}"), headers=self._generate_headers())
-            if resp.status_code in [200, 201, 204]:
-                logger.info(f"Deleted from repository: {encoded_name} ({file_id})")
-                return True
-            return False
-        except Exception as e:
-            logger.error(f"Delete error for {encoded_name}: {e}")
-            return False
-
-    def perform_kb_sync(self, kb_name, kb_path, source, instance, root_kb_dir):
-        logger.info(f"--- Starting Unified Sync for KB: {kb_name} ---")
-        local_file_map = {}
-        for root, _, files in os.walk(kb_path):
-            for filename in files:
-                abs_p = os.path.join(root, filename)
-                enc_n = self.encode_path(abs_p, kb_path, source, instance)
-                local_file_map[enc_n] = abs_p
-        k_id = self.find_knowledge_id(kb_name)
-        if not k_id:
-            k_id = self.create_knowledge_base(kb_name)
-        if not k_id:
-            logger.error(f"Could not resolve ID for {kb_name}")
-            return
-        kb_items = self._fetch_all_paginated(f"knowledge/{k_id}/files")
-        kb_membership = {}
-        for item in kb_items:
-            if isinstance(item, dict):
-                fname = item.get('filename')
-                if fname:
-                    kb_membership[fname] = {
-                        'id': item.get('id'),
-                        'hash': item.get('hash')
-                    }
-        def sync_worker(enc_name, abs_p):
-            local_hash = self._calculate_sha256(abs_p)
-            manifest_hash = self.manifest.get_hash(enc_name)
-            if enc_name not in kb_membership:
-                if self.upload_file(k_id, abs_p, enc_name):
-                    self.manifest.update(enc_name, local_hash)
-            elif manifest_hash != local_hash:
-                logger.info(f"Change detected for {enc_name}. Re-uploading.")
-                remote_info = kb_membership[enc_name]
-                if self.delete_file(remote_info['id'], enc_name):
-                    if self.upload_file(k_id, abs_p, enc_name):
-                        self.manifest.update(enc_name, local_hash)
-            else:
-                logger.debug(f"No change for {enc_name}. Skipping.")
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            for enc_name, abs_p in local_file_map.items():
-                executor.submit(sync_worker, enc_name, abs_p)
-        for enc_name, remote_info in kb_membership.items():
-            if enc_name not in local_file_map:
-                logger.info(f"Orphan detected in KB: {enc_name}. Deleting file.")
-                self.delete_file(remote_info['id'], enc_name)
-        if not local_file_map:
-            logger.warning(f"KB {kb_name} is now empty. Provisionally deleting KB.")
-            resp = requests.delete(
-                self._build_url(f"knowledge/{k_id}/delete"),
-                headers=self._generate_headers()
-            )
-            if resp.status_code in [200, 201, 204]:
-                logger.info(f"Successfully deleted empty KB: {kb_name}")
-                return
-            else:
-                logger.error(f"Failed to delete empty KB {kb_name}: {resp.text}")
-        logger.info(f"--- Sync Complete for KB: {kb_name} ---")
-
-    def cleanup_stage_1(self, root_kb_dir):
-        logger.info("Starting Stage 1 GC: Ghost Cleanup (Filesystem-to-Global)...")
-        local_encoded_names = set()
-        for source_dir in os.listdir(root_kb_dir):
-            source_path = os.path.join(root_kb_dir, source_dir)
-            if not os.path.isdir(source_path): continue
-            for instance_dir in os.listdir(source_path):
-                instance_path = os.path.join(source_path, instance_dir)
-                if not os.path.isdir(instance_path): continue
-                for root, _, files in os.walk(instance_path):
-                    for filename in files:
-                        abs_p = os.path.join(root, filename)
-                        enc_n = self.encode_path(abs_p, instance_path, source_dir, instance_dir)
-                        local_encoded_names.add(enc_n)
-        global_items = self._fetch_all_paginated("files")
-        for file_entry in global_items:
-            f_name = file_entry.get('filename', '')
-            f_id = file_entry.get('id')
-            if f_name.startswith("autokb_") and f_name not in local_encoded_names:
-                logger.warning(f"Stage 1: Ghost file detected (not on disk): {f_name}. Deleting.")
-                self.delete_file(f_id, f_name)
-
-    def cleanup_stage_2(self, root_kb_dir):
-        logger.info("Starting Stage 2 GC: Limbo Audit (Global-to-KB)...")
-        kb_registry_ids = set()
-        kb_items = self._fetch_all_paginated("knowledge")
-        for kb in kb_items:
-            k_id = kb.get('id')
-            if not k_id: continue
-            f_items = self._fetch_all_paginated(f"knowledge/{k_id}/files")
-            for f in f_items:
-                if isinstance(f, dict) and f.get('id'):
-                    kb_registry_ids.add(f.get('id'))
-                    logger.debug(f"Audit: Found active file ID in KB: {f.get('filename')} ({f.get('id')})")
-        global_items = self._fetch_all_paginated("files")
-        for file_entry in global_items:
-            f_id = file_entry.get('id')
-            f_name = file_entry.get('filename', '')
-            if f_name.startswith("autokb_") and f_id not in kb_registry_ids:
-                logger.warning(f"[AUDIT] Detected orphaned autokb file in limbo: {f_name} (ID: {f_id}). Deleting to maintain integrity.")
-                self.delete_file(f_id, f_name)
-
-class SyncHandler(FileSystemEventHandler):
-    def __init__(self, uploader, root_kb_dir):
-        self.uploader = uploader
-        self.root_kb_dir = root_kb_dir
-        self._pending = set()
-        self._lock = threading.Lock()
-        self._timer = None
-        self._max_timer = None
-        self._debounce_sec = 1.5
-        self._max_wait_sec = 5.0
-        self._queue = queue.Queue()
-        t = threading.Thread(target=self._worker, daemon=True)
-        t.start()
-
-    def _schedule_flush(self):
-        with self._lock:
-            if self._timer:
-                self._timer.cancel()
-            self._timer = threading.Timer(self._debounce_sec, self._enqueue_flush)
-            self._timer.start()
-            if not self._max_timer:
-                self._max_timer = threading.Timer(self._max_wait_sec, self._enqueue_flush)
-                self._max_timer.start()
-
-    def _enqueue_flush(self):
-        self._queue.put(None)
-
-    def _worker(self):
-        while True:
-            self._queue.get()
-            while not self._queue.empty():
-                try:
-                    self._queue.get_nowait()
-                except queue.Empty:
-                    break
-            with self._lock:
-                if self._timer:
-                    self._timer.cancel()
-                    self._timer = None
-                if self._max_timer:
-                    self._max_timer.cancel()
-                    self._max_timer = None
-                paths = list(self._pending)
-                self._pending.clear()
-            if not paths:
-                continue
-            kb_map = {}
-            for p in paths:
-                kb_name, kb_path, source, instance = self.uploader.get_kb_info(p, self.root_kb_dir)
-                if kb_name and kb_path:
-                    kb_map.setdefault(kb_name, []).append((p, kb_path, source, instance))
-            for kb_name, entries in kb_map.items():
-                _, kb_path, source, instance = entries[0]
-                logger.info(f"File Event (debounced, {len(entries)} path(s)): {kb_name}")
-                if not self.uploader.lock_manager.acquire():
-                    continue
-                try:
-                    self.uploader.perform_kb_sync(kb_name, kb_path, source, instance, self.root_kb_dir)
-                finally:
-                    self.uploader.lock_manager.release()
-
-    def _handle_event(self, event, action):
-        if event.is_directory:
-            self._handle_directory_event(event, action)
-            return
-        path = event.dest_path if action == 'move' else event.src_path
-        with self._lock:
-            self._pending.add(path)
-        self._schedule_flush()
-
-    def _handle_directory_event(self, event, action):
-        if action in ('delete', 'move', 'create') and event.is_directory:
-            if not self.uploader.lock_manager.acquire():
-                return
-            try:
-                logger.info(f"Directory Event ({action}): {event.src_path}. Triggering KB Cleanup.")
-                self.uploader.cleanup_knowledge_bases(self.root_kb_dir)
-            finally:
-                self.uploader.lock_manager.release()
-
-    def on_modified(self, event): self._handle_event(event, 'modify')
-    def on_created(self, event): self._handle_event(event, 'create')
-    def on_deleted(self, event): self._handle_event(event, 'delete')
-    def on_moved(self, event): self._handle_event(event, 'move')
-
-def run_full_sync(uploader, root_kb_dir):
-    logger.info(f"Starting Full Comprehensive Sync: {root_kb_dir}")
-    for source_dir in os.listdir(root_kb_dir):
-        source_path = os.path.join(root_kb_dir, source_dir)
-        if not os.path.isdir(source_path): continue
-        for instance_dir in os.listdir(source_path):
-            instance_path = os.path.join(source_path, instance_dir)
-            if not os.path.isdir(instance_path): continue
-            kb_name, kb_path, source, instance = uploader.get_kb_info(instance_path, root_kb_dir)
-            uploader.perform_kb_sync(kb_name, kb_path, source, instance, root_kb_dir)
-    uploader.cleanup_stage_1(root_kb_dir)
-    uploader.cleanup_stage_2(root_kb_dir)
-    uploader.cleanup_knowledge_bases(root_kb_dir)
-    logger.info("Full Sync and Integrity Audit Complete.")
-
-def main():
-    base_url = os.environ.get('BASE_URL')
-    token = os.environ.get('API_TOKEN')
-    root_kb_dir = "/kb_source"
-    lock_dir = "/config"
-    mode = os.environ.get('MODE', 'sync')
-    log_level = os.environ.get('LOG_LEVEL', 'info')
-    force = os.environ.get('FORCE', 'false').lower() == 'true'
-    if not all([base_url, token]):
-        logger.error("Missing required environment variables: BASE_URL and/or API_TOKEN")
-        sys.exit(1)
-    if log_level == 'debug': logger.setLevel(logging.DEBUG)
-    else: logger.setLevel(logging.INFO)
-    class Args: pass
-    args = Args()
-    args.base_url, args.token, args.root_kb_dir, args.mode, args.log_level, args.force = base_url, token, root_kb_dir, mode, log_level, force
-    if not os.path.isdir(args.root_kb_dir):
-        logger.error(f"Root folder not found: {args.root_kb_dir}")
-        sys.exit(2)
-    lock_manager = LockManager(lock_dir, mode)
-    manifest = ManifestManager("/config/manifest.db")
-    uploader = KnowledgeUploader(args.base_url, args.token, lock_manager, manifest)
-    try:
-        if args.mode == 'sync':
-            if args.force or lock_manager.acquire():
-                try:
-                    run_full_sync(uploader, args.root_kb_dir)
-                finally:
-                    if not args.force: lock_manager.release()
-            else:
-                logger.error("Sync failed: Lock acquisition denied. Another process is running.")
-                sys.exit(10)
-        elif args.mode == 'watch':
-            logger.info(f"Performing initial sync before starting Watch Mode on: {args.root_kb_dir}")
-            if args.force or lock_manager.acquire():
-                try:
-                    run_full_sync(uploader, args.root_kb_dir)
-                finally:
-                    if not args.force: lock_manager.release()
-            logger.info(f"Starting Watch Mode on: {args.root_kb_dir}")
-            event_handler = SyncHandler(uploader, args.root_kb_dir)
-            observer = Observer()
-            observer.schedule(event_handler, args.root_kb_dir, recursive=True)
-            observer.start()
-            try:
-                while True: time.sleep(1)
-            except KeyboardInterrupt:
-                observer.stop()
-            observer.join()
-    except Exception as e:
-        logger.critical(f"Unhandled exception: {e}")
-
-if __name__ == "__main__":
-    main()
-EOFMT
-  cat <<EOFMT > $HSHQ_BUILD_DIR/autokb-owuisync/Dockerfile
-FROM python:3.11-slim
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY owui_sync.py .
-RUN chmod +x owui_sync.py
-CMD ["python", "owui_sync.py"]
-EOFMT
-  docker image build -t hshq/autokb-owuisync:v1 -f ./Dockerfile .
-  rtval=$?
-  cd
-  sudo rm -fr $HSHQ_BUILD_DIR/autokb-owuisync
-  return $rtval
 }
 
 function performUpdateAutoKB()
@@ -117426,12 +116805,11 @@ function performUpdateAutoKB()
   case "$perform_stack_ver" in
     1)
       newVer=v1
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/homeserverhq/autokb-app:v3,ghcr.io/homeserverhq/autokb-mcp:v3,mirror.gcr.io/valkey/valkey:alpine3.23,hshq/autokb-owuisync:v1
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/homeserverhq/autokb-app:v4,ghcr.io/homeserverhq/autokb-mcp:v4,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
-      image_update_map[0]="ghcr.io/homeserverhq/autokb-app:v3,ghcr.io/homeserverhq/autokb-app:v3"
-      image_update_map[0]="ghcr.io/homeserverhq/autokb-mcp:v3,ghcr.io/homeserverhq/autokb-mcp:v3"
-      image_update_map[1]="hshq/autokb-owuisync:v1,hshq/autokb-owuisync:v1"
-      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[1]="ghcr.io/homeserverhq/autokb-app:v4,ghcr.io/homeserverhq/autokb-app:v4"
+      image_update_map[2]="ghcr.io/homeserverhq/autokb-mcp:v4,ghcr.io/homeserverhq/autokb-mcp:v4"
+      image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
       is_upgrade_error=true
