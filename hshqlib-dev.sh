@@ -4088,6 +4088,19 @@ EOF
     fi
     updateConfigVar EMAIL_ADMIN_USERNAME $EMAIL_ADMIN_USERNAME
   done
+  while [ -z "$EMAIL_SHARED_USERNAME" ]
+  do
+    if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
+      EMAIL_SHARED_USERNAME="info"
+    else
+      EMAIL_SHARED_USERNAME=$(promptUserInputMenu "info" "Enter Shared Email" "Enter the shared email username: ")
+    fi
+    if [ $(checkValidString "$EMAIL_SHARED_USERNAME") = "false" ]; then
+      showMessageBox "Invalid Character(s)" "The username contains invalid character(s). It must consist of a-z (lowercase) and/or 0-9"
+      EMAIL_SHARED_USERNAME=""
+    fi
+    updateConfigVar EMAIL_SHARED_USERNAME $EMAIL_SHARED_USERNAME
+  done
   initServicesCredentials
   addUserShareDirectories $LDAP_ADMIN_USER_USERNAME
   addUserShareDirectories $NEXTCLOUD_ADMIN_USERNAME
@@ -24416,6 +24429,11 @@ function version238Update()
     updateConfigVar PAPERLESS_EMAIL_PROCESSED_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_TAG_NAME"
     updateConfigVar PAPERLESS_EMAIL_PROCESSED_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_TAG_ID"
   fi
+  EMAIL_SHARED_USERNAME=info
+  updateConfigVar EMAIL_SHARED_USERNAME $EMAIL_SHARED_USERNAME
+  initServicesCredentials
+  addUserMailu user $EMAIL_SHARED_USERNAME $HOMESERVER_DOMAIN $EMAIL_SHARED_PASSWORD
+  sendEmail -s "Shared Email Account Info" -b "A new email account has been added to Mailu. The intent of this account to share amongst your team members for common access. Here are the credentials:\n\n Shared Email Address: $EMAIL_SHARED_EMAIL_ADDRESS\nShared Email Password: $EMAIL_SHARED_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
 }
 
 function pruneAndUpdateDocker()
@@ -30209,6 +30227,9 @@ EOFAU
     jsonbody="username=${addPUUID}&password=$addPUPassword"
     newuser_paperless_apitoken=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/token/" -H "accept: application/json" -H "Content-Type: application/x-www-form-urlencoded" -d "$jsonbody" | jq -r '.token')
   fi
+  fullName="${addPUFirstName}${addPULastName}"
+  cleanName="${fullName//[![:alnum:]]/}"
+  addPrimaryUserAutoKB "$addPUUID" "$cleanName" "$addPUEmailAddress" "$addPUPassword" 1 "PKB"
   newuser_immich_api_key=$(pwgen -c -n 41 1)
   addPrimaryUserImmich "${addPUUID}" "$addPUEmailAddress" "$addPUFirstName $addPULastName" "$newuser_immich_api_key"
   set +e
@@ -30240,17 +30261,18 @@ EOFIM
     chmod 755 $HSHQ_STACKS_DIR/openwebui/dbexport/addPrimaryUserOWUI.sh
     docker exec openwebui-db bash /dbexport/addPrimaryUserOWUI.sh > /dev/null 2>&1
     rm -f $HSHQ_STACKS_DIR/openwebui/dbexport/addPrimaryUserOWUI.sh
-
-    #Basic $(echo -n ${addPUUID}:${newuser_nextcloud_app_password} | base64)
-    #newuser_paperless_apitoken
-    #newuser_immich_api_key
-
     jsonbody=$(jq -n \
         --arg imap_username "$addPUEmailAddress" \
         --arg imap_password "$addPUPassword" \
         --arg sender_name "$addPUFirstName $addPULastName" \
         '{imap_host: "mailu-front", imap_username: $imap_username, imap_password: $imap_password, smtp_host: "mailu-front", sender_name: $sender_name}')
     curl -s -X POST "https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/api/v1/tools/id/imap_email_tool/valves/user/update" -H "Authorization: Bearer $OPENWEBUI_PU_API_KEY" -H "Content-Type: application/json" -d "$jsonbody" > /dev/null 2>&1
+    jsonbody=$(jq -n \
+        --arg immich_api_key "$newuser_immich_api_key" \
+        --arg nextcloud_api_key "$(echo -n ${addPUUID}:${newuser_nextcloud_app_password} | base64)" \
+        --arg paperless_api_key "$newuser_paperless_apitoken" \
+        '{immich_api_key: "$immich_api_key", nextcloud_api_key: $nextcloud_api_key, paperless_api_key: $paperless_api_key}')
+    curl -s -X POST "https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/api/v1/tools/id/mcpkeyvault_tool/valves/user/update" -H "Authorization: Bearer $OPENWEBUI_PU_API_KEY" -H "Content-Type: application/json" -d "$jsonbody" > /dev/null 2>&1
   fi
   echo "Sending Vaultwarden template to ${addPUUID}@${HOMESERVER_DOMAIN}..."
   emailUserVaultwardenCredentials "$addPUUID" "$addPUEmailAddress"
@@ -30364,6 +30386,63 @@ function addPrimaryUserPaperless()
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{ \"name\": \"${addUserPaper_uid}_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/${addUserPaper_uid}/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+}
+
+function addPrimaryUserAutoKB()
+{
+  user_name="$1"
+  formal_name="$2"
+  imap_username="$3"
+  imap_password="$4"
+  paperless_storage_id="$5"
+  kb_abbrev="$6"
+  echo "Creating IMAP source subscription..."
+  akbRes="$(docker exec autokb-web curl -sS -X POST \
+    -H "Authorization: Bearer $AUTOKB_API_KEY" \
+    -H "Content-Type: application/json" \
+    --data "{\"name\":\"${formal_name}-IMAP-Source\",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$imap_username\",\"password\":\"$imap_password\",\"folder\":\"INBOX\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
+    -w $'\n%{http_code}' \
+    "http://autokb-web:80/api/subscriptions/imapFolderWatchPlugin")"
+  akbCode="${akbRes##*$'\n'}"
+  body="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "IMAP source failed: $body" >&2; exit 1; }
+  IMAP_SUB_ID="$(printf '%s' "$body" | jq -r '.id')"
+  echo "Creating Paperless source subscription..."
+  akbRes="$(docker exec autokb-web curl -sS -X POST \
+    -H "Authorization: Bearer $AUTOKB_API_KEY" \
+    -H "Content-Type: application/json" \
+    --data "{\"name\":\"${formal_name}-Paperless-Source\",\"config\":{\"storage_path_id\":$paperless_storage_id,\"owner_username\":\"$user_name\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"use_paperless_content\":true}}" \
+    -w $'\n%{http_code}' \
+    "http://autokb-web:80/api/subscriptions/ePaperlessDoclingPlugin")"
+  akbCode="${akbRes##*$'\n'}"
+  body="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Paperless source failed: $body" >&2; exit 1; }
+  PAPERLESS_SUB_ID="$(printf '%s' "$body" | jq -r '.id')"
+  echo "Resolving openWebUISink service id..."
+  akbRes="$(docker exec autokb-web curl -sS -X GET \
+    -H "Authorization: Bearer $AUTOKB_API_KEY" \
+    -H "Content-Type: application/json" \
+    -w $'\n%{http_code}' \
+    "http://autokb-web:80/api/sinks")"
+  akbCode="${akbRes##*$'\n'}"
+  body="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $body" >&2; exit 1; }
+  SINK_ID="$(printf '%s' "$body" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
+  if [ -z "$SINK_ID" ]; then
+    echo "openWebUISink not found among provisioned sinks" >&2
+    exit 1
+  fi
+  echo "Creating OpenWebUI target KB ${formal_name}-$kb_abbrev..."
+  akbRes="$(docker exec autokb-web curl -sS -X POST \
+    -H "Authorization: Bearer $AUTOKB_API_KEY" \
+    -H "Content-Type: application/json" \
+    --data "{\"name\":\"${formal_name}-$kb_abbrev\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+    -w $'\n%{http_code}' \
+    "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
+  akbCode="${akbRes##*$'\n'}"
+  body="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $body" >&2; exit 1; }
+  echo "Done."
 }
 
 function addPrimaryGroupMCPServerOpenWebUI()
@@ -31961,6 +32040,9 @@ SMTP_RELAY_HOST=
 SMTP_RELAY_USERNAME=
 SMTP_RELAY_PASSWORD=
 MAILU_API_TOKEN=
+EMAIL_SHARED_USERNAME=
+EMAIL_SHARED_PASSWORD=
+EMAIL_SHARED_EMAIL_ADDRESS=
 # Mailu (Service Details) END
 
 # Wazuh (Service Details) BEGIN
@@ -33960,6 +34042,14 @@ function initServicesCredentials()
     rm -f $HSHQ_SECRETS_DIR/smtp_username.txt
     echo $EMAIL_SMTP_EMAIL_ADDRESS > $HSHQ_SECRETS_DIR/smtp_username.txt
     chmod 0400 $HSHQ_SECRETS_DIR/smtp_username.txt
+  fi
+  if [ -z "$EMAIL_SHARED_PASSWORD" ]; then
+    EMAIL_SHARED_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar EMAIL_SHARED_PASSWORD $EMAIL_SHARED_PASSWORD
+  fi
+  if [ -z "$EMAIL_SHARED_EMAIL_ADDRESS" ] && ! [ -z "$EMAIL_SHARED_USERNAME" ]; then
+    EMAIL_SHARED_EMAIL_ADDRESS="$EMAIL_SHARED_USERNAME@$HOMESERVER_DOMAIN"
+    updatePlaintextRootConfigVar EMAIL_SHARED_EMAIL_ADDRESS $EMAIL_SHARED_EMAIL_ADDRESS
   fi
   if [ -z "$MAILU_API_TOKEN" ]; then
     MAILU_API_TOKEN=$(pwgen -c -n 32 1)
@@ -40496,6 +40586,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GITLAB}" https://$SUB_GITLAB.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENLDAP_MANAGER}" https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MAILU}-Admin" https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MAILU}-Shared" https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login $HOMESERVER_ABBREV $EMAIL_SHARED_EMAIL_ADDRESS $EMAIL_SHARED_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MATRIX_ELEMENT_PRIVATE}" https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MATRIX_ELEMENT_PUBLIC}" https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MEALIE}-Admin" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD)"\n"
@@ -40704,6 +40795,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GITLAB}" https://$SUB_GITLAB.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENLDAP_MANAGER}" https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MAILU}-Admin" https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MAILU}-Shared" https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login $HOMESERVER_ABBREV $EMAIL_SHARED_EMAIL_ADDRESS $EMAIL_SHARED_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MATRIX_ELEMENT_PRIVATE}" https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MATRIX_ELEMENT_PUBLIC}" https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MEALIE}-Admin" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD)"\n"
@@ -43588,6 +43680,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "OpenProject" "OPENPROJECT_SECRET_KEY_BASE=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Twenty" "TWENTY_APP_SECRET=,TWENTY_ENCRYPTION_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Paperless" "PAPERLESS_EMAIL_PROCESSED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_TAG_ID=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Mailu" "EMAIL_SHARED_USERNAME=,EMAIL_SHARED_PASSWORD=,EMAIL_SHARED_EMAIL_ADDRESS=" $CONFIG_FILE false
   initServicesCredentials
 }
 
@@ -48297,6 +48390,10 @@ user:
     password: '$(openssl passwd -6 $EMAIL_SMTP_PASSWORD)'
     hash_password: false
     displayed_name: '${HOMESERVER_ABBREV^^} SMTP Sender'
+  - email: $EMAIL_SHARED_USERNAME@$HOMESERVER_DOMAIN
+    password: '$(openssl passwd -6 $EMAIL_SHARED_PASSWORD)'
+    hash_password: false
+    displayed_name: '${EMAIL_SHARED_USERNAME^}'
 
 EOFMC
   if ! [ -z "$RELAYSERVER_WGPORTAL_ADMIN_EMAIL" ]; then
@@ -103756,6 +103853,7 @@ function outputDBsList()
 "Skyvern" postgres skyvern-db $SKYVERN_DATABASE_NAME $SKYVERN_DATABASE_READONLYUSER $SKYVERN_DATABASE_READONLYUSER_PASSWORD
 "Wger" postgres wger-db $WGER_DATABASE_NAME $WGER_DATABASE_READONLYUSER $WGER_DATABASE_READONLYUSER_PASSWORD
 "WorkoutCool" postgres workoutcool-db $WORKOUTCOOL_DATABASE_NAME $WORKOUTCOOL_DATABASE_READONLYUSER $WORKOUTCOOL_DATABASE_READONLYUSER_PASSWORD
+"AutoKB" postgres autokb-db $AUTOKB_DATABASE_NAME $AUTOKB_DATABASE_READONLYUSER $AUTOKB_DATABASE_READONLYUSER_PASSWORD
 "SuiteCRM" mysql suitecrm-db $SUITECRM_DATABASE_NAME $SUITECRM_DATABASE_READONLYUSER $SUITECRM_DATABASE_READONLYUSER_PASSWORD
 "HedgeDoc" postgres hedgedoc-db $HEDGEDOC_DATABASE_NAME $HEDGEDOC_DATABASE_READONLYUSER $HEDGEDOC_DATABASE_READONLYUSER_PASSWORD
 "BasicMemory" postgres basicmemory-db $BASICMEMORY_DATABASE_NAME $BASICMEMORY_DATABASE_READONLYUSER $BASICMEMORY_DATABASE_READONLYUSER_PASSWORD
@@ -116553,6 +116651,8 @@ function installAutoKB()
     updateConfigVar AUTOKB_INIT_ENV $AUTOKB_INIT_ENV
   fi
   sleep 3
+  addReadOnlyUserToDatabase AutoKB postgres autokb-db $AUTOKB_DATABASE_NAME $AUTOKB_DATABASE_USER $AUTOKB_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/autokb/dbexport $AUTOKB_DATABASE_READONLYUSER $AUTOKB_DATABASE_READONLYUSER_PASSWORD
+  performAutoKBInstallIntegrations
   if [ -z "$FMLNAME_AUTOKB_WEB" ]; then
     set +e
     echo "ERROR: Formal name is empty, returning..."
@@ -116577,6 +116677,7 @@ function installAutoKB()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll autokb "$FMLNAME_AUTOKB_WEB" $USERTYPE_AUTOKB_WEB "https://$SUB_AUTOKB_WEB.$HOMESERVER_DOMAIN" "autokb.png" "$(getHeimdallOrderFromSub $SUB_AUTOKB_WEB $USERTYPE_AUTOKB_WEB)"
     restartAllCaddyContainers
+    checkAddDBConnection true autokb "$FMLNAME_AUTOKB_WEB" postgres autokb-db $AUTOKB_DATABASE_NAME $AUTOKB_DATABASE_USER $AUTOKB_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -116814,6 +116915,12 @@ OPENWEBUI_API_KEY=$OPENWEBUI_ADMIN_API_KEY
 PAPERLESS_TOKEN=$PAPERLESS_API_KEY
 DOCLING_API_KEY=$DOCLING_API_KEY
 EOFMT
+}
+
+function performAutoKBInstallIntegrations()
+{
+  addPrimaryUserAutoKB "shared" "Shared" "$EMAIL_SHARED_EMAIL_ADDRESS" "$EMAIL_SHARED_PASSWORD" 2 "SKB"
+  addPrimaryUserAutoKB "$NEXTCLOUD_ADMIN_USERNAME" "HSHQAdmin" "$EMAIL_ADMIN_EMAIL_ADDRESS" "$EMAIL_ADMIN_PASSWORD" 3 "PKB"
 }
 
 function performUpdateAutoKB()
