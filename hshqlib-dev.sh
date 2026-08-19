@@ -30858,7 +30858,7 @@ function loadPinnedDockerImages()
   IMG_CRAWL4AI_APP=mirror.gcr.io/unclecode/crawl4ai:0.8.6
   IMG_CRAWL4AI_PROXY=ghcr.io/lennyerik/crawl4ai-proxy:latest
   IMG_OLLAMA_SERVER=mirror.gcr.io/ollama/ollama:0.20.5
-  IMG_OPENWEBUI_APP=hshq/openwebui-app:v3
+  IMG_OPENWEBUI_APP=ghcr.io/homeserverhq/open-webui:v0.11.0
   IMG_OPENWEBUI_OPENTERMINAL=ghcr.io/open-webui/open-terminal:0.11.34
   IMG_OPENWEBUI_MCPO=ghcr.io/open-webui/mcpo:main
   IMG_OPENWEBUI_PIPELINES=ghcr.io/open-webui/pipelines:main
@@ -30945,7 +30945,7 @@ function loadPinnedDockerImages()
   IMG_HEDGEDOC_FRONTEND=ghcr.io/homeserverhq/hedgedoc-frontend:v2.0.1-alpha
   IMG_HEDGEDOC_BACKEND=ghcr.io/homeserverhq/hedgedoc-backend:v2.0.1-alpha
   IMG_HEDGEDOC_MCP=ghcr.io/homeserverhq/hedgedoc-mcp:v2
-  IMG_PRESENTON_APP=ghcr.io/presenton/presenton:v0.9.3-beta
+  IMG_PRESENTON_APP=ghcr.io/homeserverhq/presenton:v0.9.7-beta
   IMG_PRESENTON_MCP=ghcr.io/homeserverhq/presenton-mcp:v2
   IMG_BASICMEMORY_APP=ghcr.io/basicmachines-co/basic-memory:0.22.1
   IMG_COGNEE_APP=ghcr.io/homeserverhq/cognee-app:v1.4.2
@@ -31215,7 +31215,7 @@ function getScriptStackVersion()
     ollama)
       echo "v2" ;;
     openwebui)
-      echo "v4" ;;
+      echo "v5" ;;
     khoj)
       echo "v1" ;;
     lobechat)
@@ -31307,7 +31307,7 @@ function getScriptStackVersion()
     hedgedoc)
       echo "v1" ;;
     presenton)
-      echo "v1" ;;
+      echo "v2" ;;
     basicmemory)
       echo "v1" ;;
     cognee)
@@ -97933,6 +97933,18 @@ function performUpdateOpenWebUI()
       image_update_map[6]="ghcr.io/open-webui/pipelines:main,ghcr.io/open-webui/pipelines:main"
       image_update_map[7]="hshq/openwebui-mcp:v1,hshq/openwebui-mcp:v1"
     ;;
+    5)
+      newVer=v5
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/open-webui:v0.11.0,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,ghcr.io/open-webui/open-terminal:0.11.34,ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/pipelines:main,hshq/openwebui-mcp:v1
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="ghcr.io/homeserverhq/open-webui:v0.11.0,ghcr.io/homeserverhq/open-webui:v0.11.0"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[3]="mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged"
+      image_update_map[4]="ghcr.io/open-webui/open-terminal:0.11.34,ghcr.io/open-webui/open-terminal:0.11.34"
+      image_update_map[5]="ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/mcpo:main"
+      image_update_map[6]="ghcr.io/open-webui/pipelines:main,ghcr.io/open-webui/pipelines:main"
+      image_update_map[7]="hshq/openwebui-mcp:v1,hshq/openwebui-mcp:v1"
+    ;;
     *)
       is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
@@ -116630,6 +116642,7 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
       - v-autokb-plugins:/src/plugins
+      - v-autokb-sinks:/src/sinks
       - v-autokb-assets:/assets
       - v-autokb-logs:/logs
       - v-autokb-output:/output
@@ -116655,9 +116668,10 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
       - v-autokb-plugins:/src/plugins
+      - v-autokb-sinks:/src/sinks
       - v-autokb-logs:/logs
       - v-autokb-output:/output
-      - \${HSHQ_STACKS_DIR}/script-server/conf/runners:/scriptserver_hshq:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/script-server/conf/runners:/scriptserver_hshq:ro
 
   autokb-web:
     image: $(getScriptImageByContainerName autokb-web)
@@ -116719,6 +116733,12 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/autokb/plugins
+  v-autokb-sinks:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/autokb/sinks
   v-autokb-assets:
     driver: local
     driver_opts:
@@ -117836,9 +117856,15 @@ function performUpdatePresenton()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=ghcr.io/presenton/presenton:v0.9.3-beta,ghcr.io/homeserverhq/presenton-mcp:v2
-      image_update_map[0]="ghcr.io/presenton/presenton:v0.9.3-beta,ghcr.io/presenton/presenton:v0.9.3-beta"
+      image_update_map[0]="ghcr.io/presenton/presenton:v0.9.3-beta,ghcr.io/homeserverhq/presenton:v0.9.7-beta"
+      image_update_map[1]="ghcr.io/homeserverhq/presenton-mcp:v2,ghcr.io/homeserverhq/presenton-mcp:v2"
+    ;;
+    2)
+      newVer=v2
+      curImageList=ghcr.io/homeserverhq/presenton:v0.9.7-beta,ghcr.io/homeserverhq/presenton-mcp:v2
+      image_update_map[0]="ghcr.io/homeserverhq/presenton:v0.9.7-beta,ghcr.io/homeserverhq/presenton:v0.9.7-beta"
       image_update_map[1]="ghcr.io/homeserverhq/presenton-mcp:v2,ghcr.io/homeserverhq/presenton-mcp:v2"
     ;;
     *)
