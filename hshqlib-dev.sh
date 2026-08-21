@@ -51320,9 +51320,6 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    command: ["--transport", "streamable-http"]
-    depends_on:
-      - nextcloud-app
     networks:
       - int-nextcloud-net
       - dock-aipriv-net
