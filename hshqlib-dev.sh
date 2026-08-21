@@ -24436,7 +24436,6 @@ function version238Update()
     fi
     updateConfigVar PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME"
     updateConfigVar PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID"
-
     PAPERLESS_KNOWLEDGEBASE_TAG_NAME="Knowledge Base"
     PAPERLESS_KNOWLEDGEBASE_TAG_ID=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_KNOWLEDGEBASE_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
     if [ -z "$PAPERLESS_KNOWLEDGEBASE_TAG_ID" ] || [ "$PAPERLESS_KNOWLEDGEBASE_TAG_ID" = "null" ]; then
@@ -34113,7 +34112,7 @@ function initServicesCredentials()
   fi
   if [ -z "$EMAIL_SHARED_EMAIL_ADDRESS" ]; then
     EMAIL_SHARED_EMAIL_ADDRESS="$EMAIL_SHARED_USERNAME@$HOMESERVER_DOMAIN"
-    updatePlaintextRootConfigVar EMAIL_SHARED_EMAIL_ADDRESS $EMAIL_SHARED_EMAIL_ADDRESS
+    updateConfigVar EMAIL_SHARED_EMAIL_ADDRESS $EMAIL_SHARED_EMAIL_ADDRESS
   fi
   if [ -z "$MAILU_API_TOKEN" ]; then
     MAILU_API_TOKEN=$(pwgen -c -n 32 1)
