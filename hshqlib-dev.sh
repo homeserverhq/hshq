@@ -30302,7 +30302,7 @@ function addUserEmailClassifierAI()
   if ! sudo test -f $HSHQ_STACKS_DIR/emailclassifierai/data/accounts.db; then
     return
   fi
-  isExists=$(sudo sqlite3 $HSHQ_STACKS_DIR/emailclassifierai/data/accounts.db "select id from accounts where user='$addUserCAI_email';")
+  isExists=$(sudo sqlite3 $HSHQ_STACKS_DIR/emailclassifierai/data/accounts.db "select uuid from accounts where user='$addUserCAI_email';")
   if ! [ -z "$isExists" ]; then
     echo "User has already been added to EmailClassifierAI, returning..."
     return
@@ -31062,7 +31062,7 @@ function loadPinnedDockerImages()
   IMG_OPENCODE_APP=ghcr.io/joostme/opencode-docker:2.3.1
   IMG_OPENCODE_PLAYWRIGHT=mcr.microsoft.com/playwright/mcp:v0.0.70
   IMG_OPENSKILLS_APP=hshq/openskills:v1
-  IMG_EMAILCLASSIFIERAI_APP=ghcr.io/homeserverhq/emailclassifierai:v5
+  IMG_EMAILCLASSIFIERAI_APP=ghcr.io/homeserverhq/emailclassifierai:v6
   IMG_HERMES_APP=hshq/hermes-agent:v1
   IMG_HERMES_TERMINAL=hshq/hermes-terminal:v1
   IMG_HERMES_CAMOFOX=ghcr.io/jo-inc/camofox-browser:1.11.2
@@ -31426,7 +31426,7 @@ function getScriptStackVersion()
     openskills)
       echo "v1" ;;
     emailclassifierai)
-      echo "v2" ;;
+      echo "v3" ;;
     hermes-agent)
       echo "v1" ;;
     autokb)
@@ -116280,15 +116280,21 @@ function performUpdateEmailClassifierAI()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v3
       curImageList=hshq/emailclassifierai:v1,mirror.gcr.io/valkey/valkey:alpine3.23
-      image_update_map[0]="hshq/emailclassifierai:v1,ghcr.io/homeserverhq/emailclassifierai:v5"
+      image_update_map[0]="hshq/emailclassifierai:v1,ghcr.io/homeserverhq/emailclassifierai:v6"
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=ghcr.io/homeserverhq/emailclassifierai:v5,mirror.gcr.io/valkey/valkey:alpine3.23
-      image_update_map[0]="ghcr.io/homeserverhq/emailclassifierai:v5,ghcr.io/homeserverhq/emailclassifierai:v5"
+      image_update_map[0]="ghcr.io/homeserverhq/emailclassifierai:v5,ghcr.io/homeserverhq/emailclassifierai:v6"
+      image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    3)
+      newVer=v3
+      curImageList=ghcr.io/homeserverhq/emailclassifierai:v6,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="ghcr.io/homeserverhq/emailclassifierai:v6,ghcr.io/homeserverhq/emailclassifierai:v6"
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
