@@ -27505,12 +27505,12 @@ function addUserShareDirectories()
   if [ -z "$usernameAdd" ]; then
     return
   fi
-  mkdir -p $HSHQ_STACKS_DIR/shared/Images/$usernameAdd/Images
-  mkdir -p $HSHQ_STACKS_DIR/shared/SharedConsume/$usernameAdd/SharedConsume
-  mkdir -p $HSHQ_STACKS_DIR/shared/PersonalConsume/$usernameAdd/PersonalConsume
+  sudo mkdir -p $HSHQ_STACKS_DIR/shared/Images/$usernameAdd/Images
+  sudo mkdir -p $HSHQ_STACKS_DIR/shared/SharedConsume/$usernameAdd/SharedConsume
+  sudo mkdir -p $HSHQ_STACKS_DIR/shared/PersonalConsume/$usernameAdd/PersonalConsume
   sudo mkdir -p $HSHQ_STACKS_DIR/shared/PersonalProcessed/$usernameAdd/PersonalProcessed
-  mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$usernameAdd
-  mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeOutput/$usernameAdd
+  sudo mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$usernameAdd
+  sudo mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeOutput/$usernameAdd
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/Images/$usernameAdd
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/SharedConsume/$usernameAdd
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalConsume/$usernameAdd
