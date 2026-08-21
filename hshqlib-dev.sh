@@ -24420,17 +24420,40 @@ function version238Update()
   set +e
   docker ps | grep -q paperless-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
-    PAPERLESS_EMAIL_PROCESSED_TAG_NAME="Email Processed"
-    PAPERLESS_EMAIL_PROCESSED_TAG_ID=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_EMAIL_PROCESSED_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
-    if [ -z "$PAPERLESS_EMAIL_PROCESSED_TAG_ID" ] || [ "$PAPERLESS_EMAIL_PROCESSED_TAG_ID" = "null" ]; then
-      jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_TAG_NAME\", \"color\": \"#299aa5\" }"
-      PAPERLESS_EMAIL_PROCESSED_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+    PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME="Personal Email"
+    PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
+    if [ -z "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID" ] || [ "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID" = "null" ]; then
+      jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME\", \"color\": \"#299aa5\" }"
+      PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
     fi
-    updateConfigVar PAPERLESS_EMAIL_PROCESSED_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_TAG_NAME"
-    updateConfigVar PAPERLESS_EMAIL_PROCESSED_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_TAG_ID"
+    updateConfigVar PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME"
+    updateConfigVar PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID"
+    PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME="Shared Email"
+    PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
+    if [ -z "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID" ] || [ "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID" = "null" ]; then
+      jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME\", \"color\": \"#ff7f7f\" }"
+      PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+    fi
+    updateConfigVar PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME"
+    updateConfigVar PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID"
+
+    PAPERLESS_KNOWLEDGEBASE_TAG_NAME="Knowledge Base"
+    PAPERLESS_KNOWLEDGEBASE_TAG_ID=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_KNOWLEDGEBASE_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
+    if [ -z "$PAPERLESS_KNOWLEDGEBASE_TAG_ID" ] || [ "$PAPERLESS_KNOWLEDGEBASE_TAG_ID" = "null" ]; then
+      jsonbody="{ \"name\": \"$PAPERLESS_KNOWLEDGEBASE_TAG_NAME\", \"color\": \"#615dff\", \"matching_algorithm\": 6, \"is_insensitive\": true }"
+      PAPERLESS_KNOWLEDGEBASE_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+    fi
+    updateConfigVar PAPERLESS_KNOWLEDGEBASE_TAG_NAME "$PAPERLESS_KNOWLEDGEBASE_TAG_NAME"
+    updateConfigVar PAPERLESS_KNOWLEDGEBASE_TAG_ID "$PAPERLESS_KNOWLEDGEBASE_TAG_ID"
+    PAPERLESS_TRANSCRIPTION_TAG_NAME="Transcription"
+    PAPERLESS_TRANSCRIPTION_TAG_ID=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_TRANSCRIPTION_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
+    if [ -z "$PAPERLESS_TRANSCRIPTION_TAG_ID" ] || [ "$PAPERLESS_TRANSCRIPTION_TAG_ID" = "null" ]; then
+      jsonbody="{ \"name\": \"$PAPERLESS_TRANSCRIPTION_TAG_NAME\", \"color\": \"#8b58d5\", \"matching_algorithm\": 6, \"is_insensitive\": true }"
+      PAPERLESS_TRANSCRIPTION_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+    fi
+    updateConfigVar PAPERLESS_TRANSCRIPTION_TAG_NAME "$PAPERLESS_TRANSCRIPTION_TAG_NAME"
+    updateConfigVar PAPERLESS_TRANSCRIPTION_TAG_ID "$PAPERLESS_TRANSCRIPTION_TAG_ID"
   fi
-  EMAIL_SHARED_USERNAME=info
-  updateConfigVar EMAIL_SHARED_USERNAME $EMAIL_SHARED_USERNAME
   initServicesCredentials
   addUserMailu user $EMAIL_SHARED_USERNAME $HOMESERVER_DOMAIN $EMAIL_SHARED_PASSWORD
   sendEmail -s "Shared Email Account Info" -b "A new email account has been added to Mailu. The intent of this account to share amongst your team members for common access. Here are the credentials:\n\n Shared Email Address: $EMAIL_SHARED_EMAIL_ADDRESS\nShared Email Password: $EMAIL_SHARED_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
@@ -30154,16 +30177,7 @@ function addPrimaryUser()
     return
   fi
   set +e
-  docker exec mailu-imap bash -c "doveadm mailbox create -u $addPUEmailAddress \"Consume\""
-  docker exec mailu-imap bash -c "doveadm mailbox subscribe -u $addPUEmailAddress \"Consume\""
-  docker exec mailu-imap bash -c "doveadm mailbox create -u $addPUEmailAddress \"Processed\""
-  docker exec mailu-imap bash -c "doveadm mailbox subscribe -u $addPUEmailAddress \"Processed\""
-  docker exec mailu-imap bash -c "doveadm mailbox create -u $addPUEmailAddress \"Processed.Personal\""
-  docker exec mailu-imap bash -c "doveadm mailbox subscribe -u $addPUEmailAddress \"Processed.Personal\""
-  docker exec mailu-imap bash -c "doveadm mailbox create -u $addPUEmailAddress \"Processed.Work\""
-  docker exec mailu-imap bash -c "doveadm mailbox subscribe -u $addPUEmailAddress \"Processed.Work\""
-  docker exec mailu-imap bash -c "doveadm mailbox create -u $addPUEmailAddress \"Processed.Uncategorized\""
-  docker exec mailu-imap bash -c "doveadm mailbox subscribe -u $addPUEmailAddress \"Processed.Uncategorized\""
+  createStandardMailuMailboxes "$addPUEmailAddress"
   addUserEmailClassifierAI "$addPUEmailAddress" "$addPUPassword" "Consume" "Processed"
   # Add user shared directories
   echo "Adding primary user shared directories..."
@@ -30229,7 +30243,7 @@ EOFAU
   fi
   fullName="${addPUFirstName}${addPULastName}"
   cleanName="${fullName//[![:alnum:]]/}"
-  addPrimaryUserAutoKB "$addPUUID" "$cleanName" "$addPUEmailAddress" "$addPUPassword" 1 "PKB"
+  addPrimaryUserAutoKB "$addPUUID" "$cleanName" "$addPUEmailAddress" "$addPUPassword" 1
   newuser_immich_api_key=$(pwgen -c -n 41 1)
   addPrimaryUserImmich "${addPUUID}" "$addPUEmailAddress" "$addPUFirstName $addPULastName" "$newuser_immich_api_key"
   set +e
@@ -30379,45 +30393,61 @@ function addPrimaryUserPaperless()
   jsonbody="{ \"name\": \"${addUserPaper_uid} Email\", \"imap_server\": \"$SMTP_HOSTNAME\", \"imap_port\": 143, \"imap_security\": 3, \"username\": \"$addUserPaper_email\", \"password\": \"$addUserPaper_password\", \"account_type\": 1, \"owner\": $add_user_id, \"user_can_change\": true }"
   mail_account_id=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   if [ -n "$mail_account_id" ]; then
-    jsonbody="{ \"name\": \"${addUserPaper_uid} Email Personal\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"INBOX\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 1, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $add_user_id, \"user_can_change\": true, \"stop_processing\": false }"
+    jsonbody="{ \"name\": \"${addUserPaper_uid} Email Personal\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 1, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $add_user_id, \"user_can_change\": true, \"stop_processing\": false }"
     curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   fi
-  jsonbody="{ \"name\": \"${addUserPaper_uid}_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/${addUserPaper_uid}/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
+  jsonbody="{ \"name\": \"${addUserPaper_uid}_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/${addUserPaper_uid}/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"${addUserPaper_uid}_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/${addUserPaper_uid}/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
+  jsonbody="{ \"name\": \"${addUserPaper_uid}_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/${addUserPaper_uid}/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id, \"assign_tags\": [ $PAPERLESS_TRANSCRIPTION_TAG_ID, $PAPERLESS_KNOWLEDGEBASE_TAG_ID ] }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
 }
 
 function addPrimaryUserAutoKB()
 {
+  set +e
   user_name="$1"
   formal_name="$2"
   imap_username="$3"
   imap_password="$4"
   paperless_storage_id="$5"
-  kb_abbrev="$6"
-  echo "Creating IMAP source subscription..."
+  docker ps | grep -q autokb-web > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  paperless_user_id=$(getPaperlessIDFromUsername "$user_name")
+  echo "Creating IMAP personal source subscription..."
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"${formal_name}-IMAP-Source\",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$imap_username\",\"password\":\"$imap_password\",\"folder\":\"INBOX\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
+    --data "{\"name\":\"${formal_name}-IMAP-Personal-Source\",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$imap_username\",\"password\":\"$imap_password\",\"folder\":\"Processed.Personal\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/imapFolderWatchPlugin")"
   akbCode="${akbRes##*$'\n'}"
-  body="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "IMAP source failed: $body" >&2; exit 1; }
-  IMAP_SUB_ID="$(printf '%s' "$body" | jq -r '.id')"
+  akbBody="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "IMAP source failed: $akbBody" >&2; exit 1; }
+  IMAP_PERSONAL_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
+  echo "Creating IMAP shared source subscription..."
+  akbRes="$(docker exec autokb-web curl -sS -X POST \
+    -H "Authorization: Bearer $AUTOKB_API_KEY" \
+    -H "Content-Type: application/json" \
+    --data "{\"name\":\"${formal_name}-IMAP-Shared-Source\",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$imap_username\",\"password\":\"$imap_password\",\"folder\":\"Processed.Work\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
+    -w $'\n%{http_code}' \
+    "http://autokb-web:80/api/subscriptions/imapFolderWatchPlugin")"
+  akbCode="${akbRes##*$'\n'}"
+  akbBody="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "IMAP source failed: $akbBody" >&2; exit 1; }
+  IMAP_SHARED_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
   echo "Creating Paperless source subscription..."
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"${formal_name}-Paperless-Source\",\"config\":{\"storage_path_id\":$paperless_storage_id,\"owner_username\":\"$user_name\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"use_paperless_content\":true}}" \
+    --data "{\"name\":\"${formal_name}-Paperless-Source\",\"cron\":\"*/15/ * * * * \",\"config\":{\"storage_path_id\":$paperless_storage_id,\"document_filter\":\"owner__id=$paperless_user_id&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"use_paperless_content\":true}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/ePaperlessDoclingPlugin")"
   akbCode="${akbRes##*$'\n'}"
-  body="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Paperless source failed: $body" >&2; exit 1; }
-  PAPERLESS_SUB_ID="$(printf '%s' "$body" | jq -r '.id')"
+  akbBody="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Paperless source failed: $akbBody" >&2; exit 1; }
+  PAPERLESS_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
   echo "Resolving openWebUISink service id..."
   akbRes="$(docker exec autokb-web curl -sS -X GET \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
@@ -30425,23 +30455,44 @@ function addPrimaryUserAutoKB()
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/sinks")"
   akbCode="${akbRes##*$'\n'}"
-  body="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $body" >&2; exit 1; }
-  SINK_ID="$(printf '%s' "$body" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
+  akbBody="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; exit 1; }
+  SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
   if [ -z "$SINK_ID" ]; then
     echo "openWebUISink not found among provisioned sinks" >&2
-    exit 1
+    return 1
   fi
-  echo "Creating OpenWebUI target KB ${formal_name}-$kb_abbrev..."
+  echo "Creating OpenWebUI target KB ${formal_name}-PKB..."
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"${formal_name}-$kb_abbrev\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+    --data "{\"name\":\"${formal_name}-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
   akbCode="${akbRes##*$'\n'}"
-  body="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $body" >&2; exit 1; }
+  akbBody="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; exit 1; }
+  echo "Fetching current links for shared target $AUTOKB_SHARED_OWUI_TARGET_ID..."
+  akbRes="$(docker exec autokb-web curl -sS -X GET \
+    -H "Authorization: Bearer $AUTOKB_API_KEY" \
+    -H "Content-Type: application/json" \
+    -w $'\n%{http_code}' \
+    "http://autokb-web:80/api/targets/$AUTOKB_SHARED_OWUI_TARGET_ID")"
+  akbCode="${akbRes##*$'\n'}"
+  akbBody="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target lookup failed: $akbBody" >&2; exit 1; }
+  existing="$(printf '%s' "$akbBody" | jq -c '[.subscriptions[].subscription_id | select(. != null)]')"
+  ids="$(printf '%s' "$existing" | jq -c --argjson ns "\"$IMAP_SHARED_SUB_ID\"" '. + [$ns] | unique')"
+  echo "Attaching source $IMAP_SHARED_SUB_ID to shared target $AUTOKB_SHARED_OWUI_TARGET_ID..."
+  akbRes="$(docker exec autokb-web curl -sS -X PUT \
+    -H "Authorization: Bearer $AUTOKB_API_KEY" \
+    -H "Content-Type: application/json" \
+    --data "{\"subscription_ids\":$ids}" \
+    -w $'\n%{http_code}' \
+    "http://autokb-web:80/api/targets/$AUTOKB_SHARED_OWUI_TARGET_ID")"
+  akbCode="${akbRes##*$'\n'}"
+  akbBody="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target update failed: $akbBody" >&2; exit 1; }
   echo "Done."
 }
 
@@ -32470,8 +32521,14 @@ PAPERLESS_AI_JWT_SECRET=
 PAPERLESS_GPT_ADMIN_USERNAME=
 PAPERLESS_GPT_ADMIN_PASSWORD=
 PAPERLESS_API_TOKEN=
-PAPERLESS_EMAIL_PROCESSED_TAG_NAME=
-PAPERLESS_EMAIL_PROCESSED_TAG_ID=
+PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME=
+PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=
+PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME=
+PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=
+PAPERLESS_KNOWLEDGEBASE_TAG_NAME=
+PAPERLESS_KNOWLEDGEBASE_TAG_ID=
+PAPERLESS_TRANSCRIPTION_TAG_NAME=
+PAPERLESS_TRANSCRIPTION_TAG_ID=
 # Paperless (Service Details) END
 
 # SpeedtestTrackerLocal (Service Details) BEGIN
@@ -33292,6 +33349,8 @@ OPENWEBUI_QDRANT_API_KEY=
 OPENWEBUI_OPENTERMINAL_API_KEY=
 OPENWEBUI_MCPO_API_KEY=
 OPENWEBUI_PIPELINES_API_KEY=
+OPENWEBUI_ADMIN_UUID=
+OPENWEBUI_PRIMARYUSERS_UUID=
 # OpenWebUI (Service Details) END
 
 # Khoj (Service Details) BEGIN
@@ -33814,6 +33873,7 @@ AUTOKB_API_KEY=
 AUTOKB_BACKEND_API_KEY=
 AUTOKB_WEBHOOK_API_KEY=
 AUTOKB_ENCRYPTION_KEY=
+AUTOKB_SHARED_OWUI_TARGET_ID=
 # AutoKB (Service Details) END
 
 # SuiteCRM (Service Details) BEGIN
@@ -34043,11 +34103,15 @@ function initServicesCredentials()
     echo $EMAIL_SMTP_EMAIL_ADDRESS > $HSHQ_SECRETS_DIR/smtp_username.txt
     chmod 0400 $HSHQ_SECRETS_DIR/smtp_username.txt
   fi
+  if [ -z "$EMAIL_SHARED_USERNAME" ]; then
+    EMAIL_SHARED_USERNAME=info
+    updateConfigVar EMAIL_SHARED_USERNAME $EMAIL_SHARED_USERNAME
+  fi
   if [ -z "$EMAIL_SHARED_PASSWORD" ]; then
     EMAIL_SHARED_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar EMAIL_SHARED_PASSWORD $EMAIL_SHARED_PASSWORD
   fi
-  if [ -z "$EMAIL_SHARED_EMAIL_ADDRESS" ] && ! [ -z "$EMAIL_SHARED_USERNAME" ]; then
+  if [ -z "$EMAIL_SHARED_EMAIL_ADDRESS" ]; then
     EMAIL_SHARED_EMAIL_ADDRESS="$EMAIL_SHARED_USERNAME@$HOMESERVER_DOMAIN"
     updatePlaintextRootConfigVar EMAIL_SHARED_EMAIL_ADDRESS $EMAIL_SHARED_EMAIL_ADDRESS
   fi
@@ -36718,6 +36782,14 @@ function initServicesCredentials()
   if [ -z "$OPENWEBUI_PIPELINES_API_KEY" ]; then
     OPENWEBUI_PIPELINES_API_KEY=$(openssl rand -base64 12 | tr -d '/+=' | head -c 16)
     updateConfigVar OPENWEBUI_PIPELINES_API_KEY $OPENWEBUI_PIPELINES_API_KEY
+  fi
+  if [ -z "$OPENWEBUI_ADMIN_UUID" ]; then
+    OPENWEBUI_ADMIN_UUID=$(uuidgen)
+    updateConfigVar OPENWEBUI_ADMIN_UUID $OPENWEBUI_ADMIN_UUID
+  fi
+  if [ -z "$OPENWEBUI_PRIMARYUSERS_UUID" ]; then
+    OPENWEBUI_PRIMARYUSERS_UUID=$(uuidgen)
+    updateConfigVar OPENWEBUI_PRIMARYUSERS_UUID $OPENWEBUI_PRIMARYUSERS_UUID
   fi
   if [ -z "$KHOJ_ADMIN_USERNAME" ]; then
     KHOJ_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_khoj"
@@ -43520,7 +43592,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Keila" "KEILA_INIT_ENV=false,KEILA_ADMIN_USERNAME=,KEILA_ADMIN_EMAIL_ADDRESS=,KEILA_ADMIN_PASSWORD=,KEILA_DATABASE_NAME=,KEILA_DATABASE_USER=,KEILA_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Wallabag" "WALLABAG_INIT_ENV=false,WALLABAG_ADMIN_USERNAME=,WALLABAG_ADMIN_EMAIL_ADDRESS=,WALLABAG_ADMIN_PASSWORD=,WALLABAG_DATABASE_NAME=,WALLABAG_DATABASE_USER=,WALLABAG_DATABASE_USER_PASSWORD=,WALLABAG_ENV_SECRET=,WALLABAG_REDIS_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Jupyter" "JUPYTER_INIT_ENV=false,JUPYTER_ADMIN_PASSWORD=" $CONFIG_FILE false
-  checkAddServiceToConfig "Paperless" "PAPERLESS_INIT_ENV=false,PAPERLESS_SECRET_KEY=,PAPERLESS_CLIENT_SECRET=,PAPERLESS_REDIS_PASSWORD=,PAPERLESS_ADMIN_USERNAME=,PAPERLESS_ADMIN_EMAIL_ADDRESS=,PAPERLESS_ADMIN_PASSWORD=,PAPERLESS_DATABASE_NAME=,PAPERLESS_DATABASE_USER=,PAPERLESS_DATABASE_USER_PASSWORD=,PAPERLESS_AI_ADMIN_USERNAME=,PAPERLESS_AI_ADMIN_PASSWORD=,PAPERLESS_AI_API_KEY=,PAPERLESS_AI_JWT_SECRET=,PAPERLESS_GPT_ADMIN_USERNAME=,PAPERLESS_GPT_ADMIN_PASSWORD=,PAPERLESS_API_TOKEN=,PAPERLESS_EMAIL_PROCESSED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_TAG_ID=" $CONFIG_FILE false
+  checkAddServiceToConfig "Paperless" "PAPERLESS_INIT_ENV=false,PAPERLESS_SECRET_KEY=,PAPERLESS_CLIENT_SECRET=,PAPERLESS_REDIS_PASSWORD=,PAPERLESS_ADMIN_USERNAME=,PAPERLESS_ADMIN_EMAIL_ADDRESS=,PAPERLESS_ADMIN_PASSWORD=,PAPERLESS_DATABASE_NAME=,PAPERLESS_DATABASE_USER=,PAPERLESS_DATABASE_USER_PASSWORD=,PAPERLESS_AI_ADMIN_USERNAME=,PAPERLESS_AI_ADMIN_PASSWORD=,PAPERLESS_AI_API_KEY=,PAPERLESS_AI_JWT_SECRET=,PAPERLESS_GPT_ADMIN_USERNAME=,PAPERLESS_GPT_ADMIN_PASSWORD=,PAPERLESS_API_TOKEN=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=,PAPERLESS_KNOWLEDGEBASE_TAG_NAME=,PAPERLESS_KNOWLEDGEBASE_TAG_ID=,PAPERLESS_TRANSCRIPTION_TAG_NAME=,PAPERLESS_TRANSCRIPTION_TAG_ID=" $CONFIG_FILE false
   checkAddServiceToConfig "SpeedtestTrackerLocal" "SPEEDTEST_TRACKER_LOCAL_INIT_ENV=false,SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME=,SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "SpeedtestTrackerVPN" "SPEEDTEST_TRACKER_VPN_INIT_ENV=false,SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME=,SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_VPN_DATABASE_NAME=,SPEEDTEST_TRACKER_VPN_DATABASE_USER=,SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Change Detection" "CHANGEDETECTION_INIT_ENV=false,CHANGEDETECTION_ADMIN_PASSWORD=" $CONFIG_FILE false
@@ -43587,7 +43659,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "AnythingLLM" "ANYTHINGLLM_INIT_ENV=false,ANYTHINGLLM_ADMIN_USERNAME=,ANYTHINGLLM_ADMIN_EMAIL_ADDRESS=,ANYTHINGLLM_ADMIN_PASSWORD=,ANYTHINGLLM_SIG_KEY=,ANYTHINGLLM_SIG_SALT=,ANYTHINGLLM_JWT_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "Firecrawl" "FIRECRAWL_INIT_ENV=false,FIRECRAWL_DATABASE_NAME=,FIRECRAWL_DATABASE_USER=,FIRECRAWL_DATABASE_USER_PASSWORD=,FIRECRAWL_REDIS_PASSWORD=,FIRECRAWL_BULL_AUTH_KEY=,FIRECRAWL_API_KEY=,FIRECRAWL_RABBITMQ_USERNAME=,FIRECRAWL_RABBITMQ_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "LibreChat" "LIBRECHAT_INIT_ENV=false,LIBRECHAT_ADMIN_USERNAME=,LIBRECHAT_ADMIN_EMAIL_ADDRESS=,LIBRECHAT_ADMIN_PASSWORD=,LIBRECHAT_DATABASE_NAME=,LIBRECHAT_DATABASE_USER=,LIBRECHAT_DATABASE_USER_PASSWORD=,LIBRECHAT_REDIS_PASSWORD=,LIBRECHAT_MONGODB_DATABASE=,LIBRECHAT_MONGODB_USER=,LIBRECHAT_MONGODB_USER_PASSWORD=,LIBRECHAT_CREDS_KEY=,LIBRECHAT_CREDS_IV=,LIBRECHAT_JWT_SECRET=,LIBRECHAT_JWT_REFRESH_SECRET=,LIBRECHAT_MEILI_MASTER_KEY=,LIBRECHAT_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
-  checkAddServiceToConfig "OpenWebUI" "OPENWEBUI_INIT_ENV=false,OPENWEBUI_ADMIN_USERNAME=,OPENWEBUI_ADMIN_EMAIL_ADDRESS=,OPENWEBUI_ADMIN_PASSWORD=,OPENWEBUI_DATABASE_NAME=,OPENWEBUI_DATABASE_USER=,OPENWEBUI_DATABASE_USER_PASSWORD=,OPENWEBUI_REDIS_PASSWORD=,OPENWEBUI_OIDC_CLIENT_ID=,OPENWEBUI_OIDC_CLIENT_SECRET=,OPENWEBUI_SECRET_KEY=,OPENWEBUI_ADMIN_API_KEY=,OPENWEBUI_QDRANT_API_KEY=,OPENWEBUI_OPENTERMINAL_API_KEY=,OPENWEBUI_MCPO_API_KEY=,OPENWEBUI_PIPELINES_API_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "OpenWebUI" "OPENWEBUI_INIT_ENV=false,OPENWEBUI_ADMIN_USERNAME=,OPENWEBUI_ADMIN_EMAIL_ADDRESS=,OPENWEBUI_ADMIN_PASSWORD=,OPENWEBUI_DATABASE_NAME=,OPENWEBUI_DATABASE_USER=,OPENWEBUI_DATABASE_USER_PASSWORD=,OPENWEBUI_REDIS_PASSWORD=,OPENWEBUI_OIDC_CLIENT_ID=,OPENWEBUI_OIDC_CLIENT_SECRET=,OPENWEBUI_SECRET_KEY=,OPENWEBUI_ADMIN_API_KEY=,OPENWEBUI_QDRANT_API_KEY=,OPENWEBUI_OPENTERMINAL_API_KEY=,OPENWEBUI_MCPO_API_KEY=,OPENWEBUI_PIPELINES_API_KEY=,OPENWEBUI_ADMIN_UUID=,OPENWEBUI_PRIMARYUSERS_UUID=" $CONFIG_FILE false
   checkAddServiceToConfig "Khoj" "KHOJ_INIT_ENV=false,KHOJ_ADMIN_USERNAME=,KHOJ_ADMIN_EMAIL_ADDRESS=,KHOJ_ADMIN_PASSWORD=,KHOJ_DATABASE_NAME=,KHOJ_DATABASE_USER=,KHOJ_DATABASE_USER_PASSWORD=,KHOJ_DJANGO_SECRET_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "LobeChat" "LOBECHAT_INIT_ENV=false,LOBECHAT_ADMIN_USERNAME=,LOBECHAT_ADMIN_EMAIL_ADDRESS=,LOBECHAT_ADMIN_PASSWORD=,LOBECHAT_DATABASE_NAME=,LOBECHAT_DATABASE_USER=,LOBECHAT_DATABASE_USER_PASSWORD=,LOBECHAT_REDIS_PASSWORD=,LOBECHAT_NEXTAUTH_SECRET=,LOBECHAT_KEYVAULTS_SECRET=,LOBECHAT_MINIO_KEY=,LOBECHAT_MINIO_SECRET=,LOBECHAT_OIDC_CLIENT_ID=,LOBECHAT_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "RAGFlow" "RAGFLOW_INIT_ENV=false,RAGFLOW_ADMIN_USERNAME=,RAGFLOW_ADMIN_EMAIL_ADDRESS=,RAGFLOW_ADMIN_PASSWORD=,RAGFLOW_DATABASE_NAME=,RAGFLOW_DATABASE_USER=,RAGFLOW_DATABASE_USER_PASSWORD=,RAGFLOW_REDIS_PASSWORD=,RAGFLOW_MINIO_KEY=,RAGFLOW_MINIO_SECRET=,RAGFLOW_SECRET_KEY=,RAGFLOW_OIDC_CLIENT_ID=,RAGFLOW_OIDC_CLIENT_SECRET=,RAGFLOW_MCPSERVER_API_KEY=" $CONFIG_FILE false
@@ -43629,7 +43701,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "OpenSkills" "OPENSKILLS_INIT_ENV=false,OPENSKILLS_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "EmailClassifierAI" "EMAILCLASSIFIERAI_INIT_ENV=false,EMAILCLASSIFIERAI_ADMIN_USERNAME=,EMAILCLASSIFIERAI_ADMIN_PASSWORD=,EMAILCLASSIFIERAI_REDIS_PASSWORD=,EMAILCLASSIFIERAI_FLASK_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "HermesAgent" "HERMES_AGENT_INIT_ENV=false,HERMES_AGENT_ADMIN_USERNAME=,HERMES_AGENT_ADMIN_PASSWORD=,HERMES_AGENT_SUDO_PASSWORD=,HERMES_AGENT_API_KEY=,HERMES_AGENT_WEBUI_PASSWORD=" $CONFIG_FILE false
-  checkAddServiceToConfig "AutoKB" "AUTOKB_INIT_ENV=false,AUTOKB_ADMIN_USERNAME=,AUTOKB_ADMIN_PASSWORD=,AUTOKB_DATABASE_NAME=,AUTOKB_DATABASE_USER=,AUTOKB_DATABASE_USER_PASSWORD=,AUTOKB_DATABASE_READONLYUSER=,AUTOKB_DATABASE_READONLYUSER_PASSWORD=,AUTOKB_REDIS_PASSWORD=,AUTOKB_API_KEY=,AUTOKB_BACKEND_API_KEY=,AUTOKB_WEBHOOK_API_KEY=,AUTOKB_ENCRYPTION_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "AutoKB" "AUTOKB_INIT_ENV=false,AUTOKB_ADMIN_USERNAME=,AUTOKB_ADMIN_PASSWORD=,AUTOKB_DATABASE_NAME=,AUTOKB_DATABASE_USER=,AUTOKB_DATABASE_USER_PASSWORD=,AUTOKB_DATABASE_READONLYUSER=,AUTOKB_DATABASE_READONLYUSER_PASSWORD=,AUTOKB_REDIS_PASSWORD=,AUTOKB_API_KEY=,AUTOKB_BACKEND_API_KEY=,AUTOKB_WEBHOOK_API_KEY=,AUTOKB_ENCRYPTION_KEY=,AUTOKB_SHARED_OWUI_TARGET_ID=" $CONFIG_FILE false
   checkAddServiceToConfig "SuiteCRM" "SUITECRM_INIT_ENV=false,SUITECRM_ADMIN_USERNAME=,SUITECRM_ADMIN_EMAIL_ADDRESS=,SUITECRM_ADMIN_PASSWORD=,SUITECRM_DATABASE_NAME=,SUITECRM_DATABASE_ROOT_PASSWORD=,SUITECRM_DATABASE_USER=,SUITECRM_DATABASE_USER_PASSWORD=,SUITECRM_DATABASE_READONLYUSER=,SUITECRM_DATABASE_READONLYUSER_PASSWORD=,SUITECRM_REDIS_PASSWORD=,SUITECRM_APP_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "HedgeDoc" "HEDGEDOC_INIT_ENV=false,HEDGEDOC_ADMIN_USERNAME=,HEDGEDOC_ADMIN_EMAIL_ADDRESS=,HEDGEDOC_ADMIN_PASSWORD=,HEDGEDOC_DATABASE_NAME=,HEDGEDOC_DATABASE_USER=,HEDGEDOC_DATABASE_USER_PASSWORD=,HEDGEDOC_DATABASE_READONLYUSER=,HEDGEDOC_DATABASE_READONLYUSER_PASSWORD=,HEDGEDOC_SESSION_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "Presenton" "PRESENTON_INIT_ENV=false,PRESENTON_ADMIN_USERNAME=,PRESENTON_ADMIN_EMAIL_ADDRESS=,PRESENTON_ADMIN_PASSWORD=" $CONFIG_FILE false
@@ -43679,8 +43751,10 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Caddy" "CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED=safe-header-cors-automated,CADDY_SNIPPET_BASEHEADER=base-header,CADDY_SNIPPET_DEFAULTCSP=default-csp,CADDY_SNIPPET_RELAXEDCSP=relaxed-csp" $CONFIG_FILE false
   checkAddVarsToServiceConfig "OpenProject" "OPENPROJECT_SECRET_KEY_BASE=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Twenty" "TWENTY_APP_SECRET=,TWENTY_ENCRYPTION_KEY=" $CONFIG_FILE false
-  checkAddVarsToServiceConfig "Paperless" "PAPERLESS_EMAIL_PROCESSED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_TAG_ID=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Paperless" "PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=,PAPERLESS_KNOWLEDGEBASE_TAG_NAME=,PAPERLESS_KNOWLEDGEBASE_TAG_ID=,PAPERLESS_TRANSCRIPTION_TAG_NAME=,PAPERLESS_TRANSCRIPTION_TAG_ID=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Mailu" "EMAIL_SHARED_USERNAME=,EMAIL_SHARED_PASSWORD=,EMAIL_SHARED_EMAIL_ADDRESS=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "OpenWebUI" "OPENWEBUI_ADMIN_UUID=,OPENWEBUI_PRIMARYUSERS_UUID=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "AutoKB" "AUTOKB_SHARED_OWUI_TARGET_ID=" $CONFIG_FILE false
   initServicesCredentials
 }
 
@@ -48216,16 +48290,8 @@ function installMailu()
   echo "Adding initial users..."
   docker exec mailu-admin flask mailu config-import /initconfig/mail-config.yaml > /dev/null 2>&1
   sleep 2
-  docker exec mailu-imap bash -c "doveadm mailbox create -u $EMAIL_ADMIN_EMAIL_ADDRESS \"Consume\""
-  docker exec mailu-imap bash -c "doveadm mailbox subscribe -u $EMAIL_ADMIN_EMAIL_ADDRESS \"Consume\""
-  docker exec mailu-imap bash -c "doveadm mailbox create -u $EMAIL_ADMIN_EMAIL_ADDRESS \"Processed\""
-  docker exec mailu-imap bash -c "doveadm mailbox subscribe -u $EMAIL_ADMIN_EMAIL_ADDRESS \"Processed\""
-  docker exec mailu-imap bash -c "doveadm mailbox create -u $EMAIL_ADMIN_EMAIL_ADDRESS \"Processed.Personal\""
-  docker exec mailu-imap bash -c "doveadm mailbox subscribe -u $EMAIL_ADMIN_EMAIL_ADDRESS \"Processed.Personal\""
-  docker exec mailu-imap bash -c "doveadm mailbox create -u $EMAIL_ADMIN_EMAIL_ADDRESS \"Processed.Work\""
-  docker exec mailu-imap bash -c "doveadm mailbox subscribe -u $EMAIL_ADMIN_EMAIL_ADDRESS \"Processed.Work\""
-  docker exec mailu-imap bash -c "doveadm mailbox create -u $EMAIL_ADMIN_EMAIL_ADDRESS \"Processed.Uncategorized\""
-  docker exec mailu-imap bash -c "doveadm mailbox subscribe -u $EMAIL_ADMIN_EMAIL_ADDRESS \"Processed.Uncategorized\""
+  createStandardMailuMailboxes "$EMAIL_ADMIN_EMAIL_ADDRESS"
+  createStandardMailuMailboxes "$EMAIL_SHARED_EMAIL_ADDRESS"
   startStopStack mailu stop
   rm -f $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
   sudo mv $HSHQ_STACKS_DIR/mailu/postfix-override.cf $HSHQ_STACKS_DIR/mailu/overrides/postfix/postfix.cf
@@ -49175,6 +49241,23 @@ function addUserMailu()
   fi
   sleep 5
   set -e
+}
+
+function createStandardMailuMailboxes()
+{
+  csmm_email_address="$1"
+  docker exec mailu-imap bash -c "doveadm mailbox create -u $csmm_email_address \"Consume\""
+  docker exec mailu-imap bash -c "doveadm mailbox subscribe -u $csmm_email_address \"Consume\""
+  docker exec mailu-imap bash -c "doveadm mailbox create -u $csmm_email_address \"Processed\""
+  docker exec mailu-imap bash -c "doveadm mailbox subscribe -u $csmm_email_address \"Processed\""
+  docker exec mailu-imap bash -c "doveadm mailbox create -u $csmm_email_address \"Processed.Personal\""
+  docker exec mailu-imap bash -c "doveadm mailbox subscribe -u $csmm_email_address \"Processed.Personal\""
+  docker exec mailu-imap bash -c "doveadm mailbox create -u $csmm_email_address \"Processed.Work\""
+  docker exec mailu-imap bash -c "doveadm mailbox subscribe -u $csmm_email_address \"Processed.Work\""
+  docker exec mailu-imap bash -c "doveadm mailbox create -u $csmm_email_address \"Processed.Uncategorized\""
+  docker exec mailu-imap bash -c "doveadm mailbox subscribe -u $csmm_email_address \"Processed.Uncategorized\""
+  docker exec mailu-imap bash -c "doveadm mailbox create -u $csmm_email_address \"Ignore\""
+  docker exec mailu-imap bash -c "doveadm mailbox subscribe -u $csmm_email_address \"Ignore\""
 }
 
 function mfMailuV4Update()
@@ -69401,14 +69484,51 @@ function performWorkflowsIntegrationPaperless()
     echo "ERROR: Could not connect to Paperless API, returning..."
     return
   fi
-  PAPERLESS_EMAIL_PROCESSED_TAG_NAME="Email Processed"
-  jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_TAG_NAME\", \"color\": \"#299aa5\" }"
-  PAPERLESS_EMAIL_PROCESSED_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
-  updateConfigVar PAPERLESS_EMAIL_PROCESSED_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_TAG_NAME"
-  updateConfigVar PAPERLESS_EMAIL_PROCESSED_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_TAG_ID"
+  pap_doc_types=(
+    "Invoice" "Receipt" "Contract" "Bank Statement" "Taxes" "Form" "Policy" "Identification" "Medical Record" "Pay Stub" "Certificate" "Quote"
+  )
+  for cur_doc_type in "${pap_doc_types[@]}";
+  do
+    RESPONSE=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
+      -H "Authorization: Token $PAPERLESS_API_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{\"name\": \"$cur_doc_type\", \"matching_algorithm\": 6, \"match\": \"\"}")
+  done
+  report_doc_type=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
+      -H "Authorization: Token $PAPERLESS_API_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{\"name\": \"Report\", \"matching_algorithm\": 6, \"match\": \"\"}")
+  manual_doc_type=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
+      -H "Authorization: Token $PAPERLESS_API_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{\"name\": \"Manual\", \"matching_algorithm\": 6, \"match\": \"\"}")
+  research_doc_type=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
+      -H "Authorization: Token $PAPERLESS_API_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{\"name\": \"Research Paper\", \"matching_algorithm\": 6, \"match\": \"\"}")
+  PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME="Personal Email"
+  jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME\", \"color\": \"#299aa5\" }"
+  PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  updateConfigVar PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME"
+  updateConfigVar PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID"
+  PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME="Shared Email"
+  jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME\", \"color\": \"#ff7f7f\" }"
+  PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  updateConfigVar PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME"
+  updateConfigVar PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID"
+  PAPERLESS_KNOWLEDGEBASE_TAG_NAME="Knowledge Base"
+  jsonbody="{ \"name\": \"$PAPERLESS_KNOWLEDGEBASE_TAG_NAME\", \"color\": \"#615dff\", \"matching_algorithm\": 6, \"is_insensitive\": true }"
+  PAPERLESS_KNOWLEDGEBASE_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  updateConfigVar PAPERLESS_KNOWLEDGEBASE_TAG_NAME "$PAPERLESS_KNOWLEDGEBASE_TAG_NAME"
+  updateConfigVar PAPERLESS_KNOWLEDGEBASE_TAG_ID "$PAPERLESS_KNOWLEDGEBASE_TAG_ID"
+  PAPERLESS_TRANSCRIPTION_TAG_NAME="Transcription"
+  jsonbody="{ \"name\": \"$PAPERLESS_TRANSCRIPTION_TAG_NAME\", \"color\": \"#8b58d5\", \"matching_algorithm\": 6, \"is_insensitive\": true }"
+  PAPERLESS_TRANSCRIPTION_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  updateConfigVar PAPERLESS_TRANSCRIPTION_TAG_NAME "$PAPERLESS_TRANSCRIPTION_TAG_NAME"
+  updateConfigVar PAPERLESS_TRANSCRIPTION_TAG_ID "$PAPERLESS_TRANSCRIPTION_TAG_ID"
   jsonbody="{ \"name\": \"HSHQAdmin Email\", \"imap_server\": \"$SMTP_HOSTNAME\", \"imap_port\": 143, \"imap_security\": 3, \"username\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\", \"password\": \"$EMAIL_ADMIN_PASSWORD\", \"account_type\": 1, \"owner\": 3, \"user_can_change\": true }"
   ADMIN_MAIL_ACCOUNT_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
-  jsonbody="{ \"name\": \"HSHQAdmin Email Personal\", \"account\": $ADMIN_MAIL_ACCOUNT_ID, \"enabled\": true, \"folder\": \"INBOX\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 1, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": 3, \"user_can_change\": true, \"stop_processing\": false }"
+  jsonbody="{ \"name\": \"HSHQAdmin Email Personal\", \"account\": $ADMIN_MAIL_ACCOUNT_ID, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 1, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": 3, \"user_can_change\": true, \"stop_processing\": false }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{\"name\": \"$LDAP_PRIMARY_USER_GROUP_NAME\", \"permissions\": [\"view_logentry\",\"view_group\",\"view_user\",\"add_correspondent\",\"change_correspondent\",\"delete_correspondent\",\"view_correspondent\",\"add_document\",\"change_document\",\"delete_document\",\"view_document\",\"view_documenttype\",\"add_note\",\"change_note\",\"delete_note\",\"view_note\",\"add_savedview\",\"change_savedview\",\"delete_savedview\",\"view_savedview\",\"add_sharelink\",\"change_sharelink\",\"delete_sharelink\",\"view_sharelink\",\"add_tag\",\"change_tag\",\"delete_tag\",\"view_tag\",\"add_uisettings\",\"change_uisettings\",\"delete_uisettings\",\"view_uisettings\",\"view_workflow\",\"add_mailaccount\",\"change_mailaccount\",\"delete_mailaccount\",\"view_mailaccount\",\"add_mailrule\",\"change_mailrule\",\"delete_mailrule\",\"view_mailrule\",\"add_processedmail\",\"change_processedmail\",\"delete_processedmail\",\"view_processedmail\"]}"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
@@ -69429,10 +69549,19 @@ function performWorkflowsIntegrationPaperless()
   fi
   jsonbody="{ \"name\": \"sharedconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/SharedConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 2, \"assign_owner\": 3, \"assign_view_users\": [], \"assign_view_groups\": [ 1 ], \"assign_change_users\": [], \"assign_change_groups\": [ 1 ], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"admin_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/$NEXTCLOUD_ADMIN_USERNAME/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": 3 }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
+  jsonbody="{ \"name\": \"admin_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/$NEXTCLOUD_ADMIN_USERNAME/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": 3 }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"admin_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/$SPEAKR_ADMIN_USERNAME/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": 3 }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
+  jsonbody="{ \"name\": \"admin_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/$SPEAKR_ADMIN_USERNAME/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": 3, \"assign_tags\": [ $PAPERLESS_TRANSCRIPTION_TAG_ID, $PAPERLESS_KNOWLEDGEBASE_TAG_ID ] }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  jsonbody='{ \"name\": \"assign_kb\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_has_any_document_types\": ['"$report_doc_type"', '"$manual_doc_type"', '"$research_doc_type"'] }, { \"type\": 3, \"filter_has_any_document_types\": ['"$report_doc_type"', '"$manual_doc_type"', '"$research_doc_type"'] } ], \"actions\": [ { \"type\": 1, \"assign_tags\": ['"$PAPERLESS_KNOWLEDGEBASE_TAG_ID"'] } ] }'
+  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+}
+
+function getPaperlessIDFromUsername()
+{
+  pap_username="$1"
+  pap_id=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/users/?username__iexact=$pap_username" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r '.results[0].id')
+  echo $pap_id
 }
 
 function performIntegrationPaperlessGPT()
@@ -109482,7 +109611,7 @@ ENABLE_AUTO_PROCESSING=true
 ENABLE_AUTO_EXPORT=true
 AUTO_EXPORT_DIR=/data/exports
 AUTO_EXPORT_TRANSCRIPTION=true
-AUTO_EXPORT_SUMMARY=true
+AUTO_EXPORT_SUMMARY=false
 AUTO_CONSUME_DIR=/data/consume
 AUTO_PROCESS_MODE=user_directories
 AUTO_PROCESS_WATCH_DIR=/data/auto-process
@@ -116633,6 +116762,7 @@ function installAutoKB()
   mkdir $HSHQ_STACKS_DIR/autokb/db
   mkdir $HSHQ_STACKS_DIR/autokb/dbexport
   mkdir $HSHQ_STACKS_DIR/autokb/plugins
+  mkdir $HSHQ_STACKS_DIR/autokb/sinks
   mkdir $HSHQ_STACKS_DIR/autokb/assets
   mkdir $HSHQ_STACKS_DIR/autokb/logs
   initServicesCredentials
@@ -116919,8 +117049,72 @@ EOFMT
 
 function performAutoKBInstallIntegrations()
 {
-  addPrimaryUserAutoKB "shared" "Shared" "$EMAIL_SHARED_EMAIL_ADDRESS" "$EMAIL_SHARED_PASSWORD" 2 "SKB"
-  addPrimaryUserAutoKB "$NEXTCLOUD_ADMIN_USERNAME" "HSHQAdmin" "$EMAIL_ADMIN_EMAIL_ADDRESS" "$EMAIL_ADMIN_PASSWORD" 3 "PKB"
+  addSharedPipelinesAutoKB
+  addPrimaryUserAutoKB "$PAPERLESS_ADMIN_USERNAME" "HSHQAdmin" "$EMAIL_ADMIN_EMAIL_ADDRESS" "$EMAIL_ADMIN_PASSWORD" 3
+}
+
+function addSharedPipelinesAutoKB()
+{
+  echo "Creating IMAP personal source subscription..."
+  akbRes="$(docker exec autokb-web curl -sS -X POST \
+    -H "Authorization: Bearer $AUTOKB_API_KEY" \
+    -H "Content-Type: application/json" \
+    --data "{\"name\":\"Shared-IMAP-Personal-Source\",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$EMAIL_SHARED_EMAIL_ADDRESS\",\"password\":\"$EMAIL_SHARED_PASSWORD\",\"folder\":\"Processed.Personal\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
+    -w $'\n%{http_code}' \
+    "http://autokb-web:80/api/subscriptions/imapFolderWatchPlugin")"
+  akbCode="${akbRes##*$'\n'}"
+  akbBody="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "IMAP source failed: $akbBody" >&2; exit 1; }
+  IMAP_PERSONAL_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
+  echo "Creating IMAP shared source subscription..."
+  akbRes="$(docker exec autokb-web curl -sS -X POST \
+    -H "Authorization: Bearer $AUTOKB_API_KEY" \
+    -H "Content-Type: application/json" \
+    --data "{\"name\":\"Shared-IMAP-Shared-Source\",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$EMAIL_SHARED_EMAIL_ADDRESS\",\"password\":\"$EMAIL_SHARED_PASSWORD\",\"folder\":\"Processed.Work\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
+    -w $'\n%{http_code}' \
+    "http://autokb-web:80/api/subscriptions/imapFolderWatchPlugin")"
+  akbCode="${akbRes##*$'\n'}"
+  akbBody="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "IMAP source failed: $akbBody" >&2; exit 1; }
+  IMAP_SHARED_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
+  echo "Creating Paperless source subscription..."
+  akbRes="$(docker exec autokb-web curl -sS -X POST \
+    -H "Authorization: Bearer $AUTOKB_API_KEY" \
+    -H "Content-Type: application/json" \
+    --data "{\"name\":\"Shared-Paperless-Source\",\"cron\":\"*/15/ * * * * \",\"config\":{\"storage_path_id\":2,\"document_filter\":\"tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"use_paperless_content\":true}}" \
+    -w $'\n%{http_code}' \
+    "http://autokb-web:80/api/subscriptions/ePaperlessDoclingPlugin")"
+  akbCode="${akbRes##*$'\n'}"
+  akbBody="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Paperless source failed: $akbBody" >&2; exit 1; }
+  PAPERLESS_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
+  echo "Resolving openWebUISink service id..."
+  akbRes="$(docker exec autokb-web curl -sS -X GET \
+    -H "Authorization: Bearer $AUTOKB_API_KEY" \
+    -H "Content-Type: application/json" \
+    -w $'\n%{http_code}' \
+    "http://autokb-web:80/api/sinks")"
+  akbCode="${akbRes##*$'\n'}"
+  akbBody="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; exit 1; }
+  SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
+  if [ -z "$SINK_ID" ]; then
+    echo "openWebUISink not found among provisioned sinks" >&2
+    return 1
+  fi
+  echo "Creating OpenWebUI target KB Shared-SKB..."
+  akbRes="$(docker exec autokb-web curl -sS -X POST \
+    -H "Authorization: Bearer $AUTOKB_API_KEY" \
+    -H "Content-Type: application/json" \
+    --data "{\"name\":\"Shared-SKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$IMAP_SHARED_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+    -w $'\n%{http_code}' \
+    "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
+  akbCode="${akbRes##*$'\n'}"
+  akbBody="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; exit 1; }
+  AUTOKB_SHARED_OWUI_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.target_id')"
+  updateConfigVar AUTOKB_SHARED_OWUI_TARGET_ID $AUTOKB_SHARED_OWUI_TARGET_ID
+  echo "Done."
 }
 
 function performUpdateAutoKB()
