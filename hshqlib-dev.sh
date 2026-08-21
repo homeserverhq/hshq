@@ -69017,7 +69017,6 @@ function installPaperless()
     restartAllCaddyContainers
     checkAddDBConnection true paperless "$FMLNAME_PAPERLESS_APP" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
   fi
-  #performIntegrationPaperlessGPT
   sleep 5
   performIntegrationPaperlessAI
   performWorkflowsIntegrationPaperless
@@ -69138,9 +69137,10 @@ EOFIM
 #!/bin/bash
 
 PGPASSWORD=$PAPERLESS_DATABASE_USER_PASSWORD
+admin_id=2
 
-echo "insert into authtoken_token(key,created,user_id) values('$PAPERLESS_API_TOKEN','$dtnow',3);" | psql -U $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_NAME
-echo "update auth_user set first_name='HSHQ Admin', last_name='Paperless' where id=3;" | psql -U $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_NAME
+echo "insert into authtoken_token(key,created,user_id) values('$PAPERLESS_API_TOKEN','$dtnow',\$admin_id);" | psql -U $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_NAME
+echo "update auth_user set first_name='HSHQ Admin', last_name='Paperless' where id=\$admin_id;" | psql -U $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_NAME
 
 EOFDS
   chmod +x $HSHQ_STACKS_DIR/paperless/dbexport/setupDBSettings.sh
