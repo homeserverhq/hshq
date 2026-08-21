@@ -131882,7 +131882,7 @@ function installUptimeKuma()
   initServicesCredentials
   UPTIMEKUMA_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $UPTIMEKUMA_PASSWORD | tr -d ':\n' | sed 's/$2y/$2a/')
   outputConfigUptimeKuma
-  installStack uptimekuma uptimekuma "Listening on 3001" $HOME/uptimekuma.env 3
+  installStack uptimekuma uptimekuma "Listening on" $HOME/uptimekuma.env 3
   retval=$?
   if [ $retval -ne 0 ]; then
     echo "ERROR: There was a problem installing Uptimekuma"
