@@ -113236,7 +113236,7 @@ function installLiteLLM()
   addUserMailu alias $LITELLM_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   LITELLM_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $LITELLM_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigLiteLLM
-  installStack litellm litellm-proxy "Uvicorn running on http" $HOME/litellm.env 3
+  installStack litellm litellm-proxy "Uvicorn running on http" $HOME/litellm.env 5
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
