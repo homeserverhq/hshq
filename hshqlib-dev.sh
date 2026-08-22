@@ -162,6 +162,7 @@ function init()
   WAZUH_PORT_4=55000
   WAZUH_PORT_5=9200
   WAZUH_AGENT_VERSION=4.11.2-1
+  PAPERLESS_ADMIN_ID=2
   DEFAULT_UNFOUND_IP_ADDRESS=169.254.84.48
   DEFAULT_UNFOUND_IP_SUBNET=169.254.0.0/16
   MAX_DOCKER_PULL_TRIES=10
@@ -31130,7 +31131,7 @@ function getScriptStackVersion()
     authelia)
       echo "v8" ;;
     wordpress)
-      echo "v5" ;;
+      echo "v6" ;;
     ghost)
       echo "v9" ;;
     peertube)
@@ -42020,7 +42021,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/valkey/valkey:alpine3.23
       ;;
     "wordpress-db")
-      container_image=mirror.gcr.io/mariadb:10.7.3
+      container_image=mirror.gcr.io/mariadb:11.4.12
       ;;
     "wordpress-web")
       container_image=$IMG_WORDPRESS_APP
@@ -50793,8 +50794,8 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ --no-warnings app:enable bruteforcesettings
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install contacts
   docker exec -u www-data nextcloud-app php occ --no-warnings app:enable contacts
-  docker exec -u www-data nextcloud-app php occ --no-warnings app:install groupfolders
-  docker exec -u www-data nextcloud-app php occ --no-warnings app:enable groupfolders
+  #docker exec -u www-data nextcloud-app php occ --no-warnings app:install groupfolders
+  #docker exec -u www-data nextcloud-app php occ --no-warnings app:enable groupfolders
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install tasks
   docker exec -u www-data nextcloud-app php occ --no-warnings app:enable tasks
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install deck
@@ -58260,11 +58261,21 @@ function installWordPress()
   sleep 3
   cd ~
   set +e
-  docker run --user www-data --rm --name wordpress-cli --hostname wordpress-cli -e TZ="$TZ" --env-file wpstack.env -v "/etc/localtime:/etc/localtime:ro" -v "/etc/timezone:/etc/timezone:ro" -v "/etc/ssl/certs:/etc/ssl/certs:ro" -v "/usr/share/ca-certificates:/usr/share/ca-certificates:ro" -v "/usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro" -v "$HSHQ_STACKS_DIR/wordpress/web:/var/www/html" --restart no --network dock-proxy --network dock-ext --network dock-dbs $(getScriptImageByContainerName wordpress-cli) sh -c "sleep 10; wp core install --path=\"/var/www/html\" --url=\"https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN\" --title=\"$HOMESERVER_NAME Blog\" --admin_user=$WORDPRESS_ADMIN_USERNAME --admin_password=$WORDPRESS_ADMIN_PASSWORD --admin_email=$WORDPRESS_ADMIN_EMAIL_ADDRESS --skip-email"
+  sudo chmod -R 775 $HSHQ_STACKS_DIR/wordpress/web
+  sudo chown -R 33:33 $HSHQ_STACKS_DIR/wordpress/web
+  sleep 1
+  docker run --user www-data --rm --name wordpress-cli --hostname wordpress-cli -e TZ="$TZ" --env-file wpstack.env -v "/etc/localtime:/etc/localtime:ro" -v "/etc/timezone:/etc/timezone:ro" -v "/etc/ssl/certs:/etc/ssl/certs:ro" -v "/usr/share/ca-certificates:/usr/share/ca-certificates:ro" -v "/usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro" -v "$HSHQ_STACKS_DIR/wordpress/web:/var/www/html" --restart no --network dock-dbs $(getScriptImageByContainerName wordpress-cli) sh -c "sleep 10; wp core install --path=\"/var/www/html\" --url=\"https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN\" --title=\"$HOMESERVER_NAME Blog\" --admin_user=$WORDPRESS_ADMIN_USERNAME --admin_password=$WORDPRESS_ADMIN_PASSWORD --admin_email=$WORDPRESS_ADMIN_EMAIL_ADDRESS --skip-email"
   sleep 3
+  docker run --user www-data --rm --name wordpress-cli --env-file wpstack.env -v "$HSHQ_STACKS_DIR/wordpress/web:/var/www/html" --network dock-dbs mirror.gcr.io/wordpress:cli-php8.5 wp core is-installed --path="/var/www/html"
+  rtVal=$?
   rm -f $HOME/wpstack.env
+  if [ $rtVal -ne 0 ]; then
+    echo "WordPress installation failed. Please remove the stack and try again."
+    return 1
+  fi
   addReadOnlyUserToDatabase Wordpress mysql wordpress-db $WORDPRESS_DATABASE_NAME root $WORDPRESS_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/wordpress/dbexport $WORDPRESS_DATABASE_READONLYUSER $WORDPRESS_DATABASE_READONLYUSER_PASSWORD
   addMCPServerLiteLLM "wordpress" "wp" "http://wordpress-mcp:80/mcp" http none ""
+  updateStackEnv wordpress mfWordpressAddExtraConfig
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -58304,7 +58315,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    command: mariadbd --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
     networks:
       - int-wordpress-net
       - dock-dbs-net
@@ -58402,10 +58413,10 @@ networks:
       driver: default
 EOFWP
   cat <<EOFWP > $HOME/wordpress.env
-MYSQL_ROOT_PASSWORD=$WORDPRESS_DATABASE_ROOT_PASSWORD
-MYSQL_DATABASE=$WORDPRESS_DATABASE_NAME
-MYSQL_USER=$WORDPRESS_DATABASE_USER
-MYSQL_PASSWORD=$WORDPRESS_DATABASE_USER_PASSWORD
+MARIADB_ROOT_PASSWORD=$WORDPRESS_DATABASE_ROOT_PASSWORD
+MARIADB_DATABASE=$WORDPRESS_DATABASE_NAME
+MARIADB_USER=$WORDPRESS_DATABASE_USER
+MARIADB_PASSWORD=$WORDPRESS_DATABASE_USER_PASSWORD
 WORDPRESS_DB_HOST=wordpress-db
 WORDPRESS_DB_NAME=$WORDPRESS_DATABASE_NAME
 WORDPRESS_DB_USER=$WORDPRESS_DATABASE_USER
@@ -58415,8 +58426,8 @@ MCP_SERVER_PORT=80
 ALLOW_ALL_AGGREGATE=false
 IS_STATEFUL=false
 WORDPRESS_PUBLIC_URL=https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN
-WORDPRESS_CONFIG_EXTRA=\$\$_SERVER['HTTPS']='on';define('FORCE_SSL_ADMIN',true);if(isset(\$\$_SERVER['HTTP_X_FORWARDED_HOST'])){\$\$_SERVER['HTTP_HOST']=\$\$_SERVER['HTTP_X_FORWARDED_HOST'];}if(isset(\$\$_SERVER['HTTP_X_FORWARDED_PROTO'])&&strpos(\$\$_SERVER['HTTP_X_FORWARDED_PROTO'],'https')!==false){\$\$_SERVER['HTTPS']='on';}\$\$proto=(isset(\$\$_SERVER['HTTPS'])&&\$\$_SERVER['HTTPS']==='on')?'https://':'http://';define('WP_HOME',\$\$proto.\$\$_SERVER['HTTP_HOST']);define('WP_SITEURL',\$\$proto.\$\$_SERVER['HTTP_HOST']);
 EOFWP
+
   rm -f $HOME/wpstack.env
   cp $HOME/wordpress.env $HOME/wpstack.env
 }
@@ -58459,6 +58470,16 @@ function performUpdateWordPress()
       newVer=v5
       curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/wordpress:php8.5-apache,ghcr.io/homeserverhq/wordpress-mcp:v2
       image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/wordpress:php8.5-apache,mirror.gcr.io/wordpress:php8.5-apache"
+      image_update_map[2]="ghcr.io/homeserverhq/wordpress-mcp:v2,ghcr.io/homeserverhq/wordpress-mcp:v2"
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): This version of Wordpress cannot be upgraded to the next version automatically. To perform the upgrade, follow these steps:  1) Shut down the stack. 2) Add MARIADB_AUTO_UPGRADE=1 to the environment variables. 3) Replace all MYSQL_ env var prefixes with MARIADB_.  4) Replace mirror.gcr.io/mariadb:10.7.3 with mirror.gcr.io/mariadb:11.4.12. 5) Restart the stack, and monitor the upgrade process in the logs. 6) After the upgrade has entirely completed, stop the stack, remove the MARIADB_AUTO_UPGRADE=1 env var, then restart the stack."
+      return
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/wordpress:php8.5-apache,ghcr.io/homeserverhq/wordpress-mcp:v2
+      image_update_map[0]="mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/mariadb:11.4.12"
       image_update_map[1]="mirror.gcr.io/wordpress:php8.5-apache,mirror.gcr.io/wordpress:php8.5-apache"
       image_update_map[2]="ghcr.io/homeserverhq/wordpress-mcp:v2,ghcr.io/homeserverhq/wordpress-mcp:v2"
     ;;
@@ -58584,10 +58605,10 @@ networks:
       driver: default
 EOFWP
   cat <<EOFWP > $HOME/wordpress.env
-MYSQL_ROOT_PASSWORD=$WORDPRESS_DATABASE_ROOT_PASSWORD
-MYSQL_DATABASE=$WORDPRESS_DATABASE_NAME
-MYSQL_USER=$WORDPRESS_DATABASE_USER
-MYSQL_PASSWORD=$WORDPRESS_DATABASE_USER_PASSWORD
+MARIADB_ROOT_PASSWORD=$WORDPRESS_DATABASE_ROOT_PASSWORD
+MARIADB_DATABASE=$WORDPRESS_DATABASE_NAME
+MARIADB_USER=$WORDPRESS_DATABASE_USER
+MARIADB_PASSWORD=$WORDPRESS_DATABASE_USER_PASSWORD
 WORDPRESS_DB_HOST=wordpress-db
 WORDPRESS_DB_NAME=$WORDPRESS_DATABASE_NAME
 WORDPRESS_DB_USER=$WORDPRESS_DATABASE_USER
@@ -58600,6 +58621,15 @@ WORDPRESS_PUBLIC_URL=https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN
 WORDPRESS_CONFIG_EXTRA=\$\$_SERVER['HTTPS']='on';define('FORCE_SSL_ADMIN',true);if(isset(\$\$_SERVER['HTTP_X_FORWARDED_HOST'])){\$\$_SERVER['HTTP_HOST']=\$\$_SERVER['HTTP_X_FORWARDED_HOST'];}if(isset(\$\$_SERVER['HTTP_X_FORWARDED_PROTO'])&&strpos(\$\$_SERVER['HTTP_X_FORWARDED_PROTO'],'https')!==false){\$\$_SERVER['HTTPS']='on';}\$\$proto=(isset(\$\$_SERVER['HTTPS'])&&\$\$_SERVER['HTTPS']==='on')?'https://':'http://';define('WP_HOME',\$\$proto.\$\$_SERVER['HTTP_HOST']);define('WP_SITEURL',\$\$proto.\$\$_SERVER['HTTP_HOST']);
 EOFWP
   addMCPServerLiteLLM "wordpress" "wp" "http://wordpress-mcp:80/mcp" http none ""
+}
+
+function mfWordpressAddExtraConfig()
+{
+  set +e
+  grep -q "WORDPRESS_CONFIG_EXTRA=" $HOME/wordpress.env
+  if [ $? -ne 0 ]; then
+    echo "WORDPRESS_CONFIG_EXTRA=\$\$_SERVER['HTTPS']='on';define('FORCE_SSL_ADMIN',true);if(isset(\$\$_SERVER['HTTP_X_FORWARDED_HOST'])){\$\$_SERVER['HTTP_HOST']=\$\$_SERVER['HTTP_X_FORWARDED_HOST'];}if(isset(\$\$_SERVER['HTTP_X_FORWARDED_PROTO'])&&strpos(\$\$_SERVER['HTTP_X_FORWARDED_PROTO'],'https')!==false){\$\$_SERVER['HTTPS']='on';}\$\$proto=(isset(\$\$_SERVER['HTTPS'])&&\$\$_SERVER['HTTPS']==='on')?'https://':'http://';define('WP_HOME',\$\$proto.\$\$_SERVER['HTTP_HOST']);define('WP_SITEURL',\$\$proto.\$\$_SERVER['HTTP_HOST']);" >> $HOME/wordpress.env
+  fi
 }
 
 # Ghost
@@ -69137,10 +69167,9 @@ EOFIM
 #!/bin/bash
 
 PGPASSWORD=$PAPERLESS_DATABASE_USER_PASSWORD
-admin_id=2
 
-echo "insert into authtoken_token(key,created,user_id) values('$PAPERLESS_API_TOKEN','$dtnow',\$admin_id);" | psql -U $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_NAME
-echo "update auth_user set first_name='HSHQ Admin', last_name='Paperless' where id=\$admin_id;" | psql -U $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_NAME
+echo "insert into authtoken_token(key,created,user_id) values('$PAPERLESS_API_TOKEN','$dtnow',$PAPERLESS_ADMIN_ID);" | psql -U $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_NAME
+echo "update auth_user set first_name='HSHQ Admin', last_name='Paperless' where id=$PAPERLESS_ADMIN_ID;" | psql -U $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_NAME
 
 EOFDS
   chmod +x $HSHQ_STACKS_DIR/paperless/dbexport/setupDBSettings.sh
@@ -69522,23 +69551,23 @@ function performWorkflowsIntegrationPaperless()
   PAPERLESS_TRANSCRIPTION_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   updateConfigVar PAPERLESS_TRANSCRIPTION_TAG_NAME "$PAPERLESS_TRANSCRIPTION_TAG_NAME"
   updateConfigVar PAPERLESS_TRANSCRIPTION_TAG_ID "$PAPERLESS_TRANSCRIPTION_TAG_ID"
-  jsonbody="{ \"name\": \"HSHQAdmin Email\", \"imap_server\": \"$SMTP_HOSTNAME\", \"imap_port\": 143, \"imap_security\": 3, \"username\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\", \"password\": \"$EMAIL_ADMIN_PASSWORD\", \"account_type\": 1, \"owner\": 3, \"user_can_change\": true }"
+  jsonbody="{ \"name\": \"HSHQAdmin Email\", \"imap_server\": \"$SMTP_HOSTNAME\", \"imap_port\": 143, \"imap_security\": 3, \"username\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\", \"password\": \"$EMAIL_ADMIN_PASSWORD\", \"account_type\": 1, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true }"
   ADMIN_MAIL_ACCOUNT_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
-  jsonbody="{ \"name\": \"HSHQAdmin Email Personal\", \"account\": $ADMIN_MAIL_ACCOUNT_ID, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 1, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": 3, \"user_can_change\": true, \"stop_processing\": false }"
+  jsonbody="{ \"name\": \"HSHQAdmin Email Personal\", \"account\": $ADMIN_MAIL_ACCOUNT_ID, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 1, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true, \"stop_processing\": false }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{\"name\": \"$LDAP_PRIMARY_USER_GROUP_NAME\", \"permissions\": [\"view_logentry\",\"view_group\",\"view_user\",\"add_correspondent\",\"change_correspondent\",\"delete_correspondent\",\"view_correspondent\",\"add_document\",\"change_document\",\"delete_document\",\"view_document\",\"view_documenttype\",\"add_note\",\"change_note\",\"delete_note\",\"view_note\",\"add_savedview\",\"change_savedview\",\"delete_savedview\",\"view_savedview\",\"add_sharelink\",\"change_sharelink\",\"delete_sharelink\",\"view_sharelink\",\"add_tag\",\"change_tag\",\"delete_tag\",\"view_tag\",\"add_uisettings\",\"change_uisettings\",\"delete_uisettings\",\"view_uisettings\",\"view_workflow\",\"add_mailaccount\",\"change_mailaccount\",\"delete_mailaccount\",\"view_mailaccount\",\"add_mailrule\",\"change_mailrule\",\"delete_mailrule\",\"view_mailrule\",\"add_processedmail\",\"change_processedmail\",\"delete_processedmail\",\"view_processedmail\"]}"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{\"name\": \"PersonalProcessed\",\"path\": \"PersonalProcessed/{{owner_username}}/PersonalProcessed/{{title}}\",\"match\": \"\",\"matching_algorithm\": 6,\"is_insensitive\": true,\"owner\": 3}"
+  jsonbody="{\"name\": \"PersonalProcessed\",\"path\": \"PersonalProcessed/{{owner_username}}/PersonalProcessed/{{title}}\",\"match\": \"\",\"matching_algorithm\": 6,\"is_insensitive\": true,\"owner\": $PAPERLESS_ADMIN_ID}"
   personalPathID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/storage_paths/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r .id)
   if [ -z "$personalPathID" ] || [ $personalPathID -ne 1 ]; then
     echo "ERROR: The assigned ID($personalPathID) for this storage path is unexpected. It should be assigned an id of 1."
   fi
-  jsonbody="{\"name\": \"SharedProcessed\",\"path\": \"SharedProcessed/{{title}}\",\"match\": \"\",\"matching_algorithm\": 6,\"is_insensitive\": true,\"owner\": 3}"
+  jsonbody="{\"name\": \"SharedProcessed\",\"path\": \"SharedProcessed/{{title}}\",\"match\": \"\",\"matching_algorithm\": 6,\"is_insensitive\": true,\"owner\": $PAPERLESS_ADMIN_ID}"
   sharedPathID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/storage_paths/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r .id)
   if [ -z "$sharedPathID" ] || [ $sharedPathID -ne 2 ]; then
     echo "ERROR: The assigned ID($sharedPathID) for this storage path is unexpected. It should be assigned an id of 2."
   fi
-  jsonbody="{\"name\": \"AdminProcessed\",\"path\": \"PersonalProcessed/$NEXTCLOUD_ADMIN_USERNAME/PersonalProcessed/{{title}}\",\"match\": \"\",\"matching_algorithm\": 6,\"is_insensitive\": true,\"owner\": 3}"
+  jsonbody="{\"name\": \"AdminProcessed\",\"path\": \"PersonalProcessed/$NEXTCLOUD_ADMIN_USERNAME/PersonalProcessed/{{title}}\",\"match\": \"\",\"matching_algorithm\": 6,\"is_insensitive\": true,\"owner\": $PAPERLESS_ADMIN_ID}"
   adminPathID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/storage_paths/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r .id)
   if [ -z "$adminPathID" ] || [ $adminPathID -ne 3 ]; then
     echo "ERROR: The assigned ID($adminPathID) for this storage path is unexpected. It should be assigned an id of 3."
