@@ -30418,7 +30418,7 @@ function addPrimaryUserAutoKB()
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"${formal_name}-IMAP-Personal-Source\",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$imap_username\",\"password\":\"$imap_password\",\"folder\":\"Processed.Personal\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
+    --data "{\"name\":\"${formal_name}-IMAP-Personal-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$imap_username\",\"password\":\"$imap_password\",\"folder\":\"Processed.Personal\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/imapFolderWatchPlugin")"
   akbCode="${akbRes##*$'\n'}"
@@ -30429,7 +30429,7 @@ function addPrimaryUserAutoKB()
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"${formal_name}-IMAP-Shared-Source\",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$imap_username\",\"password\":\"$imap_password\",\"folder\":\"Processed.Work\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
+    --data "{\"name\":\"${formal_name}-IMAP-Shared-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$imap_username\",\"password\":\"$imap_password\",\"folder\":\"Processed.Work\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/imapFolderWatchPlugin")"
   akbCode="${akbRes##*$'\n'}"
@@ -30440,7 +30440,7 @@ function addPrimaryUserAutoKB()
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"${formal_name}-Paperless-Source\",\"cron\":\"*/15/ * * * * \",\"config\":{\"storage_path_id\":$paperless_storage_id,\"document_filter\":\"owner__id=$paperless_user_id&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"use_paperless_content\":true}}" \
+    --data "{\"name\":\"${formal_name}-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"storage_path_id\":$paperless_storage_id,\"document_filter\":\"owner__id=$paperless_user_id&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"use_paperless_content\":true}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/ePaperlessDoclingPlugin")"
   akbCode="${akbRes##*$'\n'}"
@@ -117057,11 +117057,12 @@ function performAutoKBInstallIntegrations()
 
 function addSharedPipelinesAutoKB()
 {
+  set +e
   echo "Creating IMAP personal source subscription..."
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"Shared-IMAP-Personal-Source\",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$EMAIL_SHARED_EMAIL_ADDRESS\",\"password\":\"$EMAIL_SHARED_PASSWORD\",\"folder\":\"Processed.Personal\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
+    --data "{\"name\":\"Shared-IMAP-Personal-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$EMAIL_SHARED_EMAIL_ADDRESS\",\"password\":\"$EMAIL_SHARED_PASSWORD\",\"folder\":\"Processed.Personal\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/imapFolderWatchPlugin")"
   akbCode="${akbRes##*$'\n'}"
@@ -117072,7 +117073,7 @@ function addSharedPipelinesAutoKB()
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"Shared-IMAP-Shared-Source\",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$EMAIL_SHARED_EMAIL_ADDRESS\",\"password\":\"$EMAIL_SHARED_PASSWORD\",\"folder\":\"Processed.Work\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
+    --data "{\"name\":\"Shared-IMAP-Shared-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$EMAIL_SHARED_EMAIL_ADDRESS\",\"password\":\"$EMAIL_SHARED_PASSWORD\",\"folder\":\"Processed.Work\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/imapFolderWatchPlugin")"
   akbCode="${akbRes##*$'\n'}"
@@ -117083,7 +117084,7 @@ function addSharedPipelinesAutoKB()
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"Shared-Paperless-Source\",\"cron\":\"*/15/ * * * * \",\"config\":{\"storage_path_id\":2,\"document_filter\":\"tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"use_paperless_content\":true}}" \
+    --data "{\"name\":\"Shared-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"storage_path_id\":2,\"document_filter\":\"tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"use_paperless_content\":true}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/ePaperlessDoclingPlugin")"
   akbCode="${akbRes##*$'\n'}"
