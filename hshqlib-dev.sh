@@ -24457,6 +24457,7 @@ function version238Update()
   initServicesCredentials
   addUserMailu user $EMAIL_SHARED_USERNAME $HOMESERVER_DOMAIN $EMAIL_SHARED_PASSWORD
   sendEmail -s "Shared Email Account Info" -b "A new email account has been added to Mailu. The intent of this account to share amongst your team members for common access. Here are the credentials:\n\n Shared Email Address: $EMAIL_SHARED_EMAIL_ADDRESS\nShared Email Password: $EMAIL_SHARED_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  outputDBExportScripts
 }
 
 function pruneAndUpdateDocker()
@@ -27165,7 +27166,6 @@ chmod 0400 /dbexport/\$POSTGRES_DB.sql
 echo "Success - Filesize is \$outputfilesize"
 EOFDB
   chmod 0555 $HSHQ_SCRIPTS_DIR/user/exportPostgres.sh
-
   rm -f $HSHQ_SCRIPTS_DIR/user/exportMySQL.sh
   cat <<EOFDB > $HSHQ_SCRIPTS_DIR/user/exportMySQL.sh
 #!/bin/bash
@@ -27178,6 +27178,18 @@ chmod 0400 /dbexport/\$MYSQL_DATABASE.sql
 echo "Success - Filesize is \$outputfilesize"
 EOFDB
   chmod 0555 $HSHQ_SCRIPTS_DIR/user/exportMySQL.sh
+  rm -f $HSHQ_SCRIPTS_DIR/user/exportMariaDB.sh
+  cat <<EOFDB > $HSHQ_SCRIPTS_DIR/user/exportMariaDB.sh
+#!/bin/bash
+
+set -e
+mariadb-dump --user \$MARIADB_USER --password=\$MARIADB_PASSWORD \$MARIADB_DATABASE > /dbexport/dbexport.tmp
+outputfilesize=\$(du -sh /dbexport/dbexport.tmp | xargs | cut -d ' ' -f1)
+mv /dbexport/dbexport.tmp /dbexport/\$MARIADB_DATABASE.sql
+chmod 0400 /dbexport/\$MARIADB_DATABASE.sql
+echo "Success - Filesize is \$outputfilesize"
+EOFDB
+  chmod 0555 $HSHQ_SCRIPTS_DIR/user/exportMariaDB.sh
 }
 
 function outputMaintenanceScripts()
@@ -30587,6 +30599,10 @@ function upgradeDatabaseInStack()
       docker run --name dbctemp -d -e TZ=$TZ -e MYSQL_DATABASE=$dbName -e MYSQL_USER=$dbUser -e MYSQL_PASSWORD=$dbPassword -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro -v ${curHostDBDirectory}:${curContainerDirectory} -v ${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro -v ${curExportDirectory}:/dbexport $curImage mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120 > /dev/null 2>&1
       waitForContainerLogString dbctemp 1 300 "ready for connections"
     ;;
+    mariadb)
+      docker run --name dbctemp -d -e TZ=$TZ -e MARIADB_DATABASE=$dbName -e MARIADB_USER=$dbUser -e MARIADB_PASSWORD=$dbPassword -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro -v ${curHostDBDirectory}:${curContainerDirectory} -v ${HSHQ_SCRIPTS_DIR}/user/exportMariaDB.sh:/exportDB.sh:ro -v ${curExportDirectory}:/dbexport $curImage mariadbd --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120 > /dev/null 2>&1
+      waitForContainerLogString dbctemp 1 300 "ready for connections"
+    ;;
     *)
       echo "ERROR: Unknown database type, returning..."
       return 2
@@ -30616,6 +30632,12 @@ function upgradeDatabaseInStack()
     ;;
     mysql)
       docker run --name dbctemp -d -e TZ=$TZ -e MYSQL_DATABASE=$dbName -e MYSQL_ROOT_PASSWORD=$dbRootPassword -e MYSQL_USER=$dbUser -e MYSQL_PASSWORD=$dbPassword -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro -v ${curHostDBDirectory}:${curContainerDirectory} -v /tmp/$stackName:/dbimport $newImage mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120 > /dev/null 2>&1
+      waitForContainerLogString dbctemp 1 300 "ready for connections"
+      sleep 3
+      docker exec dbctemp /bin/bash -c "mysql -u $dbUser -p$dbPassword < /dbimport/${dbName}.sql" > /dev/null 2>&1
+    ;;
+    mariadb)
+      docker run --name dbctemp -d -e TZ=$TZ -e MARIADB_DATABASE=$dbName -e MARIADB_ROOT_PASSWORD=$dbRootPassword -e MARIADB_USER=$dbUser -e MARIADB_PASSWORD=$dbPassword -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro -v ${curHostDBDirectory}:${curContainerDirectory} -v /tmp/$stackName:/dbimport $newImage mariadbd --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120 > /dev/null 2>&1
       waitForContainerLogString dbctemp 1 300 "ready for connections"
       sleep 3
       docker exec dbctemp /bin/bash -c "mysql -u $dbUser -p$dbPassword < /dbimport/${dbName}.sql" > /dev/null 2>&1
@@ -58323,7 +58345,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - v-wordpress-db:/var/lib/mysql
-      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMariaDB.sh:/exportDB.sh:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/wordpress/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
@@ -58427,7 +58449,6 @@ ALLOW_ALL_AGGREGATE=false
 IS_STATEFUL=false
 WORDPRESS_PUBLIC_URL=https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN
 EOFWP
-
   rm -f $HOME/wpstack.env
   cp $HOME/wordpress.env $HOME/wpstack.env
 }
@@ -58473,7 +58494,7 @@ function performUpdateWordPress()
       image_update_map[1]="mirror.gcr.io/wordpress:php8.5-apache,mirror.gcr.io/wordpress:php8.5-apache"
       image_update_map[2]="ghcr.io/homeserverhq/wordpress-mcp:v2,ghcr.io/homeserverhq/wordpress-mcp:v2"
       is_upgrade_error=true
-      perform_update_report="ERROR ($perform_stack_name): This version of Wordpress cannot be upgraded to the next version automatically. To perform the upgrade, follow these steps:  1) Shut down the stack. 2) Add MARIADB_AUTO_UPGRADE=1 to the environment variables. 3) Replace all MYSQL_ env var prefixes with MARIADB_.  4) Replace mirror.gcr.io/mariadb:10.7.3 with mirror.gcr.io/mariadb:11.4.12. 5) Restart the stack, and monitor the upgrade process in the logs. 6) After the upgrade has entirely completed, stop the stack, remove the MARIADB_AUTO_UPGRADE=1 env var, then restart the stack."
+      perform_update_report="ERROR ($perform_stack_name): This version of Wordpress cannot be upgraded to the next version automatically. To perform the upgrade, follow these steps:  1) Shut down the stack. 2) Add MARIADB_AUTO_UPGRADE=1 to the environment variables. 3) Replace all MYSQL_ env var prefixes with MARIADB_.  4) Replace mirror.gcr.io/mariadb:10.7.3 with mirror.gcr.io/mariadb:11.4.12. 5) Replace the db backup script name in the compose file from exportMySQL.sh to exportMariaDB.sh, e.g. \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMariaDB.sh:/exportDB.sh:ro 6) Restart the stack, and monitor the upgrade process in the logs. 7) After the upgrade has entirely completed, stop the stack, remove the MARIADB_AUTO_UPGRADE=1 env var, then restart the stack."
       return
     ;;
     6)
@@ -98075,6 +98096,7 @@ ADMIN_EMAIL=$OPENWEBUI_ADMIN_EMAIL_ADDRESS
 ENV=prod
 RAG_EMBEDDING_ENGINE=openai
 RAG_EMBEDDING_MODEL=llamacpp/bge-m3-embed
+ENABLE_KB_EXEC=true
 OPENAI_API_BASE_URL=http://litellm-proxy:4000/v1
 OPENAI_API_KEY=$LITELLM_MASTER_KEY
 OAUTH_MERGE_ACCOUNTS_BY_EMAIL=true
@@ -110375,9 +110397,9 @@ function installIVBox()
   updateCaddyBlocks $SUB_IVBOX_COMFYUI_API $MANAGETLS_IVBOX_COMFYUI_API "$is_integrate_hshq" $NETDEFAULT_IVBOX_COMFYUI_API "$inner_block"
   insertSubAuthelia $SUB_IVBOX_COMFYUI_API.$HOMESERVER_DOMAIN bypass
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll ivbox "$FMLNAME_IVBOX_QWEN" $USERTYPE_IVBOX_QWEN "https://$SUB_IVBOX_QWEN.$HOMESERVER_DOMAIN" "qwen.png" "$(getHeimdallOrderFromSub $SUB_IVBOX_QWEN $USERTYPE_IVBOX_QWEN)"
+    #insertEnableSvcAll ivbox "$FMLNAME_IVBOX_QWEN" $USERTYPE_IVBOX_QWEN "https://$SUB_IVBOX_QWEN.$HOMESERVER_DOMAIN" "qwen.png" "$(getHeimdallOrderFromSub $SUB_IVBOX_QWEN $USERTYPE_IVBOX_QWEN)"
     insertEnableSvcAll ivbox "$FMLNAME_IVBOX_COMFYUI_WEB" $USERTYPE_IVBOX_COMFYUI_WEB "https://$SUB_IVBOX_COMFYUI_WEB.$HOMESERVER_DOMAIN" "comfyui.png" "$(getHeimdallOrderFromSub $SUB_IVBOX_COMFYUI_WEB $USERTYPE_IVBOX_COMFYUI_WEB)"
-    disableSvcHeimdall $USERTYPE_IVBOX_QWEN "https://$SUB_IVBOX_QWEN.$HOMESERVER_DOMAIN" true
+    #disableSvcHeimdall $USERTYPE_IVBOX_QWEN "https://$SUB_IVBOX_QWEN.$HOMESERVER_DOMAIN" true
     restartAllCaddyContainers
   fi
 }
