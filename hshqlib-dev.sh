@@ -69491,6 +69491,7 @@ function performIntegrationPaperlessAI()
 
 function performWorkflowsIntegrationPaperless()
 {
+  set +e
   numTries=0
   totalTries=10
   isAPISuccess=false
@@ -69522,15 +69523,15 @@ function performWorkflowsIntegrationPaperless()
   report_doc_type=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
       -H "Authorization: Token $PAPERLESS_API_TOKEN" \
       -H "Content-Type: application/json" \
-      -d "{\"name\": \"Report\", \"matching_algorithm\": 6, \"match\": \"\"}")
+      -d "{\"name\": \"Report\", \"matching_algorithm\": 6, \"match\": \"\"}" | jq -r '.id')
   manual_doc_type=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
       -H "Authorization: Token $PAPERLESS_API_TOKEN" \
       -H "Content-Type: application/json" \
-      -d "{\"name\": \"Manual\", \"matching_algorithm\": 6, \"match\": \"\"}")
+      -d "{\"name\": \"Manual\", \"matching_algorithm\": 6, \"match\": \"\"}" | jq -r '.id')
   research_doc_type=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
       -H "Authorization: Token $PAPERLESS_API_TOKEN" \
       -H "Content-Type: application/json" \
-      -d "{\"name\": \"Research Paper\", \"matching_algorithm\": 6, \"match\": \"\"}")
+      -d "{\"name\": \"Research Paper\", \"matching_algorithm\": 6, \"match\": \"\"}" | jq -r '.id')
   PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME="Personal Email"
   jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME\", \"color\": \"#299aa5\" }"
   PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
@@ -69572,13 +69573,13 @@ function performWorkflowsIntegrationPaperless()
   if [ -z "$adminPathID" ] || [ $adminPathID -ne 3 ]; then
     echo "ERROR: The assigned ID($adminPathID) for this storage path is unexpected. It should be assigned an id of 3."
   fi
-  jsonbody="{ \"name\": \"sharedconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/SharedConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 2, \"assign_owner\": 3, \"assign_view_users\": [], \"assign_view_groups\": [ 1 ], \"assign_change_users\": [], \"assign_change_groups\": [ 1 ], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
+  jsonbody="{ \"name\": \"sharedconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/SharedConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 2, \"assign_owner\": $PAPERLESS_ADMIN_ID, \"assign_view_users\": [], \"assign_view_groups\": [ 1 ], \"assign_change_users\": [], \"assign_change_groups\": [ 1 ], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"admin_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/$NEXTCLOUD_ADMIN_USERNAME/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": 3 }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
+  jsonbody="{ \"name\": \"admin_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/$NEXTCLOUD_ADMIN_USERNAME/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"admin_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/$SPEAKR_ADMIN_USERNAME/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": 3, \"assign_tags\": [ $PAPERLESS_TRANSCRIPTION_TAG_ID, $PAPERLESS_KNOWLEDGEBASE_TAG_ID ] }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
+  jsonbody="{ \"name\": \"admin_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/$SPEAKR_ADMIN_USERNAME/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID, \"assign_tags\": [ $PAPERLESS_TRANSCRIPTION_TAG_ID, $PAPERLESS_KNOWLEDGEBASE_TAG_ID ] }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody='{ \"name\": \"assign_kb\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_has_any_document_types\": ['"$report_doc_type"', '"$manual_doc_type"', '"$research_doc_type"'] }, { \"type\": 3, \"filter_has_any_document_types\": ['"$report_doc_type"', '"$manual_doc_type"', '"$research_doc_type"'] } ], \"actions\": [ { \"type\": 1, \"assign_tags\": ['"$PAPERLESS_KNOWLEDGEBASE_TAG_ID"'] } ] }'
+  jsonbody="{ \"name\": \"assign_kb\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_has_any_document_types\": [$report_doc_type, $manual_doc_type, $research_doc_type] }, { \"type\": 3, \"filter_has_any_document_types\": [$report_doc_type, $manual_doc_type, $research_doc_type] } ], \"actions\": [ { \"type\": 1, \"assign_tags\": [ $PAPERLESS_KNOWLEDGEBASE_TAG_ID ] } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
 }
 
