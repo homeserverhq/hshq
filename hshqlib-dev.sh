@@ -3892,6 +3892,21 @@ EOF
     fi
   done
   updatePlaintextRootConfigVar HOMESERVER_ABBREV $HOMESERVER_ABBREV
+  while [ -z "$HOMESERVER_CURRENCY_CODE" ]
+  do
+    if [ "$IS_AUTO_INSTALL" = "true" ]; then
+      HOMESERVER_CURRENCY_CODE="USD"
+      break
+    fi
+	HOMESERVER_CURRENCY_CODE=$(promptUserInputMenu "USD" "Enter Currency Code" "Enter your currency code: ")
+	if [ -z "$HOMESERVER_CURRENCY_CODE" ]; then
+	  showMessageBox "Code Empty" "The code cannot be empty"
+    elif [ $(checkValidCurrencyCode "$HOMESERVER_CURRENCY_CODE") = "false" ]; then
+      showMessageBox "Invalid Code" "The code is invalid."
+      HOMESERVER_CURRENCY_CODE=""
+	fi
+  done
+  updatePlaintextRootConfigVar HOMESERVER_CURRENCY_CODE "$HOMESERVER_CURRENCY_CODE"
   priorTZ=$(readlink /etc/localtime | sed 's|.*/zoneinfo/||')
   while [ -z "$TZ" ]
   do
@@ -16721,6 +16736,16 @@ function checkValidINPUTChainPortsList()
   done
 }
 
+function checkValidCurrencyCode()
+{
+  chkCode="$1"
+  if [ "$(jq -e --arg c "$chkCode" '."4217" | any(.[]; .alpha_3 == $c)' /usr/share/iso-codes/json/iso_4217.json)" = "true" ]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
 function getStringLength()
 {
   echo "${#1}"
@@ -24458,6 +24483,18 @@ function version238Update()
   addUserMailu user $EMAIL_SHARED_USERNAME $HOMESERVER_DOMAIN $EMAIL_SHARED_PASSWORD
   sendEmail -s "Shared Email Account Info" -b "A new email account has been added to Mailu. The intent of this account to share amongst your team members for common access. Here are the credentials:\n\n Shared Email Address: $EMAIL_SHARED_EMAIL_ADDRESS\nShared Email Password: $EMAIL_SHARED_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
   outputDBExportScripts
+  docker ps | grep -q wordpress-web > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    if [ -z "$WORDPRESS_APP_PASSWORD" ]; then
+      WORDPRESS_APP_PASSWORD=$(docker run --user www-data --rm --name wordpress-cli --hostname wordpress-cli -e TZ="$TZ" --env-file wpstack.env -v "/etc/localtime:/etc/localtime:ro" -v "/etc/timezone:/etc/timezone:ro" -v "/etc/ssl/certs:/etc/ssl/certs:ro" -v "/usr/share/ca-certificates:/usr/share/ca-certificates:ro" -v "/usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro" -v "$HSHQ_STACKS_DIR/wordpress/web:/var/www/html" --restart no --network dock-dbs $(getScriptImageByContainerName wordpress-cli) sh -c "wp user application-password create $WORDPRESS_ADMIN_USERNAME testapp --porcelain")
+      updateConfigVar WORDPRESS_APP_PASSWORD "$WORDPRESS_APP_PASSWORD"
+    fi
+  fi
+  grep -q "^HOMESERVER_CURRENCY_CODE" $HSHQ_PLAINTEXT_ROOT_CONFIG
+  if [ $? -ne 0 ]; then
+    HOMESERVER_CURRENCY_CODE="USD"
+    sed -i "s|^# General Info END|HOMESERVER_CURRENCY_CODE=\"USD\"\n# General Info END|g" $HSHQ_PLAINTEXT_ROOT_CONFIG
+  fi
 }
 
 function pruneAndUpdateDocker()
@@ -24895,7 +24932,7 @@ function addAllReadonlyDBUsers()
   checkAddVarsToServiceConfig "Twenty" "TWENTY_DATABASE_READONLYUSER=,TWENTY_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Vaultwarden" "VAULTWARDEN_DATABASE_READONLYUSER=,VAULTWARDEN_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Wallabag" "WALLABAG_DATABASE_READONLYUSER=,WALLABAG_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
-  checkAddVarsToServiceConfig "Wiki.js" "WIKIJS_DATABASE_READONLYUSER=,WIKIJS_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Wikijs" "WIKIJS_DATABASE_READONLYUSER=$WIKIJS_DATABASE_READONLYUSER,WIKIJS_DATABASE_READONLYUSER_PASSWORD=$WIKIJS_DATABASE_READONLYUSER_PASSWORD" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Wordpress" "WORDPRESS_DATABASE_READONLYUSER=,WORDPRESS_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Yamtrack" "YAMTRACK_DATABASE_READONLYUSER=,YAMTRACK_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Zammad" "ZAMMAD_DATABASE_READONLYUSER=,ZAMMAD_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
@@ -30244,10 +30281,12 @@ EOFAU
   sudo sqlite3 $HSHQ_STACKS_DIR/authelia/config/db.sqlite3 "insert into user_preferences(username,second_factor_method) values('$addPUUID','totp');"
   auth_uuid=$(uuidgen)
   sudo sqlite3 $HSHQ_STACKS_DIR/authelia/config/db.sqlite3 "insert into user_opaque_identifier(service,sector_id,username,identifier) values('openid','','$addPUUID','$auth_uuid');"
-  newuser_nextcloud_app_password="abcd"
+  newuser_nextcloud_app_password=abcd
+  newuser_paperless_apitoken=abcd
+  newuser_immich_api_key=abcd
+  newuser_linkwarden_api_key=abcd
   addPrimaryUserNextcloud "${addPUUID}" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName $addPULastName"
   addPrimaryUserPaperless "${addPUUID}" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName" "$addPULastName"
-  newuser_paperless_apitoken="abcd"
   docker ps | grep -q paperless-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     jsonbody="username=${addPUUID}&password=$addPUPassword"
@@ -30258,6 +30297,10 @@ EOFAU
   addPrimaryUserAutoKB "$addPUUID" "$cleanName" "$addPUEmailAddress" "$addPUPassword" 1
   newuser_immich_api_key=$(pwgen -c -n 41 1)
   addPrimaryUserImmich "${addPUUID}" "$addPUEmailAddress" "$addPUFirstName $addPULastName" "$newuser_immich_api_key"
+  newuser_linkwarden_api_key=$(docker exec linkwarden-app node /data/data/provision-user.mjs $addPUEmailAddress "${addPUFirstName} ${addPULastName}" "MCP")
+  newuser_hedgedoc_api_key=$(addPrimaryUserHedgeDoc "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress)
+  newuser_mealie_api_key=$(addPrimaryUserMealie "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress false)
+  newuser_presenton_api_key=$(addPrimaryUserPresenton "$addPUUID" "addPUPassword")
   set +e
   docker ps | grep -q openwebui-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
@@ -30297,7 +30340,11 @@ EOFIM
         --arg immich_api_key "$newuser_immich_api_key" \
         --arg nextcloud_api_key "$(echo -n ${addPUUID}:${newuser_nextcloud_app_password} | base64)" \
         --arg paperless_api_key "$newuser_paperless_apitoken" \
-        '{immich_api_key: "$immich_api_key", nextcloud_api_key: $nextcloud_api_key, paperless_api_key: $paperless_api_key}')
+        --arg linkwarden_api_key "$newuser_linkwarden_api_key" \
+        --arg hedgedoc_api_key "$newuser_hedgedoc_api_key" \
+        --arg mealie_api_key "$newuser_mealie_api_key" \
+        --arg presenton_api_key "$newuser_presenton_api_key" \
+        '{immich_api_key: "$immich_api_key", nextcloud_api_key: $nextcloud_api_key, paperless_api_key: $paperless_api_key, opennotebook_api_key: $opennotebook_api_key, wordpress_api_key: $wordpress_api_key, linkwarden_api_key: $linkwarden_api_key, hedgedoc_api_key: $hedgedoc_api_key, invoiceshelf_api_key: $invoiceshelf_api_key, mealie_api_key: $mealie_api_key, presenton_api_key: $presenton_api_key}')
     curl -s -X POST "https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/api/v1/tools/id/mcpkeyvault_tool/valves/user/update" -H "Authorization: Bearer $OPENWEBUI_PU_API_KEY" -H "Content-Type: application/json" -d "$jsonbody" > /dev/null 2>&1
   fi
   echo "Sending Vaultwarden template to ${addPUUID}@${HOMESERVER_DOMAIN}..."
@@ -30377,7 +30424,7 @@ function addPrimaryUserNextcloud()
     return
   fi
   docker exec -u www-data nextcloud-app php occ mail:account:create "$addUserNext_uid" "$addUserNext_proper" "$addUserNext_email" "mailu-front" 993 ssl "$addUserNext_email" "$addUserNext_password" "mailu-front" 465 ssl "$addUserNext_email" "$addUserNext_password" > /dev/null 2>&1
-  export NC_PASS="$addUserNext_password" newuser_nextcloud_app_password=$(sudo -E -u www-data php /var/www/nextcloud/occ user:add-app-password --password-from-env "$addUserNext_uid" | grep "app password:" | awk '{print $3}')
+  newuser_nextcloud_app_password=$(docker exec -u www-data nextcloud-app sh -c "export NC_PASS=$addUserNext_password && php occ user:auth-tokens:add --password-from-env $addUserNext_uid | tail -n 1")
 }
 
 function addPrimaryUserPaperless()
@@ -30506,6 +30553,173 @@ function addPrimaryUserAutoKB()
   akbBody="${akbRes%$'\n'*}"
   [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target update failed: $akbBody" >&2; exit 1; }
   echo "Done."
+}
+
+function addPrimaryUserHedgeDoc()
+{
+  local username="$1"
+  local display_name="$2"
+  local email="$3"
+  hd_key_id="$(openssl rand 8 | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')"
+  hd_secret="$(openssl rand 64 | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')"
+  hd_full_token="hd2.${hd_key_id}.${hd_secret}"
+  dtNow="$(date -u '+%Y-%m-%d %H:%M:%S.000')"
+  docker exec -i \
+    -e "PGPASSWORD=${HEDGEDOC_DATABASE_USER_PASSWORD}" \
+    "hedgedoc-db" \
+    psql -q -v ON_ERROR_STOP=1 \
+      -U "${HEDGEDOC_DATABASE_USER}" \
+      -d "${HEDGEDOC_DATABASE_NAME}" \
+      -v v_username="$username" \
+      -v v_uid="$username" \
+      -v v_display_name="$display_name" \
+      -v v_email="$email" \
+      -v v_label="MCP" \
+      -v v_key_id="$hd_key_id" \
+      -v v_secret_hash="$(printf '%s' "$hd_secret" | openssl dgst -sha512 | awk '{print $2}')" \
+      -v v_now="$dtNow" \
+      -v v_valid="$(date -u -d "+88 year" '+%Y-%m-%d %H:%M:%S.000')" \
+      -v v_provider_id="hshq" >/dev/null <<'SQL'
+BEGIN;
+
+INSERT INTO "user" (username, display_name, photo_url, email, author_style, guest_uuid, created_at)
+VALUES (:'v_username', :'v_display_name', NULL, NULLIF(:'v_email', ''), 1, NULL, :'v_now')
+ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username;
+
+INSERT INTO identity (user_id, provider_type, provider_identifier, provider_user_id, password_hash, created_at, updated_at)
+SELECT id, 'ldap', :'v_provider_id', :'v_uid', NULL, :'v_now', :'v_now'
+FROM "user"
+WHERE username = :'v_username'
+ON CONFLICT (user_id, provider_type, provider_identifier)
+DO UPDATE SET provider_user_id = EXCLUDED.provider_user_id, updated_at = EXCLUDED.updated_at;
+
+DELETE FROM api_token
+WHERE user_id = (SELECT id FROM "user" WHERE username = :'v_username')
+  AND label = :'v_label';
+
+INSERT INTO api_token (id, user_id, label, secret_hash, valid_until, created_at, last_used_at)
+VALUES (:'v_key_id',
+        (SELECT id FROM "user" WHERE username = :'v_username'),
+        :'v_label',
+        :'v_secret_hash',
+        :'v_valid',
+        :'v_now',
+        NULL);
+
+COMMIT;
+SQL
+
+  printf '%s\n' "$full_token"
+}
+
+function addPrimaryUserMealie()
+{
+  mle_username="$1"
+  mle_full_name="$2"
+  mle_email="$3"
+  mle_is_admin="$4"
+  if [ -z "$mle_is_admin" ]; then
+    mle_is_admin=false
+  fi
+  docker exec -i -e USERNAME="$mle_username" -e EMAIL="$mle_email" -e ADMIN="$mle_is_admin" -e FULLNAME="$mle_full_name" mealie-app python - <<'PYEOF'
+import os
+import sys
+from datetime import timedelta
+
+from sqlalchemy import select
+
+from mealie.core.security import create_access_token
+from mealie.db.db_setup import session_context
+from mealie.db.models.users.users import AuthMethod, LongLiveToken
+from mealie.repos.all_repositories import get_repositories
+
+username = os.environ["USERNAME"]
+email = os.environ["EMAIL"]
+admin = os.environ.get("ADMIN", "false").lower() in ("1", "true", "yes", "y")
+full_name = os.environ["FULLNAME"]
+
+with session_context() as session:
+    repos = get_repositories(session, group_id=None, household_id=None)
+
+    user = repos.users.get_by_username(username)
+    if user is None:
+        user = repos.users.create(
+            {
+                "username": username,
+                "password": "LDAP",
+                "full_name": full_name,
+                "email": email,
+                "admin": admin,
+                "auth_method": AuthMethod.LDAP,
+            }
+        )
+
+    existing = session.scalars(
+        select(LongLiveToken).where(LongLiveToken.user_id == user.id, LongLiveToken.name == "MCP")
+    ).first()
+    if existing is not None:
+        print(existing.token)
+        sys.exit(0)
+
+    token = create_access_token(
+        {"long_token": True, "id": str(user.id), "name": "MCP", "integration_id": "generic"},
+        timedelta(days=32120),
+    )
+    session.add(LongLiveToken(name="MCP", token=token, user_id=user.id))
+    session.commit()
+    print(token)
+PYEOF
+}
+
+function addPrimaryUserPresenton()
+{
+  pres_username="$1"
+  pres_password="$2"
+  docker exec -i -w /app/servers/fastapi -e USERNAME="$pres_username" -e PASSWORD="$pres_password" presenton-app python - <<'PYEOF'
+import asyncio
+import os
+import sys
+from sqlalchemy import select
+from api.v1.auth.users import PASSWORD_HELPER
+from models.sql.access_token import AccessToken
+from models.sql.user import User
+from services.database import async_session_maker
+
+async def main() -> None:
+    username = os.environ["USERNAME"].strip()
+    password = os.environ["PASSWORD"]
+    admin = True
+    async with async_session_maker() as session:
+        user = await session.scalar(select(User).where(User.username == username))
+        if user is None:
+            user = User(
+                username=username,
+                hashed_password=PASSWORD_HELPER.hash(password),
+                is_active=True,
+                is_verified=True,
+                is_superuser=admin,
+                auth_version=1,
+            )
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+        existing = (
+            await session.scalars(
+                select(AccessToken)
+                .where(AccessToken.user_id == user.id)
+                .order_by(AccessToken.created_at.desc())
+            )
+        ).all()
+        if existing:
+            print(existing[0].token)
+            sys.exit(0)
+        key = AccessToken(user_id=user.id)
+        session.add(key)
+        await session.commit()
+        await session.refresh(key)
+        print(key.token)
+asyncio.run(main())
+PYEOF
 }
 
 function addPrimaryGroupMCPServerOpenWebUI()
@@ -30969,7 +31183,7 @@ function loadPinnedDockerImages()
   IMG_WIKIJS_MCP=ghcr.io/homeserverhq/wikijs-mcp:v2
   IMG_WIREGUARD=mirror.gcr.io/linuxserver/wireguard:1.0.20250521-r0-ls93
   IMG_WORDPRESS_APP=mirror.gcr.io/wordpress:php8.5-apache
-  IMG_WORDPRESS_CLI=mirror.gcr.io/wordpress:cli-php8.3
+  IMG_WORDPRESS_CLI=mirror.gcr.io/wordpress:cli-php8.5
   IMG_WORDPRESS_MCP=ghcr.io/homeserverhq/wordpress-mcp:v2
   IMG_YAMTRACK_APP=ghcr.io/fuzzygrim/yamtrack:0.24.8
   IMG_ZAMMAD=ghcr.io/zammad/zammad:6.5.2-49
@@ -31197,7 +31411,7 @@ function getScriptStackVersion()
     netdata)
       echo "v7" ;;
     linkwarden)
-      echo "v10" ;;
+      echo "v11" ;;
     stirlingpdf)
       echo "v7" ;;
     bar-assistant)
@@ -32171,14 +32385,6 @@ MATRIX_DATABASE_READONLYUSER=
 MATRIX_DATABASE_READONLYUSER_PASSWORD=
 # Matrix (Service Details) END
 
-# Wiki.js (Service Details) BEGIN
-WIKIJS_DATABASE_NAME=
-WIKIJS_DATABASE_USER=
-WIKIJS_DATABASE_USER_PASSWORD=
-WIKIJS_DATABASE_READONLYUSER=
-WIKIJS_DATABASE_READONLYUSER_PASSWORD=
-# Wiki.js (Service Details) END
-
 # Duplicati (Service Details) BEGIN
 DUPLICATI_ADMIN_PASSWORD=
 DUPLICATI_SETTINGS_ENCRYPTION_KEY=
@@ -32263,6 +32469,7 @@ WORDPRESS_DATABASE_USER=
 WORDPRESS_DATABASE_USER_PASSWORD=
 WORDPRESS_DATABASE_READONLYUSER=
 WORDPRESS_DATABASE_READONLYUSER_PASSWORD=
+WORDPRESS_APP_PASSWORD=
 # Wordpress (Service Details) END
 
 # Ghost (Service Details) BEGIN
@@ -32279,6 +32486,12 @@ WIKIJS_INIT_ENV="true"
 WIKIJS_ADMIN_USERNAME=
 WIKIJS_ADMIN_EMAIL_ADDRESS=
 WIKIJS_ADMIN_PASSWORD=
+WIKIJS_ADMIN_API_KEY=
+WIKIJS_DATABASE_NAME=
+WIKIJS_DATABASE_USER=
+WIKIJS_DATABASE_USER_PASSWORD=
+WIKIJS_DATABASE_READONLYUSER=
+WIKIJS_DATABASE_READONLYUSER_PASSWORD=
 # Wikijs (Service Details) END
 
 # PeerTube (Service Details) BEGIN
@@ -32497,6 +32710,7 @@ KEILA_INIT_ENV="true"
 KEILA_ADMIN_USERNAME=
 KEILA_ADMIN_EMAIL_ADDRESS=
 KEILA_ADMIN_PASSWORD=
+KEILA_ADMIN_API_KEY=
 KEILA_DATABASE_NAME=
 KEILA_DATABASE_USER=
 KEILA_DATABASE_USER_PASSWORD=
@@ -32937,6 +33151,7 @@ TWENTY_INIT_ENV="true"
 TWENTY_ADMIN_USERNAME=
 TWENTY_ADMIN_EMAIL_ADDRESS=
 TWENTY_ADMIN_PASSWORD=
+TWENTY_ADMIN_API_KEY=
 TWENTY_DATABASE_NAME=
 TWENTY_DATABASE_USER=
 TWENTY_DATABASE_USER_PASSWORD=
@@ -33075,6 +33290,7 @@ INVOICESHELF_INIT_ENV="true"
 INVOICESHELF_ADMIN_USERNAME=
 INVOICESHELF_ADMIN_EMAIL_ADDRESS=
 INVOICESHELF_ADMIN_PASSWORD=
+INVOICESHELF_ADMIN_API_KEY=
 INVOICESHELF_DATABASE_NAME=
 INVOICESHELF_DATABASE_USER=
 INVOICESHELF_DATABASE_USER_PASSWORD=
@@ -33998,6 +34214,7 @@ HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
 HOMESERVER_DOMAIN="$HOMESERVER_DOMAIN"
 HOMESERVER_NAME="$HOMESERVER_NAME"
 HOMESERVER_ABBREV="$HOMESERVER_ABBREV"
+HOMESERVER_CURRENCY_CODE="$HOMESERVER_CURRENCY_CODE"
 HSHQ_APP_TYPE="$HSHQ_APP_TYPE"
 EMAIL_ADMIN_EMAIL_ADDRESS=
 EXT_DOMAIN_PREFIX=
@@ -43601,7 +43818,7 @@ function performPostStackRemoval()
 function checkAddAllNewSvcs()
 {
   checkAddServiceToConfig "clientdns-user1" "CLIENTDNS_USER1_ADMIN_USERNAME=,CLIENTDNS_USER1_ADMIN_PASSWORD=" $CONFIG_FILE false
-  checkAddServiceToConfig "Wikijs" "WIKIJS_INIT_ENV=false,WIKIJS_ADMIN_USERNAME=,WIKIJS_ADMIN_EMAIL_ADDRESS=,WIKIJS_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Wikijs" "WIKIJS_INIT_ENV=false,WIKIJS_ADMIN_USERNAME=,WIKIJS_ADMIN_EMAIL_ADDRESS=,WIKIJS_ADMIN_PASSWORD=,WIKIJS_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "Collabora" "COLLABORA_ADMIN_USERNAME=,COLLABORA_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Invidious" "INVIDIOUS_DATABASE_NAME=,INVIDIOUS_DATABASE_USER=,INVIDIOUS_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Mealie" "MEALIE_ADMIN_USERNAME=,MEALIE_ADMIN_EMAIL_ADDRESS=,MEALIE_ADMIN_PASSWORD=,MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
@@ -43611,7 +43828,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Linkwarden" "LINKWARDEN_DATABASE_NAME=,LINKWARDEN_DATABASE_USER=,LINKWARDEN_DATABASE_USER_PASSWORD=,LINKWARDEN_NEXTAUTH_SECRET=,LINKWARDEN_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "FreshRSS" "FRESHRSS_INIT_ENV=false,FRESHRSS_ADMIN_USERNAME=,FRESHRSS_ADMIN_PASSWORD=,FRESHRSS_ADMIN_EMAIL_ADDRESS=,FRESHRSS_DATABASE_NAME=,FRESHRSS_DATABASE_USER=,FRESHRSS_DATABASE_USER_PASSWORD=,FRESHRSS_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "Bar Assistant" "BARASSISTANT_REDIS_PASSWORD=,BARASSISTANT_MEILISEARCH_KEY=,BARASSISTANT_API_KEY=,BARASSISTANT_MCP_API_KEY=" $CONFIG_FILE false
-  checkAddServiceToConfig "Keila" "KEILA_INIT_ENV=false,KEILA_ADMIN_USERNAME=,KEILA_ADMIN_EMAIL_ADDRESS=,KEILA_ADMIN_PASSWORD=,KEILA_DATABASE_NAME=,KEILA_DATABASE_USER=,KEILA_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Keila" "KEILA_INIT_ENV=false,KEILA_ADMIN_USERNAME=,KEILA_ADMIN_EMAIL_ADDRESS=,KEILA_ADMIN_PASSWORD=,KEILA_DATABASE_NAME=,KEILA_DATABASE_USER=,KEILA_DATABASE_USER_PASSWORD=,KEILA_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "Wallabag" "WALLABAG_INIT_ENV=false,WALLABAG_ADMIN_USERNAME=,WALLABAG_ADMIN_EMAIL_ADDRESS=,WALLABAG_ADMIN_PASSWORD=,WALLABAG_DATABASE_NAME=,WALLABAG_DATABASE_USER=,WALLABAG_DATABASE_USER_PASSWORD=,WALLABAG_ENV_SECRET=,WALLABAG_REDIS_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Jupyter" "JUPYTER_INIT_ENV=false,JUPYTER_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Paperless" "PAPERLESS_INIT_ENV=false,PAPERLESS_SECRET_KEY=,PAPERLESS_CLIENT_SECRET=,PAPERLESS_REDIS_PASSWORD=,PAPERLESS_ADMIN_USERNAME=,PAPERLESS_ADMIN_EMAIL_ADDRESS=,PAPERLESS_ADMIN_PASSWORD=,PAPERLESS_DATABASE_NAME=,PAPERLESS_DATABASE_USER=,PAPERLESS_DATABASE_USER_PASSWORD=,PAPERLESS_AI_ADMIN_USERNAME=,PAPERLESS_AI_ADMIN_PASSWORD=,PAPERLESS_AI_API_KEY=,PAPERLESS_AI_JWT_SECRET=,PAPERLESS_GPT_ADMIN_USERNAME=,PAPERLESS_GPT_ADMIN_PASSWORD=,PAPERLESS_API_TOKEN=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=,PAPERLESS_KNOWLEDGEBASE_TAG_NAME=,PAPERLESS_KNOWLEDGEBASE_TAG_ID=,PAPERLESS_TRANSCRIPTION_TAG_NAME=,PAPERLESS_TRANSCRIPTION_TAG_ID=" $CONFIG_FILE false
@@ -43650,7 +43867,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "MintHCM" "MINTHCM_INIT_ENV=false,MINTHCM_ADMIN_USERNAME=,MINTHCM_ADMIN_PASSWORD=,MINTHCM_ADMIN_EMAIL_ADDRESS=,MINTHCM_DATABASE_NAME=,MINTHCM_DATABASE_ROOT_PASSWORD=,MINTHCM_DATABASE_USER=,MINTHCM_DATABASE_USER_PASSWORD=,MINTHCM_ES_USER=,MINTHCM_ES_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "CloudBeaver" "CLOUDBEAVER_INIT_ENV=false,CLOUDBEAVER_ADMIN_USERNAME=,CLOUDBEAVER_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "DbGate" "DBGATE_INIT_ENV=false,DBGATE_ADMIN_USERNAME=,DBGATE_ADMIN_PASSWORD=" $CONFIG_FILE false
-  checkAddServiceToConfig "Twenty" "TWENTY_INIT_ENV=false,TWENTY_ADMIN_USERNAME=,TWENTY_ADMIN_EMAIL_ADDRESS=,TWENTY_ADMIN_PASSWORD=,TWENTY_DATABASE_NAME=,TWENTY_DATABASE_USER=,TWENTY_DATABASE_USER_PASSWORD=,TWENTY_REDIS_PASSWORD=,TWENTY_MINIO_KEY=,TWENTY_MINIO_SECRET=,TWENTY_APP_SECRET=,TWENTY_ENCRYPTION_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "Twenty" "TWENTY_INIT_ENV=false,TWENTY_ADMIN_USERNAME=,TWENTY_ADMIN_EMAIL_ADDRESS=,TWENTY_ADMIN_PASSWORD=,TWENTY_DATABASE_NAME=,TWENTY_DATABASE_USER=,TWENTY_DATABASE_USER_PASSWORD=,TWENTY_REDIS_PASSWORD=,TWENTY_MINIO_KEY=,TWENTY_MINIO_SECRET=,TWENTY_APP_SECRET=,TWENTY_ENCRYPTION_KEY=,TWENTY_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "Odoo" "ODOO_INIT_ENV=false,ODOO_ADMIN_USERNAME=,ODOO_ADMIN_EMAIL_ADDRESS=,ODOO_ADMIN_PASSWORD=,ODOO_DATABASE_NAME=,ODOO_DATABASE_USER=,ODOO_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Calcom" "CALCOM_INIT_ENV=false,CALCOM_ADMIN_USERNAME=,CALCOM_ADMIN_EMAIL_ADDRESS=,CALCOM_ADMIN_PASSWORD=,CALCOM_DATABASE_NAME=,CALCOM_DATABASE_USER=,CALCOM_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Rallly" "RALLLY_INIT_ENV=false,RALLLY_ADMIN_USERNAME=,RALLLY_ADMIN_EMAIL_ADDRESS=,RALLLY_ADMIN_PASSWORD=,RALLLY_DATABASE_NAME=,RALLLY_DATABASE_USER=,RALLLY_DATABASE_USER_PASSWORD=,RALLLY_MINIO_KEY=,RALLLY_MINIO_SECRET=" $CONFIG_FILE false
@@ -43659,7 +43876,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Zammad" "ZAMMAD_INIT_ENV=false,ZAMMAD_ADMIN_USERNAME=,ZAMMAD_ADMIN_EMAIL_ADDRESS=,ZAMMAD_ADMIN_PASSWORD=,ZAMMAD_DATABASE_NAME=,ZAMMAD_DATABASE_ROOT_PASSWORD=,ZAMMAD_DATABASE_USER=,ZAMMAD_DATABASE_USER_PASSWORD=,ZAMMAD_REDIS_PASSWORD=,ZAMMAD_ES_USERNAME=,ZAMMAD_ES_PASSWORD=,ZAMMAD_MINIO_KEY=,ZAMMAD_MINIO_SECRET=,ZAMMAD_DEDICATED_EMAIL_USERNAME=,ZAMMAD_DEDICATED_EMAIL_ADDRESS=,ZAMMAD_DEDICATED_EMAIL_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Zulip" "ZULIP_INIT_ENV=false,ZULIP_ADMIN_USERNAME=,ZULIP_ADMIN_EMAIL_ADDRESS=,ZULIP_ADMIN_PASSWORD=,ZULIP_DATABASE_NAME=,ZULIP_DATABASE_USER=,ZULIP_DATABASE_USER_PASSWORD=,ZULIP_REDIS_PASSWORD=,ZULIP_RABBITMQ_USERNAME=,ZULIP_RABBITMQ_PASSWORD=,ZULIP_MEMCACHE_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "KillBill" "KILLBILL_INIT_ENV=false,KILLBILL_ADMIN_USERNAME=,KILLBILL_ADMIN_EMAIL_ADDRESS=,KILLBILL_ADMIN_PASSWORD=,KILLBILL_DATABASE_USER=,KILLBILL_DATABASE_USER_PASSWORD=,KILLBILL_KB_DATABASE_NAME=,KILLBILL_KAUI_DATABASE_NAME=,KILLBILL_REDIS_PASSWORD=,KILLBILL_API_KEY=,KILLBILL_API_SECRET=" $CONFIG_FILE false
-  checkAddServiceToConfig "InvoiceShelf" "INVOICESHELF_INIT_ENV=false,INVOICESHELF_ADMIN_USERNAME=,INVOICESHELF_ADMIN_EMAIL_ADDRESS=,INVOICESHELF_ADMIN_PASSWORD=,INVOICESHELF_DATABASE_NAME=,INVOICESHELF_DATABASE_USER=,INVOICESHELF_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "InvoiceShelf" "INVOICESHELF_INIT_ENV=false,INVOICESHELF_ADMIN_USERNAME=,INVOICESHELF_ADMIN_EMAIL_ADDRESS=,INVOICESHELF_ADMIN_PASSWORD=,INVOICESHELF_ADMIN_API_KEY=,INVOICESHELF_DATABASE_NAME=,INVOICESHELF_DATABASE_USER=,INVOICESHELF_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "InvoiceNinja" "INVOICENINJA_INIT_ENV=false,INVOICENINJA_ADMIN_USERNAME=,INVOICENINJA_ADMIN_EMAIL_ADDRESS=,INVOICENINJA_ADMIN_PASSWORD=,INVOICENINJA_DATABASE_NAME=,INVOICENINJA_DATABASE_ROOT_PASSWORD=,INVOICENINJA_DATABASE_USER=,INVOICENINJA_DATABASE_USER_PASSWORD=,INVOICENINJA_REDIS_PASSWORD=,INVOICENINJA_MINIO_KEY=,INVOICENINJA_MINIO_SECRET=,INVOICENINJA_API_SECRET=,INVOICENINJA_UPDATE_SECRET=,INVOICENINJA_WEBCRON_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "Dolibarr" "DOLIBARR_INIT_ENV=false,DOLIBARR_ADMIN_USERNAME=,DOLIBARR_ADMIN_EMAIL_ADDRESS=,DOLIBARR_ADMIN_PASSWORD=,DOLIBARR_DATABASE_NAME=,DOLIBARR_DATABASE_ROOT_PASSWORD=,DOLIBARR_DATABASE_USER=,DOLIBARR_DATABASE_USER_PASSWORD=,DOLIBARR_REDIS_PASSWORD=,DOLIBARR_CRON_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "n8n" "N8N_INIT_ENV=false,N8N_ADMIN_USERNAME=,N8N_ADMIN_EMAIL_ADDRESS=,N8N_ADMIN_PASSWORD=,N8N_DATABASE_NAME=,N8N_DATABASE_USER=,N8N_DATABASE_USER_PASSWORD=,N8N_REDIS_PASSWORD=,N8N_ENCRYPTION_KEY=" $CONFIG_FILE false
@@ -43777,6 +43994,11 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Mailu" "EMAIL_SHARED_USERNAME=,EMAIL_SHARED_PASSWORD=,EMAIL_SHARED_EMAIL_ADDRESS=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "OpenWebUI" "OPENWEBUI_ADMIN_UUID=,OPENWEBUI_PRIMARYUSERS_UUID=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "AutoKB" "AUTOKB_SHARED_OWUI_TARGET_ID=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Wordpress" "WORDPRESS_APP_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "InvoiceShelf" "INVOICESHELF_ADMIN_API_KEY=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Keila" "KEILA_ADMIN_API_KEY=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Wikijs" "WIKIJS_ADMIN_API_KEY="  $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Twenty" "TWENTY_ADMIN_API_KEY=" $CONFIG_FILE false
   initServicesCredentials
 }
 
@@ -54300,15 +54522,7 @@ function installWikijs()
     insertEnableSvcAll wikijs "$FMLNAME_WIKIJS" $USERTYPE_WIKIJS "https://$SUB_WIKIJS.$HOMESERVER_DOMAIN" "wikijs.png" "$(getHeimdallOrderFromSub $SUB_WIKIJS $USERTYPE_WIKIJS)"
     restartAllCaddyContainers
   fi
-  curl -X POST https://$SUB_WIKIJS.$HOMESERVER_DOMAIN/finalize \
-  -H 'Content-Type: application/json' \
-  -d "{
-    \"adminEmail\": \"$WIKIJS_ADMIN_EMAIL_ADDRESS\",
-    \"adminPassword\": \"$WIKIJS_ADMIN_PASSWORD\",
-    \"adminPasswordConfirm\": \"$WIKIJS_ADMIN_PASSWORD\",
-    \"siteUrl\": \"https://$SUB_WIKIJS.$HOMESERVER_DOMAIN\",
-    \"telemetry\": false
-  }" > /dev/null 2>&1
+  initializeSiteWikijs
 }
 
 function outputConfigWikijs()
@@ -54429,6 +54643,57 @@ ALLOW_ALL_AGGREGATE=false
 IS_STATEFUL=false
 WIKIJS_PUBLIC_URL=https://$SUB_WIKIJS.$HOMESERVER_DOMAIN
 EOFWJ
+}
+
+function initializeSiteWikijs()
+{
+  curl -X POST https://$SUB_WIKIJS.$HOMESERVER_DOMAIN/finalize \
+  -H 'Content-Type: application/json' \
+  -d "{
+    \"adminEmail\": \"$WIKIJS_ADMIN_EMAIL_ADDRESS\",
+    \"adminPassword\": \"$WIKIJS_ADMIN_PASSWORD\",
+    \"adminPasswordConfirm\": \"$WIKIJS_ADMIN_PASSWORD\",
+    \"siteUrl\": \"https://$SUB_WIKIJS.$HOMESERVER_DOMAIN\",
+    \"telemetry\": false
+  }" > /dev/null 2>&1
+    local jq_node='let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).data.authentication.login.jwt)}catch(e){process.exit(1)}})'
+    local resp jwt
+    resp=$(docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
+        -d "{\"query\":\"mutation { authentication { login(strategy: \\\"local\\\", username: \\\"$WIKIJS_ADMIN_EMAIL_ADDRESS\\\", password: \\\"$WIKIJS_ADMIN_PASSWORD\\\") { jwt responseResult { succeeded } } } }\"}")
+    jwt=$(printf '%s' "$resp" | node -e "$jq_node")
+    if [ -z "$jwt" ]; then
+        echo "ERROR: login failed" >&2
+        return 1
+    fi
+    docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
+        -H "Authorization: Bearer $jwt" \
+        -d '{"query":"mutation { authentication { setApiState(enabled: true) { responseResult { succeeded } } } }"}' >/dev/null 2>&1
+    resp=$(docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
+        -H "Authorization: Bearer $jwt" \
+        -d '{"query":"query { authentication { apiKeys { id name isRevoked expiration } } }"}')
+    local id dtNow
+    dtNow=$(date -u +%Y-%m-%dT%H:%M:%S)
+    id=$(printf '%s' "$resp" | node -e '
+let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+  const now=process.argv[1]||"";
+  try{
+    const ks=(JSON.parse(s).data.authentication.apiKeys||[]);
+    const k=ks.find(x=>!x.isRevoked && (!x.expiration || String(x.expiration)>=now));
+    console.log(k?k.id:"");
+  }catch(e){process.exit(1)}
+});' "$dtNow")
+  if [ -n "$id" ]; then
+    docker exec wikijs-db psql -U wikijs-user -d wikijsdb -tA -c "select key from \"apiKeys\" where id = $id"
+    return
+  fi
+  resp=$(docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
+      -H "Authorization: Bearer $jwt" \
+      -d "{\"query\":\"mutation { authentication { createApiKey(name: \\\"MCP\\\", expiration: \\\"88y\\\", fullAccess: true) { key responseResult { succeeded message } } } }\"}")
+  WIKIJS_ADMIN_API_KEY=$(printf '%s' "$resp" | node -e '
+let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+  try{console.log(JSON.parse(s).data.authentication.createApiKey.key||"")}catch(e){process.exit(1)}
+});')
+  updateConfigVar WIKIJS_ADMIN_API_KEY $WIKIJS_ADMIN_API_KEY
 }
 
 function performUpdateWikijs()
@@ -58295,6 +58560,8 @@ function installWordPress()
     echo "WordPress installation failed. Please remove the stack and try again."
     return 1
   fi
+  WORDPRESS_APP_PASSWORD=$(docker run --user www-data --rm --name wordpress-cli --hostname wordpress-cli -e TZ="$TZ" --env-file wpstack.env -v "/etc/localtime:/etc/localtime:ro" -v "/etc/timezone:/etc/timezone:ro" -v "/etc/ssl/certs:/etc/ssl/certs:ro" -v "/usr/share/ca-certificates:/usr/share/ca-certificates:ro" -v "/usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro" -v "$HSHQ_STACKS_DIR/wordpress/web:/var/www/html" --restart no --network dock-dbs $(getScriptImageByContainerName wordpress-cli) sh -c "wp user application-password create $WORDPRESS_ADMIN_USERNAME testapp --porcelain")
+  updateConfigVar WORDPRESS_APP_PASSWORD $WORDPRESS_APP_PASSWORD
   addReadOnlyUserToDatabase Wordpress mysql wordpress-db $WORDPRESS_DATABASE_NAME root $WORDPRESS_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/wordpress/dbexport $WORDPRESS_DATABASE_READONLYUSER $WORDPRESS_DATABASE_READONLYUSER_PASSWORD
   addMCPServerLiteLLM "wordpress" "wp" "http://wordpress-mcp:80/mcp" http none ""
   updateStackEnv wordpress mfWordpressAddExtraConfig
@@ -66334,6 +66601,7 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - v-linkwarden-app:/data/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/linkwarden/provision-user.mjs:/data/data/provision-user.mjs
 
   linkwarden-mcp:
     image: $(getScriptImageByContainerName linkwarden-mcp)
@@ -66410,6 +66678,7 @@ EOFDZ
         public: false
         authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
         consent_mode: implicit
+        claims_policy: cp_legacy
         scopes:
           - openid
           - groups
@@ -66419,6 +66688,119 @@ EOFDZ
           - https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN/api/v1/auth/callback/authelia
         userinfo_signed_response_alg: none
 # Authelia OIDC Client linkwarden END
+EOFIM
+  outputUserProvisionLinkwarden
+}
+
+function outputUserProvisionLinkwarden()
+{
+  cat <<EOFIM > $HSHQ_STACKS_DIR/linkwarden/provision-user.mjs
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const { PrismaClient } = require("@prisma/client");
+const { encode, decode } = require("next-auth/jwt");
+
+const [emailArg, nameArg, tokenNameArg] = process.argv.slice(2);
+
+const email = (emailArg || "").trim().toLowerCase();
+const name =
+  nameArg && !["", "_", "null", "none"].includes(nameArg.trim().toLowerCase())
+    ? nameArg.trim()
+    : undefined;
+const tokenName = (tokenNameArg || "MCP").trim() || "MCP";
+
+const secret = process.env.NEXTAUTH_SECRET;
+
+function usage() {
+  console.error(
+    `Usage: node provision-user.mjs <email> [name] [tokenName]\n` +
+      `  email     (required) Authelia user identifier.\n` +
+      `  name      (optional) Display name; use "_" to skip.\n` +
+      `  tokenName (optional) API token name, default "MCP".`
+  );
+}
+
+if (!email) {
+  usage();
+  process.exit(1);
+}
+if (!secret) {
+  console.error("NEXTAUTH_SECRET is not set in this environment.");
+  process.exit(1);
+}
+
+const prisma = new PrismaClient();
+
+try {
+  // 1) Upsert the user (OIDC-shaped, mirroring apps/web/pages/api/v1/auth/[...nextauth].ts)
+  let user = await prisma.user.findFirst({ where: { email } });
+  if (!user) {
+    const username = "user" + Math.round(Math.random() * 1000000000);
+    user = await prisma.user.create({
+      data: {
+        email,
+        name,
+        emailVerified: new Date(),
+        username,
+      },
+    });
+  }
+  const userId = user.id;
+
+  const now = Math.floor(Date.now() / 1000);
+  const neverSeconds = 73050 * 24 * 60 * 60; // "never" == 200y.
+
+  // 2) Reuse an existing token by name if present (re-mint a valid key from its jti).
+  const existing = await prisma.accessToken.findFirst({
+    where: { name: tokenName, userId },
+  });
+  if (existing) {
+    // If it was revoked, un-revoke so the re-minted key works.
+    if (existing.revoked) {
+      await prisma.accessToken.update({
+        where: { id: existing.id },
+        data: { revoked: false },
+      });
+    }
+    const token = await encode({
+      token: { id: userId, iat: now, exp: now + neverSeconds, jti: existing.token },
+      secret,
+    });
+    console.log(token);
+    process.exit(0);
+  }
+
+  // 3) Mint a new API key ("never" == 200y, matching TokenExpiry.never in the UI)
+  const expires = new Date(now * 1000 + neverSeconds * 1000);
+  const token = await encode({
+    token: { id: userId },
+    maxAge: neverSeconds,
+    secret,
+  });
+
+  const tokenBody = await decode({ token, secret });
+  const jti = tokenBody?.jti;
+  if (typeof jti !== "string") {
+    console.error("Failed to derive token identifier (jti).");
+    process.exit(3);
+  }
+
+  // 4) Persist the access token row (token column stores the jti, as the app expects)
+  await prisma.accessToken.create({
+    data: {
+      name: tokenName,
+      userId,
+      token: jti,
+      expires,
+      revoked: false,
+    },
+  });
+
+  console.log(token);
+} finally {
+  await prisma.\$disconnect();
+}
 EOFIM
 }
 
@@ -66509,7 +66891,17 @@ function performUpdateLinkwarden()
       return
     ;;
     10)
-      newVer=v10
+      newVer=v11
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.15.1,ghcr.io/homeserverhq/linkwarden-mcp:v2
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.15.1,ghcr.io/linkwarden/linkwarden:v2.15.1"
+      image_update_map[2]="ghcr.io/homeserverhq/linkwarden-mcp:v2,ghcr.io/homeserverhq/linkwarden-mcp:v2"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfLinkwardenV11Update
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    11)
+      newVer=v11
       curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.15.1,ghcr.io/homeserverhq/linkwarden-mcp:v2
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.15.1,ghcr.io/linkwarden/linkwarden:v2.15.1"
@@ -66667,6 +67059,137 @@ MCP_SERVER_PORT=80
 ALLOW_ALL_AGGREGATE=false
 IS_STATEFUL=false
 LINKWARDEN_PUBLIC_URL=https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN
+EOFDZ
+}
+
+function mfLinkwardenV11Update()
+{
+  cat <<EOFIM > $HOME/linkwarden.oidc
+# Authelia OIDC Client linkwarden BEGIN
+      - client_id: linkwarden
+        client_name: Linkwarden
+        client_secret: '$LINKWARDEN_OIDC_CLIENT_SECRET_HASH'
+        public: false
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
+        consent_mode: implicit
+        claims_policy: cp_legacy
+        scopes:
+          - openid
+          - groups
+          - email
+          - profile
+        redirect_uris:
+          - https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN/api/v1/auth/callback/authelia
+        userinfo_signed_response_alg: none
+# Authelia OIDC Client linkwarden END
+EOFIM
+  oidcBlock=$(cat $HOME/linkwarden.oidc)
+  rm -f $HOME/linkwarden.oidc
+  insertOIDCClientAuthelia linkwarden "$oidcBlock"
+  outputUserProvisionLinkwarden
+  cat <<EOFDZ > $HOME/linkwarden-compose.yml
+$STACK_VERSION_PREFIX linkwarden v11
+
+services:
+  linkwarden-db:
+    image: mirror.gcr.io/postgres:15.0-bullseye
+    container_name: linkwarden-db
+    hostname: linkwarden-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-linkwarden-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/linkwarden/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/linkwarden/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.linkwarden-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.linkwarden-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.linkwarden-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.linkwarden-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.linkwarden-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.linkwarden-hourly-db.email-from=Linkwarden Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.linkwarden-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.linkwarden-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.linkwarden-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.linkwarden-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.linkwarden-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.linkwarden-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.linkwarden-monthly-db.email-from=Linkwarden Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.linkwarden-monthly-db.mail-only-on-error=false"
+
+  linkwarden-app:
+    image: ghcr.io/linkwarden/linkwarden:v2.15.1
+    container_name: linkwarden-app
+    hostname: linkwarden-app
+    restart: unless-stopped
+    env_file: stack.env
+    depends_on:
+      - linkwarden-db
+    networks:
+      - int-linkwarden-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-linkwarden-app:/data/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/linkwarden/provision-user.mjs:/data/data/provision-user.mjs
+
+  linkwarden-mcp:
+    image: ghcr.io/homeserverhq/linkwarden-mcp:v2
+    container_name: linkwarden-mcp
+    hostname: linkwarden-mcp
+    restart: unless-stopped
+    env_file: stack.env
+    networks:
+      - int-linkwarden-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+volumes:
+  v-linkwarden-app:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/linkwarden/app
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-linkwarden-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
 EOFDZ
 }
 
@@ -68120,6 +68643,8 @@ function installKeila()
     return $retval
   fi
   sleep 3
+  KEILA_ADMIN_API_KEY=$(createProjectKeyKeila "$KEILA_ADMIN_EMAIL_ADDRESS" "$HOMESERVER_NAME")
+  updateConfigVar KEILA_ADMIN_API_KEY "$KEILA_ADMIN_API_KEY"
   addReadOnlyUserToDatabase Keila postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/keila/dbexport $KEILA_DATABASE_READONLYUSER $KEILA_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_KEILA.$HOMESERVER_DOMAIN {\n"
@@ -68136,7 +68661,6 @@ function installKeila()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_KEILA $MANAGETLS_KEILA "$is_integrate_hshq" $NETDEFAULT_KEILA "$inner_block"
   insertSubAuthelia $SUB_KEILA.$HOMESERVER_DOMAIN bypass
-
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll keila "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" "keila.png" "$(getHeimdallOrderFromSub $SUB_KEILA $USERTYPE_KEILA)"
     restartAllCaddyContainers
@@ -68284,6 +68808,31 @@ ALLOW_ALL_AGGREGATE=false
 IS_STATEFUL=false
 KEILA_PUBLIC_URL=$SUB_KEILA.$HOMESERVER_DOMAIN
 EOFBA
+}
+
+function createProjectKeyKeila()
+{
+  kla_username="$1"
+  kla_project_name="$2"
+  local usr project_esc
+  usr=$(printf '%s' "$kla_username" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  project_esc=$(printf '%s' "$kla_project_name" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  local elixir="import Ecto.Query
+admin = Keila.Auth.find_user_by_email(\"$usr\")
+unless admin, do: throw(:admin_not_found)
+project = Keila.Repo.one(from p in Keila.Projects.Project, where: p.name == \"$project_esc\")
+project = case project do
+  %Keila.Projects.Project{} -> project
+  nil -> {:ok, project} = Keila.Projects.create_project(admin.id, %{name: \"$project_esc\"}); project
+end
+Keila.Repo.delete_all(
+  from t in Keila.Auth.Token,
+  where: t.user_id == ^admin.id and t.scope == \"api\" and
+         fragment(\"?->>?\", t.data, \"project_id\") == ^to_string(project.id)
+)
+{:ok, key} = Keila.Auth.create_api_key(admin.id, project.id, \"$project_esc\")
+IO.puts(key.key)"
+  docker exec keila-app /opt/app/bin/keila rpc "$elixir" 2>/dev/null | grep -E '^[A-Za-z0-9_-]{43}$'
 }
 
 function performUpdateKeila()
@@ -83901,10 +84450,11 @@ function installTwenty()
   if [ $retVal -ne 0 ]; then
     return $retVal
   fi
-  sendEmail -s "$FMLNAME_TWENTY Admin Login Info" -b "Below are some generated credentials that you can use to configure $FMLNAME_TWENTY. You will still need to go through the initial onboarding wizard the first time you access the site, and enter the information manually.\n\n$FMLNAME_TWENTY Admin Username: $TWENTY_ADMIN_USERNAME\n$FMLNAME_TWENTY Admin Email: $TWENTY_ADMIN_EMAIL_ADDRESS\n$FMLNAME_TWENTY Admin Password: $TWENTY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  #sendEmail -s "$FMLNAME_TWENTY Admin Login Info" -b "Below are some generated credentials that you can use to configure $FMLNAME_TWENTY. You will still need to go through the initial onboarding wizard the first time you access the site, and enter the information manually.\n\n$FMLNAME_TWENTY Admin Username: $TWENTY_ADMIN_USERNAME\n$FMLNAME_TWENTY Admin Email: $TWENTY_ADMIN_EMAIL_ADDRESS\n$FMLNAME_TWENTY Admin Password: $TWENTY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
   TWENTY_INIT_ENV=true
   updateConfigVar TWENTY_INIT_ENV $TWENTY_INIT_ENV
   sleep 3
+  performOnboardingTwenty
   addReadOnlyUserToDatabase Twenty postgres twenty-db $TWENTY_DATABASE_NAME $TWENTY_DATABASE_USER $TWENTY_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/twenty/dbexport $TWENTY_DATABASE_READONLYUSER $TWENTY_DATABASE_READONLYUSER_PASSWORD
   addMCPServerLiteLLM "twenty" "twt" "http://twenty-mcp:80/mcp" http none ""
   set -e
@@ -84174,6 +84724,128 @@ MCP_SERVER_PORT=80
 ALLOW_ALL_AGGREGATE=false
 IS_STATEFUL=false
 EOFMT
+}
+
+function performOnboardingTwenty()
+{
+  local admin_email="$TWENTY_ADMIN_EMAIL_ADDRESS"
+  local admin_password="$TWENTY_ADMIN_PASSWORD"
+  local workspace_name="$HOMESERVER_NAME"
+  local subdomain=$(echo "$HOMESERVER_DOMAIN" | cut -d"." -f1)
+  local origin="https://$SUB_TWENTY.$HOMESERVER_DOMAIN"
+  local admin_role_uid="20202020-02c2-43f2-b94d-cab1f2b532eb"
+  local expires_at
+  expires_at="$(date -u -d "+88 years" +%Y-%m-%dT%H:%M:%S.000Z)"
+  log(){ echo "$*" >&2; }
+  app_curl_exec(){ docker exec twenty-app curl -sS --max-time 30 "$@"; }
+  gql(){
+    local query="$1" vars="$2" bearer="$3"
+    local hdr=(-H 'Content-Type: application/json')
+    if [[ -n "$bearer" ]]; then hdr+=(-H "Authorization: Bearer $bearer"); fi
+    app_curl_exec -X POST "${hdr[@]}" http://localhost:3000/metadata \
+      --data "$(jq -cn --arg q "$query" --argjson v "$vars" '{query:$q,variables:$v}')"
+  }
+  local access_token=""
+  local email_exists
+  email_exists="$(gql \
+    'query($email:String!){ checkUserExists(email:$email){ exists } }' \
+    "{\"email\":\"$admin_email\"}" "" \
+    | jq -r '.data.checkUserExists.exists // "false"' 2>/dev/null || true)"
+  if [[ "$email_exists" == "true" ]]; then
+    log "$(date -u +%T) admin '$admin_email' already exists -> logging in"
+    local login_token
+    login_token="$(gql \
+      'mutation($email:String!,$password:String!,$origin:String!){ getLoginTokenFromCredentials(email:$email,password:$password,origin:$origin){ loginToken{ token } } }' \
+      "{\"email\":\"$admin_email\",\"password\":\"$admin_password\",\"origin\":\"$origin\"}" "" \
+      | jq -r '.data.getLoginTokenFromCredentials.loginToken.token')"
+    if [[ -z "$login_token" || "$login_token" == "null" ]]; then
+      log "ERROR: password login failed for '$admin_email'. Check admin_password." >&2
+      return 1
+    fi
+    access_token="$(gql \
+      'mutation($loginToken:String!,$origin:String!){ getAuthTokensFromLoginToken(loginToken:$loginToken,origin:$origin){ tokens{ accessOrWorkspaceAgnosticToken{ token } } } }' \
+      "{\"loginToken\":\"$login_token\",\"origin\":\"$origin\"}" "" \
+      | jq -r '.data.getAuthTokensFromLoginToken.tokens.accessOrWorkspaceAgnosticToken.token')"
+  else
+    log "$(date -u +%T) admin '$admin_email' does not exist -> onboarding"
+    local agnostic_token
+    agnostic_token="$(gql \
+      'mutation($email:String!,$password:String!,$locale:String!){ signUp(email:$email,password:$password,locale:$locale){ tokens{ accessOrWorkspaceAgnosticToken{ token } } } }' \
+      "{\"email\":\"$admin_email\",\"password\":\"$admin_password\",\"locale\":\"en\"}" "" \
+      | jq -r '.data.signUp.tokens.accessOrWorkspaceAgnosticToken.token')"
+    if [[ -z "$agnostic_token" || "$agnostic_token" == "null" ]]; then
+      log "ERROR: signUp failed. Is onboarding already completed for '$admin_email'?" >&2
+      return 1
+    fi
+    local login_token
+    login_token="$(gql \
+      'mutation($input:SignUpInNewWorkspaceInput!){ signUpInNewWorkspace(input:$input){ loginToken{ token } workspace{ id } } }' \
+      "{\"input\":{\"displayName\":\"$workspace_name\",\"subdomain\":\"$subdomain\"}}" "$agnostic_token" \
+      | jq -r '.data.signUpInNewWorkspace.loginToken.token')"
+    if [[ -z "$login_token" || "$login_token" == "null" ]]; then
+      log "ERROR: signUpInNewWorkspace failed." >&2
+      return 1
+    fi
+    access_token="$(gql \
+      'mutation($loginToken:String!,$origin:String!){ getAuthTokensFromLoginToken(loginToken:$loginToken,origin:$origin){ tokens{ accessOrWorkspaceAgnosticToken{ token } } } }' \
+      "{\"loginToken\":\"$login_token\",\"origin\":\"$origin\"}" "" \
+      | jq -r '.data.getAuthTokensFromLoginToken.tokens.accessOrWorkspaceAgnosticToken.token')"
+  fi
+  if [[ -z "$access_token" || "$access_token" == "null" ]]; then
+    log "ERROR: could not obtain an ACCESS token." >&2
+    return 1
+  fi
+  log "$(date -u +%T) ensuring workspace is active (activateWorkspace)"
+  local activated
+  activated="$(gql \
+    'mutation ActivateWorkspace($input: ActivateWorkspaceInput!){ activateWorkspace(data:$input){ id } }' \
+    '{"input":{}}' "$access_token" \
+    | jq -r '.data.activateWorkspace.id' 2>/dev/null || true)"
+  if [[ -z "$activated" || "$activated" == "null" ]]; then
+    log "ERROR: workspace activation failed. Check twenty-app/twenty-worker logs." >&2
+    return 1
+  fi
+  local role_id
+  role_id="$(docker exec -i -e ADMIN_ROLE_UID="$admin_role_uid" twenty-db sh -c '
+    PGPASSWORD="$POSTGRES_PASSWORD" psql -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+      -c "SELECT id FROM core.role WHERE \"universalIdentifier\" = '\''$ADMIN_ROLE_UID'\''"
+  ' 2>/dev/null | tr -d '[:space:]')"
+  if [[ -z "$role_id" ]]; then
+    log "ERROR: admin role (universalIdentifier '$admin_role_uid') not found — did workspace activation complete?" >&2
+    return 1
+  fi
+  local key_id
+  key_id="$(app_curl_exec -sS -X GET -H "Authorization: Bearer $access_token" \
+    -H 'Content-Type: application/json' \
+    --max-time 30 "http://localhost:3000/rest/apiKeys" 2>/dev/null \
+    | jq -r --arg n "MCP" '.[]? | select(.name==$n and .revokedAt==null) | .id' 2>/dev/null \
+    | head -n1)"
+  if [[ -z "$key_id" ]]; then
+    log "$(date -u +%T) no non-revoked key named 'MCP' -> minting one (88y)"
+    key_id="$(app_curl_exec -sS -X POST -H "Authorization: Bearer $access_token" \
+      -H 'Content-Type: application/json' \
+      --data "$(jq -cn --arg n "MCP" --arg e "$expires_at" --arg r "$role_id" \
+        '{name:$n,expiresAt:$e,roleId:$r}')" \
+      "http://localhost:3000/rest/apiKeys" 2>/dev/null \
+      | jq -r '.id' 2>/dev/null)"
+    if [[ -z "$key_id" || "$key_id" == "null" ]]; then
+      log "ERROR: could not create API key." >&2
+      return 1
+    fi
+  else
+    log "$(date -u +%T) reusing existing key 'MCP' ($key_id)"
+  fi
+  local token
+  token="$(gql \
+    'mutation($apiKeyId:UUID!,$expiresAt:String!){ generateApiKeyToken(apiKeyId:$apiKeyId,expiresAt:$expiresAt){ token } }' \
+    "{\"apiKeyId\":\"$key_id\",\"expiresAt\":\"$expires_at\"}" "$access_token" \
+    | jq -r '.data.generateApiKeyToken.token')"
+  if [[ -z "$token" || "$token" == "null" ]]; then
+    log "ERROR: could not generate API key token." >&2
+    return 1
+  fi
+  TWENTY_ADMIN_API_KEY=$(printf '%s\n' "$token")
+  updateConfigVar TWENTY_ADMIN_API_KEY "$TWENTY_ADMIN_API_KEY"
 }
 
 function performUpdateTwenty()
@@ -90137,60 +90809,23 @@ function installInvoiceShelf()
   installStack invoiceshelf invoiceshelf-app "ready to handle connections" $HOME/invoiceshelf.env 3
   retVal=$?
   if [ $retVal -ne 0 ]; then
+    echo "There was a problem with the InvoiceShelf installation process, returning..."
     return $retVal
   fi
-  wizard_notes=$(cat <<EOFWZ
-Admin Login Info:
-========================================================================
-$FMLNAME_INVOICESHELF_APP Admin Username: $INVOICESHELF_ADMIN_EMAIL_ADDRESS
-$FMLNAME_INVOICESHELF_APP Admin Password: $INVOICESHELF_ADMIN_PASSWORD
-========================================================================
-
-Onboard Wizard Instructions
-========================================================================
-1. Choose your language  - Select accordingly
-2. System Requirements - Continue
-3. Permissions - Continue
-4. Site URL & Database - Leave App URL, Set the following:
-   - Database Connection - Select pgsql
-   - Database Port - 5432
-   - Database Name = $INVOICESHELF_DATABASE_NAME
-   - Database Username = $INVOICESHELF_DATABASE_USER
-   - Database Password = $INVOICESHELF_DATABASE_USER_PASSWORD
-   - Database Host = invoiceshelf-db
-   - Select Overwrite existing database and proceed, i.e. check the box
-5. Domain Verification - leave default, press Verify Now.
-6. Mail Configuration - On Mail Driver, select smtp.
-   Then set the following:
-   - Mail Host = $SMTP_HOSTNAME
-   - Mail Username/Password - leave blank
-   - Mail Port = $SMTP_HOSTPORT
-   - Mail Encryption = starttls
-   - From Mail Address = $EMAIL_ADMIN_EMAIL_ADDRESS
-   - From Mail Name = InvoiceShelf $(getAdminEmailName)
-7. Account Information - set the following:
-   - Name = InvoiceShelf $(getAdminEmailName)
-   - Email - $INVOICESHELF_ADMIN_EMAIL_ADDRESS
-   - Password - $INVOICESHELF_ADMIN_PASSWORD
-8. Company Information - Fill out accordingly (Company Name: $HOMESERVER_NAME, etc.)
-9. Company Preferences - Fill out accordingly, ensure to set Time Zone
-========================================================================
-
-After you have completed the onboarding, run the following command
-to add a readonly user to the database and remove the file:
-
-docker exec -u postgres invoiceshelf-db bash -c "psql $INVOICESHELF_DATABASE_NAME $INVOICESHELF_DATABASE_USER -f /dbimport/addreadonly.sql" > /dev/null 2>&1 && rm -f $HSHQ_STACKS_DIR/invoiceshelf/dbimport/addreadonly.sql
-
-Ensure to DELETE this email when finished with the onboarding process.
-
-EOFWZ
-  )
-  sendEmail -s "$FMLNAME_INVOICESHELF_APP Onboarding Info" -b "$wizard_notes" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
   INVOICESHELF_INIT_ENV=true
   updateConfigVar INVOICESHELF_INIT_ENV $INVOICESHELF_INIT_ENV
   sleep 3
   docker exec invoiceshelf-app bash -c "chmod -R 775 /var/www/html/storage;chmod -R 775 /var/www/html/bootstrap"
+  performOnboardingInvoiceShelf
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    echo "There was a problem with the InvoiceShelf onboarding process, returning..."
+    return $retVal
+  fi
+  sleep 2
   addReadOnlyUserToDatabase InvoiceShelf postgres invoiceshelf-db $INVOICESHELF_DATABASE_NAME $INVOICESHELF_DATABASE_USER $INVOICESHELF_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/invoiceshelf/dbexport $INVOICESHELF_DATABASE_READONLYUSER $INVOICESHELF_DATABASE_READONLYUSER_PASSWORD
+  INVOICESHELF_ADMIN_API_KEY=$(generateAPITokenInvoiceShelf "$INVOICESHELF_ADMIN_EMAIL_ADDRESS" "$INVOICESHELF_ADMIN_PASSWORD")
+  updateConfigVar INVOICESHELF_ADMIN_API_KEY $INVOICESHELF_ADMIN_API_KEY
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN {\n"
@@ -90212,10 +90847,6 @@ EOFWZ
     restartAllCaddyContainers
     checkAddDBConnection true invoiceshelf "$FMLNAME_INVOICESHELF_APP" postgres invoiceshelf-db $INVOICESHELF_DATABASE_NAME $INVOICESHELF_DATABASE_USER $INVOICESHELF_DATABASE_USER_PASSWORD
   fi
-  echo "========================================================================"
-  echo "          Ensure to check your $EMAIL_ADMIN_EMAIL_ADDRESS"
-  echo "          email for onboarding instructions"
-  echo "========================================================================"
 }
 
 function outputConfigInvoiceShelf()
@@ -90416,6 +91047,152 @@ function performUpdateInvoiceShelf()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function performOnboardingInvoiceShelf()
+{
+  echo "==> Fresh migrate + seed (wipes existing DB) on invoiceshelf-app"
+  if ! docker exec "invoiceshelf-app" php artisan migrate:fresh --seed --force --no-interaction >/dev/null; then
+    echo "ERROR: migrate:fresh --seed failed." >&2
+    return 1
+  fi
+  echo "==> Applying onboarding answers"
+  if ! docker exec -e ADMIN_NAME="InvoiceShelf $(getAdminEmailName)" \
+  -e ADMIN_EMAIL="${INVOICESHELF_ADMIN_EMAIL_ADDRESS}" \
+  -e ADMIN_PASSWORD="${INVOICESHELF_ADMIN_PASSWORD}" \
+  -e COMPANY_NAME="${HOMESERVER_NAME}" \
+  -e CURRENCY_INPUT="${HOMESERVER_CURRENCY_CODE}" \
+  -e TIME_ZONE="${TZ}" \
+  -e MAIL_DRIVER="smtp" \
+  -e MAIL_HOST="${SMTP_HOSTNAME}" \
+  -e MAIL_PORT="${SMTP_HOSTPORT}" \
+  -e MAIL_USERNAME="" \
+  -e MAIL_PASSWORD="" \
+  -e MAIL_ENCRYPTION="starttls" \
+  -e MAIL_FROM_EMAIL="${EMAIL_ADMIN_EMAIL_ADDRESS}" \
+  -e MAIL_FROM_NAME="InvoiceShelf $(getAdminEmailName)" \
+  "invoiceshelf-app" php artisan tinker --execute "$(cat <<'PHP'
+use App\Models\User;
+use App\Models\Company;
+use App\Models\Currency;
+use App\Models\CompanySetting;
+use App\Models\Setting;
+use App\Space\InstallUtils;
+
+if (!$adminEmail = getenv('ADMIN_EMAIL')) {
+    throw new RuntimeException('ADMIN_EMAIL missing');
+}
+if (!$adminPassword = getenv('ADMIN_PASSWORD')) {
+    throw new RuntimeException('ADMIN_PASSWORD missing');
+}
+if (!$companyName = getenv('COMPANY_NAME')) {
+    throw new RuntimeException('COMPANY_NAME missing');
+}
+
+$user = User::where('role', 'super admin')->orderBy('id')->first();
+if (!$user) {
+    $user = User::whereNotNull('id')->orderBy('id')->first();
+}
+if (!$user) {
+    throw new RuntimeException('No super admin user found after seeding.');
+}
+
+$user->name = getenv('ADMIN_NAME') ?: $user->name;
+$user->email = $adminEmail;
+$user->password = $adminPassword;
+$user->save();
+
+$user = $user->fresh();
+$company = $user->companies()->orderBy('id')->first();
+if (!$company) {
+    $company = Company::orderBy('id')->first();
+}
+if (!$company) {
+    throw new RuntimeException('No company found after seeding.');
+}
+
+$company->name = $companyName;
+$company->slug = \Illuminate\Support\Str::slug($companyName);
+$company->save();
+
+$currencyInput = getenv('CURRENCY_INPUT') ?: '';
+$currencyId = null;
+if (is_numeric($currencyInput)) {
+    $currencyId = (int) $currencyInput;
+} else {
+    $currency = Currency::where('code', strtoupper($currencyInput))->first();
+    if ($currency) {
+        $currencyId = $currency->id;
+    }
+}
+if (!$currencyId) {
+    $currency = Currency::where('code', 'USD')->first();
+    $currencyId = $currency ? $currency->id : Currency::orderBy('id')->value('id');
+}
+
+$timeZone = getenv('TIME_ZONE') ?: 'America/Chicago';
+CompanySetting::setSettings([
+    'currency' => $currencyId,
+    'time_zone' => $timeZone,
+], $company->id);
+
+$mailSettings = [
+    'mail_driver' => getenv('MAIL_DRIVER') ?: 'smtp',
+    'from_name' => getenv('MAIL_FROM_NAME') ?: '',
+    'from_mail' => getenv('MAIL_FROM_EMAIL') ?: '',
+];
+switch ($mailSettings['mail_driver']) {
+    case 'smtp':
+        $mailSettings['mail_host'] = getenv('MAIL_HOST') ?: '';
+        $mailSettings['mail_port'] = getenv('MAIL_PORT') ?: '';
+        $mailSettings['mail_username'] = getenv('MAIL_USERNAME') ?: '';
+        $mailSettings['mail_password'] = getenv('MAIL_PASSWORD') ?: '';
+        $mailSettings['mail_encryption'] = getenv('MAIL_ENCRYPTION') ?: 'none';
+        break;
+    case 'sendmail':
+        $mailSettings['mail_sendmail_path'] = getenv('MAIL_SENDMAIL_PATH') ?: '/usr/sbin/sendmail -bs -i';
+        break;
+}
+Setting::setSettings($mailSettings);
+
+Setting::setSetting('profile_complete', 'COMPLETED');
+Setting::setSetting('profile_language', 'en');
+InstallUtils::setCurrentVersion();
+
+echo 'profile_complete='.Setting::getSetting('profile_complete');
+echo ' | language='.Setting::getSetting('profile_language');
+echo ' | admin='.$user->email;
+echo ' | company='.$company->name;
+echo ' | currency='.Currency::find($currencyId)?->code;
+echo ' | timezone='.CompanySetting::getSetting('time_zone', $company->id);
+echo ' | mail_driver='.Setting::getSetting('mail_driver');
+echo PHP_EOL;
+PHP
+  )"; then
+    echo "ERROR: onboarding could not be applied." >&2
+    return 1
+  fi
+  echo "==> Clearing config cache (pick up mail/company settings)"
+  docker exec "invoiceshelf-app" php artisan config:clear >/dev/null 2>&1 || true
+  echo "==> Onboarding complete. Log in with: ${INVOICESHELF_ADMIN_EMAIL_ADDRESS}"
+}
+
+function generateAPITokenInvoiceShelf()
+{
+  is_username="$1"
+  is_password="$2"
+  tok_output="$(docker exec -e U="${is_username}" \
+    -e PW="${is_password}" invoiceshelf-app \
+    sh -c 'curl -s -X POST "http://127.0.0.1:8000/api/v1/auth/login" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json" \
+    -d "{\"username\":\"$U\",\"password\":\"$PW\",\"device_name\":\"MCP\"}"')"
+  ivshelf_token="$(printf '%s' "${tok_output}" | python3 -c 'import sys,json
+try:
+    print(json.load(sys.stdin).get("ivshelf_token",""))
+except Exception:
+    print("")' 2>/dev/null || true)"
+  echo "${ivshelf_token}"
 }
 
 function mfInvoiceShelfV2AddMCP()
