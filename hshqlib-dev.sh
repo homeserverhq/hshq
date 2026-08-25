@@ -4118,7 +4118,6 @@ EOF
     updateConfigVar EMAIL_SHARED_USERNAME $EMAIL_SHARED_USERNAME
   done
   initServicesCredentials
-  addUserShareDirectories $LDAP_ADMIN_USER_USERNAME
   addUserShareDirectories $NEXTCLOUD_ADMIN_USERNAME
   addUserShareDirectories $SPEAKR_ADMIN_USERNAME
 }
@@ -4546,9 +4545,11 @@ EOFHP
   rm -f $HSHQ_BASE_DIR/cip.txt
   if [ "$isInstallOrRestore" = "install" ]; then
     performInstallVariantsPost
+    addPrimaryUser "$LDAP_ADMIN_USER_USERNAME" "$LDAP_ADMIN_USER_PASSWORD" "HSHQ" "Admin" true
+# > /dev/null 2>&1
     if ! [ -z "$FIRST_USER_USERNAME" ]; then
       echo "Adding first user($FIRST_USER_USERNAME)..."
-      addPrimaryUser "$FIRST_USER_USERNAME" "$FIRST_USER_PASSWORD" "$FIRST_USER_FIRSTNAME" "$FIRST_USER_LASTNAME" > /dev/null 2>&1
+      addPrimaryUser "$FIRST_USER_USERNAME" "$FIRST_USER_PASSWORD" "$FIRST_USER_FIRSTNAME" "$FIRST_USER_LASTNAME" false > /dev/null 2>&1
     fi
     IS_INSTALLED=true
     updateConfigVar IS_INSTALLED $IS_INSTALLED
@@ -24436,6 +24437,7 @@ function version237Update()
 
 function version238Update()
 {
+  echo "Begin v238 update..."
   mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput
   mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$SPEAKR_ADMIN_USERNAME
@@ -24490,10 +24492,10 @@ function version238Update()
       updateConfigVar WORDPRESS_APP_PASSWORD "$WORDPRESS_APP_PASSWORD"
     fi
   fi
-  grep -q "^HOMESERVER_CURRENCY_CODE" $HSHQ_PLAINTEXT_ROOT_CONFIG
+  sudo grep -q "^HOMESERVER_CURRENCY_CODE" $HSHQ_PLAINTEXT_ROOT_CONFIG
   if [ $? -ne 0 ]; then
     HOMESERVER_CURRENCY_CODE="USD"
-    sed -i "s|^# General Info END|HOMESERVER_CURRENCY_CODE=\"USD\"\n# General Info END|g" $HSHQ_PLAINTEXT_ROOT_CONFIG
+    sudo sed -i "s|^# General Info END|HOMESERVER_CURRENCY_CODE=\"USD\"\n# General Info END|g" $HSHQ_PLAINTEXT_ROOT_CONFIG
   fi
 }
 
@@ -30198,44 +30200,45 @@ function addPrimaryUser()
   addPUPassword="$2"
   addPUFirstName="$3"
   addPULastName="$4"
+  addPUIsLDAPAdmin="$5"
   addPUEmailAddress="${addPUUID}@$HOMESERVER_DOMAIN"
-  set +e
-  # Check if user exists
-  docker exec ldapserver bash -c "ldapsearch -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -b \"uid=$addPUUID,ou=people,$LDAP_BASE_DN\"" > /dev/null 2>&1
-  rtVal=$?
-  if [ $rtVal -eq 0 ]; then
-    echo "ERROR: Username ($addPUUID) already exists..."
-    return
-  fi
-  if [ $rtVal -ne 32 ]; then
-    echo "ERROR: Unknown error ($rtVal), returning..."
-    return
-  fi
-  # Check if email exists
-  docker exec mailu-admin flask mailu config-export user | grep -q "$addPUEmailAddress" > /dev/null 2>&1
-  if [ $? -eq 0 ]; then
-    echo "ERROR: Email address ($addPUEmailAddress) already exists..."
-    return
-  fi
-  pwHash=$(openssl passwd -6 $addPUPassword)
-  # Add user email
-  echo "Adding primary user email..."
-  addUserMailu user-import "$addPUUID" "$HOMESERVER_DOMAIN" "$pwHash" > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    echo "ERROR: There was a problem adding this email address ($addPUEmailAddress)..."
-    return
+  if [ -z "$addPUIsLDAPAdmin" ]; then
+    addPUIsLDAPAdmin=false
+  elif [ "$addPUIsLDAPAdmin" = "true" ]; then
+    addPUEmailAddress="$EMAIL_ADMIN_EMAIL_ADDRESS"
   fi
   set +e
-  createStandardMailuMailboxes "$addPUEmailAddress"
-  addUserEmailClassifierAI "$addPUEmailAddress" "$addPUPassword" "Consume" "Processed"
-  # Add user shared directories
-  echo "Adding primary user shared directories..."
-  addUserShareDirectories ${addPUUID}
-  # Get lastUID
-  echo "Adding primary user to LDAP..."
-  lastUID=$(docker exec ldapserver bash -c "ldapsearch -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -b \"cn=lastUID,$LDAP_BASE_DN\" -LLL serialNumber | grep serialNumber | cut -d\" \" -f2 | xargs")
-  ((lastUID++))
-  cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addUser.ldif
+  if ! [ "$addPUIsLDAPAdmin" = "true" ]; then
+    # Check if user exists
+    docker exec ldapserver bash -c "ldapsearch -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -b \"uid=$addPUUID,ou=people,$LDAP_BASE_DN\"" > /dev/null 2>&1
+    rtVal=$?
+    if [ $rtVal -eq 0 ]; then
+      echo "ERROR: Username ($addPUUID) already exists..."
+      return
+    fi
+    if [ $rtVal -ne 32 ]; then
+      echo "ERROR: Unknown error ($rtVal), returning..."
+      return
+    fi
+    docker exec mailu-admin flask mailu config-export user | grep -q "$addPUEmailAddress" > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      echo "ERROR: Email address ($addPUEmailAddress) already exists..."
+      return
+    fi
+    pwHash=$(openssl passwd -6 $addPUPassword)
+    echo "Adding primary user email..."
+    addUserMailu user-import "$addPUUID" "$HOMESERVER_DOMAIN" "$pwHash" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      echo "ERROR: There was a problem adding this email address ($addPUEmailAddress)..."
+      return
+    fi
+    set +e
+    createStandardMailuMailboxes "$addPUEmailAddress"
+    addUserEmailClassifierAI "$addPUEmailAddress" "$addPUPassword" "Consume" "Processed"
+    echo "Adding primary user to LDAP..."
+    lastUID=$(docker exec ldapserver bash -c "ldapsearch -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -b \"cn=lastUID,$LDAP_BASE_DN\" -LLL serialNumber | grep serialNumber | cut -d\" \" -f2 | xargs")
+    ((lastUID++))
+    cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addUser.ldif
 dn: uid=$addPUUID,ou=people,${LDAP_BASE_DN}
 givenName:: $(echo -n "$addPUFirstName " | base64)
 sn:: $(echo -n "$addPULastName" | base64)
@@ -30251,40 +30254,44 @@ homeDirectory: /home/$addPUUID
 cn:: $(echo -n "$addPUFirstName $addPULastName" | base64)
 userPassword: {CRYPT}$pwHash
 EOFAU
-  docker exec ldapserver bash -c "ldapadd -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/addUser.ldif" > /dev/null 2>&1
-  rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addUser.ldif
-  cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/incID.ldif
+    docker exec ldapserver bash -c "ldapadd -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/addUser.ldif" > /dev/null 2>&1
+    rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addUser.ldif
+    cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/incID.ldif
 dn: cn=lastUID,$LDAP_BASE_DN
 changetype: modify
 replace: serialNumber
 serialNumber: $lastUID
 EOFAU
-  docker exec ldapserver bash -c "ldapmodify -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/incID.ldif" > /dev/null 2>&1
-  rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/incID.ldif
-  cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
+    docker exec ldapserver bash -c "ldapmodify -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/incID.ldif" > /dev/null 2>&1
+    rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/incID.ldif
+    cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
 dn: cn=everybody,ou=groups,$LDAP_BASE_DN
 changetype: modify
 add: uniqueMember
 uniqueMember: uid=$addPUUID,ou=people,$LDAP_BASE_DN
 EOFAU
-  docker exec ldapserver bash -c "ldapmodify -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/addG.ldif" > /dev/null 2>&1
-  rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
-  cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
+    docker exec ldapserver bash -c "ldapmodify -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/addG.ldif" > /dev/null 2>&1
+    rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
+    cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
 dn: cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN
 changetype: modify
 add: uniqueMember
 uniqueMember: uid=$addPUUID,ou=people,$LDAP_BASE_DN
 EOFAU
-  docker exec ldapserver bash -c "ldapmodify -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/addG.ldif" > /dev/null 2>&1
-  rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
-  sleep 5
+    docker exec ldapserver bash -c "ldapmodify -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/addG.ldif" > /dev/null 2>&1
+    rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
+    sleep 5
+  fi
   sudo sqlite3 $HSHQ_STACKS_DIR/authelia/config/db.sqlite3 "insert into user_preferences(username,second_factor_method) values('$addPUUID','totp');"
   auth_uuid=$(uuidgen)
   sudo sqlite3 $HSHQ_STACKS_DIR/authelia/config/db.sqlite3 "insert into user_opaque_identifier(service,sector_id,username,identifier) values('openid','','$addPUUID','$auth_uuid');"
+  echo "Adding primary user shared directories..."
+  addUserShareDirectories ${addPUUID}
   newuser_nextcloud_app_password=abcd
   newuser_paperless_apitoken=abcd
   newuser_immich_api_key=abcd
   newuser_linkwarden_api_key=abcd
+  newuser_twenty_api_key=abcd
   addPrimaryUserNextcloud "${addPUUID}" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName $addPULastName"
   addPrimaryUserPaperless "${addPUUID}" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName" "$addPULastName"
   docker ps | grep -q paperless-app > /dev/null 2>&1
@@ -30294,13 +30301,16 @@ EOFAU
   fi
   fullName="${addPUFirstName}${addPULastName}"
   cleanName="${fullName//[![:alnum:]]/}"
-  addPrimaryUserAutoKB "$addPUUID" "$cleanName" "$addPUEmailAddress" "$addPUPassword" 1
+  if ! [ "$addPUIsLDAPAdmin" = "true" ]; then
+    addPrimaryUserAutoKB "$addPUUID" "$cleanName" "$addPUEmailAddress" "$addPUPassword" 1
+  fi
   newuser_immich_api_key=$(pwgen -c -n 41 1)
   addPrimaryUserImmich "${addPUUID}" "$addPUEmailAddress" "$addPUFirstName $addPULastName" "$newuser_immich_api_key"
   newuser_linkwarden_api_key=$(docker exec linkwarden-app node /data/data/provision-user.mjs $addPUEmailAddress "${addPUFirstName} ${addPULastName}" "MCP")
   newuser_hedgedoc_api_key=$(addPrimaryUserHedgeDoc "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress)
   newuser_mealie_api_key=$(addPrimaryUserMealie "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress false)
   newuser_presenton_api_key=$(addPrimaryUserPresenton "$addPUUID" "addPUPassword")
+  newuser_twenty_api_key=$(addPrimaryUserTwenty "$addPUUID" "$addPUEmailAddress" "addPUPassword" "$addPUFirstName" "$addPULastName")
   set +e
   docker ps | grep -q openwebui-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
@@ -30344,11 +30354,14 @@ EOFIM
         --arg hedgedoc_api_key "$newuser_hedgedoc_api_key" \
         --arg mealie_api_key "$newuser_mealie_api_key" \
         --arg presenton_api_key "$newuser_presenton_api_key" \
-        '{immich_api_key: "$immich_api_key", nextcloud_api_key: $nextcloud_api_key, paperless_api_key: $paperless_api_key, opennotebook_api_key: $opennotebook_api_key, wordpress_api_key: $wordpress_api_key, linkwarden_api_key: $linkwarden_api_key, hedgedoc_api_key: $hedgedoc_api_key, invoiceshelf_api_key: $invoiceshelf_api_key, mealie_api_key: $mealie_api_key, presenton_api_key: $presenton_api_key}')
+        --arg twenty_api_key "$newuser_twenty_api_key" \
+        '{immich_api_key: "$immich_api_key", nextcloud_api_key: $nextcloud_api_key, paperless_api_key: $paperless_api_key, opennotebook_api_key: $opennotebook_api_key, wordpress_api_key: $wordpress_api_key, linkwarden_api_key: $linkwarden_api_key, hedgedoc_api_key: $hedgedoc_api_key, invoiceshelf_api_key: $invoiceshelf_api_key, mealie_api_key: $mealie_api_key, presenton_api_key: $presenton_api_key, twenty_api_key: $twenty_api_key}')
     curl -s -X POST "https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/api/v1/tools/id/mcpkeyvault_tool/valves/user/update" -H "Authorization: Bearer $OPENWEBUI_PU_API_KEY" -H "Content-Type: application/json" -d "$jsonbody" > /dev/null 2>&1
   fi
-  echo "Sending Vaultwarden template to ${addPUUID}@${HOMESERVER_DOMAIN}..."
-  emailUserVaultwardenCredentials "$addPUUID" "$addPUEmailAddress"
+  if ! [ "$addPUIsLDAPAdmin" = "true" ]; then
+    echo "Sending Vaultwarden template to ${addPUUID}@${HOMESERVER_DOMAIN}..."
+    emailUserVaultwardenCredentials "$addPUUID" "$addPUEmailAddress"
+  fi
   echo "Primary user succesfully added!"
 }
 
@@ -30425,6 +30438,9 @@ function addPrimaryUserNextcloud()
   fi
   docker exec -u www-data nextcloud-app php occ mail:account:create "$addUserNext_uid" "$addUserNext_proper" "$addUserNext_email" "mailu-front" 993 ssl "$addUserNext_email" "$addUserNext_password" "mailu-front" 465 ssl "$addUserNext_email" "$addUserNext_password" > /dev/null 2>&1
   newuser_nextcloud_app_password=$(docker exec -u www-data nextcloud-app sh -c "export NC_PASS=$addUserNext_password && php occ user:auth-tokens:add --password-from-env $addUserNext_uid | tail -n 1")
+  if ! docker exec -u www-data nextcloud-app php occ dav:list-calendars "$addUserNext_uid" | awk -F'|' '$2 ~ /^[[:space:]]*Work[[:space:]]*$/' | grep -q .; then
+    docker exec -u www-data nextcloud-app php occ dav:create-calendar "$addUserNext_uid" "Work"
+  fi
 }
 
 function addPrimaryUserPaperless()
@@ -30720,6 +30736,231 @@ async def main() -> None:
         print(key.token)
 asyncio.run(main())
 PYEOF
+}
+
+function addPrimaryUserTwenty()
+{
+  set +e
+  local user_uid="$1"
+  local user_email="$2"
+  local user_password="$3"
+  local user_first_name="$4"
+  local user_last_name="$5"
+  local admin_email="$TWENTY_ADMIN_EMAIL_ADDRESS"
+  local admin_password="$TWENTY_ADMIN_PASSWORD"
+  local origin="https://$SUB_TWENTY.$HOMESERVER_DOMAIN"
+  local user_position="Team Member"
+  local imap_host="$SMTP_HOSTNAME"
+  local imap_port="993"
+  local imap_user="$user_email"
+  local imap_pass="$user_password"
+  local imap_sec="SSL_TLS"
+  local smtp_host="$SMTP_HOSTNAME"
+  local smtp_port="587"
+  local smtp_user="$user_email"
+  local smtp_pass="$user_password"
+  local smtp_sec="STARTTLS"
+  local caldav_host=""
+  local caldav_port="443"
+  local caldav_user=""
+  local caldav_pass=""
+  local caldav_sec=""
+  local is_nextcloud_installed=false
+  docker ps | grep -q nextcloud-app > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    is_nextcloud_installed=true
+    if ! docker exec -u www-data nextcloud-app php occ dav:list-calendars "$user_uid" | awk -F'|' '$2 ~ /^[[:space:]]*Work[[:space:]]*$/' | grep -q .; then
+      docker exec -u www-data nextcloud-app php occ dav:create-calendar "$user_uid" "Work"
+    fi
+    caldav_host="https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/remote.php/dav/calendars/$user_uid/Work/"
+    caldav_port="443"
+    caldav_user="$user_uid"
+    caldav_pass="$user_password"
+    caldav_sec="SSL_TLS"
+  fi
+  local expires_at
+  expires_at="$(date -u -d "+88 years" +%Y-%m-%dT%H:%M:%S.000Z)"
+  log(){ echo "$*" >&2; }
+  jwt_claim()
+  {
+    local b64="${1#*.}"; b64="${b64%.*}"
+    local pad=$(( (4 - ${#b64} % 4) % 4 )) i
+    for ((i=0;i<pad;i++)); do b64+="="; done
+    b64="${b64//-/+}"; b64="${b64//_/\//}"
+    printf '%s' "$b64" | base64 -d 2>/dev/null | jq -r "$2"
+  }
+  app_curl_exec(){ docker exec twenty-app curl -sS --max-time 30 "$@"; }
+  gql(){
+    local query="$1" vars="$2" bearer="$3"
+    local hdr=(-H 'Content-Type: application/json' -H "Origin: $origin")
+    if [[ -n "$bearer" ]]; then hdr+=(-H "Authorization: Bearer $bearer"); fi
+    app_curl_exec -X POST "${hdr[@]}" http://localhost:3000/metadata \
+      --data "$(jq -cn --arg q "$query" --argjson v "$vars" '{query:$q,variables:$v}')"
+  }
+  local lt
+  lt="$(gql \
+    'mutation($email:String!,$password:String!,$origin:String!){ getLoginTokenFromCredentials(email:$email,password:$password,origin:$origin){ loginToken{ token } } }' \
+    "{\"email\":\"$admin_email\",\"password\":\"$admin_password\",\"origin\":\"$origin\"}" "" \
+    | jq -r '.data.getLoginTokenFromCredentials.loginToken.token')"
+  if [[ -z "$lt" || "$lt" == "null" ]]; then
+    log "ERROR: admin password login failed for '$admin_email'." >&2
+    return 1
+  fi
+  local admin_token workspace_id
+  admin_token="$(gql \
+    'mutation($loginToken:String!,$origin:String!){ getAuthTokensFromLoginToken(loginToken:$loginToken,origin:$origin){ tokens{ accessOrWorkspaceAgnosticToken{ token } } } }' \
+    "{\"loginToken\":\"$lt\",\"origin\":\"$origin\"}" "" \
+    | jq -r '.data.getAuthTokensFromLoginToken.tokens.accessOrWorkspaceAgnosticToken.token')"
+  if [[ -z "$admin_token" || "$admin_token" == "null" ]]; then
+    log "ERROR: could not obtain an admin ACCESS token." >&2
+    return 1
+  fi
+  workspace_id="$(jwt_claim "$admin_token" '.workspaceId')"
+  local member_role_id
+  member_role_id="$(docker exec -i -e WSID="$workspace_id" twenty-db sh -c '
+    PGPASSWORD="$POSTGRES_PASSWORD" psql -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+      -c "SELECT \"defaultRoleId\" FROM core.workspace WHERE id = '\''$WSID'\''"
+  ' 2>/dev/null | tr -d '[:space:]')"
+  if [[ -z "$member_role_id" ]]; then
+    log "ERROR: could not resolve default (Member) role for workspace '$workspace_id'." >&2
+    return 1
+  fi
+  local lower_email invite_token
+  lower_email="$(printf '%s' "$user_email" | tr '[:upper:]' '[:lower:]')"
+  invite_token="$(openssl rand -hex 32)"
+  if ! docker exec -i -e WSID="$workspace_id" -e EMAIL="$lower_email" \
+       -e TOKEN="$invite_token" -e EXP="$(date -u -d "+30 days" +%Y-%m-%dT%H:%M:%SZ)" \
+       -e ROLEID="$member_role_id" twenty-db sh -c '
+    PGPASSWORD="$POSTGRES_PASSWORD" psql -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+      -c "INSERT INTO core.\"appToken\"
+            (id, \"workspaceId\", type, value, \"expiresAt\", context)
+          VALUES
+            (gen_random_uuid(), '\''$WSID'\'', '\''INVITATION_TOKEN'\'', '\''$TOKEN'\'',
+             '\''$EXP'\'',
+             jsonb_build_object('\''email'\'', '\''$EMAIL'\'', '\''roleId'\'', '\''$ROLEID'\''::uuid))"
+  ' >/dev/null 2>&1; then
+    log "ERROR: could not create invitation token." >&2
+    return 1
+  fi
+  local user_login_token user_token
+  user_login_token="$(gql \
+    'mutation($email:String!,$password:String!,$workspaceId:UUID,$workspacePersonalInviteToken:String!,$locale:String!){ signUpInWorkspace(email:$email,password:$password,workspaceId:$workspaceId,workspacePersonalInviteToken:$workspacePersonalInviteToken,locale:$locale){ loginToken{ token } } }' \
+    "{\"email\":\"$lower_email\",\"password\":\"$user_password\",\"workspaceId\":\"$workspace_id\",\"workspacePersonalInviteToken\":\"$invite_token\",\"locale\":\"en\"}" "" \
+    | jq -r '.data.signUpInWorkspace.loginToken.token')"
+  if [[ -z "$user_login_token" || "$user_login_token" == "null" ]]; then
+    log "ERROR: signUpInWorkspace failed for '$lower_email'." >&2
+    return 1
+  fi
+  user_token="$(gql \
+    'mutation($loginToken:String!,$origin:String!){ getAuthTokensFromLoginToken(loginToken:$loginToken,origin:$origin){ tokens{ accessOrWorkspaceAgnosticToken{ token } } } }' \
+    "{\"loginToken\":\"$user_login_token\",\"origin\":\"$origin\"}" "" \
+    | jq -r '.data.getAuthTokensFromLoginToken.tokens.accessOrWorkspaceAgnosticToken.token')"
+  if [[ -z "$user_token" || "$user_token" == "null" ]]; then
+    log "ERROR: could not obtain a user ACCESS token." >&2
+    return 1
+  fi
+  local user_wm_id
+  user_wm_id="$(jwt_claim "$user_token" '.workspaceMemberId')"
+  gql \
+    'mutation($input: UpdateWorkspaceMemberSettingsInput!){ updateWorkspaceMemberSettings(input:$input) }' \
+    "{\"input\":{\"workspaceMemberId\":\"$user_wm_id\",\"update\":{\"name\":{\"firstName\":\"$user_first_name\",\"lastName\":\"$user_last_name\"},\"jobTitle\":\"$user_position\"}}}" \
+    "$user_token" >/dev/null 2>&1
+  local conn_params
+  conn_params="$(jq -cn \
+    --arg n "$lower_email" \
+    --arg ih "$imap_host"    --argjson ip "$imap_port" \
+    --arg iu "$imap_user"    --arg ipa "$imap_pass"    --arg is "$imap_sec" \
+    --arg sh "$smtp_host"    --argjson sp "$smtp_port" \
+    --arg su "$smtp_user"    --arg spa "$smtp_pass"    --arg ss "$smtp_sec" \
+    --arg ch "$caldav_host"  --argjson cp "$caldav_port" \
+    --arg cu "$caldav_user"  --arg cpa "$caldav_pass"  --arg cs "$caldav_sec" \
+    '{name:$n,
+      IMAP:{host:$ih,port:$ip,username:$iu,password:$ipa,connectionSecurity:$is},
+      SMTP:{host:$sh,port:$sp,username:$su,password:$spa,connectionSecurity:$ss}}
+     + (if ($ch != "") then {CALDAV:{host:$ch,port:$cp,username:$cu,password:$cpa,connectionSecurity:$cs}} else {} end)')"
+  local save_res
+  save_res="$(gql \
+    'mutation($handle:String!,$connectionParameters:EmailAccountConnectionParameters!){ saveImapSmtpCaldavAccount(handle:$handle,connectionParameters:$connectionParameters){ success connectedAccountId } }' \
+    "$(jq -cn --arg h "$lower_email" --argjson cp "$conn_params" '{handle:$h,connectionParameters:$cp}')" \
+    "$user_token")"
+  if [[ "$(printf '%s' "$save_res" | jq -r '.data.saveImapSmtpCaldavAccount.success // false' 2>/dev/null)" != "true" ]]; then
+    log "ERROR: saveImapSmtpCaldavAccount failed: $save_res" >&2
+    return 1
+  fi
+  local acct_id mc_id
+  acct_id="$(printf '%s' "$save_res" | jq -r '.data.saveImapSmtpCaldavAccount.connectedAccountId // empty')"
+  if [[ -z "$acct_id" ]]; then
+    log "ERROR: could not resolve connectedAccountId for user mail sync." >&2
+    return 1
+  fi
+  mc_id="$(docker exec -i -e AID="$acct_id" twenty-db sh -c '
+    PGPASSWORD="$POSTGRES_PASSWORD" psql -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+      -c "SELECT id FROM core.\"messageChannel\" WHERE \"connectedAccountId\" = '\''$AID'\''"
+  ' 2>/dev/null | tr -d '[:space:]')"
+  if [[ -n "$mc_id" ]]; then
+    docker exec -i -e MCID="$mc_id" twenty-db sh -c '
+      PGPASSWORD="$POSTGRES_PASSWORD" psql -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+        -c "UPDATE core.\"messageChannel\" SET \"messageFolderImportPolicy\" = '\''SELECTED_FOLDERS'\'' WHERE id = '\''$MCID'\'';
+           UPDATE core.\"messageFolder\" SET \"isSynced\" = false WHERE \"messageChannelId\" = '\''$MCID'\'';
+           UPDATE core.\"messageFolder\" f SET \"isSynced\" = true
+             FROM core.\"messageFolder\" p
+             WHERE f.\"messageChannelId\" = '\''$MCID'\'' AND f.name = '\''Work'\''
+               AND p.\"externalId\" = f.\"parentFolderId\" AND p.name = '\''Processed'\'' AND p.\"messageChannelId\" = '\''$MCID'\'';"
+    ' >/dev/null 2>&1
+    local synced_work unsynced_count
+    synced_work="$(docker exec -i -e MCID="$mc_id" twenty-db sh -c '
+      PGPASSWORD="$POSTGRES_PASSWORD" psql -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+        -c "SELECT count(*) FROM core.\"messageFolder\" f
+              JOIN core.\"messageFolder\" p ON p.\"externalId\" = f.\"parentFolderId\"
+             WHERE f.\"messageChannelId\" = '\''$MCID'\'' AND f.name = '\''Work'\''
+               AND p.name = '\''Processed'\'' AND f.\"isSynced\" = true"
+    ' 2>/dev/null | tr -d '[:space:]')"
+    unsynced_count="$(docker exec -i -e MCID="$mc_id" twenty-db sh -c '
+      PGPASSWORD="$POSTGRES_PASSWORD" psql -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+        -c "SELECT count(*) FROM core.\"messageFolder\" WHERE \"messageChannelId\" = '\''$MCID'\'' AND NOT \"isSynced\""
+    ' 2>/dev/null | tr -d '[:space:]')"
+    log "$(date -u +%T) email folder policy = SELECTED_FOLDERS (Processed -> Work synced=$synced_work, others unsynced=$unsynced_count)"
+    if [[ "$synced_work" != "1" ]]; then
+      log "WARN: Processed -> Work folder was not set as the only synced folder (synced_work=$synced_work)." >&2
+    fi
+  fi
+  docker exec -i -e AID="$acct_id" twenty-db sh -c '
+    PGPASSWORD="$POSTGRES_PASSWORD" psql -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+      -c "UPDATE core.\"calendarChannel\" SET visibility = '\''SHARE_EVERYTHING'\'' WHERE \"connectedAccountId\" = '\''$AID'\''"
+  ' >/dev/null 2>&1
+  gql \
+    'mutation($connectedAccountId: UUID!){ startChannelSync(connectedAccountId: $connectedAccountId){ success } }' \
+    "{\"connectedAccountId\":\"$acct_id\"}" "$user_token" >/dev/null
+  log "$(date -u +%T) channel sync started -> account setup autocompleted"
+  local key_name="MCP-$lower_email"
+  local key_id
+  key_id="$(app_curl_exec -sS -X GET -H "Authorization: Bearer $admin_token" \
+    -H 'Content-Type: application/json' \
+    --max-time 30 "http://localhost:3000/rest/apiKeys" 2>/dev/null \
+    | jq -r --arg n "$key_name" '.[]? | select(.name==$n and .revokedAt==null) | .id' 2>/dev/null \
+    | head -n1)"
+  if [[ -z "$key_id" ]]; then
+    key_id="$(app_curl_exec -sS -X POST -H "Authorization: Bearer $admin_token" \
+      -H 'Content-Type: application/json' \
+      --data "$(jq -cn --arg n "$key_name" --arg e "$expires_at" --arg r "$member_role_id" \
+        '{name:$n,expiresAt:$e,roleId:$r}')" \
+      "http://localhost:3000/rest/apiKeys" 2>/dev/null \
+      | jq -r '.id' 2>/dev/null)"
+    if [[ -z "$key_id" || "$key_id" == "null" ]]; then
+      log "ERROR: could not create API key for '$lower_email'." >&2
+      return 1
+    fi
+  fi
+  local token
+  token="$(gql \
+    'mutation($apiKeyId:UUID!,$expiresAt:String!){ generateApiKeyToken(apiKeyId:$apiKeyId,expiresAt:$expiresAt){ token } }' \
+    "{\"apiKeyId\":\"$key_id\",\"expiresAt\":\"$expires_at\"}" "$admin_token" \
+    | jq -r '.data.generateApiKeyToken.token')"
+  if [[ -z "$token" || "$token" == "null" ]]; then
+    log "ERROR: could not generate API key token for '$lower_email'." >&2
+    return 1
+  fi
+  echo "$token"
 }
 
 function addPrimaryGroupMCPServerOpenWebUI()
@@ -84719,6 +84960,7 @@ CALENDAR_PROVIDER_CALENDAR_ENABLED=true
 MESSAGING_PROVIDER_IMAP_ENABLED=true
 CALENDAR_PROVIDER_GOOGLE_ENABLED=false
 AI_PROVIDERS='{"litellm-proxy":{"npm":"@ai-sdk/openai-compatible","label":"LiteLLM Proxy","baseUrl":"http://litellm-proxy:4000/v1","apiKey":"$LITELLM_MASTER_KEY","models":[{"name":"LongContext","label":"LongContext"}]}}'
+AI_MODELS_DEFAULT_RECOMMENDED='["litellm-proxy/LongContext"]'
 TWENTY_BASE_URL=http://twenty-app:3000
 MCP_SERVER_PORT=80
 ALLOW_ALL_AGGREGATE=false
@@ -84728,6 +84970,7 @@ EOFMT
 
 function performOnboardingTwenty()
 {
+  set +e
   local admin_email="$TWENTY_ADMIN_EMAIL_ADDRESS"
   local admin_password="$TWENTY_ADMIN_PASSWORD"
   local workspace_name="$HOMESERVER_NAME"
@@ -84736,11 +84979,50 @@ function performOnboardingTwenty()
   local admin_role_uid="20202020-02c2-43f2-b94d-cab1f2b532eb"
   local expires_at
   expires_at="$(date -u -d "+88 years" +%Y-%m-%dT%H:%M:%S.000Z)"
+  local first_name="Twenty"
+  local last_name="$(getAdminEmailName)"
+  local position="Administrator"
+  local t_admin_imap_host="$SMTP_HOSTNAME"
+  local t_admin_imap_port="993"
+  local t_admin_imap_user="$EMAIL_ADMIN_EMAIL_ADDRESS"
+  local t_admin_imap_pass="$EMAIL_ADMIN_PASSWORD"
+  local t_admin_imap_sec="SSL_TLS"
+  local t_admin_smtp_host="$SMTP_HOSTNAME"
+  local t_admin_smtp_port="587"
+  local t_admin_smtp_user="$EMAIL_ADMIN_EMAIL_ADDRESS"
+  local t_admin_smtp_pass="$EMAIL_ADMIN_PASSWORD"
+  local t_admin_smtp_sec="STARTTLS"
+  local t_admin_caldav_host=""
+  local t_admin_caldav_port="443"
+  local t_admin_caldav_user=""
+  local t_admin_caldav_pass=""
+  local t_admin_caldav_sec=""
+  local is_nextcloud_installed=false
+  docker ps | grep -q nextcloud-app > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    is_nextcloud_installed=true
+    if ! docker exec -u www-data nextcloud-app php occ dav:list-calendars "$NEXTCLOUD_ADMIN_USERNAME" | awk -F'|' '$2 ~ /^[[:space:]]*Work[[:space:]]*$/' | grep -q .; then
+      docker exec -u www-data nextcloud-app php occ dav:create-calendar "$NEXTCLOUD_ADMIN_USERNAME" "Work"
+    fi
+    t_admin_caldav_host="https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/remote.php/dav/calendars/$NEXTCLOUD_ADMIN_USERNAME/Work/"
+    t_admin_caldav_port="443"
+    t_admin_caldav_user="$NEXTCLOUD_ADMIN_USERNAME"
+    t_admin_caldav_pass="$NEXTCLOUD_ADMIN_PASSWORD"
+    t_admin_caldav_sec="SSL_TLS"
+  fi
   log(){ echo "$*" >&2; }
+  jwt_claim()
+  {
+    local b64="${1#*.}"; b64="${b64%.*}"
+    local pad=$(( (4 - ${#b64} % 4) % 4 )) i
+    for ((i=0;i<pad;i++)); do b64+="="; done
+    b64="${b64//-/+}"; b64="${b64//_/\//}"
+    printf '%s' "$b64" | base64 -d 2>/dev/null | jq -r "$2"
+  }
   app_curl_exec(){ docker exec twenty-app curl -sS --max-time 30 "$@"; }
   gql(){
     local query="$1" vars="$2" bearer="$3"
-    local hdr=(-H 'Content-Type: application/json')
+    local hdr=(-H 'Content-Type: application/json' -H "Origin: $origin")
     if [[ -n "$bearer" ]]; then hdr+=(-H "Authorization: Bearer $bearer"); fi
     app_curl_exec -X POST "${hdr[@]}" http://localhost:3000/metadata \
       --data "$(jq -cn --arg q "$query" --argjson v "$vars" '{query:$q,variables:$v}')"
@@ -84805,6 +85087,106 @@ function performOnboardingTwenty()
     log "ERROR: workspace activation failed. Check twenty-app/twenty-worker logs." >&2
     return 1
   fi
+  local lt2
+  lt2="$(gql \
+    'mutation($email:String!,$password:String!,$origin:String!){ getLoginTokenFromCredentials(email:$email,password:$password,origin:$origin){ loginToken{ token } } }' \
+    "{\"email\":\"$admin_email\",\"password\":\"$admin_password\",\"origin\":\"$origin\"}" "" \
+    | jq -r '.data.getLoginTokenFromCredentials.loginToken.token')"
+  access_token="$(gql \
+    'mutation($loginToken:String!,$origin:String!){ getAuthTokensFromLoginToken(loginToken:$loginToken,origin:$origin){ tokens{ accessOrWorkspaceAgnosticToken{ token } } } }' \
+    "{\"loginToken\":\"$lt2\",\"origin\":\"$origin\"}" "" \
+    | jq -r '.data.getAuthTokensFromLoginToken.tokens.accessOrWorkspaceAgnosticToken.token')"
+  local user_id workspace_id wm_id pset
+  user_id="$(     jwt_claim "$access_token" '.userId // .sub')"
+  workspace_id="$(jwt_claim "$access_token" '.workspaceId')"
+  wm_id="$(       jwt_claim "$access_token" '.workspaceMemberId')"
+  pset="$(gql \
+    'mutation($input: UpdateWorkspaceMemberSettingsInput!){ updateWorkspaceMemberSettings(input:$input) }' \
+    "{\"input\":{\"workspaceMemberId\":\"$wm_id\",\"update\":{\"name\":{\"firstName\":\"$first_name\",\"lastName\":\"$last_name\"},\"jobTitle\":\"$position\"}}}" \
+    "$access_token")"
+  if [[ "$(printf '%s' "$pset" | jq -r '.data.updateWorkspaceMemberSettings // false' 2>/dev/null)" != "true" ]]; then
+    log "WARN: could not set admin profile: $pset" >&2
+  fi
+  local admin_handle admin_conn_params admin_save
+  admin_handle="$(printf '%s' "$admin_email" | tr '[:upper:]' '[:lower:]')"
+  admin_conn_params="$(jq -cn \
+    --arg n "$admin_handle" \
+    --arg ih "$t_admin_imap_host"    --argjson ip "$t_admin_imap_port" \
+    --arg iu "$t_admin_imap_user"    --arg ipa "$t_admin_imap_pass"    --arg is "$t_admin_imap_sec" \
+    --arg sh "$t_admin_smtp_host"    --argjson sp "$t_admin_smtp_port" \
+    --arg su "$t_admin_smtp_user"    --arg spa "$t_admin_smtp_pass"    --arg ss "$t_admin_smtp_sec" \
+    --arg ch "$t_admin_caldav_host"  --argjson cp "$t_admin_caldav_port" \
+    --arg cu "$t_admin_caldav_user"  --arg cpa "$t_admin_caldav_pass"  --arg cs "$t_admin_caldav_sec" \
+    '{name:$n,
+      IMAP:{host:$ih,port:$ip,username:$iu,password:$ipa,connectionSecurity:$is},
+      SMTP:{host:$sh,port:$sp,username:$su,password:$spa,connectionSecurity:$ss}}
+     + (if ($ch != "") then {CALDAV:{host:$ch,port:$cp,username:$cu,password:$cpa,connectionSecurity:$cs}} else {} end)')"
+  admin_save="$(gql \
+    'mutation($handle:String!,$connectionParameters:EmailAccountConnectionParameters!){ saveImapSmtpCaldavAccount(handle:$handle,connectionParameters:$connectionParameters){ success connectedAccountId } }' \
+    "$(jq -cn --arg h "$admin_handle" --argjson cp "$admin_conn_params" '{handle:$h,connectionParameters:$cp}')" \
+    "$access_token")"
+  if [[ "$(printf '%s' "$admin_save" | jq -r '.data.saveImapSmtpCaldavAccount.success // false' 2>/dev/null)" != "true" ]]; then
+    log "ERROR: saveImapSmtpCaldavAccount failed for admin: $admin_save" >&2
+    return 1
+  fi
+  local acct_id mc_id
+  acct_id="$(printf '%s' "$admin_save" | jq -r '.data.saveImapSmtpCaldavAccount.connectedAccountId // empty')"
+  if [[ -z "$acct_id" ]]; then
+    log "ERROR: could not resolve connectedAccountId for admin mail sync." >&2
+    return 1
+  fi
+  mc_id="$(docker exec -i -e AID="$acct_id" twenty-db sh -c '
+    PGPASSWORD="$POSTGRES_PASSWORD" psql -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+      -c "SELECT id FROM core.\"messageChannel\" WHERE \"connectedAccountId\" = '\''$AID'\''"
+  ' 2>/dev/null | tr -d '[:space:]')"
+  if [[ -n "$mc_id" ]]; then
+    docker exec -i -e MCID="$mc_id" twenty-db sh -c '
+      PGPASSWORD="$POSTGRES_PASSWORD" psql -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+        -c "UPDATE core.\"messageChannel\" SET \"messageFolderImportPolicy\" = '\''SELECTED_FOLDERS'\'' WHERE id = '\''$MCID'\'';
+           UPDATE core.\"messageFolder\" SET \"isSynced\" = false WHERE \"messageChannelId\" = '\''$MCID'\'';
+           UPDATE core.\"messageFolder\" f SET \"isSynced\" = true
+             FROM core.\"messageFolder\" p
+             WHERE f.\"messageChannelId\" = '\''$MCID'\'' AND f.name = '\''Work'\''
+               AND p.\"externalId\" = f.\"parentFolderId\" AND p.name = '\''Processed'\'' AND p.\"messageChannelId\" = '\''$MCID'\'';"
+    ' >/dev/null 2>&1
+    local synced_work unsynced_count
+    synced_work="$(docker exec -i -e MCID="$mc_id" twenty-db sh -c '
+      PGPASSWORD="$POSTGRES_PASSWORD" psql -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+        -c "SELECT count(*) FROM core.\"messageFolder\" f
+              JOIN core.\"messageFolder\" p ON p.\"externalId\" = f.\"parentFolderId\"
+             WHERE f.\"messageChannelId\" = '\''$MCID'\'' AND f.name = '\''Work'\''
+               AND p.name = '\''Processed'\'' AND f.\"isSynced\" = true"
+    ' 2>/dev/null | tr -d '[:space:]')"
+    unsynced_count="$(docker exec -i -e MCID="$mc_id" twenty-db sh -c '
+      PGPASSWORD="$POSTGRES_PASSWORD" psql -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+        -c "SELECT count(*) FROM core.\"messageFolder\" WHERE \"messageChannelId\" = '\''$MCID'\'' AND NOT \"isSynced\""
+    ' 2>/dev/null | tr -d '[:space:]')"
+    log "$(date -u +%T) email folder policy = SELECTED_FOLDERS (Processed -> Work synced=$synced_work, others unsynced=$unsynced_count)"
+    if [[ "$synced_work" != "1" ]]; then
+      log "WARN: Processed -> Work folder was not set as the only synced folder (synced_work=$synced_work)." >&2
+    fi
+  fi
+  docker exec -i -e AID="$acct_id" twenty-db sh -c '
+    PGPASSWORD="$POSTGRES_PASSWORD" psql -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+      -c "UPDATE core.\"calendarChannel\" SET visibility = '\''SHARE_EVERYTHING'\'' WHERE \"connectedAccountId\" = '\''$AID'\''"
+  ' >/dev/null 2>&1
+  gql \
+    'mutation($connectedAccountId: UUID!){ startChannelSync(connectedAccountId: $connectedAccountId){ success } }' \
+    "{\"connectedAccountId\":\"$acct_id\"}" "$access_token" >/dev/null
+  log "$(date -u +%T) channel sync started -> account setup autocompleted"
+  docker exec -i -e ADMIN_WSID="$workspace_id" twenty-db sh -c '
+    PGPASSWORD="$POSTGRES_PASSWORD" psql -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+      -c "DELETE FROM core.\"keyValuePair\" WHERE \"type\"='"'"'USER_VARIABLE'"'"'
+          AND \"workspaceId\"='"'"'$ADMIN_WSID'"'"'
+          AND \"key\" IN ('"'"'ONBOARDING_CONNECT_ACCOUNT_PENDING'"'"','"'"'ONBOARDING_INSTALL_APPS_PENDING'"'"','"'"'ONBOARDING_INVITE_TEAM_PENDING'"'"')"
+  ' >/dev/null 2>&1
+  local ost
+  ost="$(gql '{ currentUser{ onboardingStatus } }' '{}' "$access_token" \
+    | jq -r '.data.currentUser.onboardingStatus // "ERROR"' 2>/dev/null || true)"
+  if [[ "$ost" != "COMPLETED" ]]; then
+    log "ERROR: onboardingStatus='$ost' (expected COMPLETED)." >&2
+    return 1
+  fi
   local role_id
   role_id="$(docker exec -i -e ADMIN_ROLE_UID="$admin_role_uid" twenty-db sh -c '
     PGPASSWORD="$POSTGRES_PASSWORD" psql -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
@@ -84814,17 +85196,33 @@ function performOnboardingTwenty()
     log "ERROR: admin role (universalIdentifier '$admin_role_uid') not found — did workspace activation complete?" >&2
     return 1
   fi
+  local member_role_id
+  member_role_id="$(docker exec -i -e FIRST_WSID="$workspace_id" twenty-db sh -c '
+    PGPASSWORD="$POSTGRES_PASSWORD" psql -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+      -c "SELECT \"defaultRoleId\" FROM core.workspace WHERE id = '\''$FIRST_WSID'\''"
+  ' 2>/dev/null | tr -d '[:space:]')"
+  if [[ -n "$member_role_id" ]]; then
+    docker exec -i -e MEMBER_ROLE_ID="$member_role_id" twenty-db sh -c '
+      PGPASSWORD="$POSTGRES_PASSWORD" psql -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+        -c "UPDATE core.role SET \"canBeAssignedToApiKeys\" = true
+            WHERE id = '\''$MEMBER_ROLE_ID'\'' AND NOT \"canBeAssignedToApiKeys\""
+    ' >/dev/null 2>&1
+    log "$(date -u +%T) ensured Member role ($member_role_id) is API-key-assignable"
+  else
+    log "WARN: could not resolve default (Member) role — skipping API-key assignability setup" >&2
+  fi
+  local key_name="MCP-HSHQAdmin"
   local key_id
   key_id="$(app_curl_exec -sS -X GET -H "Authorization: Bearer $access_token" \
     -H 'Content-Type: application/json' \
     --max-time 30 "http://localhost:3000/rest/apiKeys" 2>/dev/null \
-    | jq -r --arg n "MCP" '.[]? | select(.name==$n and .revokedAt==null) | .id' 2>/dev/null \
+    | jq -r --arg n "$key_name" '.[]? | select(.name==$n and .revokedAt==null) | .id' 2>/dev/null \
     | head -n1)"
   if [[ -z "$key_id" ]]; then
-    log "$(date -u +%T) no non-revoked key named 'MCP' -> minting one (88y)"
+    log "$(date -u +%T) no non-revoked key named '$key_name' -> minting one (88y)"
     key_id="$(app_curl_exec -sS -X POST -H "Authorization: Bearer $access_token" \
       -H 'Content-Type: application/json' \
-      --data "$(jq -cn --arg n "MCP" --arg e "$expires_at" --arg r "$role_id" \
+      --data "$(jq -cn --arg n "$key_name" --arg e "$expires_at" --arg r "$role_id" \
         '{name:$n,expiresAt:$e,roleId:$r}')" \
       "http://localhost:3000/rest/apiKeys" 2>/dev/null \
       | jq -r '.id' 2>/dev/null)"
@@ -84833,7 +85231,7 @@ function performOnboardingTwenty()
       return 1
     fi
   else
-    log "$(date -u +%T) reusing existing key 'MCP' ($key_id)"
+    log "$(date -u +%T) reusing existing key '$key_name' ($key_id)"
   fi
   local token
   token="$(gql \
@@ -121784,7 +122182,7 @@ set +e
 echo "===================================================="
 echo "               Adding new primary user              "
 echo "===================================================="
-addPrimaryUser "\$username" "\$password" "\$firstname" "\$lastname"
+addPrimaryUser "\$username" "\$password" "\$firstname" "\$lastname" false
 set -e
 performExitFunctions false
 
