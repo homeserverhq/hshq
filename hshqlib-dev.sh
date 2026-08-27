@@ -30202,10 +30202,12 @@ function addPrimaryUser()
   addPULastName="$4"
   addPUIsLDAPAdmin="$5"
   addPUEmailAddress="${addPUUID}@$HOMESERVER_DOMAIN"
+  addPUEmailPassword="$addPUPassword"
   if [ -z "$addPUIsLDAPAdmin" ]; then
     addPUIsLDAPAdmin=false
   elif [ "$addPUIsLDAPAdmin" = "true" ]; then
     addPUEmailAddress="$EMAIL_ADMIN_EMAIL_ADDRESS"
+    addPUEmailPassword="$EMAIL_ADMIN_PASSWORD"
   fi
   set +e
   if ! [ "$addPUIsLDAPAdmin" = "true" ]; then
@@ -30292,8 +30294,8 @@ EOFAU
   newuser_immich_api_key=abcd
   newuser_linkwarden_api_key=abcd
   newuser_twenty_api_key=abcd
-  addPrimaryUserNextcloud "${addPUUID}" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName $addPULastName"
-  addPrimaryUserPaperless "${addPUUID}" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName" "$addPULastName"
+  addPrimaryUserNextcloud "${addPUUID}" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName $addPULastName" "$addPUEmailPassword"
+  addPrimaryUserPaperless "${addPUUID}" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName" "$addPULastName" "$addPUEmailPassword"
   docker ps | grep -q paperless-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     jsonbody="username=${addPUUID}&password=$addPUPassword"
@@ -30301,16 +30303,14 @@ EOFAU
   fi
   fullName="${addPUFirstName}${addPULastName}"
   cleanName="${fullName//[![:alnum:]]/}"
-  if ! [ "$addPUIsLDAPAdmin" = "true" ]; then
-    addPrimaryUserAutoKB "$addPUUID" "$cleanName" "$addPUEmailAddress" "$addPUPassword" 1
-  fi
+  addPrimaryUserAutoKB "$addPUUID" "$cleanName" "$addPUEmailAddress" "$addPUEmailPassword" 1
   newuser_immich_api_key=$(pwgen -c -n 41 1)
   addPrimaryUserImmich "${addPUUID}" "$addPUEmailAddress" "$addPUFirstName $addPULastName" "$newuser_immich_api_key"
   newuser_linkwarden_api_key=$(docker exec linkwarden-app node /data/data/provision-user.mjs $addPUEmailAddress "${addPUFirstName} ${addPULastName}" "MCP")
   newuser_hedgedoc_api_key=$(addPrimaryUserHedgeDoc "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress)
   newuser_mealie_api_key=$(addPrimaryUserMealie "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress false)
   newuser_presenton_api_key=$(addPrimaryUserPresenton "$addPUUID" "addPUPassword")
-  newuser_twenty_api_key=$(addPrimaryUserTwenty "$addPUUID" "$addPUEmailAddress" "addPUPassword" "$addPUFirstName" "$addPULastName")
+  newuser_twenty_api_key=$(addPrimaryUserTwenty "$addPUUID" "$addPUEmailAddress" "addPUPassword" "$addPUFirstName" "$addPULastName" "$addPUEmailPassword")
   set +e
   docker ps | grep -q openwebui-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
@@ -30342,7 +30342,7 @@ EOFIM
     rm -f $HSHQ_STACKS_DIR/openwebui/dbexport/addPrimaryUserOWUI.sh
     jsonbody=$(jq -n \
         --arg imap_username "$addPUEmailAddress" \
-        --arg imap_password "$addPUPassword" \
+        --arg imap_password "$addPUEmailPassword" \
         --arg sender_name "$addPUFirstName $addPULastName" \
         '{imap_host: "mailu-front", imap_username: $imap_username, imap_password: $imap_password, smtp_host: "mailu-front", sender_name: $sender_name}')
     curl -s -X POST "https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/api/v1/tools/id/imap_email_tool/valves/user/update" -H "Authorization: Bearer $OPENWEBUI_PU_API_KEY" -H "Content-Type: application/json" -d "$jsonbody" > /dev/null 2>&1
@@ -30350,12 +30350,13 @@ EOFIM
         --arg immich_api_key "$newuser_immich_api_key" \
         --arg nextcloud_api_key "$(echo -n ${addPUUID}:${newuser_nextcloud_app_password} | base64)" \
         --arg paperless_api_key "$newuser_paperless_apitoken" \
+        --arg opennotebook_api_key "$OPENNOTEBOOK_ADMIN_PASSWORD" \
         --arg linkwarden_api_key "$newuser_linkwarden_api_key" \
         --arg hedgedoc_api_key "$newuser_hedgedoc_api_key" \
         --arg mealie_api_key "$newuser_mealie_api_key" \
         --arg presenton_api_key "$newuser_presenton_api_key" \
         --arg twenty_api_key "$newuser_twenty_api_key" \
-        '{immich_api_key: "$immich_api_key", nextcloud_api_key: $nextcloud_api_key, paperless_api_key: $paperless_api_key, opennotebook_api_key: $opennotebook_api_key, wordpress_api_key: $wordpress_api_key, linkwarden_api_key: $linkwarden_api_key, hedgedoc_api_key: $hedgedoc_api_key, invoiceshelf_api_key: $invoiceshelf_api_key, mealie_api_key: $mealie_api_key, presenton_api_key: $presenton_api_key, twenty_api_key: $twenty_api_key}')
+        '{immich_api_key: "$immich_api_key", nextcloud_api_key: "$nextcloud_api_key", paperless_api_key: "$paperless_api_key", opennotebook_api_key: "$opennotebook_api_key", linkwarden_api_key: "$linkwarden_api_key", hedgedoc_api_key: "$hedgedoc_api_key", mealie_api_key: "$mealie_api_key", presenton_api_key: "$presenton_api_key", twenty_api_key: "$twenty_api_key"}')
     curl -s -X POST "https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/api/v1/tools/id/mcpkeyvault_tool/valves/user/update" -H "Authorization: Bearer $OPENWEBUI_PU_API_KEY" -H "Content-Type: application/json" -d "$jsonbody" > /dev/null 2>&1
   fi
   if ! [ "$addPUIsLDAPAdmin" = "true" ]; then
@@ -30426,6 +30427,7 @@ function addPrimaryUserNextcloud()
   addUserNext_email="$2"
   addUserNext_password="$3"
   addUserNext_proper="$4"
+  addUserNext_emailpw="$5"
   docker ps | grep -q nextcloud-app > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     return
@@ -30436,7 +30438,7 @@ function addPrimaryUserNextcloud()
     echo "User does not exist in Nextcloud, returning..."
     return
   fi
-  docker exec -u www-data nextcloud-app php occ mail:account:create "$addUserNext_uid" "$addUserNext_proper" "$addUserNext_email" "mailu-front" 993 ssl "$addUserNext_email" "$addUserNext_password" "mailu-front" 465 ssl "$addUserNext_email" "$addUserNext_password" > /dev/null 2>&1
+  docker exec -u www-data nextcloud-app php occ mail:account:create "$addUserNext_uid" "$addUserNext_proper" "$addUserNext_email" "mailu-front" 993 ssl "$addUserNext_email" "$addUserNext_emailpw" "mailu-front" 465 ssl "$addUserNext_email" "$addUserNext_emailpw" > /dev/null 2>&1
   newuser_nextcloud_app_password=$(docker exec -u www-data nextcloud-app sh -c "export NC_PASS=$addUserNext_password && php occ user:auth-tokens:add --password-from-env $addUserNext_uid | tail -n 1")
 }
 
@@ -30448,6 +30450,7 @@ function addPrimaryUserPaperless()
   addUserPaper_password="$3"
   addUserPaper_firstname="$4"
   addUserPaper_lastname="$5"
+  addUserPaper_emailpw="$6"
   docker ps | grep -q paperless-app > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     return
@@ -30462,7 +30465,7 @@ function addPrimaryUserPaperless()
   if [ -z "$add_user_id" ] || ! [[ $add_user_id =~ ^[+-]?[0-9]+$ ]]; then
     return
   fi
-  jsonbody="{ \"name\": \"${addUserPaper_uid} Email\", \"imap_server\": \"$SMTP_HOSTNAME\", \"imap_port\": 143, \"imap_security\": 3, \"username\": \"$addUserPaper_email\", \"password\": \"$addUserPaper_password\", \"account_type\": 1, \"owner\": $add_user_id, \"user_can_change\": true }"
+  jsonbody="{ \"name\": \"${addUserPaper_uid} Email\", \"imap_server\": \"$SMTP_HOSTNAME\", \"imap_port\": 143, \"imap_security\": 3, \"username\": \"$addUserPaper_email\", \"password\": \"$addUserPaper_emailpw\", \"account_type\": 1, \"owner\": $add_user_id, \"user_can_change\": true }"
   mail_account_id=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   if [ -n "$mail_account_id" ]; then
     jsonbody="{ \"name\": \"${addUserPaper_uid} Email Personal\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 1, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $add_user_id, \"user_can_change\": true, \"stop_processing\": false }"
@@ -30520,6 +30523,10 @@ function addPrimaryUserAutoKB()
   akbBody="${akbRes%$'\n'*}"
   [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Paperless source failed: $akbBody" >&2; return 1; }
   PAPERLESS_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
+  docker ps | grep -q openwebui-app > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    return
+  fi
   echo "Resolving openWebUISink service id..."
   akbRes="$(docker exec autokb-web curl -sS -X GET \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
@@ -30743,6 +30750,7 @@ function addPrimaryUserTwenty()
   local user_password="$3"
   local user_first_name="$4"
   local user_last_name="$5"
+  local user_emailpw="$6"
   local admin_email="$TWENTY_ADMIN_EMAIL_ADDRESS"
   local admin_password="$TWENTY_ADMIN_PASSWORD"
   local origin="https://$SUB_TWENTY.$HOMESERVER_DOMAIN"
@@ -30750,12 +30758,12 @@ function addPrimaryUserTwenty()
   local imap_host="$SMTP_HOSTNAME"
   local imap_port="993"
   local imap_user="$user_email"
-  local imap_pass="$user_password"
+  local imap_pass="$user_emailpw"
   local imap_sec="SSL_TLS"
   local smtp_host="$SMTP_HOSTNAME"
   local smtp_port="587"
   local smtp_user="$user_email"
-  local smtp_pass="$user_password"
+  local smtp_pass="$user_emailpw"
   local smtp_sec="STARTTLS"
   local caldav_host=""
   local caldav_port="443"
@@ -70382,10 +70390,6 @@ function performWorkflowsIntegrationPaperless()
   PAPERLESS_TRANSCRIPTION_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   updateConfigVar PAPERLESS_TRANSCRIPTION_TAG_NAME "$PAPERLESS_TRANSCRIPTION_TAG_NAME"
   updateConfigVar PAPERLESS_TRANSCRIPTION_TAG_ID "$PAPERLESS_TRANSCRIPTION_TAG_ID"
-  jsonbody="{ \"name\": \"HSHQAdmin Email\", \"imap_server\": \"$SMTP_HOSTNAME\", \"imap_port\": 143, \"imap_security\": 3, \"username\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\", \"password\": \"$EMAIL_ADMIN_PASSWORD\", \"account_type\": 1, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true }"
-  ADMIN_MAIL_ACCOUNT_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
-  jsonbody="{ \"name\": \"HSHQAdmin Email Personal\", \"account\": $ADMIN_MAIL_ACCOUNT_ID, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 1, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true, \"stop_processing\": false }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{\"name\": \"$LDAP_PRIMARY_USER_GROUP_NAME\", \"permissions\": [\"view_logentry\",\"view_group\",\"view_user\",\"add_correspondent\",\"change_correspondent\",\"delete_correspondent\",\"view_correspondent\",\"add_document\",\"change_document\",\"delete_document\",\"view_document\",\"view_documenttype\",\"add_note\",\"change_note\",\"delete_note\",\"view_note\",\"add_savedview\",\"change_savedview\",\"delete_savedview\",\"view_savedview\",\"add_sharelink\",\"change_sharelink\",\"delete_sharelink\",\"view_sharelink\",\"add_tag\",\"change_tag\",\"delete_tag\",\"view_tag\",\"add_uisettings\",\"change_uisettings\",\"delete_uisettings\",\"view_uisettings\",\"view_workflow\",\"add_mailaccount\",\"change_mailaccount\",\"delete_mailaccount\",\"view_mailaccount\",\"add_mailrule\",\"change_mailrule\",\"delete_mailrule\",\"view_mailrule\",\"add_processedmail\",\"change_processedmail\",\"delete_processedmail\",\"view_processedmail\"]}"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{\"name\": \"PersonalProcessed\",\"path\": \"PersonalProcessed/{{owner_username}}/PersonalProcessed/{{title}}\",\"match\": \"\",\"matching_algorithm\": 6,\"is_insensitive\": true,\"owner\": $PAPERLESS_ADMIN_ID}"
@@ -118330,7 +118334,48 @@ EOFMT
 function performAutoKBInstallIntegrations()
 {
   addSharedPipelinesAutoKB
-  addPrimaryUserAutoKB "$PAPERLESS_ADMIN_USERNAME" "HSHQAdmin" "$EMAIL_ADMIN_EMAIL_ADDRESS" "$EMAIL_ADMIN_PASSWORD" 3
+  set +e
+  paperless_user_id=$(getPaperlessIDFromUsername "$PAPERLESS_ADMIN_USERNAME")
+  echo "Creating Paperless source subscription..."
+  akbRes="$(docker exec autokb-web curl -sS -X POST \
+    -H "Authorization: Bearer $AUTOKB_API_KEY" \
+    -H "Content-Type: application/json" \
+    --data "{\"name\":\"HSHQAdmin-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"storage_path_id\":3,\"document_filter\":\"owner__id=$paperless_user_id&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"processing_mode\":\"Paperless Content\"}}" \
+    -w $'\n%{http_code}' \
+    "http://autokb-web:80/api/subscriptions/ePaperlessDoclingPlugin")"
+  akbCode="${akbRes##*$'\n'}"
+  akbBody="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Paperless source failed: $akbBody" >&2; return 1; }
+  PAPERLESS_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
+  docker ps | grep -q openwebui-app > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  echo "Resolving openWebUISink service id..."
+  akbRes="$(docker exec autokb-web curl -sS -X GET \
+    -H "Authorization: Bearer $AUTOKB_API_KEY" \
+    -H "Content-Type: application/json" \
+    -w $'\n%{http_code}' \
+    "http://autokb-web:80/api/sinks")"
+  akbCode="${akbRes##*$'\n'}"
+  akbBody="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
+  SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
+  if [ -z "$SINK_ID" ]; then
+    echo "openWebUISink not found among provisioned sinks" >&2
+    return 1
+  fi
+  echo "Creating OpenWebUI target KB HSHQAdmin-PKB..."
+  akbRes="$(docker exec autokb-web curl -sS -X POST \
+    -H "Authorization: Bearer $AUTOKB_API_KEY" \
+    -H "Content-Type: application/json" \
+    --data "{\"name\":\"HSHQAdmin-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$PAPERLESS_SUB_ID\"]}" \
+    -w $'\n%{http_code}' \
+    "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
+  akbCode="${akbRes##*$'\n'}"
+  akbBody="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
+  echo "Done."
 }
 
 function addSharedPipelinesAutoKB()
@@ -118379,6 +118424,10 @@ function addSharedPipelinesAutoKB()
   akbCode="${akbRes##*$'\n'}"
   akbBody="${akbRes%$'\n'*}"
   [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Contact sync subscription failed: $akbBody" >&2; return 1; }
+  docker ps | grep -q openwebui-app > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    return
+  fi
   echo "Resolving openWebUISink service id..."
   akbRes="$(docker exec autokb-web curl -sS -X GET \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
