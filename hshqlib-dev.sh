@@ -30438,9 +30438,6 @@ function addPrimaryUserNextcloud()
   fi
   docker exec -u www-data nextcloud-app php occ mail:account:create "$addUserNext_uid" "$addUserNext_proper" "$addUserNext_email" "mailu-front" 993 ssl "$addUserNext_email" "$addUserNext_password" "mailu-front" 465 ssl "$addUserNext_email" "$addUserNext_password" > /dev/null 2>&1
   newuser_nextcloud_app_password=$(docker exec -u www-data nextcloud-app sh -c "export NC_PASS=$addUserNext_password && php occ user:auth-tokens:add --password-from-env $addUserNext_uid | tail -n 1")
-  if ! docker exec -u www-data nextcloud-app php occ dav:list-calendars "$addUserNext_uid" | awk -F'|' '$2 ~ /^[[:space:]]*Work[[:space:]]*$/' | grep -q .; then
-    docker exec -u www-data nextcloud-app php occ dav:create-calendar "$addUserNext_uid" "Work"
-  fi
 }
 
 function addPrimaryUserPaperless()
@@ -30499,7 +30496,7 @@ function addPrimaryUserAutoKB()
     "http://autokb-web:80/api/subscriptions/imapFolderWatchPlugin")"
   akbCode="${akbRes##*$'\n'}"
   akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "IMAP source failed: $akbBody" >&2; exit 1; }
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "IMAP source failed: $akbBody" >&2; return 1; }
   IMAP_PERSONAL_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
   echo "Creating IMAP shared source subscription..."
   akbRes="$(docker exec autokb-web curl -sS -X POST \
@@ -30510,18 +30507,18 @@ function addPrimaryUserAutoKB()
     "http://autokb-web:80/api/subscriptions/imapFolderWatchPlugin")"
   akbCode="${akbRes##*$'\n'}"
   akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "IMAP source failed: $akbBody" >&2; exit 1; }
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "IMAP source failed: $akbBody" >&2; return 1; }
   IMAP_SHARED_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
   echo "Creating Paperless source subscription..."
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"${formal_name}-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"storage_path_id\":$paperless_storage_id,\"document_filter\":\"owner__id=$paperless_user_id&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"use_paperless_content\":true}}" \
+    --data "{\"name\":\"${formal_name}-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"storage_path_id\":$paperless_storage_id,\"document_filter\":\"owner__id=$paperless_user_id&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"processing_mode\":\"Paperless Content\"}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/ePaperlessDoclingPlugin")"
   akbCode="${akbRes##*$'\n'}"
   akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Paperless source failed: $akbBody" >&2; exit 1; }
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Paperless source failed: $akbBody" >&2; return 1; }
   PAPERLESS_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
   echo "Resolving openWebUISink service id..."
   akbRes="$(docker exec autokb-web curl -sS -X GET \
@@ -30531,7 +30528,7 @@ function addPrimaryUserAutoKB()
     "http://autokb-web:80/api/sinks")"
   akbCode="${akbRes##*$'\n'}"
   akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; exit 1; }
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
   SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
   if [ -z "$SINK_ID" ]; then
     echo "openWebUISink not found among provisioned sinks" >&2
@@ -30546,7 +30543,7 @@ function addPrimaryUserAutoKB()
     "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
   akbCode="${akbRes##*$'\n'}"
   akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; exit 1; }
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
   echo "Fetching current links for shared target $AUTOKB_SHARED_OWUI_TARGET_ID..."
   akbRes="$(docker exec autokb-web curl -sS -X GET \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
@@ -30555,7 +30552,7 @@ function addPrimaryUserAutoKB()
     "http://autokb-web:80/api/targets/$AUTOKB_SHARED_OWUI_TARGET_ID")"
   akbCode="${akbRes##*$'\n'}"
   akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target lookup failed: $akbBody" >&2; exit 1; }
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target lookup failed: $akbBody" >&2; return 1; }
   existing="$(printf '%s' "$akbBody" | jq -c '[.subscriptions[].subscription_id | select(. != null)]')"
   ids="$(printf '%s' "$existing" | jq -c --argjson ns "\"$IMAP_SHARED_SUB_ID\"" '. + [$ns] | unique')"
   echo "Attaching source $IMAP_SHARED_SUB_ID to shared target $AUTOKB_SHARED_OWUI_TARGET_ID..."
@@ -30567,7 +30564,7 @@ function addPrimaryUserAutoKB()
     "http://autokb-web:80/api/targets/$AUTOKB_SHARED_OWUI_TARGET_ID")"
   akbCode="${akbRes##*$'\n'}"
   akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target update failed: $akbBody" >&2; exit 1; }
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target update failed: $akbBody" >&2; return 1; }
   echo "Done."
 }
 
@@ -30769,10 +30766,7 @@ function addPrimaryUserTwenty()
   docker ps | grep -q nextcloud-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     is_nextcloud_installed=true
-    if ! docker exec -u www-data nextcloud-app php occ dav:list-calendars "$user_uid" | awk -F'|' '$2 ~ /^[[:space:]]*Work[[:space:]]*$/' | grep -q .; then
-      docker exec -u www-data nextcloud-app php occ dav:create-calendar "$user_uid" "Work"
-    fi
-    caldav_host="https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/remote.php/dav/calendars/$user_uid/Work/"
+    caldav_host="https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/remote.php/dav"
     caldav_port="443"
     caldav_user="$user_uid"
     caldav_pass="$user_password"
@@ -31545,8 +31539,8 @@ function loadPinnedDockerImages()
   IMG_HERMES_TERMINAL=hshq/hermes-terminal:v1
   IMG_HERMES_CAMOFOX=ghcr.io/jo-inc/camofox-browser:1.11.2
   IMG_HERMES_WEBUI=ghcr.io/nesquena/hermes-webui:0.51.137
-  IMG_AUTOKB_APP=ghcr.io/homeserverhq/autokb-app:v4
-  IMG_AUTOKB_MCP=ghcr.io/homeserverhq/autokb-mcp:v4
+  IMG_AUTOKB_APP=ghcr.io/homeserverhq/autokb-app:v5
+  IMG_AUTOKB_MCP=ghcr.io/homeserverhq/autokb-mcp:v5
   IMG_SUITECRM_APP=ghcr.io/homeserverhq/suitecrm-core:v8.10.1
   IMG_SUITECRM_MCP=ghcr.io/homeserverhq/suitecrm-mcp:v2
   IMG_HEDGEDOC_FRONTEND=ghcr.io/homeserverhq/hedgedoc-frontend:v2.0.1-alpha
@@ -33393,6 +33387,7 @@ TWENTY_ADMIN_USERNAME=
 TWENTY_ADMIN_EMAIL_ADDRESS=
 TWENTY_ADMIN_PASSWORD=
 TWENTY_ADMIN_API_KEY=
+TWENTY_AKB_API_KEY=
 TWENTY_DATABASE_NAME=
 TWENTY_DATABASE_USER=
 TWENTY_DATABASE_USER_PASSWORD=
@@ -44108,7 +44103,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "MintHCM" "MINTHCM_INIT_ENV=false,MINTHCM_ADMIN_USERNAME=,MINTHCM_ADMIN_PASSWORD=,MINTHCM_ADMIN_EMAIL_ADDRESS=,MINTHCM_DATABASE_NAME=,MINTHCM_DATABASE_ROOT_PASSWORD=,MINTHCM_DATABASE_USER=,MINTHCM_DATABASE_USER_PASSWORD=,MINTHCM_ES_USER=,MINTHCM_ES_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "CloudBeaver" "CLOUDBEAVER_INIT_ENV=false,CLOUDBEAVER_ADMIN_USERNAME=,CLOUDBEAVER_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "DbGate" "DBGATE_INIT_ENV=false,DBGATE_ADMIN_USERNAME=,DBGATE_ADMIN_PASSWORD=" $CONFIG_FILE false
-  checkAddServiceToConfig "Twenty" "TWENTY_INIT_ENV=false,TWENTY_ADMIN_USERNAME=,TWENTY_ADMIN_EMAIL_ADDRESS=,TWENTY_ADMIN_PASSWORD=,TWENTY_DATABASE_NAME=,TWENTY_DATABASE_USER=,TWENTY_DATABASE_USER_PASSWORD=,TWENTY_REDIS_PASSWORD=,TWENTY_MINIO_KEY=,TWENTY_MINIO_SECRET=,TWENTY_APP_SECRET=,TWENTY_ENCRYPTION_KEY=,TWENTY_ADMIN_API_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "Twenty" "TWENTY_INIT_ENV=false,TWENTY_ADMIN_USERNAME=,TWENTY_ADMIN_EMAIL_ADDRESS=,TWENTY_ADMIN_PASSWORD=,TWENTY_DATABASE_NAME=,TWENTY_DATABASE_USER=,TWENTY_DATABASE_USER_PASSWORD=,TWENTY_REDIS_PASSWORD=,TWENTY_MINIO_KEY=,TWENTY_MINIO_SECRET=,TWENTY_APP_SECRET=,TWENTY_ENCRYPTION_KEY=,TWENTY_ADMIN_API_KEY=,TWENTY_AKB_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "Odoo" "ODOO_INIT_ENV=false,ODOO_ADMIN_USERNAME=,ODOO_ADMIN_EMAIL_ADDRESS=,ODOO_ADMIN_PASSWORD=,ODOO_DATABASE_NAME=,ODOO_DATABASE_USER=,ODOO_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Calcom" "CALCOM_INIT_ENV=false,CALCOM_ADMIN_USERNAME=,CALCOM_ADMIN_EMAIL_ADDRESS=,CALCOM_ADMIN_PASSWORD=,CALCOM_DATABASE_NAME=,CALCOM_DATABASE_USER=,CALCOM_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Rallly" "RALLLY_INIT_ENV=false,RALLLY_ADMIN_USERNAME=,RALLLY_ADMIN_EMAIL_ADDRESS=,RALLLY_ADMIN_PASSWORD=,RALLLY_DATABASE_NAME=,RALLLY_DATABASE_USER=,RALLLY_DATABASE_USER_PASSWORD=,RALLLY_MINIO_KEY=,RALLLY_MINIO_SECRET=" $CONFIG_FILE false
@@ -44239,7 +44234,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "InvoiceShelf" "INVOICESHELF_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Keila" "KEILA_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Wikijs" "WIKIJS_ADMIN_API_KEY="  $CONFIG_FILE false
-  checkAddVarsToServiceConfig "Twenty" "TWENTY_ADMIN_API_KEY=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Twenty" "TWENTY_ADMIN_API_KEY=,TWENTY_AKB_API_KEY=" $CONFIG_FILE false
   initServicesCredentials
 }
 
@@ -51379,6 +51374,21 @@ function installNextcloud()
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus enabled --value="yes"
   fi
   addSharedDirsNextcloud
+  if ! docker exec -u www-data nextcloud-app php occ dav:list-addressbooks "$NEXTCLOUD_ADMIN_USERNAME" 2>/dev/null \
+       | awk -F'|' '{ gsub(/ /,"",$2); if ($2=="'"Global"'") found=1 } END { exit !found }'; then
+    docker exec -u www-data nextcloud-app php occ dav:create-addressbook "$NEXTCLOUD_ADMIN_USERNAME" "Global"
+  fi
+  docker exec -i nextcloud-web curl -fsS -u "$NEXTCLOUD_ADMIN_USERNAME:$NEXTCLOUD_ADMIN_PASSWORD" -X POST \
+    -H 'Content-Type: application/xml; charset=UTF-8' \
+    --data-binary @- "http://localhost/remote.php/dav/addressbooks/users/$NEXTCLOUD_ADMIN_USERNAME/Global" >/dev/null <<XML
+<oc:share xmlns:oc="http://owncloud.org/ns" xmlns:d="DAV:">
+  <oc:set>
+    <d:href>principal:principals/groups/$LDAP_PRIMARY_USER_GROUP_NAME</d:href>
+    <oc:common-name>$LDAP_PRIMARY_USER_GROUP_NAME</oc:common-name>
+    <oc:read-write/>
+  </oc:set>
+</oc:share>
+XML
   docker exec -u www-data nextcloud-app php occ db:add-missing-indices > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ maintenance:repair --include-expensive > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ background:cron
@@ -85001,10 +85011,7 @@ function performOnboardingTwenty()
   docker ps | grep -q nextcloud-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     is_nextcloud_installed=true
-    if ! docker exec -u www-data nextcloud-app php occ dav:list-calendars "$NEXTCLOUD_ADMIN_USERNAME" | awk -F'|' '$2 ~ /^[[:space:]]*Work[[:space:]]*$/' | grep -q .; then
-      docker exec -u www-data nextcloud-app php occ dav:create-calendar "$NEXTCLOUD_ADMIN_USERNAME" "Work"
-    fi
-    t_admin_caldav_host="https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/remote.php/dav/calendars/$NEXTCLOUD_ADMIN_USERNAME/Work/"
+    t_admin_caldav_host="https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/remote.php/dav"
     t_admin_caldav_port="443"
     t_admin_caldav_user="$NEXTCLOUD_ADMIN_USERNAME"
     t_admin_caldav_pass="$NEXTCLOUD_ADMIN_PASSWORD"
@@ -85244,6 +85251,37 @@ function performOnboardingTwenty()
   fi
   TWENTY_ADMIN_API_KEY=$(printf '%s\n' "$token")
   updateConfigVar TWENTY_ADMIN_API_KEY "$TWENTY_ADMIN_API_KEY"
+  key_name="AutoKB"
+  key_id="$(app_curl_exec -sS -X GET -H "Authorization: Bearer $access_token" \
+    -H 'Content-Type: application/json' \
+    --max-time 30 "http://localhost:3000/rest/apiKeys" 2>/dev/null \
+    | jq -r --arg n "$key_name" '.[]? | select(.name==$n and .revokedAt==null) | .id' 2>/dev/null \
+    | head -n1)"
+  if [[ -z "$key_id" ]]; then
+    log "$(date -u +%T) no non-revoked key named '$key_name' -> minting one (88y)"
+    key_id="$(app_curl_exec -sS -X POST -H "Authorization: Bearer $access_token" \
+      -H 'Content-Type: application/json' \
+      --data "$(jq -cn --arg n "$key_name" --arg e "$expires_at" --arg r "$role_id" \
+        '{name:$n,expiresAt:$e,roleId:$r}')" \
+      "http://localhost:3000/rest/apiKeys" 2>/dev/null \
+      | jq -r '.id' 2>/dev/null)"
+    if [[ -z "$key_id" || "$key_id" == "null" ]]; then
+      log "ERROR: could not create API key." >&2
+      return 1
+    fi
+  else
+    log "$(date -u +%T) reusing existing key '$key_name' ($key_id)"
+  fi
+  token="$(gql \
+    'mutation($apiKeyId:UUID!,$expiresAt:String!){ generateApiKeyToken(apiKeyId:$apiKeyId,expiresAt:$expiresAt){ token } }' \
+    "{\"apiKeyId\":\"$key_id\",\"expiresAt\":\"$expires_at\"}" "$access_token" \
+    | jq -r '.data.generateApiKeyToken.token')"
+  if [[ -z "$token" || "$token" == "null" ]]; then
+    log "ERROR: could not generate API key token." >&2
+    return 1
+  fi
+  TWENTY_AKB_API_KEY=$(printf '%s\n' "$token")
+  updateConfigVar TWENTY_AKB_API_KEY "$TWENTY_AKB_API_KEY"
 }
 
 function performUpdateTwenty()
@@ -118096,6 +118134,7 @@ services:
     networks:
       - int-autokb-net
       - dock-internalmail-net
+      - dock-proxy-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -118122,6 +118161,7 @@ services:
       - int-autokb-net
       - dock-ext-net
       - dock-internalmail-net
+      - dock-proxy-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -118296,7 +118336,7 @@ function addSharedPipelinesAutoKB()
     "http://autokb-web:80/api/subscriptions/imapFolderWatchPlugin")"
   akbCode="${akbRes##*$'\n'}"
   akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "IMAP source failed: $akbBody" >&2; exit 1; }
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "IMAP source failed: $akbBody" >&2; return 1; }
   IMAP_PERSONAL_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
   echo "Creating IMAP shared source subscription..."
   akbRes="$(docker exec autokb-web curl -sS -X POST \
@@ -118307,19 +118347,29 @@ function addSharedPipelinesAutoKB()
     "http://autokb-web:80/api/subscriptions/imapFolderWatchPlugin")"
   akbCode="${akbRes##*$'\n'}"
   akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "IMAP source failed: $akbBody" >&2; exit 1; }
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "IMAP source failed: $akbBody" >&2; return 1; }
   IMAP_SHARED_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
   echo "Creating Paperless source subscription..."
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"Shared-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"storage_path_id\":2,\"document_filter\":\"tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"use_paperless_content\":true}}" \
+    --data "{\"name\":\"Shared-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"storage_path_id\":2,\"document_filter\":\"tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"processing_mode\":\"Paperless Content\"}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/ePaperlessDoclingPlugin")"
   akbCode="${akbRes##*$'\n'}"
   akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Paperless source failed: $akbBody" >&2; exit 1; }
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Paperless source failed: $akbBody" >&2; return 1; }
   PAPERLESS_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
+  echo "Creating Nextcloud/Twenty contact sync subscription..."
+  akbRes="$(docker exec autokb-web curl -sS -X POST \
+    -H "Authorization: Bearer $AUTOKB_API_KEY" \
+    -H "Content-Type: application/json" \
+    --data "{\"name\":\"ContactSync\",\"cron\":\"*/15 * * * * \",\"config\":{\"nextcloud_url\":\"http://nextcloud-web\",\"nextcloud_username\":\"$NEXTCLOUD_ADMIN_USERNAME\",\"nextcloud_password\":\"$NEXTCLOUD_ADMIN_PASSWORD\",\"nextcloud_addressbook\":\"Global\",\"twenty_url\":\"http://twenty-app:3000\",\"twenty_api_key\":\"$TWENTY_AKB_API_KEY\",\"mode\":\"Normal\"}}" \
+    -w $'\n%{http_code}' \
+    "http://autokb-web:80/api/subscriptions/nextcloudTwentyContactSyncPlugin")"
+  akbCode="${akbRes##*$'\n'}"
+  akbBody="${akbRes%$'\n'*}"
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Contact sync subscription failed: $akbBody" >&2; return 1; }
   echo "Resolving openWebUISink service id..."
   akbRes="$(docker exec autokb-web curl -sS -X GET \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
@@ -118328,7 +118378,7 @@ function addSharedPipelinesAutoKB()
     "http://autokb-web:80/api/sinks")"
   akbCode="${akbRes##*$'\n'}"
   akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; exit 1; }
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
   SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
   if [ -z "$SINK_ID" ]; then
     echo "openWebUISink not found among provisioned sinks" >&2
@@ -118343,7 +118393,7 @@ function addSharedPipelinesAutoKB()
     "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
   akbCode="${akbRes##*$'\n'}"
   akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; exit 1; }
+  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
   AUTOKB_SHARED_OWUI_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.target_id')"
   updateConfigVar AUTOKB_SHARED_OWUI_TARGET_ID $AUTOKB_SHARED_OWUI_TARGET_ID
   echo "Done."
@@ -118358,10 +118408,10 @@ function performUpdateAutoKB()
   case "$perform_stack_ver" in
     1)
       newVer=v1
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/homeserverhq/autokb-app:v4,ghcr.io/homeserverhq/autokb-mcp:v4,mirror.gcr.io/valkey/valkey:alpine3.23
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/homeserverhq/autokb-app:v5,ghcr.io/homeserverhq/autokb-mcp:v5,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
-      image_update_map[1]="ghcr.io/homeserverhq/autokb-app:v4,ghcr.io/homeserverhq/autokb-app:v4"
-      image_update_map[2]="ghcr.io/homeserverhq/autokb-mcp:v4,ghcr.io/homeserverhq/autokb-mcp:v4"
+      image_update_map[1]="ghcr.io/homeserverhq/autokb-app:v5,ghcr.io/homeserverhq/autokb-app:v5"
+      image_update_map[2]="ghcr.io/homeserverhq/autokb-mcp:v5,ghcr.io/homeserverhq/autokb-mcp:v5"
       image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
