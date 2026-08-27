@@ -54908,6 +54908,7 @@ function initializeSiteWikijs()
     \"siteUrl\": \"https://$SUB_WIKIJS.$HOMESERVER_DOMAIN\",
     \"telemetry\": false
   }" > /dev/null 2>&1
+  return 0
   echo "Wikijs site initialized..."
   local jq_node='let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).data.authentication.login.jwt)}catch(e){process.exit(1)}})'
   local resp jwt
@@ -58814,13 +58815,13 @@ function installWordPress()
   sleep 3
   docker run --user www-data --rm --name wordpress-cli --env-file wpstack.env -v "$HSHQ_STACKS_DIR/wordpress/web:/var/www/html" --network dock-dbs mirror.gcr.io/wordpress:cli-php8.5 wp core is-installed --path="/var/www/html"
   rtVal=$?
-  rm -f $HOME/wpstack.env
   if [ $rtVal -ne 0 ]; then
     echo "WordPress installation failed. Please remove the stack and try again."
     return 1
   fi
   WORDPRESS_APP_PASSWORD=$(docker run --user www-data --rm --name wordpress-cli --hostname wordpress-cli -e TZ="$TZ" --env-file wpstack.env -v "/etc/localtime:/etc/localtime:ro" -v "/etc/timezone:/etc/timezone:ro" -v "/etc/ssl/certs:/etc/ssl/certs:ro" -v "/usr/share/ca-certificates:/usr/share/ca-certificates:ro" -v "/usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro" -v "$HSHQ_STACKS_DIR/wordpress/web:/var/www/html" --restart no --network dock-dbs $(getScriptImageByContainerName wordpress-cli) sh -c "wp user application-password create $WORDPRESS_ADMIN_USERNAME testapp --porcelain")
   updateConfigVar WORDPRESS_APP_PASSWORD $WORDPRESS_APP_PASSWORD
+  rm -f $HOME/wpstack.env
   addReadOnlyUserToDatabase Wordpress mysql wordpress-db $WORDPRESS_DATABASE_NAME root $WORDPRESS_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/wordpress/dbexport $WORDPRESS_DATABASE_READONLYUSER $WORDPRESS_DATABASE_READONLYUSER_PASSWORD
   addMCPServerLiteLLM "wordpress" "wp" "http://wordpress-mcp:80/mcp" http none ""
   updateStackEnv wordpress mfWordpressAddExtraConfig
