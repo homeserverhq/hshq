@@ -4545,7 +4545,7 @@ EOFHP
   rm -f $HSHQ_BASE_DIR/cip.txt
   if [ "$isInstallOrRestore" = "install" ]; then
     performInstallVariantsPost
-    addPrimaryUser "$LDAP_ADMIN_USER_USERNAME" "$LDAP_ADMIN_USER_PASSWORD" "HSHQ" "Admin" true
+    addPrimaryUser "$LDAP_ADMIN_USER_USERNAME" "$LDAP_ADMIN_USER_PASSWORD" "${HOMESERVER_ABBREV^^}" "Admin" true
 # > /dev/null 2>&1
     if ! [ -z "$FIRST_USER_USERNAME" ]; then
       echo "Adding first user($FIRST_USER_USERNAME)..."
@@ -30309,8 +30309,8 @@ EOFAU
   newuser_linkwarden_api_key=$(docker exec linkwarden-app node /data/data/provision-user.mjs $addPUEmailAddress "${addPUFirstName} ${addPULastName}" "MCP")
   newuser_hedgedoc_api_key=$(addPrimaryUserHedgeDoc "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress)
   newuser_mealie_api_key=$(addPrimaryUserMealie "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress false)
-  newuser_presenton_api_key=$(addPrimaryUserPresenton "$addPUUID" "addPUPassword")
-  newuser_twenty_api_key=$(addPrimaryUserTwenty "$addPUUID" "$addPUEmailAddress" "addPUPassword" "$addPUFirstName" "$addPULastName" "$addPUEmailPassword")
+  newuser_presenton_api_key=$(addPrimaryUserPresenton "$addPUUID" "$addPUPassword")
+  newuser_twenty_api_key=$(addPrimaryUserTwenty "$addPUUID" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName" "$addPULastName" "$addPUEmailPassword")
   set +e
   docker ps | grep -q openwebui-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
@@ -54916,50 +54916,50 @@ function initializeSiteWikijs()
     \"siteUrl\": \"https://$SUB_WIKIJS.$HOMESERVER_DOMAIN\",
     \"telemetry\": false
   }" > /dev/null 2>&1
-  return 0
   echo "Wikijs site initialized..."
+  sleep 5
+  waitForContainerLogString wikijs-web 3 60 "Syncing locales with Graph endpoint"
   local jq_node='let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).data.authentication.login.jwt)}catch(e){process.exit(1)}})'
   local resp jwt
   resp=$(docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
       -d "{\"query\":\"mutation { authentication { login(strategy: \\\"local\\\", username: \\\"$WIKIJS_ADMIN_EMAIL_ADDRESS\\\", password: \\\"$WIKIJS_ADMIN_PASSWORD\\\") { jwt responseResult { succeeded } } } }\"}")
-  jwt=$(printf '%s' "$resp" | node -e "$jq_node")
+  jwt=$(docker exec -e resp="$resp" -e jq_node="$jq_node" wikijs-web sh -c 'printf "%s" "$resp" | node -e "$jq_node"')
   if [ -z "$jwt" ]; then
       echo "ERROR: login failed"
       return 1
   fi
-  echo "WJS 1"
   docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
       -H "Authorization: Bearer $jwt" \
       -d '{"query":"mutation { authentication { setApiState(enabled: true) { responseResult { succeeded } } } }"}' >/dev/null 2>&1
   resp=$(docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
       -H "Authorization: Bearer $jwt" \
       -d '{"query":"query { authentication { apiKeys { id name isRevoked expiration } } }"}')
-  echo "WJS 2"
   local id dtNow
   dtNow=$(date -u +%Y-%m-%dT%H:%M:%S)
-  id=$(printf '%s' "$resp" | node -e '
+  id=$(docker exec -e resp="$resp" -e dtNow="$dtNow" wikijs-web node -e '
 let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-  const now=process.argv[1]||"";
+  const now=process.env.dtNow||"";
   try{
-    const ks=(JSON.parse(s).data.authentication.apiKeys||[]);
+    const ks=(JSON.parse(process.env.resp).data.authentication.apiKeys||[]);
     const k=ks.find(x=>!x.isRevoked && (!x.expiration || String(x.expiration)>=now));
     console.log(k?k.id:"");
   }catch(e){process.exit(1)}
-});' "$dtNow")
+});')
   if [ -n "$id" ]; then
     docker exec wikijs-db psql -U wikijs-user -d wikijsdb -tA -c "select key from \"apiKeys\" where id = $id"
     return
   fi
-  echo "WJS 3"
   resp=$(docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
       -H "Authorization: Bearer $jwt" \
       -d "{\"query\":\"mutation { authentication { createApiKey(name: \\\"MCP\\\", expiration: \\\"88y\\\", fullAccess: true) { key responseResult { succeeded message } } } }\"}")
-  echo "WJS 4"
-  WIKIJS_ADMIN_API_KEY=$(printf '%s' "$resp" | node -e '
-let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-  try{console.log(JSON.parse(s).data.authentication.createApiKey.key||"")}catch(e){process.exit(1)}
-});')
-  echo "WJS 5"
+  WIKIJS_ADMIN_API_KEY=$(docker exec -e resp="$resp" wikijs-web node -e '
+let s="";
+try {
+  const data = JSON.parse(process.env.resp);
+  console.log(data.data.authentication.createApiKey.key || "");
+} catch(e) {
+  process.exit(1);
+}')
   updateConfigVar WIKIJS_ADMIN_API_KEY $WIKIJS_ADMIN_API_KEY
   set -e
 }
@@ -91501,7 +91501,7 @@ function performUpdateInvoiceShelf()
 function performOnboardingInvoiceShelf()
 {
   echo "==> Fresh migrate + seed (wipes existing DB) on invoiceshelf-app"
-  if ! docker exec "invoiceshelf-app" php artisan migrate:fresh --seed --force --no-interaction >/dev/null; then
+  if ! docker exec "invoiceshelf-app" php artisan migrate:fresh --seed --force --no-interaction > /dev/null 2>&1; then
     echo "ERROR: migrate:fresh --seed failed." >&2
     return 1
   fi
@@ -91617,7 +91617,7 @@ echo ' | timezone='.CompanySetting::getSetting('time_zone', $company->id);
 echo ' | mail_driver='.Setting::getSetting('mail_driver');
 echo PHP_EOL;
 PHP
-  )"; then
+  )" > /dev/null 2>&1; then
     echo "ERROR: onboarding could not be applied." >&2
     return 1
   fi
@@ -118340,7 +118340,7 @@ function performAutoKBInstallIntegrations()
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"HSHQAdmin-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"storage_path_id\":3,\"document_filter\":\"owner__id=$paperless_user_id&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"processing_mode\":\"Paperless Content\"}}" \
+    --data "{\"name\":\"HSHQSuperAdmin-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"storage_path_id\":3,\"document_filter\":\"owner__id=$paperless_user_id&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"processing_mode\":\"Paperless Content\"}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/ePaperlessDoclingPlugin")"
   akbCode="${akbRes##*$'\n'}"
@@ -118365,11 +118365,11 @@ function performAutoKBInstallIntegrations()
     echo "openWebUISink not found among provisioned sinks" >&2
     return 1
   fi
-  echo "Creating OpenWebUI target KB HSHQAdmin-PKB..."
+  echo "Creating OpenWebUI target KB HSHQSuperAdmin-PKB..."
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"HSHQAdmin-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$PAPERLESS_SUB_ID\"]}" \
+    --data "{\"name\":\"HSHQSuperAdmin-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$PAPERLESS_SUB_ID\"]}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
   akbCode="${akbRes##*$'\n'}"
