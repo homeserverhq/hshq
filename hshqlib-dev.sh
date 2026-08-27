@@ -4571,7 +4571,7 @@ EOFHP
     sudo cp $HSHQ_LOG_FILE $HSHQ_BASE_DIR/hshqInstall.log
     sudo chown $USERNAME:$USERNAME $HSHQ_BASE_DIR/hshqInstall.log
     chmod 0400 $HSHQ_BASE_DIR/hshqInstall.log
-    sudo truncate -s 0 $HSHQ_LOG_FILE
+    #sudo truncate -s 0 $HSHQ_LOG_FILE
     sudo reboot
   fi
 }
@@ -66974,10 +66974,10 @@ const secret = process.env.NEXTAUTH_SECRET;
 
 function usage() {
   console.error(
-    `Usage: node provision-user.mjs <email> [name] [tokenName]\n` +
-      `  email     (required) Authelia user identifier.\n` +
-      `  name      (optional) Display name; use "_" to skip.\n` +
-      `  tokenName (optional) API token name, default "MCP".`
+    \`Usage: node provision-user.mjs <email> [name] [tokenName]\n\` +
+      \`  email     (required) Authelia user identifier.\n\` +
+      \`  name      (optional) Display name; use "_" to skip.\n\` +
+      \`  tokenName (optional) API token name, default "MCP".\`
   );
 }
 
@@ -68082,7 +68082,7 @@ function buildImageBarAssistantMCPV1()
     // Extract base URL from configured Bar Assistant URL
     const baseUrl = this.barClient['config'].baseUrl.replace(/\\\/bar$/, '');
     const effectiveUrl = process.env.BAR_ASSISTANT_EXT_URL || baseUrl;
-    return `${effectiveUrl}/cocktails/${slug}`;
+    return \`${effectiveUrl}/cocktails/${slug}\`;
   }
 
   /**
@@ -99827,7 +99827,7 @@ const generateImage = async (message: MessageType) => {
 		generatingImage = true;
 		const prompt = getOutputText(message?.output) || removeAllDetails(message.content ?? '') || message.content;
 		const res = await imageGenerations(localStorage.token, prompt).catch((error) => {
-			toast.error(`${error}`);
+			toast.error(\`\${error}\`);
 		});
 		console.log(res);
 
