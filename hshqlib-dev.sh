@@ -30356,7 +30356,7 @@ EOFIM
         --arg mealie_api_key "$newuser_mealie_api_key" \
         --arg presenton_api_key "$newuser_presenton_api_key" \
         --arg twenty_api_key "$newuser_twenty_api_key" \
-        '{immich_api_key: "$immich_api_key", nextcloud_api_key: "$nextcloud_api_key", paperless_api_key: "$paperless_api_key", opennotebook_api_key: "$opennotebook_api_key", linkwarden_api_key: "$linkwarden_api_key", hedgedoc_api_key: "$hedgedoc_api_key", mealie_api_key: "$mealie_api_key", presenton_api_key: "$presenton_api_key", twenty_api_key: "$twenty_api_key"}')
+        '{immich_api_key: $immich_api_key, nextcloud_api_key: $nextcloud_api_key, paperless_api_key: $paperless_api_key, opennotebook_api_key: $opennotebook_api_key, linkwarden_api_key: $linkwarden_api_key, hedgedoc_api_key: $hedgedoc_api_key, mealie_api_key: $mealie_api_key, presenton_api_key: $presenton_api_key, twenty_api_key: $twenty_api_key}')
     curl -s -X POST "https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/api/v1/tools/id/mcpkeyvault_tool/valves/user/update" -H "Authorization: Bearer $OPENWEBUI_PU_API_KEY" -H "Content-Type: application/json" -d "$jsonbody" > /dev/null 2>&1
   fi
   if ! [ "$addPUIsLDAPAdmin" = "true" ]; then
