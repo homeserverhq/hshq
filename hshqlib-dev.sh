@@ -54898,6 +54898,7 @@ EOFWJ
 
 function initializeSiteWikijs()
 {
+  set +e
   curl -X POST https://$SUB_WIKIJS.$HOMESERVER_DOMAIN/finalize \
   -H 'Content-Type: application/json' \
   -d "{
@@ -54907,24 +54908,27 @@ function initializeSiteWikijs()
     \"siteUrl\": \"https://$SUB_WIKIJS.$HOMESERVER_DOMAIN\",
     \"telemetry\": false
   }" > /dev/null 2>&1
-    local jq_node='let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).data.authentication.login.jwt)}catch(e){process.exit(1)}})'
-    local resp jwt
-    resp=$(docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
-        -d "{\"query\":\"mutation { authentication { login(strategy: \\\"local\\\", username: \\\"$WIKIJS_ADMIN_EMAIL_ADDRESS\\\", password: \\\"$WIKIJS_ADMIN_PASSWORD\\\") { jwt responseResult { succeeded } } } }\"}")
-    jwt=$(printf '%s' "$resp" | node -e "$jq_node")
-    if [ -z "$jwt" ]; then
-        echo "ERROR: login failed" >&2
-        return 1
-    fi
-    docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
-        -H "Authorization: Bearer $jwt" \
-        -d '{"query":"mutation { authentication { setApiState(enabled: true) { responseResult { succeeded } } } }"}' >/dev/null 2>&1
-    resp=$(docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
-        -H "Authorization: Bearer $jwt" \
-        -d '{"query":"query { authentication { apiKeys { id name isRevoked expiration } } }"}')
-    local id dtNow
-    dtNow=$(date -u +%Y-%m-%dT%H:%M:%S)
-    id=$(printf '%s' "$resp" | node -e '
+  echo "Wikijs site initialized..."
+  local jq_node='let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).data.authentication.login.jwt)}catch(e){process.exit(1)}})'
+  local resp jwt
+  resp=$(docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
+      -d "{\"query\":\"mutation { authentication { login(strategy: \\\"local\\\", username: \\\"$WIKIJS_ADMIN_EMAIL_ADDRESS\\\", password: \\\"$WIKIJS_ADMIN_PASSWORD\\\") { jwt responseResult { succeeded } } } }\"}")
+  jwt=$(printf '%s' "$resp" | node -e "$jq_node")
+  if [ -z "$jwt" ]; then
+      echo "ERROR: login failed"
+      return 1
+  fi
+  echo "WJS 1"
+  docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
+      -H "Authorization: Bearer $jwt" \
+      -d '{"query":"mutation { authentication { setApiState(enabled: true) { responseResult { succeeded } } } }"}' >/dev/null 2>&1
+  resp=$(docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
+      -H "Authorization: Bearer $jwt" \
+      -d '{"query":"query { authentication { apiKeys { id name isRevoked expiration } } }"}')
+  echo "WJS 2"
+  local id dtNow
+  dtNow=$(date -u +%Y-%m-%dT%H:%M:%S)
+  id=$(printf '%s' "$resp" | node -e '
 let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
   const now=process.argv[1]||"";
   try{
@@ -54937,14 +54941,18 @@ let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
     docker exec wikijs-db psql -U wikijs-user -d wikijsdb -tA -c "select key from \"apiKeys\" where id = $id"
     return
   fi
+  echo "WJS 3"
   resp=$(docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
       -H "Authorization: Bearer $jwt" \
       -d "{\"query\":\"mutation { authentication { createApiKey(name: \\\"MCP\\\", expiration: \\\"88y\\\", fullAccess: true) { key responseResult { succeeded message } } } }\"}")
+  echo "WJS 4"
   WIKIJS_ADMIN_API_KEY=$(printf '%s' "$resp" | node -e '
 let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
   try{console.log(JSON.parse(s).data.authentication.createApiKey.key||"")}catch(e){process.exit(1)}
 });')
+  echo "WJS 5"
   updateConfigVar WIKIJS_ADMIN_API_KEY $WIKIJS_ADMIN_API_KEY
+  set -e
 }
 
 function performUpdateWikijs()
