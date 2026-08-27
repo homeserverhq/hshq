@@ -20667,7 +20667,6 @@ function createInitialEnv()
   set -e
   sudo usermod -a -G 82 $USERNAME >/dev/null 2>&1
   mkdir -p $HSHQ_STACKS_DIR/shared/{Images,SharedConsume,SharedProcessed,PersonalConsume,PersonalProcessed,PersonalTranscribeInput,PersonalTranscribeOutput}
-  mkdir -p $HSHQ_STACKS_DIR/shared/KnowledgeBases/{Bible,YouTube,Paperless,Speakr,WebScrapes,Email,HSHQ}
   sudo chown -R 1000:82 $HSHQ_STACKS_DIR/shared
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/SharedProcessed
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalProcessed
@@ -24251,7 +24250,6 @@ function version231Update()
   sudo groupadd -g 82 nextwrite >/dev/null 2>&1
   sudo usermod -a -G 82 $USERNAME >/dev/null 2>&1
   mkdir -p $HSHQ_STACKS_DIR/shared/{Images,SharedConsume,SharedProcessed,PersonalConsume,PersonalProcessed,PersonalTranscribeOutput}
-  mkdir -p $HSHQ_STACKS_DIR/shared/KnowledgeBases/{Bible,YouTube,Paperless,Speakr,WebScrapes,Email,HSHQ}
   sudo chown -R 1000:82 $HSHQ_STACKS_DIR/shared
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/SharedProcessed
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalProcessed
@@ -24397,7 +24395,6 @@ function version234Update()
 {
   performAptInstall inotify-tools > /dev/null 2>&1
   outputNextcloudInotifyScan
-  mkdir -p $HSHQ_STACKS_DIR/shared/KnowledgeBases/HSHQ
   mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeOutput
   sudo chown -R 1000:82 $HSHQ_STACKS_DIR/shared
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/SharedProcessed
@@ -24437,7 +24434,6 @@ function version237Update()
 
 function version238Update()
 {
-  echo "Begin v238 update..."
   mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput
   mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$SPEAKR_ADMIN_USERNAME
@@ -27233,6 +27229,7 @@ function outputDBExportScripts()
   cat <<EOFDB > $HSHQ_SCRIPTS_DIR/user/exportPostgres.sh
 #!/bin/bash
 
+is_keep_hourly="\$1"
 set -e
 PGPASSWORD=\$POSTGRES_PASSWORD
 if [ -z "\$PGPASSWORD" ]; then
@@ -27241,8 +27238,12 @@ if [ -z "\$PGPASSWORD" ]; then
 fi
 pg_dump --username \$POSTGRES_USER \$POSTGRES_DB > /dbexport/dbexport.tmp
 outputfilesize=\$(du -sh /dbexport/dbexport.tmp | xargs | cut -d ' ' -f1)
-mv /dbexport/dbexport.tmp /dbexport/\$POSTGRES_DB.sql
-chmod 0400 /dbexport/\$POSTGRES_DB.sql
+cur_filename=\${POSTGRES_DB}.sql
+if [ "\$is_keep_hourly" = "true" ]; then
+  cur_filename=\${POSTGRES_DB}-\$(date '+%H').sql
+fi
+mv /dbexport/dbexport.tmp /dbexport/\$cur_filename
+chmod 0400 /dbexport/\$cur_filename
 echo "Success - Filesize is \$outputfilesize"
 EOFDB
   chmod 0555 $HSHQ_SCRIPTS_DIR/user/exportPostgres.sh
@@ -27250,11 +27251,16 @@ EOFDB
   cat <<EOFDB > $HSHQ_SCRIPTS_DIR/user/exportMySQL.sh
 #!/bin/bash
 
+is_keep_hourly="\$1"
 set -e
 mysqldump --user \$MYSQL_USER --password=\$MYSQL_PASSWORD \$MYSQL_DATABASE > /dbexport/dbexport.tmp
 outputfilesize=\$(du -sh /dbexport/dbexport.tmp | xargs | cut -d ' ' -f1)
-mv /dbexport/dbexport.tmp /dbexport/\$MYSQL_DATABASE.sql
-chmod 0400 /dbexport/\$MYSQL_DATABASE.sql
+cur_filename=\${MYSQL_DATABASE}.sql
+if [ "\$is_keep_hourly" = "true" ]; then
+  cur_filename=\${MYSQL_DATABASE}-\$(date '+%H').sql
+fi
+mv /dbexport/dbexport.tmp /dbexport/\$cur_filename
+chmod 0400 /dbexport/\$cur_filename
 echo "Success - Filesize is \$outputfilesize"
 EOFDB
   chmod 0555 $HSHQ_SCRIPTS_DIR/user/exportMySQL.sh
@@ -27262,14 +27268,36 @@ EOFDB
   cat <<EOFDB > $HSHQ_SCRIPTS_DIR/user/exportMariaDB.sh
 #!/bin/bash
 
+is_keep_hourly="\$1"
 set -e
 mariadb-dump --user \$MARIADB_USER --password=\$MARIADB_PASSWORD \$MARIADB_DATABASE > /dbexport/dbexport.tmp
 outputfilesize=\$(du -sh /dbexport/dbexport.tmp | xargs | cut -d ' ' -f1)
-mv /dbexport/dbexport.tmp /dbexport/\$MARIADB_DATABASE.sql
-chmod 0400 /dbexport/\$MARIADB_DATABASE.sql
+cur_filename=\${MARIADB_DATABASE}.sql
+if [ "\$is_keep_hourly" = "true" ]; then
+  cur_filename=\${MARIADB_DATABASE}-\$(date '+%H').sql
+fi
+mv /dbexport/dbexport.tmp /dbexport/\$cur_filename
+chmod 0400 /dbexport/\$cur_filename
 echo "Success - Filesize is \$outputfilesize"
 EOFDB
   chmod 0555 $HSHQ_SCRIPTS_DIR/user/exportMariaDB.sh
+  rm -f $HSHQ_SCRIPTS_DIR/user/exportSurrealDB.sh
+  cat <<EOFDB > $HSHQ_SCRIPTS_DIR/user/exportSurrealDB.sh
+#!/bin/bash
+
+is_keep_hourly="\$1"
+set -e
+/surreal export --user \$SURREAL_USER --pass \$SURREAL_PASSWORD --ns \$SURREAL_NAMESPACE --db \$SURREAL_DATABASE > /dbexport/dbexport.tmp
+outputfilesize=\$(du -sh /dbexport/dbexport.tmp | xargs | cut -d ' ' -f1)
+cur_filename=\${SURREAL_DATABASE}.surql
+if [ "\$is_keep_hourly" = "true" ]; then
+  cur_filename=\${SURREAL_DATABASE}-\$(date '+%H').surql
+fi
+mv /dbexport/dbexport.tmp /dbexport/\$cur_filename
+chmod 0400 /dbexport/\$cur_filename
+echo "Success - Filesize is \$outputfilesize"
+EOFDB
+  chmod 0555 $HSHQ_SCRIPTS_DIR/user/exportSurrealDB.sh
 }
 
 function outputMaintenanceScripts()
@@ -30347,7 +30375,7 @@ EOFAU
   addPrimaryUserAutoKB "$addPUUID" "$cleanName" "$addPUEmailAddress" "$addPUEmailPassword" 1
   newuser_immich_api_key=$(pwgen -c -n 41 1)
   addPrimaryUserImmich "${addPUUID}" "$addPUEmailAddress" "$addPUFirstName $addPULastName" "$newuser_immich_api_key"
-  newuser_linkwarden_api_key=$(docker exec linkwarden-app node /data/data/provision-user.mjs $addPUEmailAddress "${addPUFirstName} ${addPULastName}" "MCP")
+  newuser_linkwarden_api_key=$(docker exec linkwarden-app node /data/data/provision-user.mjs $addPUEmailAddress "${addPUFirstName} ${addPULastName}" "MCP" $addPUUID)
   newuser_hedgedoc_api_key=$(addPrimaryUserHedgeDoc "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress)
   newuser_mealie_api_key=$(addPrimaryUserMealie "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress false)
   newuser_presenton_api_key=$(addPrimaryUserPresenton "$addPUUID" "$addPUPassword")
@@ -30670,7 +30698,7 @@ VALUES (:'v_key_id',
 COMMIT;
 SQL
 
-  printf '%s\n' "$full_token"
+  printf '%s\n' "$hd_full_token"
 }
 
 function addPrimaryUserMealie()
@@ -31543,7 +31571,7 @@ function loadPinnedDockerImages()
   IMG_ENTE_SERVER=hshq/ente-server:v1
   IMG_ENTE_WEB=ghcr.io/ente-io/web:460ee1671b08b119b894f0ddd71b4c906fb29647
   IMG_MORPHIC_APP=ghcr.io/miurla/morphic:6443b20c1205adf233c98b67beb34a6117e1cd7a
-  IMG_OPENNOTEBOOK_DB=mirror.gcr.io/surrealdb/surrealdb:v2.4
+  IMG_OPENNOTEBOOK_DB=mirror.gcr.io/surrealdb/surrealdb:v2.4-dev
   IMG_OPENNOTEBOOK_APP=ghcr.io/lfnovo/open-notebook:1.14.0
   IMG_OPENNOTEBOOK_MCP=ghcr.io/homeserverhq/opennotebook-mcp:v1
   IMG_APPSMITH_APP=mirror.gcr.io/appsmith/appsmith-ce:v1.94
@@ -31897,7 +31925,7 @@ function getScriptStackVersion()
     morphic)
       echo "v1" ;;
     opennotebook)
-      echo "v2" ;;
+      echo "v3" ;;
     appsmith)
       echo "v1" ;;
     trilium)
@@ -54978,6 +55006,9 @@ function initializeSiteWikijs()
       -H "Authorization: Bearer $jwt" \
       -d '{"query":"mutation { pages { create( content: \"Home\", description: \"\", editor: \"markdown\", isPublished: true, isPrivate: false, locale: \"en\", path: \"home\", tags: [], title: \"Home\" ) { responseResult { succeeded } } } }"}' >/dev/null 2>&1
   fi
+  docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
+      -H "Authorization: Bearer $jwt" \
+      -d '{"query":"mutation { theming { setConfig(config: { theme: \"default\", iconset: \"mdi\", darkMode: true }) { responseResult { succeeded } } } }"}' >/dev/null 2>&1
   resp=$(docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
       -H "Authorization: Bearer $jwt" \
       -d '{"query":"query { authentication { apiKeys { id name isRevoked expiration } } }"}')
@@ -66999,7 +67030,7 @@ EOFDZ
         public: false
         authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
         consent_mode: implicit
-        claims_policy: lw
+        claims_policy: linkwarden_claim
         scopes:
           - openid
           - email
@@ -74850,6 +74881,7 @@ function installImmich()
   set +e
   addUserMailu alias $IMMICH_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   IMMICH_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $IMMICH_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/')
+  immich_admin_uuid=$(uuidgen)
   outputConfigImmich
   oidcBlock=$(cat $HOME/immich.oidc)
   rm -f $HOME/immich.oidc
@@ -74886,12 +74918,19 @@ function installImmich()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_IMMICH_APP $MANAGETLS_IMMICH_APP "$is_integrate_hshq" $NETDEFAULT_IMMICH_APP "$inner_block"
   insertSubAuthelia $SUB_IMMICH_APP.$HOMESERVER_DOMAIN bypass
-
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll immich "$FMLNAME_IMMICH_APP" $USERTYPE_IMMICH_APP "https://$SUB_IMMICH_APP.$HOMESERVER_DOMAIN" "immich.png" "$(getHeimdallOrderFromSub $SUB_IMMICH_APP $USERTYPE_IMMICH_APP)"
     restartAllCaddyContainers
     checkAddDBConnection true immich "$FMLNAME_IMMICH_APP" postgres immich-db $IMMICH_DATABASE_NAME $IMMICH_DATABASE_USER $IMMICH_DATABASE_USER_PASSWORD
   fi
+  sleep 3
+  jsonbody="{
+    \"name\": \"HSHQ SuperAdmin's Library\",
+    \"ownerId\": \"$immich_admin_uuid\",
+    \"type\": \"EXTERNAL\",
+    \"importPaths\": [\"/shared/Images/$NEXTCLOUD_ADMIN_USERNAME/Images\"]
+  }"
+  curl -s -X POST "https://$SUB_IMMICH_APP.$HOMESERVER_DOMAIN/api/libraries" -H "Content-Type: application/json" -H "x-api-key: $IMMICH_API_KEY" -d "$jsonbody" > /dev/null 2>&1
 }
 
 function outputConfigImmich()
@@ -74928,7 +74967,7 @@ EOFPI
   outputImmichAutheliaOIDC
   curdt=$(date '+%Y-%m-%d %H:%M:%S.%3N')
   cat <<EOFIM > $HSHQ_STACKS_DIR/immich/dbexport/addadmin.sql
-insert into "user"(id,email,password,"createdAt","profileImagePath","isAdmin","shouldChangePassword","deletedAt","oauthId","updatedAt","storageLabel",name,"quotaSizeInBytes","quotaUsageInBytes",status,"profileChangedAt") values(gen_random_uuid(),'$IMMICH_ADMIN_EMAIL_ADDRESS','$IMMICH_ADMIN_PASSWORD_HASH','$curdt','',true,true,NULL,'','$curdt','admin','$(getAdminEmailName) Immich',NULL,0,'active','$curdt');
+insert into "user"(id,email,password,"createdAt","profileImagePath","isAdmin","shouldChangePassword","deletedAt","oauthId","updatedAt","storageLabel",name,"quotaSizeInBytes","quotaUsageInBytes",status,"profileChangedAt") values('$immich_admin_uuid','$IMMICH_ADMIN_EMAIL_ADDRESS','$IMMICH_ADMIN_PASSWORD_HASH','$curdt','',true,true,NULL,'','$curdt','admin','$(getAdminEmailName) Immich',NULL,0,'active','$curdt');
 EOFIM
 }
 
@@ -91703,17 +91742,13 @@ function generateAPITokenInvoiceShelf()
 {
   is_username="$1"
   is_password="$2"
-  tok_output="$(docker exec -e U="${is_username}" \
+  ivshelf_token="$(docker exec -e U="${is_username}" \
     -e PW="${is_password}" invoiceshelf-app \
-    sh -c 'curl -s -X POST "http://127.0.0.1:8000/api/v1/auth/login" \
+    sh -c 'curl -s -X POST "http://127.0.0.1:8080/api/v1/auth/login" \
     -H "Content-Type: application/json" \
     -H "Accept: application/json" \
     -d "{\"username\":\"$U\",\"password\":\"$PW\",\"device_name\":\"MCP\"}"')"
-  ivshelf_token="$(printf '%s' "${tok_output}" | python3 -c 'import sys,json
-try:
-    print(json.load(sys.stdin).get("ivshelf_token",""))
-except Exception:
-    print("")' 2>/dev/null || true)"
+  ivshelf_token=$(echo "$ivshelf_token" | jq -r .token)
   echo "${ivshelf_token}"
 }
 
@@ -109210,6 +109245,24 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/opennotebook/db:/mydata
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportSurrealDB.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/opennotebook/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.opennotebook-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.opennotebook-hourly-db.command=/exportDB.sh true"
+      - "ofelia.job-exec.opennotebook-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.opennotebook-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.opennotebook-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.opennotebook-hourly-db.email-from=OpenNotebook Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.opennotebook-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.opennotebook-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.opennotebook-monthly-db.command=/exportDB.sh true"
+      - "ofelia.job-exec.opennotebook-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.opennotebook-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.opennotebook-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.opennotebook-monthly-db.email-from=OpenNotebook Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.opennotebook-monthly-db.mail-only-on-error=false"
 
   opennotebook-app:
     image: $(getScriptImageByContainerName opennotebook-app)
@@ -109310,9 +109363,19 @@ function performUpdateOpenNotebook()
       return
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/surrealdb/surrealdb:v2.4,ghcr.io/lfnovo/open-notebook:1.14.0,ghcr.io/homeserverhq/opennotebook-mcp:v1
-      image_update_map[0]="mirror.gcr.io/surrealdb/surrealdb:v2.4,mirror.gcr.io/surrealdb/surrealdb:v2.4"
+      image_update_map[0]="mirror.gcr.io/surrealdb/surrealdb:v2.4,mirror.gcr.io/surrealdb/surrealdb:v2.4-dev"
+      image_update_map[1]="ghcr.io/lfnovo/open-notebook:1.14.0,ghcr.io/lfnovo/open-notebook:1.14.0"
+      image_update_map[2]="ghcr.io/homeserverhq/opennotebook-mcp:v1,ghcr.io/homeserverhq/opennotebook-mcp:v1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfOpenNotebookV3Update
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/surrealdb/surrealdb:v2.4-dev,ghcr.io/lfnovo/open-notebook:1.14.0,ghcr.io/homeserverhq/opennotebook-mcp:v1
+      image_update_map[0]="mirror.gcr.io/surrealdb/surrealdb:v2.4-dev,mirror.gcr.io/surrealdb/surrealdb:v2.4-dev"
       image_update_map[1]="ghcr.io/lfnovo/open-notebook:1.14.0,ghcr.io/lfnovo/open-notebook:1.14.0"
       image_update_map[2]="ghcr.io/homeserverhq/opennotebook-mcp:v1,ghcr.io/homeserverhq/opennotebook-mcp:v1"
     ;;
@@ -109431,6 +109494,110 @@ MCP_SERVER_PORT=80
 ALLOW_ALL_AGGREGATE=false
 IS_STATEFUL=false
 OPENNOTEBOOK_PUBLIC_URL=https://$SUB_OPENNOTEBOOK_APP.$HOMESERVER_DOMAIN
+EOFMT
+}
+
+function mfOpenNotebookV3Update()
+{
+  cat <<EOFMT > $HOME/opennotebook-compose.yml
+$STACK_VERSION_PREFIX opennotebook v3
+
+services:
+  opennotebook-db:
+    image: mirror.gcr.io/surrealdb/surrealdb:v2.4-dev
+    container_name: opennotebook-db
+    hostname: opennotebook-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    user: root
+    command: start --log info --user $OPENNOTEBOOK_SURREALDB_USER --pass $OPENNOTEBOOK_SURREALDB_PASSWORD rocksdb:/mydata/mydatabase.db
+    networks:
+      - int-opennotebook-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/opennotebook/db:/mydata
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportSurrealDB.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/opennotebook/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.opennotebook-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.opennotebook-hourly-db.command=/exportDB.sh true"
+      - "ofelia.job-exec.opennotebook-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.opennotebook-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.opennotebook-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.opennotebook-hourly-db.email-from=OpenNotebook Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.opennotebook-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.opennotebook-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.opennotebook-monthly-db.command=/exportDB.sh true"
+      - "ofelia.job-exec.opennotebook-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.opennotebook-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.opennotebook-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.opennotebook-monthly-db.email-from=OpenNotebook Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.opennotebook-monthly-db.mail-only-on-error=false"
+
+  opennotebook-app:
+    image: ghcr.io/lfnovo/open-notebook:1.14.0
+    container_name: opennotebook-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - opennotebook-db
+    networks:
+      - int-opennotebook-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/opennotebook/data:/app/data
+
+  opennotebook-mcp:
+    image: ghcr.io/homeserverhq/opennotebook-mcp:v1
+    container_name: opennotebook-mcp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-opennotebook-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-opennotebook-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
 EOFMT
 }
 
@@ -129613,26 +129780,6 @@ EOFSC
   # Set permissions
   chmod 700 $HSHQ_STACKS_DIR/script-server/conf/scripts/*
   chmod 600 $HSHQ_STACKS_DIR/script-server/conf/runners/*
-  outputScriptDescriptionsToKB
-}
-
-function outputScriptDescriptionsToKB()
-{
-  if ! [ -d $HSHQ_STACKS_DIR/shared/KnowledgeBases/HSHQ ]; then
-    return
-  fi
-  mkdir -p $HSHQ_STACKS_DIR/shared/KnowledgeBases/HSHQ/help
-  sudo rm -fr $HSHQ_STACKS_DIR/shared/KnowledgeBases/HSHQ/help/*
-  for util in $HSHQ_STACKS_DIR/script-server/conf/runners/*.json
-  do
-    if ! test -f "$util"; then continue; fi
-    curUtilName=$(cat $util | jq -r '.group + " -> " + .name')
-    curUtilDesc=$(cat $util | jq -r .description)
-    curFilename="$(basename $util)"
-    curFilename="${curFilename%%.*}"
-    echo -e "# Function Name: $curUtilName\n" > $HSHQ_STACKS_DIR/shared/KnowledgeBases/HSHQ/help/${curFilename}.md
-    echo -e "Description: $curUtilDesc" >> $HSHQ_STACKS_DIR/shared/KnowledgeBases/HSHQ/help/${curFilename}.md
-  done
 }
 
 function moveScriptServerPerformUpdate()
