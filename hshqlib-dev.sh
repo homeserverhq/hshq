@@ -24497,6 +24497,47 @@ function version238Update()
     HOMESERVER_CURRENCY_CODE="USD"
     sudo sed -i "s|^# General Info END|HOMESERVER_CURRENCY_CODE=\"USD\"\n# General Info END|g" $HSHQ_PLAINTEXT_ROOT_CONFIG
   fi
+  grep -q "linkwarden_claim" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
+  if [ $? -ne 0 ]; then
+    updauth=$(cat << EOFML
+claims_policies:
+      linkwarden_claim:
+        id_token:
+          - email
+          - name
+          - preferred_username
+          - email_verified
+    authorization_policies:
+EOFML
+  )
+    updauth=$(echo "$updauth" | sed ':a;N;$!ba;s/\n/\\n/g')
+    sed -i "s/authorization_policies:.*/$updauth/" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
+    docker container restart authelia > /dev/null 2>&1
+  fi
+  docker ps | grep -q linkwarden-app > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    cat <<EOFIM > $HOME/linkwarden.oidc
+# Authelia OIDC Client linkwarden BEGIN
+      - client_id: linkwarden
+        client_name: Linkwarden
+        client_secret: '$LINKWARDEN_OIDC_CLIENT_SECRET_HASH'
+        public: false
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
+        consent_mode: implicit
+        claims_policy: linkwarden_claim
+        scopes:
+          - openid
+          - email
+          - profile
+        redirect_uris:
+          - https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN/api/v1/auth/callback/authelia
+        userinfo_signed_response_alg: none
+# Authelia OIDC Client linkwarden END
+EOFIM
+    oidcBlock=$(cat $HOME/linkwarden.oidc)
+    rm -f $HOME/linkwarden.oidc
+    insertOIDCClientAuthelia linkwarden "$oidcBlock"
+  fi
 }
 
 function pruneAndUpdateDocker()
@@ -30348,7 +30389,7 @@ EOFIM
     curl -s -X POST "https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/api/v1/tools/id/imap_email_tool/valves/user/update" -H "Authorization: Bearer $OPENWEBUI_PU_API_KEY" -H "Content-Type: application/json" -d "$jsonbody" > /dev/null 2>&1
     jsonbody=$(jq -n \
         --arg immich_api_key "$newuser_immich_api_key" \
-        --arg nextcloud_api_key "$(echo -n ${addPUUID}:${newuser_nextcloud_app_password} | base64)" \
+        --arg nextcloud_api_key "$(echo -n ${addPUUID}:${newuser_nextcloud_app_password} | base64 -w 0)" \
         --arg paperless_api_key "$newuser_paperless_apitoken" \
         --arg opennotebook_api_key "$OPENNOTEBOOK_ADMIN_PASSWORD" \
         --arg linkwarden_api_key "$newuser_linkwarden_api_key" \
@@ -54931,6 +54972,12 @@ function initializeSiteWikijs()
   docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
       -H "Authorization: Bearer $jwt" \
       -d '{"query":"mutation { authentication { setApiState(enabled: true) { responseResult { succeeded } } } }"}' >/dev/null 2>&1
+  if [ -z "$(docker exec wikijs-db psql -U wikijs-user -d wikijsdb -tA -c \
+    "select 1 from pages where path = 'home' and \"localeCode\" = 'en'")" ]; then
+    docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
+      -H "Authorization: Bearer $jwt" \
+      -d '{"query":"mutation { pages { create( content: \"Home\", description: \"\", editor: \"markdown\", isPublished: true, isPrivate: false, locale: \"en\", path: \"home\", tags: [], title: \"Home\" ) { responseResult { succeeded } } } }"}' >/dev/null 2>&1
+  fi
   resp=$(docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
       -H "Authorization: Bearer $jwt" \
       -d '{"query":"query { authentication { apiKeys { id name isRevoked expiration } } }"}')
@@ -58534,6 +58581,12 @@ identity_providers:
           - name
           - groups
           - preferred_username
+      linkwarden_claim:
+        id_token:
+          - email
+          - name
+          - preferred_username
+          - email_verified
     authorization_policies:
       everyone_auth:
         default_policy: deny
@@ -66946,10 +66999,9 @@ EOFDZ
         public: false
         authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
         consent_mode: implicit
-        claims_policy: cp_legacy
+        claims_policy: lw
         scopes:
           - openid
-          - groups
           - email
           - profile
         redirect_uris:
@@ -66969,7 +67021,7 @@ const require = createRequire(import.meta.url);
 const { PrismaClient } = require("@prisma/client");
 const { encode, decode } = require("next-auth/jwt");
 
-const [emailArg, nameArg, tokenNameArg] = process.argv.slice(2);
+const [emailArg, nameArg, tokenNameArg, usernameArg] = process.argv.slice(2);
 
 const email = (emailArg || "").trim().toLowerCase();
 const name =
@@ -66977,15 +67029,20 @@ const name =
     ? nameArg.trim()
     : undefined;
 const tokenName = (tokenNameArg || "MCP").trim() || "MCP";
+const username =
+  usernameArg && !["", "_", "null", "none"].includes(usernameArg.trim().toLowerCase())
+    ? usernameArg.trim()
+    : undefined;
 
 const secret = process.env.NEXTAUTH_SECRET;
 
 function usage() {
   console.error(
-    \`Usage: node provision-user.mjs <email> [name] [tokenName]\n\` +
+    \`Usage: node provision-user.mjs <email> [name] [tokenName] [username]\n\` +
       \`  email     (required) Authelia user identifier.\n\` +
       \`  name      (optional) Display name; use "_" to skip.\n\` +
-      \`  tokenName (optional) API token name, default "MCP".\`
+      \`  tokenName (optional) API token name, default "MCP".\n\` +
+      \`  username  (optional) Authelia/LDAP username; fallback is random.\`
   );
 }
 
@@ -67003,16 +67060,32 @@ const prisma = new PrismaClient();
 try {
   // 1) Upsert the user (OIDC-shaped, mirroring apps/web/pages/api/v1/auth/[...nextauth].ts)
   let user = await prisma.user.findFirst({ where: { email } });
-  if (!user) {
-    const username = "user" + Math.round(Math.random() * 1000000000);
-    user = await prisma.user.create({
-      data: {
-        email,
-        name,
-        emailVerified: new Date(),
-        username,
-      },
-    });
+  const desiredUsername = username ?? "user" + Math.round(Math.random() * 1000000000);
+  try {
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          email,
+          name,
+          emailVerified: new Date(),
+          username: desiredUsername,
+        },
+      });
+    } else {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { username: desiredUsername },
+      });
+    }
+  } catch (e) {
+    if (e.code === "P2002") {
+      console.error(
+        \`Username "\${desiredUsername}" is already in use by another user. \` +
+          \`Pass "_" to skip, or use a different username.\`
+      );
+      process.exit(4);
+    }
+    throw e;
   }
   const userId = user.id;
 
