@@ -20667,6 +20667,7 @@ function createInitialEnv()
   set -e
   sudo usermod -a -G 82 $USERNAME >/dev/null 2>&1
   mkdir -p $HSHQ_STACKS_DIR/shared/{Images,SharedConsume,SharedProcessed,PersonalConsume,PersonalProcessed,PersonalTranscribeInput,PersonalTranscribeOutput}
+  mkdir -p $HSHQ_STACKS_DIR/shared/KnowledgeBases
   sudo chown -R 1000:82 $HSHQ_STACKS_DIR/shared
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/SharedProcessed
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalProcessed
@@ -24250,6 +24251,7 @@ function version231Update()
   sudo groupadd -g 82 nextwrite >/dev/null 2>&1
   sudo usermod -a -G 82 $USERNAME >/dev/null 2>&1
   mkdir -p $HSHQ_STACKS_DIR/shared/{Images,SharedConsume,SharedProcessed,PersonalConsume,PersonalProcessed,PersonalTranscribeOutput}
+  mkdir -p $HSHQ_STACKS_DIR/shared/KnowledgeBases
   sudo chown -R 1000:82 $HSHQ_STACKS_DIR/shared
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/SharedProcessed
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalProcessed
@@ -24440,6 +24442,8 @@ function version238Update()
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$SPEAKR_ADMIN_USERNAME
   mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$NEXTCLOUD_ADMIN_USERNAME
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$NEXTCLOUD_ADMIN_USERNAME
+  sudo rm -fr $HSHQ_STACKS_DIR/shared/KnowledgeBases/{Bible,YouTube,Paperless,Speakr,WebScrapes,Email,HSHQ}
+  mkdir -p $HSHQ_STACKS_DIR/shared/KnowledgeBases
   outputNextcloudInotifyScan
   set +e
   docker ps | grep -q paperless-app > /dev/null 2>&1
