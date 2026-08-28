@@ -30384,7 +30384,6 @@ EOFAU
   newuser_mealie_api_key=$(addPrimaryUserMealie "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress false)
   newuser_presenton_api_key=$(addPrimaryUserPresenton "$addPUUID" "$addPUPassword")
   newuser_twenty_api_key=$(addPrimaryUserTwenty "$addPUUID" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName" "$addPULastName" "$addPUEmailPassword")
-  set +e
   docker ps | grep -q openwebui-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     echo "Adding primary user MCPs to OpenWebUI..."
@@ -30701,7 +30700,6 @@ VALUES (:'v_key_id',
 
 COMMIT;
 SQL
-
   printf '%s\n' "$hd_full_token"
 }
 
@@ -31435,7 +31433,7 @@ function loadPinnedDockerImages()
   IMG_PAPERLESS_APP=ghcr.io/homeserverhq/paperless-ngx:v3.0.5
   IMG_PAPERLESS_GOTENBERG=mirror.gcr.io/gotenberg/gotenberg:8.34.0
   IMG_PAPERLESS_TIKA=mirror.gcr.io/apache/tika:3.3.1.0-full
-  IMG_PAPERLESS_AI=mirror.gcr.io/admonstrator/zettelrobbe:v2026.08.03
+  IMG_PAPERLESS_AI=ghcr.io/homeserverhq/zettelrobbe:v2026.08.04
   IMG_PAPERLESS_GPT=ghcr.io/icereed/paperless-gpt:v0.27.0
   IMG_PAPERLESS_MCP=ghcr.io/homeserverhq/paperless-mcp:v2
   IMG_PASTEFY=mirror.gcr.io/interaapps/pastefy:7.1.5
@@ -32924,6 +32922,7 @@ INVIDIOUS_DATABASE_READONLYUSER_PASSWORD=
 MEALIE_ADMIN_USERNAME=
 MEALIE_ADMIN_EMAIL_ADDRESS=
 MEALIE_ADMIN_PASSWORD=
+MEALIE_ADMIN_API_KEY=
 MEALIE_DATABASE_NAME=
 MEALIE_DATABASE_USER=
 MEALIE_DATABASE_USER_PASSWORD=
@@ -34451,6 +34450,7 @@ HEDGEDOC_INIT_ENV=true
 HEDGEDOC_ADMIN_USERNAME=
 HEDGEDOC_ADMIN_EMAIL_ADDRESS=
 HEDGEDOC_ADMIN_PASSWORD=
+HEDGEDOC_ADMIN_API_KEY=
 HEDGEDOC_DATABASE_NAME=
 HEDGEDOC_DATABASE_USER=
 HEDGEDOC_DATABASE_USER_PASSWORD=
@@ -34464,6 +34464,7 @@ PRESENTON_INIT_ENV=true
 PRESENTON_ADMIN_USERNAME=
 PRESENTON_ADMIN_EMAIL_ADDRESS=
 PRESENTON_ADMIN_PASSWORD=
+PRESENTON_ADMIN_API_KEY=
 # Presenton (Service Details) END
 
 # BasicMemory (Service Details) BEGIN
@@ -41345,7 +41346,8 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HERMES_AGENT_DASHBOARD}-Admin" https://$SUB_HERMES_AGENT_DASHBOARD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HERMES_AGENT_ADMIN_USERNAME $HERMES_AGENT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUTOKB_WEB}-Admin" https://$SUB_AUTOKB_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOKB_ADMIN_USERNAME $AUTOKB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SUITECRM_APP}-Admin" https://$SUB_SUITECRM_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SUITECRM_ADMIN_USERNAME $SUITECRM_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEDGEDOC_APP}-Admin" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEDGEDOC_APP}-Admin" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEDGEDOC_ADMIN_USERNAME $HEDGEDOC_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEDGEDOC_APP}-User" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PRESENTON_APP}-Admin" https://$SUB_PRESENTON_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $PRESENTON_ADMIN_USERNAME $PRESENTON_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_BASICMEMORY_APP}-Admin" https://$SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $BASICMEMORY_ADMIN_USERNAME $BASICMEMORY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_COGNEE_FRONTEND}-Admin" https://$SUB_COGNEE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $COGNEE_ADMIN_USERNAME $COGNEE_ADMIN_PASSWORD)"\n"
@@ -41375,7 +41377,7 @@ function emailUserVaultwardenCredentials()
   vw_email=$2
   strOutput="________________________________________________________________________\n\n"
   strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Username" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login,https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/,https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/,https://$SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN/index.php/login,https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN/login,https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/login/,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/accounts/login/,https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN/,https://$SUB_METABASE.$HOMESERVER_DOMAIN/auth/login,https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Username" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login,https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/,https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/,https://$SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN/index.php/login,https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN/login,https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/login/,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/accounts/login/,https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN/,https://$SUB_METABASE.$HOMESERVER_DOMAIN/auth/login,https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Email" "\"https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_JOPLIN_APP.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "Mailu-User" "https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login" $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
   strOutput=${strOutput}"\n\n"
@@ -41553,7 +41555,8 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HERMES_AGENT_DASHBOARD}-Admin" https://$SUB_HERMES_AGENT_DASHBOARD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HERMES_AGENT_ADMIN_USERNAME $HERMES_AGENT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUTOKB_WEB}-Admin" https://$SUB_AUTOKB_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOKB_ADMIN_USERNAME $AUTOKB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SUITECRM_APP}-Admin" https://$SUB_SUITECRM_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SUITECRM_ADMIN_USERNAME $SUITECRM_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HEDGEDOC_APP}-Admin" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HEDGEDOC_APP}-Admin" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEDGEDOC_ADMIN_USERNAME $HEDGEDOC_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HEDGEDOC_APP}-User" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PRESENTON_APP}-Admin" https://$SUB_PRESENTON_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $PRESENTON_ADMIN_USERNAME $PRESENTON_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_BASICMEMORY_APP}-Admin" https://$SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $BASICMEMORY_ADMIN_USERNAME $BASICMEMORY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_COGNEE_FRONTEND}-Admin" https://$SUB_COGNEE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $COGNEE_ADMIN_USERNAME $COGNEE_ADMIN_PASSWORD)"\n"
@@ -44138,7 +44141,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Wikijs" "WIKIJS_INIT_ENV=false,WIKIJS_ADMIN_USERNAME=,WIKIJS_ADMIN_EMAIL_ADDRESS=,WIKIJS_ADMIN_PASSWORD=,WIKIJS_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "Collabora" "COLLABORA_ADMIN_USERNAME=,COLLABORA_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Invidious" "INVIDIOUS_DATABASE_NAME=,INVIDIOUS_DATABASE_USER=,INVIDIOUS_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
-  checkAddServiceToConfig "Mealie" "MEALIE_ADMIN_USERNAME=,MEALIE_ADMIN_EMAIL_ADDRESS=,MEALIE_ADMIN_PASSWORD=,MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Mealie" "MEALIE_ADMIN_USERNAME=,MEALIE_ADMIN_EMAIL_ADDRESS=,MEALIE_ADMIN_PASSWORD=,MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD=,MEALIE_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "Kasm" "KASM_INIT_ENV=false,KASM_ADMIN_EMAIL_ADDRESS=,KASM_ADMIN_PASSWORD=,KASM_USER_EMAIL_ADDRESS=,KASM_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Remotely" "REMOTELY_INIT_ENV=false,REMOTELY_ADMIN_USERNAME=,REMOTELY_ADMIN_EMAIL_ADDRESS=,REMOTELY_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false,CALIBRE_WEB_ADMIN_USERNAME=,CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=,CALIBRE_WEB_ADMIN_PASSWORD=" $CONFIG_FILE false
@@ -44259,8 +44262,8 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "HermesAgent" "HERMES_AGENT_INIT_ENV=false,HERMES_AGENT_ADMIN_USERNAME=,HERMES_AGENT_ADMIN_PASSWORD=,HERMES_AGENT_SUDO_PASSWORD=,HERMES_AGENT_API_KEY=,HERMES_AGENT_WEBUI_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "AutoKB" "AUTOKB_INIT_ENV=false,AUTOKB_ADMIN_USERNAME=,AUTOKB_ADMIN_PASSWORD=,AUTOKB_DATABASE_NAME=,AUTOKB_DATABASE_USER=,AUTOKB_DATABASE_USER_PASSWORD=,AUTOKB_DATABASE_READONLYUSER=,AUTOKB_DATABASE_READONLYUSER_PASSWORD=,AUTOKB_REDIS_PASSWORD=,AUTOKB_API_KEY=,AUTOKB_BACKEND_API_KEY=,AUTOKB_WEBHOOK_API_KEY=,AUTOKB_ENCRYPTION_KEY=,AUTOKB_SHARED_OWUI_TARGET_ID=" $CONFIG_FILE false
   checkAddServiceToConfig "SuiteCRM" "SUITECRM_INIT_ENV=false,SUITECRM_ADMIN_USERNAME=,SUITECRM_ADMIN_EMAIL_ADDRESS=,SUITECRM_ADMIN_PASSWORD=,SUITECRM_DATABASE_NAME=,SUITECRM_DATABASE_ROOT_PASSWORD=,SUITECRM_DATABASE_USER=,SUITECRM_DATABASE_USER_PASSWORD=,SUITECRM_DATABASE_READONLYUSER=,SUITECRM_DATABASE_READONLYUSER_PASSWORD=,SUITECRM_REDIS_PASSWORD=,SUITECRM_APP_SECRET=" $CONFIG_FILE false
-  checkAddServiceToConfig "HedgeDoc" "HEDGEDOC_INIT_ENV=false,HEDGEDOC_ADMIN_USERNAME=,HEDGEDOC_ADMIN_EMAIL_ADDRESS=,HEDGEDOC_ADMIN_PASSWORD=,HEDGEDOC_DATABASE_NAME=,HEDGEDOC_DATABASE_USER=,HEDGEDOC_DATABASE_USER_PASSWORD=,HEDGEDOC_DATABASE_READONLYUSER=,HEDGEDOC_DATABASE_READONLYUSER_PASSWORD=,HEDGEDOC_SESSION_SECRET=" $CONFIG_FILE false
-  checkAddServiceToConfig "Presenton" "PRESENTON_INIT_ENV=false,PRESENTON_ADMIN_USERNAME=,PRESENTON_ADMIN_EMAIL_ADDRESS=,PRESENTON_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "HedgeDoc" "HEDGEDOC_INIT_ENV=false,HEDGEDOC_ADMIN_USERNAME=,HEDGEDOC_ADMIN_EMAIL_ADDRESS=,HEDGEDOC_ADMIN_PASSWORD=,HEDGEDOC_DATABASE_NAME=,HEDGEDOC_DATABASE_USER=,HEDGEDOC_DATABASE_USER_PASSWORD=,HEDGEDOC_DATABASE_READONLYUSER=,HEDGEDOC_DATABASE_READONLYUSER_PASSWORD=,HEDGEDOC_SESSION_SECRET=,HEDGEDOC_ADMIN_API_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "Presenton" "PRESENTON_INIT_ENV=false,PRESENTON_ADMIN_USERNAME=,PRESENTON_ADMIN_EMAIL_ADDRESS=,PRESENTON_ADMIN_PASSWORD=,PRESENTON_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "BasicMemory" "BASICMEMORY_INIT_ENV=false,BASICMEMORY_ADMIN_USERNAME=,BASICMEMORY_ADMIN_EMAIL_ADDRESS=,BASICMEMORY_ADMIN_PASSWORD=,BASICMEMORY_DATABASE_NAME=,BASICMEMORY_DATABASE_USER=,BASICMEMORY_DATABASE_USER_PASSWORD=,BASICMEMORY_DATABASE_READONLYUSER=,BASICMEMORY_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Cognee" "COGNEE_INIT_ENV=false,COGNEE_ADMIN_USERNAME=,COGNEE_ADMIN_EMAIL_ADDRESS=,COGNEE_ADMIN_PASSWORD=,COGNEE_DATABASE_NAME=,COGNEE_DATABASE_USER=,COGNEE_DATABASE_USER_PASSWORD=,COGNEE_DATABASE_READONLYUSER=,COGNEE_DATABASE_READONLYUSER_PASSWORD=,COGNEE_REDIS_PASSWORD=,COGNEE_JWT_SECRET=,COGNEE_VERIFICATION_TOKEN_SECRET=,COGNEE_RESET_PASSWORD_TOKEN_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "LightRAG" "LIGHTRAG_INIT_ENV=false,LIGHTRAG_ADMIN_USERNAME=,LIGHTRAG_ADMIN_EMAIL_ADDRESS=,LIGHTRAG_ADMIN_PASSWORD=,LIGHTRAG_DATABASE_NAME=,LIGHTRAG_DATABASE_USER=,LIGHTRAG_DATABASE_USER_PASSWORD=,LIGHTRAG_DATABASE_READONLYUSER=,LIGHTRAG_DATABASE_READONLYUSER_PASSWORD=,LIGHTRAG_TOKEN_SECRET=,LIGHTRAG_API_KEY=,LIGHTRAG_QDRANT_API_KEY=,LIGHTRAG_MEMGRAPH_DATABASE=,LIGHTRAG_MEMGRAPH_USER=,LIGHTRAG_MEMGRAPH_PASSWORD=" $CONFIG_FILE false
@@ -44316,6 +44319,9 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Keila" "KEILA_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Wikijs" "WIKIJS_ADMIN_API_KEY="  $CONFIG_FILE false
   checkAddVarsToServiceConfig "Twenty" "TWENTY_ADMIN_API_KEY=,TWENTY_AKB_API_KEY=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "HedgeDoc" "HEDGEDOC_ADMIN_API_KEY=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Mealie" "MEALIE_ADMIN_API_KEY=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Presenton" "PRESENTON_ADMIN_API_KEY=" $CONFIG_FILE false
   initServicesCredentials
 }
 
@@ -55011,8 +55017,8 @@ function initializeSiteWikijs()
       -d '{"query":"mutation { pages { create( content: \"Home\", description: \"\", editor: \"markdown\", isPublished: true, isPrivate: false, locale: \"en\", path: \"home\", tags: [], title: \"Home\" ) { responseResult { succeeded } } } }"}' >/dev/null 2>&1
   fi
   docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
-      -H "Authorization: Bearer $jwt" \
-      -d '{"query":"mutation { theming { setConfig(config: { theme: \"default\", iconset: \"mdi\", darkMode: true }) { responseResult { succeeded } } } }"}' >/dev/null 2>&1
+  -H "Authorization: Bearer $jwt" \
+  -d '{"query":"mutation { theming { setConfig(theme: \"default\", iconset: \"mdi\", darkMode: true) { responseResult { succeeded } } } }"}' >/dev/null 2>&1
   resp=$(docker exec wikijs-web curl -s "http://localhost:3000/graphql" -H 'Content-Type: application/json' \
       -H "Authorization: Bearer $jwt" \
       -d '{"query":"query { authentication { apiKeys { id name isRevoked expiration } } }"}')
@@ -65037,6 +65043,7 @@ function installMealie()
   sleep 3
   addReadOnlyUserToDatabase Mealie postgres mealie-db $MEALIE_DATABASE_NAME $MEALIE_DATABASE_USER $MEALIE_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/mealie/dbexport $MEALIE_DATABASE_READONLYUSER $MEALIE_DATABASE_READONLYUSER_PASSWORD
   addMCPServerLiteLLM "mealie" "mle" "http://mealie-mcp:80/mcp" http none ""
+  addAdminUserMealie
   inner_block=""
   inner_block=$inner_block">>https://$SUB_MEALIE.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -65054,15 +65061,6 @@ function installMealie()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll mealie "$FMLNAME_MEALIE" $USERTYPE_MEALIE "https://$SUB_MEALIE.$HOMESERVER_DOMAIN" "mealie.png" "$(getHeimdallOrderFromSub $SUB_MEALIE $USERTYPE_MEALIE)"
     restartAllCaddyContainers
-    #mealie_token=$(http -f --verify=no --timeout=300 --print="b" POST https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/auth/token username=changeme@example.com password=MyPassword | jq -r '.access_token')
-    #adminid=$(http -f --verify=no --timeout=300 --print="b" GET https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users "Authorization: Bearer $mealie_token" | jq '.items[0].id' | tr -d '"')
-    # Can't seem to get httpie to work, so switching to curl
-    #curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/$adminid" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"username\": \"$MEALIE_ADMIN_USERNAME\",\"fullName\": \"$HOMESERVER_NAME Mealie Admin\",\"email\": \"$MEALIE_ADMIN_EMAIL_ADDRESS\",\"group\":\"Home\",\"admin\": true}" > /dev/null 2>&1
-    # API is broken in v1.3.2, so we'll go direct to DB
-    # API is broken again. We'll just do everything via DB...
-    pwHash=$(htpasswd -bnBC 10 "" $MEALIE_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/' | sed 's/\$/\\\$/g')
-    docker exec mealie-db bash -c "PGPASSWORD=$MEALIE_DATABASE_USER_PASSWORD echo \"update users set full_name='$HOMESERVER_NAME Mealie Admin', username='$MEALIE_ADMIN_USERNAME', email='$MEALIE_ADMIN_EMAIL_ADDRESS', password='$pwHash', admin=true where username='admin';\" | psql -U $MEALIE_DATABASE_USER $MEALIE_DATABASE_NAME"
-    #curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/password" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"currentPassword\": \"MyPassword\",\"newPassword\": \"$MEALIE_ADMIN_PASSWORD\"}" > /dev/null 2>&1
   fi
 }
 
@@ -65231,6 +65229,39 @@ ALLOW_ALL_AGGREGATE=false
 IS_STATEFUL=false
 MEALIE_PUBLIC_URL=https://$SUB_MEALIE.$HOMESERVER_DOMAIN
 EOFGL
+}
+
+function addAdminUserMealie()
+{
+  pwHash=$(htpasswd -bnBC 10 "" $MEALIE_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/' | sed 's/\$/\\\$/g')
+  docker exec mealie-db bash -c "PGPASSWORD=$MEALIE_DATABASE_USER_PASSWORD echo \"update users set full_name='$HOMESERVER_NAME Mealie Admin', username='$MEALIE_ADMIN_USERNAME', email='$MEALIE_ADMIN_EMAIL_ADDRESS', password='$pwHash', admin=true where username='admin';\" | psql -U $MEALIE_DATABASE_USER $MEALIE_DATABASE_NAME"
+  MEALIE_ADMIN_API_KEY=$(docker exec -i -e USERNAME="$MEALIE_ADMIN_USERNAME" -e EMAIL="$MEALIE_ADMIN_EMAIL_ADDRESS" -e ADMIN="true" -e FULLNAME="Mealie $(getAdminEmailName)" mealie-app python - <<'PYEOF'
+import os
+import sys
+from datetime import timedelta
+from sqlalchemy import select
+from mealie.core.security import create_access_token
+from mealie.db.db_setup import session_context
+from mealie.db.models.users.users import AuthMethod, LongLiveToken
+from mealie.repos.all_repositories import get_repositories
+
+username = os.environ["USERNAME"]
+email = os.environ["EMAIL"]
+admin = os.environ.get("ADMIN", "false").lower() in ("1", "true", "yes", "y")
+full_name = os.environ["FULLNAME"]
+with session_context() as session:
+    repos = get_repositories(session, group_id=None, household_id=None)
+    user = repos.users.get_by_username(username)
+    token = create_access_token(
+        {"long_token": True, "id": str(user.id), "name": "MCP", "integration_id": "generic"},
+        timedelta(days=32120),
+    )
+    session.add(LongLiveToken(name="MCP", token=token, user_id=user.id))
+    session.commit()
+    print(token)
+PYEOF
+)
+  updateConfigVar MEALIE_ADMIN_API_KEY "$MEALIE_ADMIN_API_KEY"
 }
 
 function performUpdateMealie()
@@ -70075,7 +70106,7 @@ PAPERLESS_EXTRA_TEXT_MIMETYPES={"text/markdown": ".md", "text/x-markdown": ".md"
 MCP_SERVER_PORT=80
 ALLOW_ALL_AGGREGATE=false
 IS_STATEFUL=false
-PAPERLESS_AI_ENABLED=false
+PAPERLESS_AI_ENABLED=true
 PAPERLESS_AI_LLM_EMBEDDING_BACKEND=openai-like
 PAPERLESS_AI_LLM_EMBEDDING_MODEL=Embed
 PAPERLESS_AI_LLM_EMBEDDING_ENDPOINT=http://litellm-proxy:4000/v1
@@ -70387,6 +70418,7 @@ AI_PROCESSED_TAG_NAME=AI-Processed
 USE_PROMPT_TAGS=no
 PROMPT_TAGS=
 USE_EXISTING_DATA=yes
+PRE_EXISTING_DATA_PROMPT=\`Pre-existing correspondents: {{ALL_CORRESPONDENTS}}\n\nPre-existing document types: {{ALL_DOCUMENT_TYPES}}\`
 API_KEY=$PAPERLESS_AI_API_KEY
 JWT_SECRET=$PAPERLESS_AI_JWT_SECRET
 CUSTOM_API_KEY=$LITELLM_MASTER_KEY
@@ -70689,7 +70721,7 @@ function performUpdatePaperless()
       image_update_map[2]="mirror.gcr.io/apache/tika:3.3.1.0-full,mirror.gcr.io/apache/tika:3.3.1.0-full"
       image_update_map[3]="ghcr.io/homeserverhq/paperless-ngx:v3.0.5,ghcr.io/homeserverhq/paperless-ngx:v3.0.5"
       image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[5]="hshq/paperless-ai-next:v1,mirror.gcr.io/admonstrator/zettelrobbe:v2026.08.03"
+      image_update_map[5]="hshq/paperless-ai-next:v1,ghcr.io/homeserverhq/zettelrobbe:v2026.08.04"
       image_update_map[6]="ghcr.io/icereed/paperless-gpt:v0.27.0,ghcr.io/icereed/paperless-gpt:v0.27.0"
       image_update_map[7]="ghcr.io/homeserverhq/paperless-mcp:v2,ghcr.io/homeserverhq/paperless-mcp:v2"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfPaperlessV12Update
@@ -70698,13 +70730,13 @@ function performUpdatePaperless()
     ;;
     12)
       newVer=v12
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/gotenberg/gotenberg:8.34.0,mirror.gcr.io/apache/tika:3.3.1.0-full,ghcr.io/homeserverhq/paperless-ngx:v3.0.5,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/admonstrator/zettelrobbe:v2026.08.03,ghcr.io/icereed/paperless-gpt:v0.27.0,ghcr.io/homeserverhq/paperless-mcp:v2
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/gotenberg/gotenberg:8.34.0,mirror.gcr.io/apache/tika:3.3.1.0-full,ghcr.io/homeserverhq/paperless-ngx:v3.0.5,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/zettelrobbe:v2026.08.04,ghcr.io/icereed/paperless-gpt:v0.27.0,ghcr.io/homeserverhq/paperless-mcp:v2
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="mirror.gcr.io/gotenberg/gotenberg:8.34.0,mirror.gcr.io/gotenberg/gotenberg:8.34.0"
       image_update_map[2]="mirror.gcr.io/apache/tika:3.3.1.0-full,mirror.gcr.io/apache/tika:3.3.1.0-full"
       image_update_map[3]="ghcr.io/homeserverhq/paperless-ngx:v3.0.5,ghcr.io/homeserverhq/paperless-ngx:v3.0.5"
       image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[5]="mirror.gcr.io/admonstrator/zettelrobbe:v2026.08.03,mirror.gcr.io/admonstrator/zettelrobbe:v2026.08.03"
+      image_update_map[5]="ghcr.io/homeserverhq/zettelrobbe:v2026.08.04,ghcr.io/homeserverhq/zettelrobbe:v2026.08.04"
       image_update_map[6]="ghcr.io/icereed/paperless-gpt:v0.27.0,ghcr.io/icereed/paperless-gpt:v0.27.0"
       image_update_map[7]="ghcr.io/homeserverhq/paperless-mcp:v2,ghcr.io/homeserverhq/paperless-mcp:v2"
     ;;
@@ -71727,6 +71759,7 @@ AI_PROCESSED_TAG_NAME=AI-Processed
 USE_PROMPT_TAGS=no
 PROMPT_TAGS=
 USE_EXISTING_DATA=yes
+PRE_EXISTING_DATA_PROMPT=\`Pre-existing correspondents: {{ALL_CORRESPONDENTS}}\n\nPre-existing document types: {{ALL_DOCUMENT_TYPES}}\`
 API_KEY=$PAPERLESS_AI_API_KEY
 JWT_SECRET=$PAPERLESS_AI_JWT_SECRET
 CUSTOM_API_KEY=$LITELLM_MASTER_KEY
@@ -72006,7 +72039,7 @@ function mfPaperlessV12Update()
   set +e
   grep -q "PAPERLESS_AI_ENABLED" $HOME/paperless.env
   if [ $? -ne 0 ]; then
-    echo "PAPERLESS_AI_ENABLED=false" >> $HOME/paperless.env
+    echo "PAPERLESS_AI_ENABLED=true" >> $HOME/paperless.env
     echo "PAPERLESS_AI_LLM_EMBEDDING_BACKEND=openai-like" >> $HOME/paperless.env
     echo "PAPERLESS_AI_LLM_EMBEDDING_MODEL=Embed" >> $HOME/paperless.env
     echo "PAPERLESS_AI_LLM_EMBEDDING_ENDPOINT=http://litellm-proxy:4000/v1" >> $HOME/paperless.env
@@ -72015,6 +72048,10 @@ function mfPaperlessV12Update()
     echo "PAPERLESS_AI_LLM_API_KEY=$LITELLM_MASTER_KEY" >> $HOME/paperless.env
     echo "PAPERLESS_AI_LLM_ENDPOINT=http://litellm-proxy:4000/v1" >> $HOME/paperless.env
     echo "PAPERLESS_AI_LLM_ALLOW_INTERNAL_ENDPOINTS=true" >> $HOME/paperless.env
+  fi
+  grep -q "PRE_EXISTING_DATA_PROMPT" $HSHQ_STACKS_DIR/paperless/ai/.env.migrated
+  if [ $? -ne 0 ]; then
+    echo "PRE_EXISTING_DATA_PROMPT=\`Pre-existing correspondents: {{ALL_CORRESPONDENTS}}\n\nPre-existing document types: {{ALL_DOCUMENT_TYPES}}\`" >> $HSHQ_STACKS_DIR/paperless/ai/.env.migrated
   fi
 }
 
@@ -119334,6 +119371,7 @@ function installHedgeDoc()
   sleep 3
   addMCPServerLiteLLM "hedgedoc" "hdoc" "http://hedgedoc-mcp:80/mcp" http none ""
   addReadOnlyUserToDatabase HedgeDoc postgres hedgedoc-db $HEDGEDOC_DATABASE_NAME $HEDGEDOC_DATABASE_USER $HEDGEDOC_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/hedgedoc/dbexport $HEDGEDOC_DATABASE_READONLYUSER $HEDGEDOC_DATABASE_READONLYUSER_PASSWORD
+  addAdminUserHedgeDoc
   if [ -z "$FMLNAME_HEDGEDOC_APP" ]; then
     set +e
     echo "ERROR: Formal name is empty, returning..."
@@ -119368,6 +119406,105 @@ function installHedgeDoc()
     restartAllCaddyContainers
     checkAddDBConnection true hedgedoc "$FMLNAME_HEDGEDOC_APP" postgres hedgedoc-db $HEDGEDOC_DATABASE_NAME $HEDGEDOC_DATABASE_USER $HEDGEDOC_DATABASE_USER_PASSWORD
   fi
+}
+
+function addAdminUserHedgeDoc()
+{
+  local username="$HEDGEDOC_ADMIN_USERNAME"
+  local password="$HEDGEDOC_ADMIN_PASSWORD"
+  local display_name="HedgeDoc $(getAdminEmailName)"
+  local email="$HEDGEDOC_ADMIN_EMAIL_ADDRESS"
+  local label="MCP"
+  local existing_key_id
+  existing_key_id="$(PGPASSWORD="${HEDGEDOC_DATABASE_USER_PASSWORD}" docker exec "hedgedoc-db" \
+    psql -q -t -A -v ON_ERROR_STOP=1 -U "${HEDGEDOC_DATABASE_USER}" -d "${HEDGEDOC_DATABASE_NAME}" \
+    -c "SELECT id FROM \"user\" WHERE username = '${username}';")"
+  if [[ -n "$existing_key_id" ]]; then
+    echo "Error: a user with username '${username}' already exists (id=${existing_key_id})" >&2
+    return 1
+  fi
+  local author_style photo_url password_hash node_out
+  node_out="$(
+    PGPASSWORD="${HEDGEDOC_DATABASE_USER_PASSWORD}" docker exec -i \
+      -e "HD_UNAME=${username}" \
+      -e "HD_EMAIL=${email}" \
+      -e "HD_PASS=${password}" \
+      hedgedoc-backend node <<'NODE'
+const { hash } = require("@node-rs/argon2");
+const { createHash } = require("crypto");
+const username = process.env.HD_UNAME;
+const email = process.env.HD_EMAIL;
+const password = process.env.HD_PASS;
+let authHash = 0;
+for (let i = 0; i < username.length; i++) {
+  authHash = username.charCodeAt(i) + ((authHash << 5) - authHash);
+}
+const authorStyle = Math.abs(authHash % 9);
+let photoUrl;
+if (email && email.length > 0) {
+  photoUrl = "https://seccdn.libravatar.org/avatar/" + createHash("sha256").update(email.toLowerCase()).digest("hex");
+} else {
+  photoUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAA1JREFUGFdj+L+E8T8ABu4CpDyuE+YAAAAASUVORK5CYII=";
+}
+hash(password, { memoryCost: 19456, timeCost: 2, parallelism: 1 })
+  .then((h) => console.log(authorStyle + "\n" + photoUrl + "\n" + h))
+  .catch((e) => { console.error(e); process.exit(1); });
+NODE
+  )"
+  mapfile -t node_out_lines <<<"${node_out}"
+  author_style="${node_out_lines[0]}"
+  photo_url="${node_out_lines[1]}"
+  password_hash="${node_out_lines[2]}"
+  local key_id secret full_token secret_hash now valid
+  key_id="$(openssl rand 8 | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')"
+  secret="$(openssl rand 64 | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')"
+  full_token="hd2.${key_id}.${secret}"
+  secret_hash="$(printf '%s' "$secret" | openssl dgst -sha512 | awk '{print $2}')"
+  now="$(date -u '+%Y-%m-%d %H:%M:%S.000')"
+  valid="$(date -u -d "+88 year" '+%Y-%m-%d %H:%M:%S.000')"
+  PGPASSWORD="${HEDGEDOC_DATABASE_USER_PASSWORD}" docker exec -i \
+    "hedgedoc-db" \
+    psql -q -v ON_ERROR_STOP=1 \
+      -U "${HEDGEDOC_DATABASE_USER}" \
+      -d "${HEDGEDOC_DATABASE_NAME}" \
+      -v v_username="$username" \
+      -v v_display_name="$display_name" \
+      -v v_email="$email" \
+      -v v_label="$label" \
+      -v v_key_id="$key_id" \
+      -v v_secret_hash="$secret_hash" \
+      -v v_password_hash="$password_hash" \
+      -v v_photo_url="$photo_url" \
+      -v v_author_style="$author_style" \
+      -v v_now="$now" \
+      -v v_valid="$valid" >/dev/null <<'SQL'
+BEGIN;
+
+INSERT INTO "user" (username, display_name, photo_url, email, author_style, guest_uuid, created_at)
+VALUES (:'v_username', :'v_display_name', :'v_photo_url', :'v_email', :'v_author_style', NULL, :'v_now');
+
+INSERT INTO identity (user_id, provider_type, provider_identifier, provider_user_id, password_hash, created_at, updated_at)
+SELECT id, 'local', NULL, :'v_username', :'v_password_hash', :'v_now', :'v_now'
+FROM "user"
+WHERE username = :'v_username';
+
+DELETE FROM api_token
+WHERE user_id = (SELECT id FROM "user" WHERE username = :'v_username')
+  AND label = :'v_label';
+
+INSERT INTO api_token (id, user_id, label, secret_hash, valid_until, created_at, last_used_at)
+VALUES (:'v_key_id',
+        (SELECT id FROM "user" WHERE username = :'v_username'),
+        :'v_label',
+        :'v_secret_hash',
+        :'v_valid',
+        :'v_now',
+        NULL);
+
+COMMIT;
+SQL
+  HEDGEDOC_ADMIN_API_KEY=$(printf '%s\n' "$full_token")
+  updateConfigVar HEDGEDOC_ADMIN_API_KEY "$HEDGEDOC_ADMIN_API_KEY"
 }
 
 function outputConfigHedgeDoc()
@@ -119614,6 +119751,8 @@ function installPresenton()
     updateConfigVar PRESENTON_INIT_ENV $PRESENTON_INIT_ENV
   fi
   sleep 3
+  PRESENTON_ADMIN_API_KEY=$(addPrimaryUserPresenton "$PRESENTON_ADMIN_USERNAME" "PRESENTON_ADMIN_PASSWORD")
+  updateConfigVar PRESENTON_ADMIN_API_KEY "$PRESENTON_ADMIN_API_KEY"
   if [ -z "$FMLNAME_PRESENTON_APP" ]; then
     set +e
     echo "ERROR: Formal name is empty, returning..."
