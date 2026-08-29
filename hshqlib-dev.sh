@@ -24485,6 +24485,8 @@ function version238Update()
   addUserMailu user $EMAIL_SHARED_USERNAME $HOMESERVER_DOMAIN $EMAIL_SHARED_PASSWORD
   sendEmail -s "Shared Email Account Info" -b "A new email account has been added to Mailu. The intent of this account to share amongst your team members for common access. Here are the credentials:\n\n Shared Email Address: $EMAIL_SHARED_EMAIL_ADDRESS\nShared Email Password: $EMAIL_SHARED_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
   outputDBExportScripts
+  outputCaddyHeaders
+  restartAllCaddyContainers
   docker ps | grep -q wordpress-web > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     if [ -z "$WORDPRESS_APP_PASSWORD" ]; then
@@ -24520,7 +24522,7 @@ EOFML
 # Authelia OIDC Client linkwarden BEGIN
       - client_id: linkwarden
         client_name: Linkwarden
-        client_secret: '$LINKWARDEN_OIDC_CLIENT_SECRET_HASH'
+        client_secret: '$(htpasswd -bnBC 10 "" $LINKWARDEN_OIDC_CLIENT_SECRET | tr -d ':\n')'
         public: false
         authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
         consent_mode: implicit
@@ -25066,7 +25068,7 @@ function addAllReadonlyDBUsers()
   addReadOnlyUserToDatabase OpenWebUI postgres openwebui-db $OPENWEBUI_DATABASE_NAME $OPENWEBUI_DATABASE_USER $OPENWEBUI_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/openwebui/dbexport $OPENWEBUI_DATABASE_READONLYUSER $OPENWEBUI_DATABASE_READONLYUSER_PASSWORD
   addReadOnlyUserToDatabase Khoj postgres khoj-db $KHOJ_DATABASE_NAME $KHOJ_DATABASE_USER $KHOJ_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/khoj/dbexport $KHOJ_DATABASE_READONLYUSER $KHOJ_DATABASE_READONLYUSER_PASSWORD
   addReadOnlyUserToDatabase LobeChat postgres lobechat-db $LOBECHAT_DATABASE_NAME $LOBECHAT_DATABASE_USER $LOBECHAT_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/lobechat/dbexport $LOBECHAT_DATABASE_READONLYUSER $LOBECHAT_DATABASE_READONLYUSER_PASSWORD
-  addReadOnlyUserToDatabase RAGFlow postgres ragflow-db $RAGFLOW_DATABASE_NAME $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/ragflow/dbexport $RAGFLOW_DATABASE_READONLYUSER $RAGFLOW_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase RAGFlow mysql ragflow-db $RAGFLOW_DATABASE_NAME root $RAGFLOW_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/ragflow/dbexport $RAGFLOW_DATABASE_READONLYUSER $RAGFLOW_DATABASE_READONLYUSER_PASSWORD
   addReadOnlyUserToDatabase Dify postgres dify-db $DIFY_DATABASE_NAME $DIFY_DATABASE_USER $DIFY_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/dify/dbexport $DIFY_DATABASE_READONLYUSER $DIFY_DATABASE_READONLYUSER_PASSWORD
   addReadOnlyUserToDatabase Wekan mongodb wekan-db $WEKAN_DATABASE_NAME $WEKAN_DATABASE_USER $WEKAN_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/wekan/dbexport $WEKAN_DATABASE_READONLYUSER $WEKAN_DATABASE_READONLYUSER_PASSWORD
   addReadOnlyUserToDatabase Revolt mongodb revolt-db $REVOLT_DATABASE_NAME $REVOLT_DATABASE_USER $REVOLT_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/revolt/dbexport $REVOLT_DATABASE_READONLYUSER $REVOLT_DATABASE_READONLYUSER_PASSWORD
@@ -30384,6 +30386,7 @@ EOFAU
   newuser_mealie_api_key=$(addPrimaryUserMealie "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress false)
   newuser_presenton_api_key=$(addPrimaryUserPresenton "$addPUUID" "$addPUPassword")
   newuser_twenty_api_key=$(addPrimaryUserTwenty "$addPUUID" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName" "$addPULastName" "$addPUEmailPassword")
+  newuser_ragflow_api_key=$(addPrimaryUserRAGFlow "$addPUEmailAddress" "$addPUFirstName $addPULastName")
   docker ps | grep -q openwebui-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     echo "Adding primary user MCPs to OpenWebUI..."
@@ -30428,7 +30431,8 @@ EOFIM
         --arg mealie_api_key "$newuser_mealie_api_key" \
         --arg presenton_api_key "$newuser_presenton_api_key" \
         --arg twenty_api_key "$newuser_twenty_api_key" \
-        '{immich_api_key: $immich_api_key, nextcloud_api_key: $nextcloud_api_key, paperless_api_key: $paperless_api_key, opennotebook_api_key: $opennotebook_api_key, linkwarden_api_key: $linkwarden_api_key, hedgedoc_api_key: $hedgedoc_api_key, mealie_api_key: $mealie_api_key, presenton_api_key: $presenton_api_key, twenty_api_key: $twenty_api_key}')
+        --arg ragflow_api_key "$newuser_ragflow_api_key" \
+        '{immich_api_key: $immich_api_key, nextcloud_api_key: $nextcloud_api_key, paperless_api_key: $paperless_api_key, opennotebook_api_key: $opennotebook_api_key, linkwarden_api_key: $linkwarden_api_key, hedgedoc_api_key: $hedgedoc_api_key, mealie_api_key: $mealie_api_key, presenton_api_key: $presenton_api_key, twenty_api_key: $twenty_api_key, ragflow_api_key: $ragflow_api_key}')
     curl -s -X POST "https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/api/v1/tools/id/mcpkeyvault_tool/valves/user/update" -H "Authorization: Bearer $OPENWEBUI_PU_API_KEY" -H "Content-Type: application/json" -d "$jsonbody" > /dev/null 2>&1
   fi
   if ! [ "$addPUIsLDAPAdmin" = "true" ]; then
@@ -31036,6 +31040,16 @@ function addPrimaryUserTwenty()
   echo "$token"
 }
 
+function addPrimaryUserRAGFlow()
+{
+  if ! [ -f "$HSHQ_STACKS_DIR/ragflow/config/ragflowProvisioning.sh" ]; then
+    return
+  fi
+  rf_user_email="$1"
+  rf_user_displayname="$2"
+  docker exec ragflow-app python3 /ragflow/conf/ragflowProvisioning.sh "$rf_user_email $rf_user_displayname"
+}
+
 function addPrimaryGroupMCPServerOpenWebUI()
 {
   mcp_svc_name="$1"
@@ -31548,8 +31562,9 @@ function loadPinnedDockerImages()
   IMG_KHOJ_SERVER=ghcr.io/khoj-ai/khoj:1.42.10
   IMG_LOBECHAT_APP=mirror.gcr.io/lobehub/lobe-chat-database:1.143.2
   IMG_INVOKEAI_APP=ghcr.io/invoke-ai/invokeai:6.12-cpu
-  IMG_RAGFLOW_INFINITY=mirror.gcr.io/infiniflow/infinity:v0.7.0-dev2
-  IMG_RAGFLOW_APP=mirror.gcr.io/infiniflow/ragflow:v0.24.0
+  IMG_RAGFLOW_INFINITY=mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3
+  IMG_RAGFLOW_APP=mirror.gcr.io/infiniflow/ragflow:v0.27.1
+  IMG_RAGFLOW_DEEPDOC=hshq/deepdoc_oss:v1
   IMG_RAGFLOW_SANDBOX=mirror.gcr.io/infiniflow/sandbox-executor-manager:latest
   IMG_RAGFLOW_SB_NODEJS=mirror.gcr.io/infiniflow/sandbox-base-nodejs:latest
   IMG_RAGFLOW_SB_PYTHON=mirror.gcr.io/infiniflow/sandbox-base-python:latest
@@ -31903,7 +31918,7 @@ function getScriptStackVersion()
     invokeai)
       echo "v1" ;;
     ragflow)
-      echo "v2" ;;
+      echo "v3" ;;
     tabbyml)
       echo "v1" ;;
     deepwikiopen)
@@ -32248,6 +32263,7 @@ function pullDockerImages()
   buildOrPullImage $IMG_INVOKEAI_APP
   buildOrPullImage $IMG_RAGFLOW_INFINITY
   buildOrPullImage $IMG_RAGFLOW_APP
+  buildOrPullImage $IMG_RAGFLOW_DEEPDOC
   buildOrPullImage $IMG_RAGFLOW_SANDBOX
   buildOrPullImage $IMG_RAGFLOW_SB_NODEJS
   buildOrPullImage $IMG_RAGFLOW_SB_PYTHON
@@ -33944,9 +33960,11 @@ RAGFLOW_INIT_ENV="true"
 RAGFLOW_ADMIN_USERNAME=
 RAGFLOW_ADMIN_EMAIL_ADDRESS=
 RAGFLOW_ADMIN_PASSWORD=
+RAGFLOW_ADMIN_API_KEY=
 RAGFLOW_DATABASE_NAME=
 RAGFLOW_DATABASE_USER=
 RAGFLOW_DATABASE_USER_PASSWORD=
+RAGFLOW_DATABASE_ROOT_PASSWORD=
 RAGFLOW_REDIS_PASSWORD=
 RAGFLOW_MINIO_KEY=
 RAGFLOW_MINIO_SECRET=
@@ -33954,6 +33972,7 @@ RAGFLOW_SECRET_KEY=
 RAGFLOW_OIDC_CLIENT_ID=
 RAGFLOW_OIDC_CLIENT_SECRET=
 RAGFLOW_MCPSERVER_API_KEY=
+RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=
 RAGFLOW_DATABASE_READONLYUSER=
 RAGFLOW_DATABASE_READONLYUSER_PASSWORD=
 # RAGFlow (Service Details) END
@@ -37452,6 +37471,10 @@ function initServicesCredentials()
     RAGFLOW_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar RAGFLOW_DATABASE_USER_PASSWORD $RAGFLOW_DATABASE_USER_PASSWORD
   fi
+  if [ -z "$RAGFLOW_DATABASE_ROOT_PASSWORD" ]; then
+    RAGFLOW_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RAGFLOW_DATABASE_ROOT_PASSWORD $RAGFLOW_DATABASE_ROOT_PASSWORD
+  fi
   if [ -z "$RAGFLOW_REDIS_PASSWORD" ]; then
     RAGFLOW_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar RAGFLOW_REDIS_PASSWORD $RAGFLOW_REDIS_PASSWORD
@@ -37479,6 +37502,10 @@ function initServicesCredentials()
   if [ -z "$RAGFLOW_MCPSERVER_API_KEY" ]; then
     RAGFLOW_MCPSERVER_API_KEY=$(pwgen -c -n 32 1)
     updateConfigVar RAGFLOW_MCPSERVER_API_KEY $RAGFLOW_MCPSERVER_API_KEY
+  fi
+  if [ -z "$RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN" ]; then
+    RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=$(openssl rand -hex 24)
+    updateConfigVar RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN $RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN
   fi
   if [ -z "$TABBYML_ADMIN_USERNAME" ]; then
     TABBYML_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_tabbyml"
@@ -43591,13 +43618,16 @@ function getScriptImageByContainerName()
       container_image=$IMG_INVOKEAI_APP
       ;;
     "ragflow-db")
-      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      container_image=mirror.gcr.io/mariadb:11.4.12
       ;;
     "ragflow-infinity")
       container_image=$IMG_RAGFLOW_INFINITY
       ;;
     "ragflow-app")
       container_image=$IMG_RAGFLOW_APP
+      ;;
+    "ragflow-deepdoc")
+      container_image=$IMG_RAGFLOW_DEEPDOC
       ;;
     "ragflow-sandbox")
       container_image=$IMG_RAGFLOW_SANDBOX
@@ -44221,7 +44251,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "OpenWebUI" "OPENWEBUI_INIT_ENV=false,OPENWEBUI_ADMIN_USERNAME=,OPENWEBUI_ADMIN_EMAIL_ADDRESS=,OPENWEBUI_ADMIN_PASSWORD=,OPENWEBUI_DATABASE_NAME=,OPENWEBUI_DATABASE_USER=,OPENWEBUI_DATABASE_USER_PASSWORD=,OPENWEBUI_REDIS_PASSWORD=,OPENWEBUI_OIDC_CLIENT_ID=,OPENWEBUI_OIDC_CLIENT_SECRET=,OPENWEBUI_SECRET_KEY=,OPENWEBUI_ADMIN_API_KEY=,OPENWEBUI_QDRANT_API_KEY=,OPENWEBUI_OPENTERMINAL_API_KEY=,OPENWEBUI_MCPO_API_KEY=,OPENWEBUI_PIPELINES_API_KEY=,OPENWEBUI_ADMIN_UUID=,OPENWEBUI_PRIMARYUSERS_UUID=" $CONFIG_FILE false
   checkAddServiceToConfig "Khoj" "KHOJ_INIT_ENV=false,KHOJ_ADMIN_USERNAME=,KHOJ_ADMIN_EMAIL_ADDRESS=,KHOJ_ADMIN_PASSWORD=,KHOJ_DATABASE_NAME=,KHOJ_DATABASE_USER=,KHOJ_DATABASE_USER_PASSWORD=,KHOJ_DJANGO_SECRET_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "LobeChat" "LOBECHAT_INIT_ENV=false,LOBECHAT_ADMIN_USERNAME=,LOBECHAT_ADMIN_EMAIL_ADDRESS=,LOBECHAT_ADMIN_PASSWORD=,LOBECHAT_DATABASE_NAME=,LOBECHAT_DATABASE_USER=,LOBECHAT_DATABASE_USER_PASSWORD=,LOBECHAT_REDIS_PASSWORD=,LOBECHAT_NEXTAUTH_SECRET=,LOBECHAT_KEYVAULTS_SECRET=,LOBECHAT_MINIO_KEY=,LOBECHAT_MINIO_SECRET=,LOBECHAT_OIDC_CLIENT_ID=,LOBECHAT_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
-  checkAddServiceToConfig "RAGFlow" "RAGFLOW_INIT_ENV=false,RAGFLOW_ADMIN_USERNAME=,RAGFLOW_ADMIN_EMAIL_ADDRESS=,RAGFLOW_ADMIN_PASSWORD=,RAGFLOW_DATABASE_NAME=,RAGFLOW_DATABASE_USER=,RAGFLOW_DATABASE_USER_PASSWORD=,RAGFLOW_REDIS_PASSWORD=,RAGFLOW_MINIO_KEY=,RAGFLOW_MINIO_SECRET=,RAGFLOW_SECRET_KEY=,RAGFLOW_OIDC_CLIENT_ID=,RAGFLOW_OIDC_CLIENT_SECRET=,RAGFLOW_MCPSERVER_API_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "RAGFlow" "RAGFLOW_INIT_ENV=false,RAGFLOW_ADMIN_USERNAME=,RAGFLOW_ADMIN_EMAIL_ADDRESS=,RAGFLOW_ADMIN_PASSWORD=,RAGFLOW_ADMIN_API_KEY=,RAGFLOW_DATABASE_NAME=,RAGFLOW_DATABASE_USER=,RAGFLOW_DATABASE_USER_PASSWORD=,RAGFLOW_DATABASE_ROOT_PASSWORD=,RAGFLOW_REDIS_PASSWORD=,RAGFLOW_MINIO_KEY=,RAGFLOW_MINIO_SECRET=,RAGFLOW_SECRET_KEY=,RAGFLOW_OIDC_CLIENT_ID=,RAGFLOW_OIDC_CLIENT_SECRET=,RAGFLOW_MCPSERVER_API_KEY=,RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=" $CONFIG_FILE false
   checkAddServiceToConfig "TabbyML" "TABBYML_INIT_ENV=false,TABBYML_ADMIN_USERNAME=,TABBYML_ADMIN_EMAIL_ADDRESS=,TABBYML_ADMIN_PASSWORD=,TABBYML_JWT_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "DeepWikiOpen" "DEEPWIKI_OPEN_INIT_ENV=false,DEEPWIKI_OPEN_AUTH_CODE=" $CONFIG_FILE false
   checkAddServiceToConfig "Docling" "DOCLING_INIT_ENV=false,DOCLING_REDIS_PASSWORD=,DOCLING_API_KEY=" $CONFIG_FILE false
@@ -44322,6 +44352,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "HedgeDoc" "HEDGEDOC_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Mealie" "MEALIE_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Presenton" "PRESENTON_ADMIN_API_KEY=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "RAGFlow" "RAGFLOW_DATABASE_ROOT_PASSWORD=,RAGFLOW_ADMIN_API_KEY=,RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=" $CONFIG_FILE false
   initServicesCredentials
 }
 
@@ -63356,7 +63387,7 @@ function installExcalidraw()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll excalidraw "$FMLNAME_EXCALIDRAW_WEB" $USERTYPE_EXCALIDRAW_WEB "https://$SUB_EXCALIDRAW_WEB.$HOMESERVER_DOMAIN" "excalidraw.png" "$(getHeimdallOrderFromSub $SUB_EXCALIDRAW_WEB $USERTYPE_EXCALIDRAW_WEB)"
     insertEnableSvcUptimeKuma excalidraw "$FMLNAME_EXCALIDRAW_WEB Server" $USERTYPE_EXCALIDRAW_WEB "https://$SUB_EXCALIDRAW_SERVER.$HOMESERVER_DOMAIN" true
-    insertEnableSvcAll excalidraw "$FMLNAME_EXCALIDRAW_AI" $USERTYPE_EXCALIDRAW_AI "https://$SUB_EXCALIDRAW_AI.$HOMESERVER_DOMAIN" "excalidraw2.png" "$(getHeimdallOrderFromSub $SUB_EXCALIDRAW_AI $USERTYPE_EXCALIDRAW_AI)"
+    insertEnableSvcHeimdall excalidraw "$FMLNAME_EXCALIDRAW_AI" $USERTYPE_EXCALIDRAW_AI "https://$SUB_EXCALIDRAW_AI.$HOMESERVER_DOMAIN" "excalidraw2.png" true "$(getHeimdallOrderFromSub $SUB_EXCALIDRAW_AI $USERTYPE_EXCALIDRAW_AI)"
     restartAllCaddyContainers
   fi
 }
@@ -66893,7 +66924,6 @@ function installLinkwarden()
     LINKWARDEN_NEXTAUTH_SECRET=$(pwgen -c -n 32 1)
     updateConfigVar LINKWARDEN_NEXTAUTH_SECRET $LINKWARDEN_NEXTAUTH_SECRET
   fi
-  LINKWARDEN_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $LINKWARDEN_OIDC_CLIENT_SECRET | tr -d ':\n')
   outputConfigLinkwarden
   oidcBlock=$(cat $HOME/linkwarden.oidc)
   rm -f $HOME/linkwarden.oidc
@@ -67061,7 +67091,7 @@ EOFDZ
 # Authelia OIDC Client linkwarden BEGIN
       - client_id: linkwarden
         client_name: Linkwarden
-        client_secret: '$LINKWARDEN_OIDC_CLIENT_SECRET_HASH'
+        client_secret: '$(htpasswd -bnBC 10 "" $LINKWARDEN_OIDC_CLIENT_SECRET | tr -d ':\n')'
         public: false
         authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
         consent_mode: implicit
@@ -67475,7 +67505,7 @@ function mfLinkwardenV11Update()
 # Authelia OIDC Client linkwarden BEGIN
       - client_id: linkwarden
         client_name: Linkwarden
-        client_secret: '$LINKWARDEN_OIDC_CLIENT_SECRET_HASH'
+        client_secret: '$(htpasswd -bnBC 10 "" $LINKWARDEN_OIDC_CLIENT_SECRET | tr -d ':\n')'
         public: false
         authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
         consent_mode: implicit
@@ -69988,7 +70018,7 @@ function installPaperless()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_BASEHEADER\n"
   inner_block=$inner_block">>>>header {\n"
-  inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com cdn.tailwindcss.com unpkg.com cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com unpkg.com; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.tailwindcss.com unpkg.com; img-src 'self' *.${HOMESERVER_DOMAIN} data:; font-src 'self' cdnjs.cloudflare.com data:; frame-src 'self' *.${HOMESERVER_DOMAIN} data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} data: api.github.com; object-src 'none'; upgrade-insecure-requests; frame-ancestors 'self' *.${HOMESERVER_DOMAIN};\""
+  inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com cdn.tailwindcss.com unpkg.com cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com unpkg.com; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.tailwindcss.com unpkg.com; img-src 'self' *.${HOMESERVER_DOMAIN} data:; font-src 'self' cdnjs.cloudflare.com data:; frame-src 'self' *.${HOMESERVER_DOMAIN} data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} data: api.github.com; object-src 'none'; upgrade-insecure-requests; frame-ancestors 'self' *.${HOMESERVER_DOMAIN};\"\n"
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://paperless-ai:3000 {\n"
@@ -91424,10 +91454,10 @@ function installInvoiceShelf()
     echo "There was a problem with the InvoiceShelf onboarding process, returning..."
     return $retVal
   fi
-  sleep 2
+  sleep 3
   addReadOnlyUserToDatabase InvoiceShelf postgres invoiceshelf-db $INVOICESHELF_DATABASE_NAME $INVOICESHELF_DATABASE_USER $INVOICESHELF_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/invoiceshelf/dbexport $INVOICESHELF_DATABASE_READONLYUSER $INVOICESHELF_DATABASE_READONLYUSER_PASSWORD
   INVOICESHELF_ADMIN_API_KEY=$(generateAPITokenInvoiceShelf "$INVOICESHELF_ADMIN_EMAIL_ADDRESS" "$INVOICESHELF_ADMIN_PASSWORD")
-  updateConfigVar INVOICESHELF_ADMIN_API_KEY $INVOICESHELF_ADMIN_API_KEY
+  updateConfigVar INVOICESHELF_ADMIN_API_KEY "$INVOICESHELF_ADMIN_API_KEY"
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN {\n"
@@ -91783,13 +91813,13 @@ function generateAPITokenInvoiceShelf()
 {
   is_username="$1"
   is_password="$2"
-  ivshelf_token="$(docker exec -e U="${is_username}" \
+  ivshelf_resp=$(docker exec -e U="${is_username}" \
     -e PW="${is_password}" invoiceshelf-app \
     sh -c 'curl -s -X POST "http://127.0.0.1:8080/api/v1/auth/login" \
     -H "Content-Type: application/json" \
     -H "Accept: application/json" \
-    -d "{\"username\":\"$U\",\"password\":\"$PW\",\"device_name\":\"MCP\"}"')"
-  ivshelf_token=$(echo "$ivshelf_token" | jq -r .token)
+    -d "{\"username\":\"$U\",\"password\":\"$PW\",\"device_name\":\"MCP\"}"')
+  ivshelf_token=$(echo "$ivshelf_resp" | jq -r .token)
   echo "${ivshelf_token}"
 }
 
@@ -100898,11 +100928,11 @@ function installRAGFlow()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName ragflow-app)
+  pullImage $(getScriptImageByContainerName ragflow-deepdoc)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName ragflow-sandbox)
+  pullImage $(getScriptImageByContainerName ragflow-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -100911,14 +100941,6 @@ function installRAGFlow()
     return 1
   fi
   pullImage $(getScriptImageByContainerName ragflow-redis)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
-  pullImage $(getScriptImageByContainerName ragflow-sandbox-nodejs)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
-  pullImage $(getScriptImageByContainerName ragflow-sandbox-python)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -100953,15 +100975,33 @@ function installRAGFlow()
   fi
   sleep 3
   startStopStack ragflow stop
-  sudo mv -f $HSHQ_STACKS_DIR/ragflow/doc_meta_es_mapping.json $HSHQ_STACKS_DIR/ragflow/config/doc_meta_es_mapping.json
-  sudo mv -f $HSHQ_STACKS_DIR/ragflow/doc_meta_infinity_mapping.json $HSHQ_STACKS_DIR/ragflow/config/doc_meta_infinity_mapping.json
-  sudo mv -f $HSHQ_STACKS_DIR/ragflow/infinity_mapping.json $HSHQ_STACKS_DIR/ragflow/config/infinity_mapping.json
-  sudo mv -f $HSHQ_STACKS_DIR/ragflow/system_settings.json $HSHQ_STACKS_DIR/ragflow/config/system_settings.json
+  set +e
+  ragflowImage=$(getScriptImageByContainerName ragflow-app)
+  cid=$(docker create "$ragflowImage" 2>/dev/null)
+  docker cp "$cid":/ragflow/conf/. $HSHQ_STACKS_DIR/ragflow/config/ 2>/dev/null
+  docker rm -f "$cid" >/dev/null 2>&1
   sudo mv -f $HSHQ_STACKS_DIR/ragflow/service_conf.yaml.template $HSHQ_STACKS_DIR/ragflow/config/service_conf.yaml.template
+  sudo mv -f $HSHQ_STACKS_DIR/ragflow/ragflow_bootstrap.json $HSHQ_STACKS_DIR/ragflow/config/ragflow_bootstrap.json
   startStopStack ragflow start
-  waitForContainerLogString ragflow-app 10 300 "Running on all addresses"
+  local curR=0
+  local maxR=300
+  while [ $curR -lt $maxR ]; do
+    if docker exec ragflow-app curl -fsS http://localhost:9380/api/v1/system/healthz >/dev/null 2>&1 &&
+       docker exec ragflow-app curl -fsS http://localhost:9381/api/v1/admin/ping >/dev/null 2>&1; then
+      echo "RAGFlow is ready."
+      break
+    fi
+    sleep 5
+    curR=$((curR+5))
+  done
+  if [ $curR -ge $maxR ]; then
+    echo "ERROR: ragflow-app did not become ready within ${maxR} seconds. Try: docker logs ragflow-app"
+    return 1
+  fi
+  sleep 3
+  set +e
   performIntegrationsRagflow
-  addReadOnlyUserToDatabase RAGFlow postgres ragflow-db $RAGFLOW_DATABASE_NAME $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/ragflow/dbexport $RAGFLOW_DATABASE_READONLYUSER $RAGFLOW_DATABASE_READONLYUSER_PASSWORD
+  addReadOnlyUserToDatabase RAGFlow mysql ragflow-db $RAGFLOW_DATABASE_NAME root $RAGFLOW_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/ragflow/dbexport $RAGFLOW_DATABASE_READONLYUSER $RAGFLOW_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_RAGFLOW_APP" ]; then
     set +e
     echo "ERROR: Formal name is empty, returning..."
@@ -101032,26 +101072,39 @@ function installRAGFlow()
     insertEnableSvcAll ragflow "$FMLNAME_RAGFLOW_APP" $USERTYPE_RAGFLOW_APP "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN" "ragflow.png" "$(getHeimdallOrderFromSub $SUB_RAGFLOW_APP $USERTYPE_RAGFLOW_APP)"
     insertEnableSvcAll ragflow "$FMLNAME_RAGFLOW_MINIO" $USERTYPE_RAGFLOW_MINIO "https://$SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN" "minio.png" "$(getHeimdallOrderFromSub $SUB_RAGFLOW_MINIO $USERTYPE_RAGFLOW_MINIO)"
     restartAllCaddyContainers
-    checkAddDBConnection true ragflow "$FMLNAME_RAGFLOW_APP" postgres ragflow-db $RAGFLOW_DATABASE_NAME $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_USER_PASSWORD
+    checkAddDBConnection true ragflow "$FMLNAME_RAGFLOW_APP" mysql ragflow-db $RAGFLOW_DATABASE_NAME $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_USER_PASSWORD
   fi
 }
 
 function outputConfigRAGFlow()
 {
+  #DEEPDOC_URL=http://ragflow-deepdoc:9390
   outputComposeRagflow
   cat <<EOFMT > $HOME/ragflow.env
 TZ=\${PORTAINER_TZ}
 TIMEZONE='UTC-6\tAmerica/Chicago'
-POSTGRES_DB=$RAGFLOW_DATABASE_NAME
-POSTGRES_USER=$RAGFLOW_DATABASE_USER
-POSTGRES_PASSWORD=$RAGFLOW_DATABASE_USER_PASSWORD
-POSTGRES_HOST=ragflow-db
-POSTGRES_DBNAME=$RAGFLOW_DATABASE_NAME
-DB_TYPE=postgres
+DB_TYPE=mysql
 DOC_ENGINE=infinity
 DEVICE=cpu
-COMPOSE_PROFILES=infinity,cpu,sandbox
+COMPOSE_PROFILES=infinity,cpu
 MEM_LIMIT=8589934592
+DEEPDOC_URL=
+MYSQL_HOST=ragflow-db
+MYSQL_PORT=3306
+MYSQL_USER=$RAGFLOW_DATABASE_USER
+MYSQL_PASSWORD=$RAGFLOW_DATABASE_USER_PASSWORD
+MYSQL_DATABASE=$RAGFLOW_DATABASE_NAME
+MYSQL_DBNAME=$RAGFLOW_DATABASE_NAME
+MARIADB_ROOT_PASSWORD=$RAGFLOW_DATABASE_ROOT_PASSWORD
+MARIADB_DATABASE=$RAGFLOW_DATABASE_NAME
+MARIADB_USER=$RAGFLOW_DATABASE_USER
+MARIADB_PASSWORD=$RAGFLOW_DATABASE_USER_PASSWORD
+MARIADB_ROOT_HOST=%
+RAGFLOW_DATABASE_NAME=$RAGFLOW_DATABASE_NAME
+RAGFLOW_DATABASE_HOST=ragflow-db
+RAGFLOW_DATABASE_USER=$RAGFLOW_DATABASE_USER
+RAGFLOW_DATABASE_USER_PASSWORD=$RAGFLOW_DATABASE_USER_PASSWORD
+RAGFLOW_DATABASE_ROOT_PASSWORD=$RAGFLOW_DATABASE_ROOT_PASSWORD
 INFINITY_HOST=ragflow-infinity
 INFINITY_THRIFT_PORT=23817
 INFINITY_HTTP_PORT=23820
@@ -101073,23 +101126,19 @@ ADMIN_SVR_HTTP_PORT=9381
 SVR_MCP_PORT=9382
 MAX_CONTENT_LENGTH=1073741824
 DOC_BULK_SIZE=4
-EMBEDDING_BATCH_SIZE=16
+EMBEDDING_BATCH_SIZE=8
 REGISTER_ENABLED=1
-SANDBOX_ENABLED=1
-SANDBOX_HOST=ragflow-sandbox
-SANDBOX_EXECUTOR_MANAGER_POOL_SIZE=3
-SANDBOX_BASE_PYTHON_IMAGE=mirror.gcr.io/infiniflow/sandbox-base-python:latest
-SANDBOX_BASE_NODEJS_IMAGE=mirror.gcr.io/infiniflow/sandbox-base-nodejs:latest
-SANDBOX_EXECUTOR_MANAGER_PORT=9385
-SANDBOX_ENABLE_SECCOMP=false
-SANDBOX_MAX_MEMORY=256m
-SANDBOX_TIMEOUT=10s
 USE_DOCLING=false
 DOCLING_SERVER_URL=http://docling-app:5001
 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-PYTHON_VER=python3.12
+PYTHON_VER=python3.13
 RAGFLOW_SECRET_KEY=$RAGFLOW_SECRET_KEY
 SECRET_KEY=$RAGFLOW_SECRET_KEY
+DEFAULT_SUPERUSER_NICKNAME="RAGFlow $(getAdminEmailName)"
+DEFAULT_SUPERUSER_EMAIL=$RAGFLOW_ADMIN_EMAIL_ADDRESS
+DEFAULT_SUPERUSER_PASSWORD=$RAGFLOW_ADMIN_PASSWORD
+ADMIN_DEFAULT_PASSWORD=$RAGFLOW_ADMIN_PASSWORD
+API_PROXY_SCHEME=python
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/nginx/nginx.conf
 user  root;
@@ -101138,8 +101187,7 @@ server {
     gzip on;
     gzip_min_length 1k;
     gzip_comp_level 9;
-    gzip_types text/plain application/javascript application/x-javascript text/css application/xml text/javascript application/x-httpd-php image/jpeg image/gif image/png;
-    gzip_vary on;
+    gzip_types text/plain application/javascript application/x-javascript text/css application/xml text/javascript application/x-httpd-php image/jpeg image/gif image/png;    gzip_vary on;
     gzip_disable "MSIE [1-6]\.";
 
     location ~ ^/api/v1/admin {
@@ -101158,505 +101206,12 @@ server {
         try_files \$uri \$uri/ /index.html;
     }
 
-    # Cache-Control: max-age~@~AExpires
+    # Cache-Control: max-age Expires
     location ~ ^/static/(css|js|media)/ {
         expires 10y;
         access_log off;
     }
 }
-EOFMT
-  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/misc/entrypoint.sh
-#!/usr/bin/env bash
-
-set -e
-
-# -----------------------------------------------------------------------------
-# Usage and command-line argument parsing
-# -----------------------------------------------------------------------------
-function usage() {
-    echo "Usage: \$0 [--disable-webserver] [--disable-taskexecutor] [--disable-datasync] [--consumer-no-beg=<num>] [--consumer-no-end=<num>] [--workers=<num>] [--host-id=<string>]"
-    echo
-    echo "  --disable-webserver             Disables the web server (nginx + ragflow_server)."
-    echo "  --disable-taskexecutor          Disables task executor workers."
-    echo "  --disable-datasync              Disables synchronization of datasource workers."
-    echo "  --enable-mcpserver              Enables the MCP server."
-    echo "  --enable-adminserver            Enables the Admin server."
-    echo "  --init-superuser                Initializes the superuser."
-    echo "  --consumer-no-beg=<num>         Start range for consumers (if using range-based)."
-    echo "  --consumer-no-end=<num>         End range for consumers (if using range-based)."
-    echo "  --workers=<num>                 Number of task executors to run (if range is not used)."
-    echo "  --host-id=<string>              Unique ID for the host (defaults to hostname)."
-    echo
-    echo "Examples:"
-    echo "  \$0 --disable-taskexecutor"
-    echo "  \$0 --disable-webserver --consumer-no-beg=0 --consumer-no-end=5"
-    echo "  \$0 --disable-webserver --workers=2 --host-id=myhost123"
-    echo "  \$0 --enable-mcpserver"
-    echo "  \$0 --enable-adminserver"
-    echo "  \$0 --init-superuser"
-    exit 1
-}
-
-ENABLE_WEBSERVER=1 # Default to enable web server
-ENABLE_TASKEXECUTOR=1  # Default to enable task executor
-ENABLE_DATASYNC=1
-ENABLE_MCP_SERVER=0
-ENABLE_ADMIN_SERVER=0 # Default close admin server
-INIT_SUPERUSER_ARGS="" # Default to not initialize superuser
-CONSUMER_NO_BEG=0
-CONSUMER_NO_END=0
-WORKERS=1
-
-MCP_HOST="127.0.0.1"
-MCP_PORT=9382
-MCP_BASE_URL="http://127.0.0.1:9380"
-MCP_SCRIPT_PATH="/ragflow/mcp/server/server.py"
-MCP_MODE="self-host"
-MCP_HOST_API_KEY="$RAGFLOW_MCPSERVER_API_KEY"
-MCP_TRANSPORT_SSE_FLAG="--transport-sse-enabled"
-MCP_TRANSPORT_STREAMABLE_HTTP_FLAG="--transport-streamable-http-enabled"
-MCP_JSON_RESPONSE_FLAG="--json-response"
-
-# -----------------------------------------------------------------------------
-# Host ID logic:
-#   1. By default, use the system hostname if length <= 32
-#   2. Otherwise, use the full MD5 hash of the hostname (32 hex chars)
-# -----------------------------------------------------------------------------
-CURRENT_HOSTNAME="\$(hostname)"
-if [ \${#CURRENT_HOSTNAME} -le 32 ]; then
-  DEFAULT_HOST_ID="\$CURRENT_HOSTNAME"
-else
-  DEFAULT_HOST_ID="\$(echo -n "\$CURRENT_HOSTNAME" | md5sum | cut -d ' ' -f 1)"
-fi
-
-HOST_ID="\$DEFAULT_HOST_ID"
-
-# Parse arguments
-for arg in "\$@"; do
-  case \$arg in
-    --disable-webserver)
-      ENABLE_WEBSERVER=0
-      shift
-      ;;
-    --disable-taskexecutor)
-      ENABLE_TASKEXECUTOR=0
-      shift
-      ;;
-    --disable-datasync)
-      ENABLE_DATASYNC=0
-      shift
-      ;;
-    --enable-mcpserver)
-      ENABLE_MCP_SERVER=1
-      shift
-      ;;
-    --enable-adminserver)
-      ENABLE_ADMIN_SERVER=1
-      shift
-      ;;
-    --init-superuser)
-      INIT_SUPERUSER_ARGS="--init-superuser"
-      shift
-      ;;
-    --mcp-host=*)
-      MCP_HOST="\${arg#*=}"
-      shift
-      ;;
-    --mcp-port=*)
-      MCP_PORT="\${arg#*=}"
-      shift
-      ;;
-    --mcp-base-url=*)
-      MCP_BASE_URL="\${arg#*=}"
-      shift
-      ;;
-    --mcp-mode=*)
-      MCP_MODE="\${arg#*=}"
-      shift
-      ;;
-    --mcp-host-api-key=*)
-      MCP_HOST_API_KEY="\${arg#*=}"
-      shift
-      ;;
-    --mcp-script-path=*)
-      MCP_SCRIPT_PATH="\${arg#*=}"
-      shift
-      ;;
-    --no-transport-sse-enabled)
-      MCP_TRANSPORT_SSE_FLAG="--no-transport-sse-enabled"
-      shift
-      ;;
-    --no-transport-streamable-http-enabled)
-      MCP_TRANSPORT_STREAMABLE_HTTP_FLAG="--no-transport-streamable-http-enabled"
-      shift
-      ;;
-    --no-json-response)
-      MCP_JSON_RESPONSE_FLAG="--no-json-response"
-      shift
-      ;;
-    --consumer-no-beg=*)
-      CONSUMER_NO_BEG="\${arg#*=}"
-      shift
-      ;;
-    --consumer-no-end=*)
-      CONSUMER_NO_END="\${arg#*=}"
-      shift
-      ;;
-    --workers=*)
-      WORKERS="\${arg#*=}"
-      shift
-      ;;
-    --host-id=*)
-      HOST_ID="\${arg#*=}"
-      shift
-      ;;
-    *)
-      usage
-      ;;
-  esac
-done
-
-# -----------------------------------------------------------------------------
-# Replace env variables in the service_conf.yaml file
-# -----------------------------------------------------------------------------
-CONF_DIR="/ragflow/conf"
-TEMPLATE_FILE="\${CONF_DIR}/service_conf.yaml.template"
-CONF_FILE="\${CONF_DIR}/service_conf.yaml"
-
-rm -f "\${CONF_FILE}"
-DEF_ENV_VALUE_PATTERN="\\$\{([^:]+):-([^}]+)\}"
-while IFS= read -r line || [[ -n "\$line" ]]; do
-    if [[ "\$line" =~ DEF_ENV_VALUE_PATTERN ]]; then
-        varname="\${BASH_REMATCH[1]}"
-        default="\${BASH_REMATCH[2]}"
-        if [ -n "\${!varname}" ]; then
-            eval "echo \"\$line"\" >> "\${CONF_FILE}"
-        else
-            echo "\$line" | sed -E "s/\\\\$\{[^:]+:-([^}]+)\}/\1/g" >> "\${CONF_FILE}"
-        fi
-    else
-        eval "echo \"\$line\"" >> "\${CONF_FILE}"
-    fi
-done < "\${TEMPLATE_FILE}"
-
-export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu/"
-PY=python3
-
-# -----------------------------------------------------------------------------
-# Function(s)
-# -----------------------------------------------------------------------------
-
-function task_exe() {
-    local consumer_id="\$1"
-    local host_id="\$2"
-
-    JEMALLOC_PATH="\$(pkg-config --variable=libdir jemalloc)/libjemalloc.so"
-    while true; do
-        LD_PRELOAD="\$JEMALLOC_PATH" "\$PY" rag/svr/task_executor.py "\${host_id}_\${consumer_id}"  &
-        wait;
-        sleep 1;
-    done
-}
-
-function start_mcp_server() {
-    echo "Starting MCP Server on \${MCP_HOST}:\${MCP_PORT} with base URL \${MCP_BASE_URL}..."
-    "\$PY" "\${MCP_SCRIPT_PATH}" --host="\${MCP_HOST}" --port="\${MCP_PORT}" --base-url="\${MCP_BASE_URL}" --mode="\${MCP_MODE}" --api-key="\${MCP_HOST_API_KEY}" "\${MCP_TRANSPORT_SSE_FLAG}" "\${MCP_TRANSPORT_STREAMABLE_HTTP_FLAG}" "\${MCP_JSON_RESPONSE_FLAG}" &
-}
-
-function ensure_docling() {
-    [[ "\${USE_DOCLING}" == "true" ]] || { echo "[docling] disabled by USE_DOCLING"; return 0; }
-    DOCLING_PIN="\${DOCLING_VERSION:-==2.71.0}"
-    "\$PY" -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('docling') else 1)" || uv pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --extra-index-url https://pypi.org/simple --no-cache-dir "docling\${DOCLING_PIN}"
-}
-
-# -----------------------------------------------------------------------------
-# Start components based on flags
-# -----------------------------------------------------------------------------
-ensure_docling
-
-if [[ "\${ENABLE_WEBSERVER}" -eq 1 ]]; then
-    echo "Starting nginx..."
-    /usr/sbin/nginx
-
-    echo "Starting ragflow_server..."
-    while true; do
-        "\$PY" api/ragflow_server.py \${INIT_SUPERUSER_ARGS} &
-        wait;
-        sleep 1;
-    done &
-fi
-
-if [[ "\${ENABLE_DATASYNC}" -eq 1 ]]; then
-    echo "Starting data sync..."
-    while true; do
-        "\$PY" rag/svr/sync_data_source.py &
-        wait;
-        sleep 1;
-    done &
-fi
-
-if [[ "\${ENABLE_ADMIN_SERVER}" -eq 1 ]]; then
-    echo "Starting admin_server..."
-    while true; do
-        "\$PY" admin/server/admin_server.py &
-        wait;
-        sleep 1;
-    done &
-fi
-
-if [[ "\${ENABLE_MCP_SERVER}" -eq 1 ]]; then
-    start_mcp_server
-fi
-
-
-if [[ "\${ENABLE_TASKEXECUTOR}" -eq 1 ]]; then
-    if [[ "\${CONSUMER_NO_END}" -gt "\${CONSUMER_NO_BEG}" ]]; then
-        echo "Starting task executors on host '\${HOST_ID}' for IDs in [\${CONSUMER_NO_BEG}, \${CONSUMER_NO_END})..."
-        for (( i=CONSUMER_NO_BEG; i<CONSUMER_NO_END; i++ ))
-        do
-          task_exe "\${i}" "\${HOST_ID}" &
-        done
-    else
-        # Otherwise, start a fixed number of workers
-        echo "Starting \${WORKERS} task executor(s) on host '\${HOST_ID}'..."
-        for (( i=0; i<WORKERS; i++ ))
-        do
-          task_exe "\${i}" "\${HOST_ID}" &
-        done
-    fi
-fi
-
-wait
-EOFMT
-  chmod 755 $HSHQ_STACKS_DIR/ragflow/misc/entrypoint.sh
-  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/misc/auth.py
-#
-#  Copyright 2025 The InfiniFlow Authors. All Rights Reserved.
-#
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
-#
-
-
-import logging
-import uuid
-from functools import wraps
-from datetime import datetime
-
-from flask import jsonify, request
-from flask_login import current_user, login_user
-from itsdangerous.url_safe import URLSafeTimedSerializer as Serializer
-
-from api.common.exceptions import AdminException, UserNotFoundError
-from api.common.base64 import encode_to_base64
-from api.db.services import UserService
-from api.db import UserTenantRole
-from api.db.services.user_service import TenantService, UserTenantService
-from common.constants import ActiveEnum, StatusEnum
-from api.utils.crypt import decrypt
-from common.misc_utils import get_uuid
-from common.time_utils import current_timestamp, datetime_format, get_format_time
-from common.connection_utils import sync_construct_response
-from common import settings
-
-
-def setup_auth(login_manager):
-    @login_manager.request_loader
-    def load_user(web_request):
-        jwt = Serializer(secret_key=settings.SECRET_KEY)
-        authorization = web_request.headers.get("Authorization")
-        if authorization:
-            try:
-                access_token = str(jwt.loads(authorization))
-
-                if not access_token or not access_token.strip():
-                    logging.warning("Authentication attempt with empty access token")
-                    return None
-
-                # Access tokens should be UUIDs (32 hex characters)
-                if len(access_token.strip()) < 32:
-                    logging.warning(f"Authentication attempt with invalid token format: {len(access_token)} chars")
-                    return None
-
-                user = UserService.query(
-                    access_token=access_token, status=StatusEnum.VALID.value
-                )
-                if user:
-                    if not user[0].access_token or not user[0].access_token.strip():
-                        logging.warning(f"User {user[0].email} has empty access_token in database")
-                        return None
-                    return user[0]
-                else:
-                    return None
-            except Exception as e:
-                logging.warning(f"load_user got exception {e}")
-                return None
-        else:
-            return None
-
-
-def init_default_admin():
-    # Verify that at least one active admin user exists. If not, create a default one.
-    users = UserService.query(is_superuser=True)
-    if not users:
-        default_admin = {
-            "id": uuid.uuid1().hex,
-            "password": encode_to_base64("admin"),
-            "nickname": "admin",
-            "is_superuser": True,
-            "email": "admin@ragflow.io",
-            "creator": "system",
-            "status": "1",
-        }
-        if not UserService.save(**default_admin):
-            raise AdminException("Can't init admin.", 500)
-        add_tenant_for_admin(default_admin, UserTenantRole.OWNER)
-    elif not any([u.is_active == ActiveEnum.ACTIVE.value for u in users]):
-        raise AdminException("No active admin. Please update 'is_active' in db manually.", 500)
-    else:
-        default_admin_rows = [u for u in users if u.email == "admin@ragflow.io"]
-        if default_admin_rows:
-            default_admin = default_admin_rows[0].to_dict()
-            exist, default_admin_tenant = TenantService.get_by_id(default_admin["id"])
-            if not exist:
-                add_tenant_for_admin(default_admin, UserTenantRole.OWNER)
-
-
-def add_tenant_for_admin(user_info: dict, role: str):
-    from api.db.services.tenant_llm_service import TenantLLMService
-    from api.db.services.llm_service import get_init_tenant_llm
-
-    tenant = {
-        "id": user_info["id"],
-        "name": user_info["nickname"] + "‘s Kingdom",
-        "llm_id": settings.CHAT_MDL,
-        "embd_id": settings.EMBEDDING_MDL,
-        "asr_id": settings.ASR_MDL,
-        "parser_ids": settings.PARSERS,
-        "img2txt_id": settings.IMAGE2TEXT_MDL,
-        "rerank_id": settings.RERANK_MDL,
-    }
-    usr_tenant = {
-        "tenant_id": user_info["id"],
-        "user_id": user_info["id"],
-        "invited_by": user_info["id"],
-        "role": role
-    }
-
-    tenant_llm = get_init_tenant_llm(user_info["id"])
-    TenantService.insert(**tenant)
-    UserTenantService.insert(**usr_tenant)
-    TenantLLMService.insert_many(tenant_llm)
-    logging.info(
-        f"Added tenant for email: {user_info['email']}, A default tenant has been set; changing the default models after login is strongly recommended.")
-
-
-def check_admin_auth(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        user = UserService.filter_by_id(current_user.id)
-        if not user:
-            raise UserNotFoundError(current_user.email)
-        if not user.is_superuser:
-            raise AdminException("Not admin", 403)
-        if user.is_active == ActiveEnum.INACTIVE.value:
-            raise AdminException(f"User {current_user.email} inactive", 403)
-
-        return func(*args, **kwargs)
-
-    return wrapper
-
-
-def login_admin(email: str, password: str):
-    """
-    :param email: admin email
-    :param password: string before decrypt
-    """
-    users = UserService.query(email=email)
-    if not users:
-        raise UserNotFoundError(email)
-    psw = decrypt(password)
-    user = UserService.query_user(email, psw)
-    if not user:
-        raise AdminException("Email and password do not match!")
-    if not user.is_superuser:
-        raise AdminException("Not admin", 403)
-    if user.is_active == ActiveEnum.INACTIVE.value:
-        raise AdminException(f"User {email} inactive", 403)
-
-    resp = user.to_json()
-    user.access_token = get_uuid()
-    login_user(user)
-    user.update_time = (current_timestamp(),)
-    user.update_date = (datetime_format(datetime.now()),)
-    user.last_login_time = get_format_time()
-    user.save()
-    msg = "Welcome back!"
-    return sync_construct_response(data=resp, auth=user.get_id(), message=msg)
-
-
-def check_admin(username: str, password: str):
-    users = UserService.query(email=username)
-    if not users:
-        logging.info(f"Username: {username} is not registered!")
-        user_info = {
-            "id": uuid.uuid1().hex,
-            "password": encode_to_base64("admin"),
-            "nickname": "admin",
-            "is_superuser": True,
-            "email": "admin@ragflow.io",
-            "creator": "system",
-            "status": "1",
-        }
-        if not UserService.save(**user_info):
-            raise AdminException("Can't init admin.", 500)
-
-    user = UserService.query_user(username, password)
-    if user:
-        return True
-    else:
-        return False
-
-
-def login_verify(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        auth = request.authorization
-        if not auth or 'username' not in auth.parameters or 'password' not in auth.parameters:
-            return jsonify({
-                "code": 401,
-                "message": "Authentication required",
-                "data": None
-            }), 200
-
-        username = auth.parameters['username']
-        password = auth.parameters['password']
-        try:
-            if not check_admin(username, password):
-                return jsonify({
-                    "code": 500,
-                    "message": "Access denied",
-                    "data": None
-                }), 200
-        except Exception:
-            logging.exception("An error occurred during admin login verification.")
-            return jsonify({
-                "code": 500,
-                "message": "An internal server error occurred."
-            }), 200
-
-        return f(*args, **kwargs)
-
-    return decorated
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/misc/infinity_conf.toml
 [general]
@@ -101677,32 +101232,17 @@ log_to_stdout            = true
 log_file_max_size        = "100MB"
 log_file_rotate_count    = 10
 
-# trace/debug/info/warning/error/critical 6 log levels, default: info
 log_level               = "info"
 
 [storage]
 persistence_dir         = "/var/infinity/persistence"
 data_dir                = "/var/infinity/data"
-# periodically activates garbage collection:
-# 0 means real-time,
-# s means seconds, for example "60s", 60 seconds
-# m means minutes, for example "60m", 60 minutes
-# h means hours, for example "1h", 1 hour
 optimize_interval        = "10s"
 cleanup_interval         = "60s"
 compact_interval         = "120s"
 storage_type             = "local"
 
-# dump memory index entry when it reachs the capacity
 mem_index_capacity       = 65536
-
-# S3 storage config example:
-# [storage.object_storage]
-# url                      = "127.0.0.1:9000"
-# bucket_name              = "infinity"
-# access_key               = "minioadmin"
-# secret_key               = "minioadmin"
-# enable_https             = false
 
 [buffer]
 buffer_manager_size      = "8GB"
@@ -101716,187 +101256,11 @@ wal_dir                       = "/var/infinity/wal"
 
 [resource]
 EOFMT
-  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/doc_meta_es_mapping.json
-{
-  "settings": {
-    "index": {
-      "number_of_shards": 2,
-      "number_of_replicas": 0,
-      "refresh_interval": "1000ms"
-    }
-  },
-  "mappings": {
-    "_source": {
-      "enabled": true
-    },
-    "dynamic": "runtime",
-    "properties": {
-      "id": {
-        "type": "keyword",
-        "store": true
-      },
-      "kb_id": {
-        "type": "keyword",
-        "store": true
-      },
-      "meta_fields": {
-        "type": "object",
-        "dynamic": true
-      }
-    }
-  }
-}
-EOFMT
-  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/doc_meta_infinity_mapping.json
-{
-  "id": {"type": "varchar", "default": ""},
-  "kb_id": {"type": "varchar", "default": ""},
-  "meta_fields": {"type": "json", "default": "{}"}
-}
-EOFMT
-  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/infinity_mapping.json
-{
-        "id": {"type": "varchar", "default": ""},
-        "doc_id": {"type": "varchar", "default": ""},
-        "kb_id": {"type": "varchar", "default": "", "index_type": {"type": "secondary", "cardinality": "low"}},
-        "mom_id": {"type": "varchar", "default": ""},
-        "create_time": {"type": "varchar", "default": ""},
-        "create_timestamp_flt": {"type": "float", "default": 0.0},
-        "img_id": {"type": "varchar", "default": ""},
-        "docnm": {"type": "varchar", "default": "", "analyzer": ["rag-coarse", "rag-fine"], "comment": "docnm_kwd, title_tks, title_sm_tks"},
-        "name_kwd": {"type": "varchar", "default": "", "analyzer": "whitespace-#"},
-        "tag_kwd": {"type": "varchar", "default": "", "analyzer": "whitespace-#"},
-        "important_kwd_empty_count": {"type": "integer", "default": 0},
-        "important_keywords": {"type": "varchar", "default": "", "analyzer": ["rag-coarse", "rag-fine"], "comment": "important_kwd, important_tks"},
-        "questions": {"type": "varchar", "default": "", "analyzer": ["rag-coarse", "rag-fine"], "comment": "question_kwd, question_tks"},
-        "content": {"type": "varchar", "default": "", "analyzer": ["rag-coarse", "rag-fine"], "comment": "content_with_weight, content_ltks, content_sm_ltks"},
-        "authors": {"type": "varchar", "default": "", "analyzer": ["rag-coarse", "rag-fine"], "comment": "authors_tks, authors_sm_tks"},
-        "page_num_int": {"type": "varchar", "default": ""},
-        "top_int": {"type": "varchar", "default": ""},
-        "position_int": {"type": "varchar", "default": ""},
-        "weight_int": {"type": "integer", "default": 0},
-        "weight_flt": {"type": "float", "default": 0.0},
-        "rank_int": {"type": "integer", "default": 0},
-        "rank_flt": {"type": "float", "default": 0},
-        "available_int": {"type": "integer", "default": 1, "index_type": {"type": "secondary", "cardinality": "low"}},
-        "knowledge_graph_kwd": {"type": "varchar", "default": ""},
-        "entities_kwd": {"type": "varchar", "default": "", "analyzer": "whitespace-#"},
-        "pagerank_fea": {"type": "integer", "default":  0},
-        "tag_feas": {"type": "varchar", "default": "", "analyzer": "rankfeatures"},
-        "from_entity_kwd": {"type": "varchar", "default": "", "analyzer": "whitespace-#"},
-        "to_entity_kwd": {"type": "varchar", "default": "", "analyzer": "whitespace-#"},
-        "entity_kwd": {"type": "varchar", "default": "", "analyzer": "whitespace-#"},
-        "entity_type_kwd": {"type": "varchar", "default": "", "analyzer": "whitespace-#"},
-        "source_id": {"type": "varchar", "default": "", "analyzer": "whitespace-#"},
-        "n_hop_with_weight": {"type": "varchar", "default": ""},
-        "mom_with_weight": {"type": "varchar", "default": ""},
-        "removed_kwd": {"type": "varchar", "default": "", "analyzer": "whitespace-#"},
-        "doc_type_kwd": {"type": "varchar", "default": "", "analyzer": "whitespace-#"},
-        "toc_kwd": {"type": "varchar", "default": "", "analyzer": "whitespace-#"},
-        "raptor_kwd": {"type": "varchar", "default": "", "analyzer": "whitespace-#"}
-}
-EOFMT
-  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/system_settings.json
-{
-  "system_settings": [
-    {
-      "name": "enable_whitelist",
-      "source": "variable",
-      "data_type": "bool",
-      "value": "true"
-    },
-    {
-      "name": "default_role",
-      "source": "variable",
-      "data_type": "string",
-      "value": ""
-    },
-    {
-      "name": "mail.server",
-      "source": "variable",
-      "data_type": "string",
-      "value": "$SMTP_HOSTNAME"
-    },
-    {
-      "name": "mail.port",
-      "source": "variable",
-      "data_type": "integer",
-      "value": "$SMTP_HOSTPORT"
-    },
-    {
-      "name": "mail.use_ssl",
-      "source": "variable",
-      "data_type": "bool",
-      "value": "false"
-    },
-    {
-      "name": "mail.use_tls",
-      "source": "variable",
-      "data_type": "bool",
-      "value": "false"
-    },
-    {
-      "name": "mail.username",
-      "source": "variable",
-      "data_type": "string",
-      "value": ""
-    },
-    {
-      "name": "mail.password",
-      "source": "variable",
-      "data_type": "string",
-      "value": ""
-    },
-    {
-      "name": "mail.timeout",
-      "source": "variable",
-      "data_type": "integer",
-      "value": "10"
-    },
-    {
-      "name": "mail.default_sender",
-      "source": "variable",
-      "data_type": "string",
-      "value": "RAGFlow $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
-    },
-    {
-      "name": "mail.frontend_url",
-      "source": "variable",
-      "data_type": "string",
-      "value": "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN"
-    },
-    {
-      "name": "sandbox.provider_type",
-      "source": "variable",
-      "data_type": "string",
-      "value": "self_managed"
-    },
-    {
-      "name": "sandbox.self_managed",
-      "source": "variable",
-      "data_type": "json",
-      "value": "{\"endpoint\": \"http://localhost:9385\", \"timeout\": 30, \"max_retries\": 3, \"pool_size\": 10}"
-    },
-    {
-      "name": "sandbox.aliyun_codeinterpreter",
-      "source": "variable",
-      "data_type": "json",
-      "value": "{}"
-    },
-    {
-      "name": "sandbox.e2b",
-      "source": "variable",
-      "data_type": "json",
-      "value": "{}"
-    }
-  ]
-}
-EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/service_conf.yaml.template
 ragflow:
   host: 0.0.0.0
   http_port: 9380
-  secret_key: $RAGFLOW_SECRET_KEY
+  secret_key: '$RAGFLOW_SECRET_KEY'
 admin:
   host: 0.0.0.0
   http_port: 9381
@@ -101908,18 +101272,18 @@ minio:
   prefix_path: ''
 infinity:
   uri: 'ragflow-infinity:23817'
-  db_name: 'ragflow_db'
+  db_name: 'default_db'
 redis:
   db: 1
   username: ''
   password: '$RAGFLOW_REDIS_PASSWORD'
   host: 'ragflow-redis:6379'
-postgres:
+mysql:
   name: '$RAGFLOW_DATABASE_NAME'
   user: '$RAGFLOW_DATABASE_USER'
   password: '$RAGFLOW_DATABASE_USER_PASSWORD'
   host: 'ragflow-db'
-  port: 5432
+  port: 3306
   max_connections: 100
   stale_timeout: 30
 oauth:
@@ -101929,10 +101293,108 @@ oauth:
     client_secret: "$RAGFLOW_OIDC_CLIENT_SECRET"
     issuer: "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN"
     scope: "openid email profile"
-    redirect_uri: "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/v1/user/oauth/callback/oidc"
+    redirect_uri: "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/api/v1/auth/oauth/oidc/callback"
+smtp:
+  mail_server: $SMTP_HOSTNAME
+  mail_port: $SMTP_HOSTPORT
+  mail_use_ssl: false
+  mail_use_tls: false
+  mail_username: ""
+  mail_password: ""
+  mail_default_sender:
+    - "RAGFlow $(getAdminEmailName)"
+    - "$EMAIL_ADMIN_EMAIL_ADDRESS"
+  mail_frontend_url: "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN"
+user_default_llm:
+  factory: 'OpenAI-API-Compatible'
+  base_url: 'http://litellm-proxy:4000/v1'
+  api_key: '$LITELLM_MASTER_KEY'
+  default_models:
+    chat_model:
+      name: 'LongContext'
+    embedding_model:
+      name: 'Embed'
+    rerank_model:
+      name: 'Rerank'
+    vision_model:
+      name: 'Vision'
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/ragflow_bootstrap.json
+{
+  "admin_email": "$RAGFLOW_ADMIN_EMAIL_ADDRESS",
+  "apply_to_all_users": true,
+  "settings": {
+    "variables": {
+      "mail.server": "$SMTP_HOSTNAME",
+      "mail.port": "$SMTP_HOSTPORT",
+      "mail.use_ssl": "false",
+      "mail.use_tls": "false",
+      "mail.username": "",
+      "mail.password": "",
+      "mail.default_sender": "RAGFlow $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>",
+      "mail.frontend_url": "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN"
+    }
+  },
+  "oidc": {
+    "enabled": true,
+    "channel": "oidc",
+    "issuer": "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN",
+    "redirect_uri": "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/api/v1/auth/oauth/oidc/callback"
+  },
+  "providers": [
+    {
+      "name": "OpenAI-API-Compatible",
+      "instances": [
+        {
+          "instance_name": "litellm",
+          "api_key": "$LITELLM_MASTER_KEY",
+          "base_url": "http://litellm-proxy:4000/v1",
+          "region": "",
+          "models": [
+            {"model_type": ["chat"], "model_name": "LongContext", "max_tokens": 98304, "extra": {"is_tools": true}},
+            {"model_type": ["embedding"], "model_name": "Embed", "max_tokens": 8192},
+            {"model_type": ["rerank"], "model_name": "Rerank", "max_tokens": 8192},
+            {"model_type": ["vision"], "model_name": "Vision", "max_tokens": 98304}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "OpenAI",
+      "instances": [
+        {
+          "instance_name": "whisper",
+          "api_key": "abcd",
+          "base_url": "http://insanelyfastwhisper-api:8888/v1",
+          "region": "",
+          "models": [
+            {"model_type": ["asr"], "model_name": "distil-whisper/distil-large-v3.5"}
+          ]
+        },
+        {
+          "instance_name": "kokoro",
+          "api_key": "abcd",
+          "base_url": "http://kokoro-tts:8880/v1",
+          "region": "",
+          "models": [
+            {"model_type": ["tts"], "model_name": "tts-1"}
+          ]
+        }
+      ]
+    }
+  ],
+  "defaults": [
+    {"model_type": "chat", "model_provider": "OpenAI-API-Compatible", "model_instance": "litellm", "model_name": "LongContext"},
+    {"model_type": "embedding", "model_provider": "OpenAI-API-Compatible", "model_instance": "litellm", "model_name": "Embed"},
+    {"model_type": "rerank", "model_provider": "OpenAI-API-Compatible", "model_instance": "litellm", "model_name": "Rerank"},
+    {"model_type": "vision", "model_provider": "OpenAI-API-Compatible", "model_instance": "litellm", "model_name": "Vision"},
+    {"model_type": "asr", "model_provider": "OpenAI", "model_instance": "whisper", "model_name": "distil-whisper/distil-large-v3.5"},
+    {"model_type": "tts", "model_provider": "OpenAI", "model_instance": "kokoro", "model_name": "tts-1"}
+  ]
+}
 EOFMT
   RAGFLOW_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $RAGFLOW_OIDC_CLIENT_SECRET | tr -d ':\n')
-  cat <<EOFIM > $HOME/ragflow.oidc
+  cat <<EOFMT > $HOME/ragflow.oidc
 # Authelia OIDC Client ragflow BEGIN
       - client_id: $RAGFLOW_OIDC_CLIENT_ID
         client_name: RAGFlow
@@ -101940,7 +101402,7 @@ EOFMT
         public: false
         authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
         redirect_uris:
-          - https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/v1/user/oauth/callback/oidc
+          - https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/api/v1/auth/oauth/oidc/callback
         scopes:
           - openid
           - profile
@@ -101949,7 +101411,7 @@ EOFMT
         userinfo_signed_response_alg: none
         token_endpoint_auth_method: client_secret_post
 # Authelia OIDC Client ragflow END
-EOFIM
+EOFMT
 }
 
 function outputComposeRagflow()
@@ -101962,20 +101424,19 @@ services:
     image: $(getScriptImageByContainerName ragflow-db)
     container_name: ragflow-db
     hostname: ragflow-db
-    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    shm_size: 256mb
+    command: mariadbd --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120 --skip-name-resolve
     networks:
       - int-ragflow-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/db:/var/lib/postgresql/data
-      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - v-ragflow-db:/var/lib/mysql
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMariaDB.sh:/exportDB.sh:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
@@ -102013,16 +101474,27 @@ services:
     networks:
       - int-ragflow-net
       - dock-dbs-net
-      - dock-proxy-net
-      - dock-aipriv-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - v-ragflow-infinity:/var/infinity
       - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/misc/infinity_conf.toml:/infinity_conf.toml
+
+  ragflow-deepdoc:
+    image: $(getScriptImageByContainerName ragflow-deepdoc)
+    container_name: ragflow-deepdoc
+    hostname: ragflow-deepdoc
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-ragflow-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9390/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 10s
 
   ragflow-app:
     image: $(getScriptImageByContainerName ragflow-app)
@@ -102034,16 +101506,14 @@ services:
       - no-new-privileges:true
     depends_on:
       - ragflow-db
+      - ragflow-infinity
+      - ragflow-deepdoc
+      - ragflow-minio
+      - ragflow-redis
     command:
       - --enable-adminserver
-    # command:
-    #   - --enable-mcpserver
-    #   - --mcp-host=0.0.0.0
-    #   - --mcp-port=9382
-    #   - --mcp-base-url=http://127.0.0.1:9380
-    #   - --mcp-script-path=/ragflow/mcp/server/server.py
-    #   - --mcp-mode=self-host
-    #   - --mcp-host-api-key=ragflow-$RAGFLOW_MCPSERVER_API_KEY
+      - --init-model-provider-tables
+      - --init-superuser
     networks:
       - int-ragflow-net
       - dock-ext-net
@@ -102056,42 +101526,44 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - v-ragflow-config:/ragflow/conf
-      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/misc/auth.py:/ragflow/admin/server/auth.py:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/misc/web_utils.py:/ragflow/api/utils/web_utils.py:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/logs:/ragflow/logs
       - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nginx/ragflow.conf:/etc/nginx/conf.d/ragflow.conf
       - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nginx/proxy.conf:/etc/nginx/proxy.conf
       - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nginx/nginx.conf:/etc/nginx/nginx.conf
-      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/misc/entrypoint.sh:/ragflow/entrypoint.sh
       - /etc/ssl/certs/ca-certificates.crt:/ragflow/.venv/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9380/api/v1/system/healthz"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+      start_period: 60s
 
-  ragflow-sandbox:
-    image: $(getScriptImageByContainerName ragflow-sandbox)
-    container_name: ragflow-sandbox
-    hostname: ragflow-sandbox
+  ragflow-worker:
+    image: $(getScriptImageByContainerName ragflow-app)
+    container_name: ragflow-worker
+    hostname: ragflow-worker
     restart: unless-stopped
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    privileged: true
     depends_on:
-      - ragflow-db
+      - ragflow-app
+    command:
+      - --disable-webserver
+      - --disable-datasync
+      - --workers=1
     networks:
       - int-ragflow-net
       - dock-ext-net
       - dock-aipriv-net
-    healthcheck:
-      test: ["CMD", "curl", "http://localhost:9385/healthz"]
-      interval: 10s
-      timeout: 10s
-      retries: 120
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - /var/run/docker.sock:/var/run/docker.sock
+      - v-ragflow-config:/ragflow/conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/logs:/ragflow/logs
 
   ragflow-minio:
     image: $(getScriptImageByContainerName ragflow-minio)
@@ -102103,14 +101575,10 @@ services:
       - no-new-privileges:true
     depends_on:
       - ragflow-db
-    command: server /data
-    networks:
-      - dock-proxy-net
-      - int-ragflow-net
     entrypoint: >
       /bin/sh -c "
         minio server /data --address ':9000' --console-address ':9001' &
-        MINIO_PID=\\\$!
+        MINIO_PID=\$\$!
         while ! curl -s http://localhost:9000/minio/health/live; do
           echo 'Waiting for MinIO to start...'
           sleep 1
@@ -102118,15 +101586,14 @@ services:
         sleep 5
         mc alias set minio http://localhost:9000 ${RAGFLOW_MINIO_KEY} ${RAGFLOW_MINIO_SECRET}
         echo 'Creating bucket ragflow'
-        mc mb minio/ragflow
-        wait \\\$MINIO_PID
+        mc mb minio/ragflow || true
+        wait \$\$MINIO_PID
       "
+    networks:
+      - int-ragflow-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/minio:/data
 
   ragflow-redis:
@@ -102154,6 +101621,12 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/config
+  v-ragflow-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/db
   v-ragflow-infinity:
     driver: local
     driver_opts:
@@ -102190,523 +101663,6 @@ networks:
       driver: default
 
 EOFMT
-  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/misc/auth.py
-#
-#  Copyright 2025 The InfiniFlow Authors. All Rights Reserved.
-#
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
-#
-
-
-import logging
-import uuid
-from functools import wraps
-from datetime import datetime
-
-from flask import jsonify, request
-from flask_login import current_user, login_user
-from itsdangerous.url_safe import URLSafeTimedSerializer as Serializer
-
-from api.common.exceptions import AdminException, UserNotFoundError
-from api.common.base64 import encode_to_base64
-from api.db.services import UserService
-from api.db import UserTenantRole
-from api.db.services.user_service import TenantService, UserTenantService
-from common.constants import ActiveEnum, StatusEnum
-from api.utils.crypt import decrypt
-from common.misc_utils import get_uuid
-from common.time_utils import current_timestamp, datetime_format, get_format_time
-from common.connection_utils import sync_construct_response
-from common import settings
-
-
-def setup_auth(login_manager):
-    @login_manager.request_loader
-    def load_user(web_request):
-        jwt = Serializer(secret_key=settings.SECRET_KEY)
-        authorization = web_request.headers.get("Authorization")
-        if authorization:
-            try:
-                access_token = str(jwt.loads(authorization))
-
-                if not access_token or not access_token.strip():
-                    logging.warning("Authentication attempt with empty access token")
-                    return None
-
-                # Access tokens should be UUIDs (32 hex characters)
-                if len(access_token.strip()) < 32:
-                    logging.warning(f"Authentication attempt with invalid token format: {len(access_token)} chars")
-                    return None
-
-                user = UserService.query(
-                    access_token=access_token, status=StatusEnum.VALID.value
-                )
-                if user:
-                    if not user[0].access_token or not user[0].access_token.strip():
-                        logging.warning(f"User {user[0].email} has empty access_token in database")
-                        return None
-                    return user[0]
-                else:
-                    return None
-            except Exception as e:
-                logging.warning(f"load_user got exception {e}")
-                return None
-        else:
-            return None
-
-
-def init_default_admin():
-    # Verify that at least one active admin user exists. If not, create a default one.
-    users = UserService.query(is_superuser=True)
-    if not users:
-        default_admin = {
-            "id": uuid.uuid1().hex,
-            "password": encode_to_base64("admin"),
-            "nickname": "admin",
-            "is_superuser": True,
-            "email": "admin@ragflow.io",
-            "creator": "system",
-            "status": "1",
-        }
-        if not UserService.save(**default_admin):
-            raise AdminException("Can't init admin.", 500)
-        add_tenant_for_admin(default_admin, UserTenantRole.OWNER)
-    elif not any([u.is_active == ActiveEnum.ACTIVE.value for u in users]):
-        raise AdminException("No active admin. Please update 'is_active' in db manually.", 500)
-    else:
-        default_admin_rows = [u for u in users if u.email == "admin@ragflow.io"]
-        if default_admin_rows:
-            default_admin = default_admin_rows[0].to_dict()
-            exist, default_admin_tenant = TenantService.get_by_id(default_admin["id"])
-            if not exist:
-                add_tenant_for_admin(default_admin, UserTenantRole.OWNER)
-
-
-def add_tenant_for_admin(user_info: dict, role: str):
-    from api.db.services.tenant_llm_service import TenantLLMService
-    from api.db.services.llm_service import get_init_tenant_llm
-
-    tenant = {
-        "id": user_info["id"],
-        "name": user_info["nickname"] + "‘s Kingdom",
-        "llm_id": settings.CHAT_MDL,
-        "embd_id": settings.EMBEDDING_MDL,
-        "asr_id": settings.ASR_MDL,
-        "parser_ids": settings.PARSERS,
-        "img2txt_id": settings.IMAGE2TEXT_MDL,
-        "rerank_id": settings.RERANK_MDL,
-    }
-    usr_tenant = {
-        "tenant_id": user_info["id"],
-        "user_id": user_info["id"],
-        "invited_by": user_info["id"],
-        "role": role
-    }
-
-    tenant_llm = get_init_tenant_llm(user_info["id"])
-    TenantService.insert(**tenant)
-    UserTenantService.insert(**usr_tenant)
-    TenantLLMService.insert_many(tenant_llm)
-    logging.info(
-        f"Added tenant for email: {user_info['email']}, A default tenant has been set; changing the default models after login is strongly recommended.")
-
-
-def check_admin_auth(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        user = UserService.filter_by_id(current_user.id)
-        if not user:
-            raise UserNotFoundError(current_user.email)
-        if not user.is_superuser:
-            raise AdminException("Not admin", 403)
-        if user.is_active == ActiveEnum.INACTIVE.value:
-            raise AdminException(f"User {current_user.email} inactive", 403)
-
-        return func(*args, **kwargs)
-
-    return wrapper
-
-
-def login_admin(email: str, password: str):
-    """
-    :param email: admin email
-    :param password: string before decrypt
-    """
-    users = UserService.query(email=email)
-    if not users:
-        raise UserNotFoundError(email)
-    psw = decrypt(password)
-    user = UserService.query_user(email, psw)
-    if not user:
-        raise AdminException("Email and password do not match!")
-    if not user.is_superuser:
-        raise AdminException("Not admin", 403)
-    if user.is_active == ActiveEnum.INACTIVE.value:
-        raise AdminException(f"User {email} inactive", 403)
-
-    resp = user.to_json()
-    user.access_token = get_uuid()
-    login_user(user)
-    user.update_time = (current_timestamp(),)
-    user.update_date = (datetime_format(datetime.now()),)
-    user.last_login_time = get_format_time()
-    user.save()
-    msg = "Welcome back!"
-    return sync_construct_response(data=resp, auth=user.get_id(), message=msg)
-
-
-def check_admin(username: str, password: str):
-    users = UserService.query(email=username)
-    if not users:
-        logging.info(f"Username: {username} is not registered!")
-        user_info = {
-            "id": uuid.uuid1().hex,
-            "password": encode_to_base64("admin"),
-            "nickname": "admin",
-            "is_superuser": True,
-            "email": "admin@ragflow.io",
-            "creator": "system",
-            "status": "1",
-        }
-        if not UserService.save(**user_info):
-            raise AdminException("Can't init admin.", 500)
-
-    user = UserService.query_user(username, password)
-    if user:
-        return True
-    else:
-        return False
-
-
-def login_verify(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        auth = request.authorization
-        if not auth or 'username' not in auth.parameters or 'password' not in auth.parameters:
-            return jsonify({
-                "code": 401,
-                "message": "Authentication required",
-                "data": None
-            }), 200
-
-        username = auth.parameters['username']
-        password = auth.parameters['password']
-        try:
-            if not check_admin(username, password):
-                return jsonify({
-                    "code": 500,
-                    "message": "Access denied",
-                    "data": None
-                }), 200
-        except Exception:
-            logging.exception("An error occurred during admin login verification.")
-            return jsonify({
-                "code": 500,
-                "message": "An internal server error occurred."
-            }), 200
-
-        return f(*args, **kwargs)
-
-    return decorated
-EOFMT
-  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/misc/web_utils.py
-#
-#  Copyright 2025 The InfiniFlow Authors. All Rights Reserved.
-#
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
-#
-
-import base64
-import ipaddress
-import json
-import re
-import socket
-from urllib.parse import urlparse
-import aiosmtplib
-from email.mime.text import MIMEText
-from email.header import Header
-from common import settings
-from quart import render_template_string
-from api.utils.email_templates import EMAIL_TEMPLATES
-from selenium import webdriver
-from selenium.common.exceptions import TimeoutException
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.expected_conditions import staleness_of
-from selenium.webdriver.support.ui import WebDriverWait
-from webdriver_manager.chrome import ChromeDriverManager
-
-
-OTP_LENGTH = 4
-OTP_TTL_SECONDS = 5 * 60 # valid for 5 minutes
-ATTEMPT_LIMIT = 5 # maximum attempts
-ATTEMPT_LOCK_SECONDS = 30 * 60 # lock for 30 minutes
-RESEND_COOLDOWN_SECONDS = 60 # cooldown for 1 minute
-
-
-CONTENT_TYPE_MAP = {
-    # Office
-    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "doc": "application/msword",
-    "pdf": "application/pdf",
-    "csv": "text/csv",
-    "xls": "application/vnd.ms-excel",
-    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    # Text/code
-    "txt": "text/plain",
-    "py": "text/plain",
-    "js": "text/plain",
-    "java": "text/plain",
-    "c": "text/plain",
-    "cpp": "text/plain",
-    "h": "text/plain",
-    "php": "text/plain",
-    "go": "text/plain",
-    "ts": "text/plain",
-    "sh": "text/plain",
-    "cs": "text/plain",
-    "kt": "text/plain",
-    "sql": "text/plain",
-    # Web
-    "md": "text/markdown",
-    "markdown": "text/markdown",
-    "mdx": "text/markdown",
-    "htm": "text/html",
-    "html": "text/html",
-    "json": "application/json",
-    # Image formats
-    "png": "image/png",
-    "jpg": "image/jpeg",
-    "jpeg": "image/jpeg",
-    "gif": "image/gif",
-    "bmp": "image/bmp",
-    "tiff": "image/tiff",
-    "tif": "image/tiff",
-    "webp": "image/webp",
-    "svg": "image/svg+xml",
-    "ico": "image/x-icon",
-    "avif": "image/avif",
-    "heic": "image/heic",
-    # PPTX
-    "ppt": "application/vnd.ms-powerpoint",
-    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-}
-
-
-FORCE_ATTACHMENT_EXTENSIONS = {
-    "htm",
-    "html",
-    "shtml",
-    "xht",
-    "xhtml",
-    "xml",
-    "mhtml",
-    "svg",
-}
-
-
-FORCE_ATTACHMENT_CONTENT_TYPES = {
-    "text/html",
-    "image/svg+xml",
-    "application/xhtml+xml",
-    "text/xml",
-    "application/xml",
-    "multipart/related",
-}
-
-
-def should_force_attachment(ext: str | None, content_type: str | None = None) -> bool:
-    normalized_ext = (ext or "").lower().strip(".")
-    if normalized_ext in FORCE_ATTACHMENT_EXTENSIONS:
-        return True
-    normalized_type = (content_type or "").lower()
-    return normalized_type in FORCE_ATTACHMENT_CONTENT_TYPES
-
-
-def apply_safe_file_response_headers(response, content_type: str | None, ext: str | None = None):
-    if content_type:
-        response.headers.set("Content-Type", content_type)
-    force_attachment = should_force_attachment(ext, content_type)
-    if force_attachment:
-        response.headers.set("X-Content-Type-Options", "nosniff")
-        response.headers.set("Content-Disposition", "attachment")
-    return response
-
-
-def html2pdf(
-    source: str,
-    timeout: int = 2,
-    install_driver: bool = True,
-    print_options: dict = {},
-):
-    result = __get_pdf_from_html(source, timeout, install_driver, print_options)
-    return result
-
-
-def __send_devtools(driver, cmd, params={}):
-    resource = "/session/%s/chromium/send_command_and_get_result" % driver.session_id
-    url = driver.command_executor._url + resource
-    body = json.dumps({"cmd": cmd, "params": params})
-    response = driver.command_executor._request("POST", url, body)
-
-    if not response:
-        raise Exception(response.get("value"))
-
-    return response.get("value")
-
-
-def __get_pdf_from_html(path: str, timeout: int, install_driver: bool, print_options: dict):
-    webdriver_options = Options()
-    webdriver_prefs = {}
-    webdriver_options.add_argument("--headless")
-    webdriver_options.add_argument("--disable-gpu")
-    webdriver_options.add_argument("--no-sandbox")
-    webdriver_options.add_argument("--disable-dev-shm-usage")
-    webdriver_options.experimental_options["prefs"] = webdriver_prefs
-
-    webdriver_prefs["profile.default_content_settings"] = {"images": 2}
-
-    if install_driver:
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=webdriver_options)
-    else:
-        driver = webdriver.Chrome(options=webdriver_options)
-
-    driver.get(path)
-
-    try:
-        WebDriverWait(driver, timeout).until(staleness_of(driver.find_element(by=By.TAG_NAME, value="html")))
-    except TimeoutException:
-        calculated_print_options = {
-            "landscape": False,
-            "displayHeaderFooter": False,
-            "printBackground": True,
-            "preferCSSPageSize": True,
-        }
-        calculated_print_options.update(print_options)
-        result = __send_devtools(driver, "Page.printToPDF", calculated_print_options)
-        driver.quit()
-        return base64.b64decode(result["data"])
-
-
-def is_private_ip(ip: str) -> bool:
-    try:
-        ip_obj = ipaddress.ip_address(ip)
-        return ip_obj.is_private
-    except ValueError:
-        return False
-
-
-def is_valid_url(url: str) -> bool:
-    if not re.match(r"(https?)://[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]", url):
-        return False
-    parsed_url = urlparse(url)
-    hostname = parsed_url.hostname
-
-    if not hostname:
-        return False
-    try:
-        ip = socket.gethostbyname(hostname)
-        if is_private_ip(ip):
-            return False
-    except socket.gaierror:
-        return False
-    return True
-
-
-def safe_json_parse(data: str | dict) -> dict:
-    if isinstance(data, dict):
-        return data
-    try:
-        return json.loads(data) if data else {}
-    except (json.JSONDecodeError, TypeError):
-        return {}
-
-
-def get_float(req: dict, key: str, default: float | int = 10.0) -> float:
-    try:
-        parsed = float(req.get(key, default))
-        return parsed if parsed > 0 else default
-    except (TypeError, ValueError):
-        return default
-
-
-async def send_email_html(to_email: str, subject: str, template_key: str, **context):
-    body = await render_template_string(EMAIL_TEMPLATES.get(template_key), **context)
-    msg = MIMEText(body, "plain", "utf-8")
-    msg["Subject"] = Header(subject, "utf-8")
-    msg["From"] = f"{settings.MAIL_DEFAULT_SENDER[0]} <{settings.MAIL_DEFAULT_SENDER[1]}>"
-    msg["To"] = to_email
-
-    smtp = aiosmtplib.SMTP(
-        hostname=settings.MAIL_SERVER,
-        port=settings.MAIL_PORT,
-        use_tls=settings.MAIL_USE_TLS,
-        timeout=10,
-    )
-
-    await smtp.connect()
-    # Only login if username/password are provided
-    if settings.MAIL_USERNAME and settings.MAIL_PASSWORD:
-        await smtp.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
-    await smtp.send_message(msg)
-    await smtp.quit()
-
-
-async def send_invite_email(to_email, invite_url, tenant_id, inviter):
-    # Reuse the generic HTML sender with 'invite' template
-    await send_email_html(
-        to_email=to_email,
-        subject="RAGFlow Invitation",
-        template_key="invite",
-        email=to_email,
-        invite_url=invite_url,
-        tenant_id=tenant_id,
-        inviter=inviter,
-    )
-
-
-def otp_keys(email: str):
-    email = (email or "").strip().lower()
-    return (
-        f"otp:{email}",
-        f"otp_attempts:{email}",
-        f"otp_last_sent:{email}",
-        f"otp_lock:{email}",
-    )
-
-
-def hash_code(code: str, salt: bytes) -> str:
-    import hashlib
-    import hmac
-
-    return hmac.new(salt, (code or "").encode("utf-8"), hashlib.sha256).hexdigest()
-
-
-def captcha_key(email: str) -> str:
-    return f"captcha:{email}"
-EOFMT
 }
 
 function performIntegrationsRagflow()
@@ -102738,11 +101694,24 @@ function performUpdateRAGFlow()
       newVer=v2
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/infiniflow/infinity:v0.7.0-dev2,mirror.gcr.io/infiniflow/ragflow:v0.24.0,mirror.gcr.io/infiniflow/sandbox-executor-manager:latest,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
-      image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.7.0-dev2,mirror.gcr.io/infiniflow/infinity:v0.7.0-dev2"
-      image_update_map[2]="mirror.gcr.io/infiniflow/ragflow:v0.24.0,mirror.gcr.io/infiniflow/ragflow:v0.24.0"
+      image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.7.0-dev2,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3"
+      image_update_map[2]="mirror.gcr.io/infiniflow/ragflow:v0.24.0,mirror.gcr.io/infiniflow/ragflow:v0.27.1"
       image_update_map[3]="mirror.gcr.io/infiniflow/sandbox-executor-manager:latest,mirror.gcr.io/infiniflow/sandbox-executor-manager:latest"
       image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
       image_update_map[5]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): This version of RAGFlow cannot be upgraded to the next version. There are significant changes which require a full re-install. Please backup/export your data, uninstall RAGFlow and perform a fresh installation and re-import your data. Sorry for the inconvenience."
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,mirror.gcr.io/infiniflow/ragflow:v0.27.1,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/valkey/valkey:alpine3.23,hshq/deepdoc_oss:v1
+      image_update_map[0]="mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/mariadb:11.4.12"
+      image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3"
+      image_update_map[2]="mirror.gcr.io/infiniflow/ragflow:v0.27.1,mirror.gcr.io/infiniflow/ragflow:v0.27.1"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[5]="hshq/deepdoc_oss:v1,hshq/deepdoc_oss:v1"
     ;;
     *)
       is_upgrade_error=true
@@ -111142,11 +110111,11 @@ GPT5_REASONING_EFFORT=medium
 GPT5_VERBOSITY=medium
 CHAT_MODEL_API_KEY=$LITELLM_MASTER_KEY
 CHAT_MODEL_BASE_URL=http://litellm-proxy:4000/v1
-CHAT_MODEL_NAME=Chat
+CHAT_MODEL_NAME=LongContext
 ENABLE_STREAM_OPTIONS=false
 TEXT_MODEL_API_KEY=$LITELLM_MASTER_KEY
 TEXT_MODEL_BASE_URL=http://litellm-proxy:4000/v1
-TEXT_MODEL_NAME=Chat
+TEXT_MODEL_NAME=LongContext
 ASR_BASE_URL=http://speakr-whisperx:9000
 ASR_DIARIZE=true
 ASR_RETURN_SPEAKER_EMBEDDINGS=true
@@ -111854,6 +110823,7 @@ function installIVBox()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://ivbox-app:8188 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -120430,7 +119400,7 @@ LLM_ENDPOINT=http://litellm-proxy:4000/v1
 LLM_API_KEY=$LITELLM_MASTER_KEY
 EMBEDDING_PROVIDER=openai_compatible
 EMBEDDING_MODEL=bge-m3-embed
-EMBEDDING_ENDPOINT=http://llamacpp-bgem3embed-server:8080/v1
+EMBEDDING_ENDPOINT=http://llamacpp-embedding-server:8080/v1
 EMBEDDING_API_KEY=$LITELLM_MASTER_KEY
 EMBEDDING_DIMENSIONS=1024
 GRAPH_DATABASE_PROVIDER=ladybug
@@ -132566,11 +131536,11 @@ function outputCaddyHeaders()
 }
 
 ($CADDY_SNIPPET_DEFAULTCSP) {
-  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' *.${HOMESERVER_DOMAIN} data:; frame-src 'self' *.${HOMESERVER_DOMAIN} data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
+  header Content-Security-Policy "default-src 'self' *.${HOMESERVER_DOMAIN} data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' *.${HOMESERVER_DOMAIN} data:; frame-src 'self' *.${HOMESERVER_DOMAIN} data: blob:; media-src 'self' *.${HOMESERVER_DOMAIN} data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
 }
 
 ($CADDY_SNIPPET_RELAXEDCSP) {
-  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com *.${HOMESERVER_DOMAIN} data:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
+  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com github.com *.${HOMESERVER_DOMAIN} data: blob:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; media-src 'self' *.${HOMESERVER_DOMAIN} github.com data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} api.comfy.org huggingface.co data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
 }
 
 # At some point we'll fix the svcs.snip and collapse these two
