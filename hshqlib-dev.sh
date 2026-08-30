@@ -31563,14 +31563,13 @@ function loadPinnedDockerImages()
   IMG_LOBECHAT_APP=mirror.gcr.io/lobehub/lobe-chat-database:1.143.2
   IMG_INVOKEAI_APP=ghcr.io/invoke-ai/invokeai:6.12-cpu
   IMG_RAGFLOW_INFINITY=mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3
-  IMG_RAGFLOW_APP=mirror.gcr.io/infiniflow/ragflow:v0.27.1
-  IMG_RAGFLOW_DEEPDOC=hshq/deepdoc_oss:v1
+  IMG_RAGFLOW_APP=ghcr.io/homeserverhq/ragflow:v0.27.1
   IMG_RAGFLOW_SANDBOX=mirror.gcr.io/infiniflow/sandbox-executor-manager:latest
   IMG_RAGFLOW_SB_NODEJS=mirror.gcr.io/infiniflow/sandbox-base-nodejs:latest
   IMG_RAGFLOW_SB_PYTHON=mirror.gcr.io/infiniflow/sandbox-base-python:latest
   IMG_TABBYML_APP=mirror.gcr.io/tabbyml/tabby:0.31.2
   IMG_DEEPWIKIOPEN_APP=ghcr.io/asyncfuncai/deepwiki-open:sha-d48f5bc
-  IMG_DOCLING_APP=hshq/docling:v1
+  IMG_DOCLING_APP=hshq/docling-serve:v1.31.0
   IMG_DIFY_SSRF=mirror.gcr.io/ubuntu/squid:latest
   IMG_DIFY_API=mirror.gcr.io/langgenius/dify-api:1.11.2
   IMG_DIFY_PLUGIND=mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local
@@ -31924,7 +31923,7 @@ function getScriptStackVersion()
     deepwikiopen)
       echo "v1" ;;
     docling)
-      echo "v1" ;;
+      echo "v2" ;;
     dify)
       echo "v1" ;;
     mindsdb)
@@ -32263,10 +32262,6 @@ function pullDockerImages()
   buildOrPullImage $IMG_INVOKEAI_APP
   buildOrPullImage $IMG_RAGFLOW_INFINITY
   buildOrPullImage $IMG_RAGFLOW_APP
-  buildOrPullImage $IMG_RAGFLOW_DEEPDOC
-  buildOrPullImage $IMG_RAGFLOW_SANDBOX
-  buildOrPullImage $IMG_RAGFLOW_SB_NODEJS
-  buildOrPullImage $IMG_RAGFLOW_SB_PYTHON
   buildOrPullImage $IMG_TABBYML_APP
   buildOrPullImage $IMG_DEEPWIKIOPEN_APP
   buildOrPullImage $IMG_DOCLING_APP
@@ -43626,9 +43621,6 @@ function getScriptImageByContainerName()
     "ragflow-app")
       container_image=$IMG_RAGFLOW_APP
       ;;
-    "ragflow-deepdoc")
-      container_image=$IMG_RAGFLOW_DEEPDOC
-      ;;
     "ragflow-sandbox")
       container_image=$IMG_RAGFLOW_SANDBOX
       ;;
@@ -44407,6 +44399,9 @@ function buildOrPullImage()
       ;;
     "hshq/docling:v1")
       buildImageDoclingV1
+      ;;
+    "hshq/docling-serve:v1.31.0")
+      buildImageDoclingV2
       ;;
     "hshq/ente-server:v1")
       buildImageEnteServerV1
@@ -100928,10 +100923,6 @@ function installRAGFlow()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName ragflow-deepdoc)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
   pullImage $(getScriptImageByContainerName ragflow-app)
   if [ $? -ne 0 ]; then
     return 1
@@ -100981,7 +100972,6 @@ function installRAGFlow()
   docker cp "$cid":/ragflow/conf/. $HSHQ_STACKS_DIR/ragflow/config/ 2>/dev/null
   docker rm -f "$cid" >/dev/null 2>&1
   sudo mv -f $HSHQ_STACKS_DIR/ragflow/service_conf.yaml.template $HSHQ_STACKS_DIR/ragflow/config/service_conf.yaml.template
-  sudo mv -f $HSHQ_STACKS_DIR/ragflow/ragflow_bootstrap.json $HSHQ_STACKS_DIR/ragflow/config/ragflow_bootstrap.json
   startStopStack ragflow start
   local curR=0
   local maxR=300
@@ -101000,7 +100990,7 @@ function installRAGFlow()
   fi
   sleep 3
   set +e
-  performIntegrationsRagflow
+  performIntegrationsRAGflow
   addReadOnlyUserToDatabase RAGFlow mysql ragflow-db $RAGFLOW_DATABASE_NAME root $RAGFLOW_DATABASE_ROOT_PASSWORD $HSHQ_STACKS_DIR/ragflow/dbexport $RAGFLOW_DATABASE_READONLYUSER $RAGFLOW_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_RAGFLOW_APP" ]; then
     set +e
@@ -101014,6 +101004,7 @@ function installRAGFlow()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://ragflow-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -101078,8 +101069,7 @@ function installRAGFlow()
 
 function outputConfigRAGFlow()
 {
-  #DEEPDOC_URL=http://ragflow-deepdoc:9390
-  outputComposeRagflow
+  outputComposeRAGFlow
   cat <<EOFMT > $HOME/ragflow.env
 TZ=\${PORTAINER_TZ}
 TIMEZONE='UTC-6\tAmerica/Chicago'
@@ -101088,7 +101078,6 @@ DOC_ENGINE=infinity
 DEVICE=cpu
 COMPOSE_PROFILES=infinity,cpu
 MEM_LIMIT=8589934592
-DEEPDOC_URL=
 MYSQL_HOST=ragflow-db
 MYSQL_PORT=3306
 MYSQL_USER=$RAGFLOW_DATABASE_USER
@@ -101130,6 +101119,9 @@ EMBEDDING_BATCH_SIZE=8
 REGISTER_ENABLED=1
 USE_DOCLING=false
 DOCLING_SERVER_URL=http://docling-app:5001
+DOCLING_PICTURE_DESCRIPTION=1
+DOCLING_PICTURE_DESCRIPTION_PRESET=external_vlm
+DOCLING_PICTURE_DESCRIPTION_AREA_THRESHOLD=0.025
 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 PYTHON_VER=python3.13
 RAGFLOW_SECRET_KEY=$RAGFLOW_SECRET_KEY
@@ -101319,80 +101311,6 @@ user_default_llm:
     vision_model:
       name: 'Vision'
 EOFMT
-  cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/ragflow_bootstrap.json
-{
-  "admin_email": "$RAGFLOW_ADMIN_EMAIL_ADDRESS",
-  "apply_to_all_users": true,
-  "settings": {
-    "variables": {
-      "mail.server": "$SMTP_HOSTNAME",
-      "mail.port": "$SMTP_HOSTPORT",
-      "mail.use_ssl": "false",
-      "mail.use_tls": "false",
-      "mail.username": "",
-      "mail.password": "",
-      "mail.default_sender": "RAGFlow $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>",
-      "mail.frontend_url": "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN"
-    }
-  },
-  "oidc": {
-    "enabled": true,
-    "channel": "oidc",
-    "issuer": "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN",
-    "redirect_uri": "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/api/v1/auth/oauth/oidc/callback"
-  },
-  "providers": [
-    {
-      "name": "OpenAI-API-Compatible",
-      "instances": [
-        {
-          "instance_name": "litellm",
-          "api_key": "$LITELLM_MASTER_KEY",
-          "base_url": "http://litellm-proxy:4000/v1",
-          "region": "",
-          "models": [
-            {"model_type": ["chat"], "model_name": "LongContext", "max_tokens": 98304, "extra": {"is_tools": true}},
-            {"model_type": ["embedding"], "model_name": "Embed", "max_tokens": 8192},
-            {"model_type": ["rerank"], "model_name": "Rerank", "max_tokens": 8192},
-            {"model_type": ["vision"], "model_name": "Vision", "max_tokens": 98304}
-          ]
-        }
-      ]
-    },
-    {
-      "name": "OpenAI",
-      "instances": [
-        {
-          "instance_name": "whisper",
-          "api_key": "abcd",
-          "base_url": "http://insanelyfastwhisper-api:8888/v1",
-          "region": "",
-          "models": [
-            {"model_type": ["asr"], "model_name": "distil-whisper/distil-large-v3.5"}
-          ]
-        },
-        {
-          "instance_name": "kokoro",
-          "api_key": "abcd",
-          "base_url": "http://kokoro-tts:8880/v1",
-          "region": "",
-          "models": [
-            {"model_type": ["tts"], "model_name": "tts-1"}
-          ]
-        }
-      ]
-    }
-  ],
-  "defaults": [
-    {"model_type": "chat", "model_provider": "OpenAI-API-Compatible", "model_instance": "litellm", "model_name": "LongContext"},
-    {"model_type": "embedding", "model_provider": "OpenAI-API-Compatible", "model_instance": "litellm", "model_name": "Embed"},
-    {"model_type": "rerank", "model_provider": "OpenAI-API-Compatible", "model_instance": "litellm", "model_name": "Rerank"},
-    {"model_type": "vision", "model_provider": "OpenAI-API-Compatible", "model_instance": "litellm", "model_name": "Vision"},
-    {"model_type": "asr", "model_provider": "OpenAI", "model_instance": "whisper", "model_name": "distil-whisper/distil-large-v3.5"},
-    {"model_type": "tts", "model_provider": "OpenAI", "model_instance": "kokoro", "model_name": "tts-1"}
-  ]
-}
-EOFMT
   RAGFLOW_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $RAGFLOW_OIDC_CLIENT_SECRET | tr -d ':\n')
   cat <<EOFMT > $HOME/ragflow.oidc
 # Authelia OIDC Client ragflow BEGIN
@@ -101414,7 +101332,7 @@ EOFMT
 EOFMT
 }
 
-function outputComposeRagflow()
+function outputComposeRAGFlow()
 {
   cat <<EOFMT > $HOME/ragflow-compose.yml
 $STACK_VERSION_PREFIX ragflow $(getScriptStackVersion ragflow)
@@ -101480,22 +101398,6 @@ services:
       - v-ragflow-infinity:/var/infinity
       - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/misc/infinity_conf.toml:/infinity_conf.toml
 
-  ragflow-deepdoc:
-    image: $(getScriptImageByContainerName ragflow-deepdoc)
-    container_name: ragflow-deepdoc
-    hostname: ragflow-deepdoc
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - int-ragflow-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9390/health"]
-      interval: 10s
-      timeout: 10s
-      retries: 60
-      start_period: 10s
-
   ragflow-app:
     image: $(getScriptImageByContainerName ragflow-app)
     container_name: ragflow-app
@@ -101507,7 +101409,6 @@ services:
     depends_on:
       - ragflow-db
       - ragflow-infinity
-      - ragflow-deepdoc
       - ragflow-minio
       - ragflow-redis
     command:
@@ -101537,33 +101438,6 @@ services:
       timeout: 10s
       retries: 120
       start_period: 60s
-
-  ragflow-worker:
-    image: $(getScriptImageByContainerName ragflow-app)
-    container_name: ragflow-worker
-    hostname: ragflow-worker
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - ragflow-app
-    command:
-      - --disable-webserver
-      - --disable-datasync
-      - --workers=1
-    networks:
-      - int-ragflow-net
-      - dock-ext-net
-      - dock-aipriv-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-ragflow-config:/ragflow/conf
-      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/logs:/ragflow/logs
 
   ragflow-minio:
     image: $(getScriptImageByContainerName ragflow-minio)
@@ -101665,7 +101539,7 @@ networks:
 EOFMT
 }
 
-function performIntegrationsRagflow()
+function performIntegrationsRAGflow()
 {
   return
 }
@@ -101686,7 +101560,7 @@ function performUpdateRAGFlow()
       image_update_map[3]="mirror.gcr.io/infiniflow/sandbox-executor-manager:latest,mirror.gcr.io/infiniflow/sandbox-executor-manager:latest"
       image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
       image_update_map[5]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateV2Ragflow
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateV2RAGflow
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -101694,8 +101568,8 @@ function performUpdateRAGFlow()
       newVer=v2
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/infiniflow/infinity:v0.7.0-dev2,mirror.gcr.io/infiniflow/ragflow:v0.24.0,mirror.gcr.io/infiniflow/sandbox-executor-manager:latest,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
-      image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.7.0-dev2,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3"
-      image_update_map[2]="mirror.gcr.io/infiniflow/ragflow:v0.24.0,mirror.gcr.io/infiniflow/ragflow:v0.27.1"
+      image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.7.0-dev2,mirror.gcr.io/infiniflow/infinity:v0.7.0-dev2"
+      image_update_map[2]="mirror.gcr.io/infiniflow/ragflow:v0.24.0,mirror.gcr.io/infiniflow/ragflow:v0.24.0"
       image_update_map[3]="mirror.gcr.io/infiniflow/sandbox-executor-manager:latest,mirror.gcr.io/infiniflow/sandbox-executor-manager:latest"
       image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
       image_update_map[5]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
@@ -101705,13 +101579,12 @@ function performUpdateRAGFlow()
     ;;
     3)
       newVer=v3
-      curImageList=mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,mirror.gcr.io/infiniflow/ragflow:v0.27.1,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/valkey/valkey:alpine3.23,hshq/deepdoc_oss:v1
+      curImageList=mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,ghcr.io/homeserverhq/ragflow:v0.27.1,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/mariadb:11.4.12"
       image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3"
-      image_update_map[2]="mirror.gcr.io/infiniflow/ragflow:v0.27.1,mirror.gcr.io/infiniflow/ragflow:v0.27.1"
+      image_update_map[2]="ghcr.io/homeserverhq/ragflow:v0.27.1,ghcr.io/homeserverhq/ragflow:v0.27.1"
       image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
       image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[5]="hshq/deepdoc_oss:v1,hshq/deepdoc_oss:v1"
     ;;
     *)
       is_upgrade_error=true
@@ -101723,7 +101596,7 @@ function performUpdateRAGFlow()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
-function mfUpdateV2Ragflow()
+function mfUpdateV2RAGflow()
 {
   startStopStack ragflow stop
   sudo rm -f $HSHQ_STACKS_DIR/ragflow/misc/infinity_conf.toml
@@ -102276,7 +102149,7 @@ wait
 EOFMT
   chmod 755 $HSHQ_STACKS_DIR/ragflow/misc/entrypoint.sh
   rm -f $HOME/ragflow-compose.yml
-  outputComposeRagflow
+  outputComposeRAGFlow
 }
 
 # TabbyML
@@ -102662,14 +102535,11 @@ function installDocling()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName docling-app)
-  if [ $? -ne 0 ]; then
-    buildOrPullImage hshq/docling:v1
-  fi
+  buildOrPullImage $(getScriptImageByContainerName docling-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName docling-redis)
+  buildOrPullImage $(getScriptImageByContainerName docling-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -102797,9 +102667,15 @@ function performUpdateDocling()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=hshq/docling:v1,mirror.gcr.io/valkey/valkey:alpine3.23
-      image_update_map[0]="hshq/docling:v1,hshq/docling:v1"
+      image_update_map[0]="hshq/docling:v1,hshq/docling-serve:v1.31.0"
+      image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    2)
+      newVer=v2
+      curImageList=hshq/docling-serve:v1.31.0,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="hshq/docling-serve:v1.31.0,hshq/docling-serve:v1.31.0"
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
@@ -102830,6 +102706,25 @@ function buildImageDoclingV1()
   cd
   sudo rm -fr $HSHQ_BUILD_DIR/docling-serve
   docker tag ghcr.io/docling-project/docling-serve-cpu:$curDoclingVersion hshq/docling:v1
+  return $rtval
+}
+
+function buildImageDoclingV2()
+{
+  set +e
+  curDoclingVersion=v1.31.0
+  echo -e "\n========================================================================"
+  echo -e "  The Docling image is being built. It can take awhile for the process"
+  echo -e "  to complete, so please be patient."
+  echo -e "========================================================================\n"
+  sudo rm -fr $HSHQ_BUILD_DIR/docling-serve
+  cd $HSHQ_BUILD_DIR
+  git -c advice.detachedHead=false clone --depth 1 --branch $curDoclingVersion https://github.com/homeserverhq/docling-serve.git
+  cd docling-serve
+  make docling-serve-cpu-image TAG=$curDoclingVersion
+  rtval=$?
+  cd
+  sudo rm -fr $HSHQ_BUILD_DIR/docling-serve
   return $rtval
 }
 
@@ -115807,10 +115702,9 @@ DEFAULT_DOCS_INGEST_SOURCE=url
 DEFAULT_DOCS_URL=https://www.openr.ag/
 FETCH_OPENRAG_DOCS_AT_STARTUP=false
 LANGFLOW_CHAT_FLOW_ID=1098eea1-6649-4e1d-aed1-b77249fb8dd0
-LANGFLOW_URL_INGEST_FLOW_ID=72c3d17c-2dac-4a73-b48a-6518473d7830
 LANGFLOW_INGEST_FLOW_ID=5488df7c-b93f-4f87-a446-b67028bc0813
+LANGFLOW_URL_INGEST_FLOW_ID=72c3d17c-2dac-4a73-b48a-6518473d7830
 NUDGES_FLOW_ID=ebc01d31-1976-46ce-a385-b0240327226c
-OLLAMA_ENDPOINT=http://ollama-server:11434
 discovery.type=single-node
 OPENSEARCH_HOSTS=["https://openrag-opensearch-db:9200"]
 OPENSEARCH_HOST=openrag-opensearch-db
@@ -115862,7 +115756,7 @@ MIMETYPE=None
 FILESIZE=0
 SELECTED_EMBEDDING_MODEL=bge-m3:567m
 LANGFLOW_STORE_ENVIRONMENT_VARIABLES=true
-LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,DOCLING_SERVE_URL,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,ANTHROPIC_API_KEY,WATSONX_APIKEY,WATSONX_URL,WATSONX_PROJECT_ID,OLLAMA_BASE_URL,LITELLM_PROXY_API_BASE,LITELLM_PROXY_API_KEY,OPENSEARCH_INDEX_NAME
+LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=JWT,OPENRAG-QUERY-FILTER,OPENSEARCH_PASSWORD,OPENSEARCH_URL,DOCLING_SERVE_URL,OWNER,OWNER_NAME,OWNER_EMAIL,CONNECTOR_TYPE,DOCUMENT_ID,SOURCE_URL,ALLOWED_USERS,ALLOWED_GROUPS,FILENAME,MIMETYPE,FILESIZE,SELECTED_EMBEDDING_MODEL,OPENAI_API_KEY,ANTHROPIC_API_KEY,WATSONX_APIKEY,WATSONX_URL,WATSONX_PROJECT_ID,LITELLM_PROXY_API_BASE,LITELLM_PROXY_API_KEY,OPENSEARCH_INDEX_NAME
 LANGFLOW_LOG_LEVEL=DEBUG
 DEFAULT_FOLDER_NAME=OpenRAG
 HIDE_GETTING_STARTED_PROGRESS=true
@@ -131574,31 +131468,6 @@ function outputCaddyHeaders()
   }
   header @trusted_origin Access-Control-Allow-Origin "{header.Origin}"
   header @trusted_origin Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
-}
-
-# The following two headers are unsafe and will be removed in future updates
-($CADDY_SNIPPET_SAFEHEADERALLOWCORS) {
-  header {
-    Access-Control-Allow-Origin *
-    Referrer-Policy "strict-origin-when-cross-origin"
-    Strict-Transport-Security "max-age=31536000;"
-    X-XSS-Protection "1; mode=block"
-    X-Content-Type-Options "nosniff"
-    X-Robots-Tag "noindex, nofollow"
-    -Server
-  }
-}
-
-($CADDY_SNIPPET_SAFEHEADERCORSPREFLIGHT) {
-  @cors_preflight method OPTIONS
-  handle @cors_preflight {
-    header Access-Control-Allow-Origin "{header.origin}"
-    header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-    header Access-Control-Allow-Headers "*"
-    header Access-Control-Max-Age "3600"
-    header Vary "Origin"
-    respond "" 204
-  }
 }
 
 # This header will also be removed due to replacement by CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED
