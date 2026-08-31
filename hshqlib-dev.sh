@@ -91809,8 +91809,8 @@ function generateAPITokenInvoiceShelf()
 {
   is_username="$1"
   is_password="$2"
-  total_tries=5
-  max_tries=0
+  num_tries=0
+  max_tries=5
   is_invoiceshelf_token=false
   while [ "$is_invoiceshelf_token" = "false" ] && [ $num_tries -lt $max_tries ]
   do
@@ -91825,7 +91825,7 @@ function generateAPITokenInvoiceShelf()
       break
     fi
     ((num_tries++))
-    echo "Failed to get InvoiceShelf API token ($num_tries of $max_tries), retrying in 5 seconds..."
+    echo "Failed to get InvoiceShelf API token ($num_tries of $max_tries), retrying in 5 seconds..." >&2
     sleep 5
   done
   echo "${ivshelf_token}"
