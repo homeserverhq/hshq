@@ -91449,7 +91449,8 @@ function installInvoiceShelf()
     echo "There was a problem with the InvoiceShelf onboarding process, returning..."
     return $retVal
   fi
-  sleep 3
+  waitForContainerLogString invoiceshelf-app 3 60 "PHP-FPM is running correctly"
+  sleep 10
   addReadOnlyUserToDatabase InvoiceShelf postgres invoiceshelf-db $INVOICESHELF_DATABASE_NAME $INVOICESHELF_DATABASE_USER $INVOICESHELF_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/invoiceshelf/dbexport $INVOICESHELF_DATABASE_READONLYUSER $INVOICESHELF_DATABASE_READONLYUSER_PASSWORD
   INVOICESHELF_ADMIN_API_KEY=$(generateAPITokenInvoiceShelf "$INVOICESHELF_ADMIN_EMAIL_ADDRESS" "$INVOICESHELF_ADMIN_PASSWORD")
   updateConfigVar INVOICESHELF_ADMIN_API_KEY "$INVOICESHELF_ADMIN_API_KEY"
@@ -91808,13 +91809,25 @@ function generateAPITokenInvoiceShelf()
 {
   is_username="$1"
   is_password="$2"
-  ivshelf_resp=$(docker exec -e U="${is_username}" \
-    -e PW="${is_password}" invoiceshelf-app \
-    sh -c 'curl -s -X POST "http://127.0.0.1:8080/api/v1/auth/login" \
-    -H "Content-Type: application/json" \
-    -H "Accept: application/json" \
-    -d "{\"username\":\"$U\",\"password\":\"$PW\",\"device_name\":\"MCP\"}"')
-  ivshelf_token=$(echo "$ivshelf_resp" | jq -r .token)
+  total_tries=5
+  max_tries=0
+  is_invoiceshelf_token=false
+  while [ "$is_invoiceshelf_token" = "false" ] && [ $num_tries -lt $max_tries ]
+  do
+    ivshelf_resp=$(docker exec -e U="${is_username}" \
+      -e PW="${is_password}" invoiceshelf-app \
+      sh -c 'curl -s -X POST "http://127.0.0.1:8080/api/v1/auth/login" \
+      -H "Content-Type: application/json" \
+      -H "Accept: application/json" \
+      -d "{\"username\":\"$U\",\"password\":\"$PW\",\"device_name\":\"MCP\"}"')
+    ivshelf_token=$(echo "$ivshelf_resp" | jq -r .token)
+    if ! [ -z "$ivshelf_token" ]; then
+      break
+    fi
+    ((num_tries++))
+    echo "Failed to get InvoiceShelf API token ($num_tries of $max_tries), retrying in 5 seconds..."
+    sleep 5
+  done
   echo "${ivshelf_token}"
 }
 
