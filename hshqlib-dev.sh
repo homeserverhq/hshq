@@ -13977,17 +13977,19 @@ function updateConfigVarInFile()
     echo "Variable not found (${1}), exiting..."
     exit 3
   fi
+  local escaped_val="${2//|/\\|}"
+  escaped_val="${escaped_val//&/\\&}"
   if [ "$is_ds" = "true" ]; then
     if [ "$4" = "root" ]; then
-      sudo sed -i "s|^${1}=.*|${1}=\'${2}\'|g" "$3"
+      sudo sed -i "s|^${1}=.*|${1}=\'${escaped_val}\'|g" "$3"
     else
-      sed -i "s|^${1}=.*|${1}=\'${2}\'|g" "$3"
+      sed -i "s|^${1}=.*|${1}=\'${escaped_val}\'|g" "$3"
     fi
   else
     if [ "$4" = "root" ]; then
-      sudo sed -i "s|^${1}=.*|${1}=\"${2}\"|g" "$3"
+      sudo sed -i "s|^${1}=.*|${1}=\"${escaped_val}\"|g" "$3"
     else
-      sed -i "s|^${1}=.*|${1}=\"${2}\"|g" "$3"
+      sed -i "s|^${1}=.*|${1}=\"${escaped_val}\"|g" "$3"
     fi
   fi
   if ! [ -z "$ucv_curE" ]; then
@@ -40114,7 +40116,7 @@ function initServiceVars()
   checkAddSvc "SVCD_RAGFLOW_API=ragflow,ragflow-api,primary,user,RAGFlow API,ragflow-api,hshq"
   checkAddSvc "SVCD_RAGFLOW_ADMIN=ragflow,ragflow-admin,primary,admin,RAGFlow Admin,ragflow-admin,hshq"
   checkAddSvc "SVCD_RAGFLOW_MCP=ragflow,ragflow-mcp,primary,user,RAGFlow MCP,ragflow-mcp,hshq"
-  checkAddSvc "SVCD_RAGFLOW_MINIO=ragflow,ragflow-minio,primary,user,MinIO (RAGFlow),ragflow-minio,hshq"
+  checkAddSvc "SVCD_RAGFLOW_MINIO=ragflow,ragflow-minio,primary,admin,MinIO (RAGFlow),ragflow-minio,hshq"
   checkAddSvc "SVCD_RAGFLOW_INFINITY_WEB=ragflow,ragflow-infinity,primary,admin,RAGFlow Infinity,ragflow-infinity,hshq"
   checkAddSvc "SVCD_TABBYML_APP=tabbyml,tabbyml,primary,admin,TabbyML,tabbyml,hshq"
   checkAddSvc "SVCD_DEEPWIKI_OPEN_APP=deepwikiopen,deepwikiopen,primary,admin,DeepWiki-Open,deepwikiopen,hshq"
@@ -41089,7 +41091,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_INVOKEAI_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DIFY_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WATERCRAWL_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_FLOWISE_APP.$HOMESERVER_DOMAIN\n"
@@ -41183,6 +41184,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_DEEPWIKI_OPEN_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MINDSDB_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MORPHIC_SUPABASE.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LEMONADE_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SUPERSET_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENRAG_OPENSEARCH.$HOMESERVER_DOMAIN\n"
@@ -41333,6 +41335,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_MINIO}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_SECRET)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TABBYML_APP}-Admin" https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN/auth/signin $HOMESERVER_ABBREV $TABBYML_ADMIN_EMAIL_ADDRESS $TABBYML_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DIFY_APP}-Admin" https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $DIFY_ADMIN_EMAIL_ADDRESS $DIFY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MINDSDB_APP}-Admin" https://$SUB_MINDSDB_APP.$HOMESERVER_DOMAIN/local-login $HOMESERVER_ABBREV $MINDSDB_ADMIN_USERNAME $MINDSDB_ADMIN_PASSWORD)"\n"
@@ -41543,6 +41546,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_MINIO}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_SECRET)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TABBYML_APP}-Admin" https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN/auth/signin $HOMESERVER_ABBREV $TABBYML_ADMIN_EMAIL_ADDRESS $TABBYML_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DIFY_APP}-Admin" https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $DIFY_ADMIN_EMAIL_ADDRESS $DIFY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MINDSDB_APP}-Admin" https://$SUB_MINDSDB_APP.$HOMESERVER_DOMAIN/local-login $HOMESERVER_ABBREV $MINDSDB_ADMIN_USERNAME $MINDSDB_ADMIN_PASSWORD)"\n"
@@ -99197,6 +99201,7 @@ function installOpenWebUI()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>#OWUI_FILES_REPLACE_LINE_1\n"
   inner_block=$inner_block">>>>#OWUI_FILES_REPLACE_LINE_2\n"
+  inner_block=$inner_block">>>>#OWUI_FILES_REPLACE_LINE_3\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://openwebui-app:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -99208,6 +99213,7 @@ function installOpenWebUI()
   # Special Case Replacement
   sed -i "s/#OWUI_FILES_REPLACE_LINE_1/header @owuiFiles >Content-Type \"text\/plain; charset=utf-8\"/" $HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip
   sed -i "s/#OWUI_FILES_REPLACE_LINE_2/header @owuiFiles >Content-Disposition \"inline\"/" $HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip
+  sed -i "s/#OWUI_FILES_REPLACE_LINE_3/header @owuiFiles >Cache-Control \"no-store, no-cache, must-revalidate, max-age=0\"/" $HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip
   insertSubAuthelia $SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN bypass
   inner_block=""
   inner_block=$inner_block">>https://$SUB_OPENWEBUI_QDRANT.$HOMESERVER_DOMAIN {\n"
@@ -101071,7 +101077,7 @@ function installRAGFlow()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_RAGFLOW_MINIO $MANAGETLS_RAGFLOW_MINIO "$is_integrate_hshq" $NETDEFAULT_RAGFLOW_MINIO "$inner_block"
-  insertSubAuthelia $SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll ragflow "$FMLNAME_RAGFLOW_APP" $USERTYPE_RAGFLOW_APP "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN" "ragflow.png" "$(getHeimdallOrderFromSub $SUB_RAGFLOW_APP $USERTYPE_RAGFLOW_APP)"
     insertEnableSvcAll ragflow "$FMLNAME_RAGFLOW_MINIO" $USERTYPE_RAGFLOW_MINIO "https://$SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN" "minio.png" "$(getHeimdallOrderFromSub $SUB_RAGFLOW_MINIO $USERTYPE_RAGFLOW_MINIO)"
@@ -101478,6 +101484,7 @@ services:
       "
     networks:
       - int-ragflow-net
+      - dock-proxy-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
