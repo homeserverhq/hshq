@@ -51521,6 +51521,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ ldap:check-user --force "$LDAP_ADMIN_USER_USERNAME"
   docker exec -u www-data nextcloud-app php occ ldap:search "$LDAP_ADMIN_USER_USERNAME"
   docker exec -u www-data nextcloud-app php occ ldap:promote-group "admins" -y
+  docker exec -u www-data nextcloud-app php occ ldap:check-group --update "$LDAP_PRIMARY_USER_GROUP_NAME"
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install ldap_write_support
   docker exec -u www-data nextcloud-app php occ --no-warnings app:enable ldap_write_support
   docker exec -u www-data nextcloud-app php occ config:system:set trusted_domains 2 --value=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
@@ -51542,14 +51543,12 @@ function installNextcloud()
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus enabled --value="yes"
   fi
   addSharedDirsNextcloud
-  if ! docker exec -u www-data nextcloud-app php occ dav:list-addressbooks "$NEXTCLOUD_ADMIN_USERNAME" 2>/dev/null \
-       | awk -F'|' '{ gsub(/ /,"",$2); if ($2=="'"Global"'") found=1 } END { exit !found }'; then
-    docker exec -u www-data nextcloud-app php occ dav:create-addressbook "$NEXTCLOUD_ADMIN_USERNAME" "Global"
-  fi
+  docker exec -u www-data nextcloud-app php occ dav:create-addressbook "$NEXTCLOUD_ADMIN_USERNAME" "Global"
   docker exec -u www-data nextcloud-app php occ db:add-missing-indices > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ maintenance:repair --include-expensive > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ background:cron
   docker exec -u www-data nextcloud-app php occ mail:account:create "$NEXTCLOUD_ADMIN_USERNAME" "Nextcloud $(getAdminEmailName)" "$EMAIL_ADMIN_EMAIL_ADDRESS" "mailu-front" 993 ssl "$EMAIL_ADMIN_EMAIL_ADDRESS" "$EMAIL_ADMIN_PASSWORD" "mailu-front" 465 ssl "$EMAIL_ADMIN_EMAIL_ADDRESS" "$EMAIL_ADMIN_PASSWORD" > /dev/null 2>&1
+  docker exec -u www-data nextcloud-app php occ user:sync-account-data
   sleep 5
   cd ~
   docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
@@ -70577,6 +70576,8 @@ function performWorkflowsIntegrationPaperless()
     echo "ERROR: Could not connect to Paperless API, returning..."
     return
   fi
+  jsonbody="{\"name\": \"$LDAP_PRIMARY_USER_GROUP_NAME\", \"permissions\": [\"view_logentry\",\"view_group\",\"view_user\",\"add_correspondent\",\"change_correspondent\",\"delete_correspondent\",\"view_correspondent\",\"add_document\",\"change_document\",\"delete_document\",\"view_document\",\"view_documenttype\",\"add_note\",\"change_note\",\"delete_note\",\"view_note\",\"add_savedview\",\"change_savedview\",\"delete_savedview\",\"view_savedview\",\"add_sharelink\",\"change_sharelink\",\"delete_sharelink\",\"view_sharelink\",\"add_tag\",\"change_tag\",\"delete_tag\",\"view_tag\",\"add_uisettings\",\"change_uisettings\",\"delete_uisettings\",\"view_uisettings\",\"view_workflow\",\"add_mailaccount\",\"change_mailaccount\",\"delete_mailaccount\",\"view_mailaccount\",\"add_mailrule\",\"change_mailrule\",\"delete_mailrule\",\"view_mailrule\",\"add_processedmail\",\"change_processedmail\",\"delete_processedmail\",\"view_processedmail\"]}"
+  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   pap_doc_types=(
     "Invoice" "Receipt" "Contract" "Bank Statement" "Taxes" "Form" "Policy" "Identification" "Medical Record" "Pay Stub" "Certificate" "Quote"
   )
@@ -70619,8 +70620,6 @@ function performWorkflowsIntegrationPaperless()
   PAPERLESS_TRANSCRIPTION_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   updateConfigVar PAPERLESS_TRANSCRIPTION_TAG_NAME "$PAPERLESS_TRANSCRIPTION_TAG_NAME"
   updateConfigVar PAPERLESS_TRANSCRIPTION_TAG_ID "$PAPERLESS_TRANSCRIPTION_TAG_ID"
-  jsonbody="{\"name\": \"$LDAP_PRIMARY_USER_GROUP_NAME\", \"permissions\": [\"view_logentry\",\"view_group\",\"view_user\",\"add_correspondent\",\"change_correspondent\",\"delete_correspondent\",\"view_correspondent\",\"add_document\",\"change_document\",\"delete_document\",\"view_document\",\"view_documenttype\",\"add_note\",\"change_note\",\"delete_note\",\"view_note\",\"add_savedview\",\"change_savedview\",\"delete_savedview\",\"view_savedview\",\"add_sharelink\",\"change_sharelink\",\"delete_sharelink\",\"view_sharelink\",\"add_tag\",\"change_tag\",\"delete_tag\",\"view_tag\",\"add_uisettings\",\"change_uisettings\",\"delete_uisettings\",\"view_uisettings\",\"view_workflow\",\"add_mailaccount\",\"change_mailaccount\",\"delete_mailaccount\",\"view_mailaccount\",\"add_mailrule\",\"change_mailrule\",\"delete_mailrule\",\"view_mailrule\",\"add_processedmail\",\"change_processedmail\",\"delete_processedmail\",\"view_processedmail\"]}"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{\"name\": \"PersonalProcessed\",\"path\": \"PersonalProcessed/{{owner_username}}/PersonalProcessed/{{title}}\",\"match\": \"\",\"matching_algorithm\": 6,\"is_insensitive\": true,\"owner\": $PAPERLESS_ADMIN_ID}"
   personalPathID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/storage_paths/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r .id)
   if [ -z "$personalPathID" ] || [ $personalPathID -ne 1 ]; then
