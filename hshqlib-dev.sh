@@ -24474,14 +24474,16 @@ function version238Update()
     fi
     updateConfigVar PAPERLESS_KNOWLEDGEBASE_TAG_NAME "$PAPERLESS_KNOWLEDGEBASE_TAG_NAME"
     updateConfigVar PAPERLESS_KNOWLEDGEBASE_TAG_ID "$PAPERLESS_KNOWLEDGEBASE_TAG_ID"
-    PAPERLESS_TRANSCRIPTION_TAG_NAME="Transcription"
-    PAPERLESS_TRANSCRIPTION_TAG_ID=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_TRANSCRIPTION_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
-    if [ -z "$PAPERLESS_TRANSCRIPTION_TAG_ID" ] || [ "$PAPERLESS_TRANSCRIPTION_TAG_ID" = "null" ]; then
-      jsonbody="{ \"name\": \"$PAPERLESS_TRANSCRIPTION_TAG_NAME\", \"color\": \"#8b58d5\", \"matching_algorithm\": 6, \"is_insensitive\": true }"
-      PAPERLESS_TRANSCRIPTION_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+    PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME="Transcription"
+    PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
+    if [ -z "$PAPERLESS_TRANSCRIPTION_DOCTYPE_ID" ] || [ "$PAPERLESS_TRANSCRIPTION_DOCTYPE_ID" = "null" ]; then
+      RESPONSE=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
+      -H "Authorization: Token $PAPERLESS_API_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{\"name\": \"$PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME\", \"matching_algorithm\": 6, \"match\": \"\"}")
     fi
-    updateConfigVar PAPERLESS_TRANSCRIPTION_TAG_NAME "$PAPERLESS_TRANSCRIPTION_TAG_NAME"
-    updateConfigVar PAPERLESS_TRANSCRIPTION_TAG_ID "$PAPERLESS_TRANSCRIPTION_TAG_ID"
+    updateConfigVar PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME "$PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME"
+    updateConfigVar PAPERLESS_TRANSCRIPTION_DOCTYPE_ID "$PAPERLESS_TRANSCRIPTION_DOCTYPE_ID"
   fi
   initServicesCredentials
   addUserMailu user $EMAIL_JOINT_USERNAME $HOMESERVER_DOMAIN $EMAIL_JOINT_PASSWORD
@@ -30601,7 +30603,7 @@ function addPrimaryUserPaperless()
   fi
   jsonbody="{ \"name\": \"${addUserPaper_uid}_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/${addUserPaper_uid}/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"${addUserPaper_uid}_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/${addUserPaper_uid}/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id, \"assign_tags\": [ $PAPERLESS_TRANSCRIPTION_TAG_ID, $PAPERLESS_KNOWLEDGEBASE_TAG_ID ] }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
+  jsonbody="{ \"name\": \"${addUserPaper_uid}_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/${addUserPaper_uid}/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id, \"assign_document_type\": [ $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID ] }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
 }
 
@@ -33142,8 +33144,8 @@ PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME=
 PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=
 PAPERLESS_KNOWLEDGEBASE_TAG_NAME=
 PAPERLESS_KNOWLEDGEBASE_TAG_ID=
-PAPERLESS_TRANSCRIPTION_TAG_NAME=
-PAPERLESS_TRANSCRIPTION_TAG_ID=
+PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME=
+PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=
 # Paperless (Service Details) END
 
 # SpeedtestTrackerLocal (Service Details) BEGIN
@@ -44228,7 +44230,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Keila" "KEILA_INIT_ENV=false,KEILA_ADMIN_USERNAME=,KEILA_ADMIN_EMAIL_ADDRESS=,KEILA_ADMIN_PASSWORD=,KEILA_DATABASE_NAME=,KEILA_DATABASE_USER=,KEILA_DATABASE_USER_PASSWORD=,KEILA_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "Wallabag" "WALLABAG_INIT_ENV=false,WALLABAG_ADMIN_USERNAME=,WALLABAG_ADMIN_EMAIL_ADDRESS=,WALLABAG_ADMIN_PASSWORD=,WALLABAG_DATABASE_NAME=,WALLABAG_DATABASE_USER=,WALLABAG_DATABASE_USER_PASSWORD=,WALLABAG_ENV_SECRET=,WALLABAG_REDIS_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Jupyter" "JUPYTER_INIT_ENV=false,JUPYTER_ADMIN_PASSWORD=" $CONFIG_FILE false
-  checkAddServiceToConfig "Paperless" "PAPERLESS_INIT_ENV=false,PAPERLESS_SECRET_KEY=,PAPERLESS_CLIENT_SECRET=,PAPERLESS_REDIS_PASSWORD=,PAPERLESS_ADMIN_USERNAME=,PAPERLESS_ADMIN_EMAIL_ADDRESS=,PAPERLESS_ADMIN_PASSWORD=,PAPERLESS_DATABASE_NAME=,PAPERLESS_DATABASE_USER=,PAPERLESS_DATABASE_USER_PASSWORD=,PAPERLESS_AI_ADMIN_USERNAME=,PAPERLESS_AI_ADMIN_PASSWORD=,PAPERLESS_AI_API_KEY=,PAPERLESS_AI_JWT_SECRET=,PAPERLESS_GPT_ADMIN_USERNAME=,PAPERLESS_GPT_ADMIN_PASSWORD=,PAPERLESS_API_TOKEN=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=,PAPERLESS_KNOWLEDGEBASE_TAG_NAME=,PAPERLESS_KNOWLEDGEBASE_TAG_ID=,PAPERLESS_TRANSCRIPTION_TAG_NAME=,PAPERLESS_TRANSCRIPTION_TAG_ID=" $CONFIG_FILE false
+  checkAddServiceToConfig "Paperless" "PAPERLESS_INIT_ENV=false,PAPERLESS_SECRET_KEY=,PAPERLESS_CLIENT_SECRET=,PAPERLESS_REDIS_PASSWORD=,PAPERLESS_ADMIN_USERNAME=,PAPERLESS_ADMIN_EMAIL_ADDRESS=,PAPERLESS_ADMIN_PASSWORD=,PAPERLESS_DATABASE_NAME=,PAPERLESS_DATABASE_USER=,PAPERLESS_DATABASE_USER_PASSWORD=,PAPERLESS_AI_ADMIN_USERNAME=,PAPERLESS_AI_ADMIN_PASSWORD=,PAPERLESS_AI_API_KEY=,PAPERLESS_AI_JWT_SECRET=,PAPERLESS_GPT_ADMIN_USERNAME=,PAPERLESS_GPT_ADMIN_PASSWORD=,PAPERLESS_API_TOKEN=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=,PAPERLESS_KNOWLEDGEBASE_TAG_NAME=,PAPERLESS_KNOWLEDGEBASE_TAG_ID=,PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME=,PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=" $CONFIG_FILE false
   checkAddServiceToConfig "SpeedtestTrackerLocal" "SPEEDTEST_TRACKER_LOCAL_INIT_ENV=false,SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME=,SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "SpeedtestTrackerVPN" "SPEEDTEST_TRACKER_VPN_INIT_ENV=false,SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME=,SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_VPN_DATABASE_NAME=,SPEEDTEST_TRACKER_VPN_DATABASE_USER=,SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Change Detection" "CHANGEDETECTION_INIT_ENV=false,CHANGEDETECTION_ADMIN_PASSWORD=" $CONFIG_FILE false
@@ -44387,7 +44389,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Caddy" "CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED=safe-header-cors-automated,CADDY_SNIPPET_BASEHEADER=base-header,CADDY_SNIPPET_DEFAULTCSP=default-csp,CADDY_SNIPPET_RELAXEDCSP=relaxed-csp" $CONFIG_FILE false
   checkAddVarsToServiceConfig "OpenProject" "OPENPROJECT_SECRET_KEY_BASE=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Twenty" "TWENTY_APP_SECRET=,TWENTY_ENCRYPTION_KEY=" $CONFIG_FILE false
-  checkAddVarsToServiceConfig "Paperless" "PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=,PAPERLESS_KNOWLEDGEBASE_TAG_NAME=,PAPERLESS_KNOWLEDGEBASE_TAG_ID=,PAPERLESS_TRANSCRIPTION_TAG_NAME=,PAPERLESS_TRANSCRIPTION_TAG_ID=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Paperless" "PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=,PAPERLESS_KNOWLEDGEBASE_TAG_NAME=,PAPERLESS_KNOWLEDGEBASE_TAG_ID=,PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME=,PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Mailu" "EMAIL_JOINT_USERNAME=,EMAIL_JOINT_PASSWORD=,EMAIL_JOINT_EMAIL_ADDRESS=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "OpenWebUI" "OPENWEBUI_ADMIN_UUID=,OPENWEBUI_PRIMARYUSERS_UUID=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "AutoKB" "AUTOKB_SHARED_OWUI_TARGET_ID=" $CONFIG_FILE false
@@ -70495,7 +70497,7 @@ PAPERLESS_API_TOKEN=$PAPERLESS_API_TOKEN
 PAPERLESS_USERNAME=$PAPERLESS_ADMIN_USERNAME
 AI_PROVIDER=custom
 SCAN_INTERVAL=*/5 * * * *
-SYSTEM_PROMPT=\`You are a personalized document analyzer. Your task is to analyze documents and extract relevant information.\n\nAnalyze the document content and extract the following information into a structured JSON object:\n\n1. title: Create a concise, meaningful title for the document\n2. correspondent: Identify the sender/institution but do not include addresses\n3. tags: Select up to 4 relevant thematic tags\n4. document_date: Extract the document date (format: YYYY-MM-DD)\n5. document_type: Determine a precise type that classifies the document (e.g. Invoice, Contract, Employer, Information and so on)\n6. language: Determine the document language (e.g. "de" or "en")\n      \nImportant rules for the analysis:\n\nFor tags:\n-FIRST check the existing tags before suggesting new ones. If a document clearly fits an existing tag, assign it. If the document does NOT fit any existing tag, DO NOT guess or force a match.\n- Use only relevant categories\n- Maximum 4 tags per document, less if sufficient (at least 1)\n- Avoid generic or too specific tags\n- Use only the most important information for tag creation\n- The output language is the one used in the document! IMPORTANT!\n\nFor the title:\n- Short and concise, NO ADDRESSES\n- Contains the most important identification features\n- For invoices/orders, mention invoice/order number if available\n- The output language is the one used in the document! IMPORTANT!\n\nFor the correspondent:\n- Identify the sender or institution\n- When generating the correspondent, always create the shortest possible form of the company name (e.g. "Amazon" instead of "Amazon EU SARL, German branch")\n\nFor the document date:\n- Extract the date of the document\n- Use the format YYYY-MM-DD\n- If multiple dates are present, use the most relevant one\n\nFor the language:\n- Determine the document language\n- Use language codes like "de" for German or "en" for English\n- If the language is not clear, use "und" as a placeholder
+SYSTEM_PROMPT=\`You are a personalized document analyzer. Your task is to analyze documents and extract relevant information.\n\nAnalyze the document content and extract the following information into a structured JSON object:\n\n1. title: Create a concise, meaningful title for the document\n2. correspondent: Identify the sender/institution but do not include addresses\n3. tags: Select up to 4 relevant thematic tags\n4. document_date: Extract the document date (format: YYYY-MM-DD)\n5. document_type: Select the document type from the following list: {{ALL_DOCUMENT_TYPES}}. It MUST come from this list, do NOT fabricate a document type.\n6. language: Determine the document language (e.g. "de" or "en")\n      \nImportant rules for the analysis:\n\nFor tags:\n- Use only relevant categories\n- Maximum 4 tags per document, less if sufficient (at least 1)\n- Avoid generic or too specific tags\n- Use only the most important information for tag creation\n\nFor the title:\n- Short and concise, NO ADDRESSES\n- Contains the most important identification features\n- For invoices/orders, mention invoice/order number if available\n\nFor the correspondent:\n- Identify the sender or institution\n- When generating the correspondent, always create the shortest possible form of the company name (e.g. "Amazon" instead of "Amazon EU SARL, German branch")\n\nFor the document date:\n- Extract the date of the document\n- Use the format YYYY-MM-DD\n- If multiple dates are present, use the most relevant one\n\nFor the language:\n- Determine the document language\n- Use language codes like "de" for German or "en" for English\n- If the language is not clear, use "und" as a placeholder
 \`
 PROCESS_PREDEFINED_DOCUMENTS=no
 TOKEN_LIMIT=32768
@@ -70506,7 +70508,7 @@ AI_PROCESSED_TAG_NAME=AI-Processed
 USE_PROMPT_TAGS=no
 PROMPT_TAGS=
 USE_EXISTING_DATA=yes
-PRE_EXISTING_DATA_PROMPT=\`Pre-existing document types: {{ALL_DOCUMENT_TYPES}}\`
+PRE_EXISTING_DATA_PROMPT=\`Hello.\`
 API_KEY=$PAPERLESS_AI_API_KEY
 JWT_SECRET=$PAPERLESS_AI_JWT_SECRET
 CUSTOM_API_KEY=$LITELLM_MASTER_KEY
@@ -70600,6 +70602,14 @@ function performWorkflowsIntegrationPaperless()
       -H "Authorization: Token $PAPERLESS_API_TOKEN" \
       -H "Content-Type: application/json" \
       -d "{\"name\": \"Research Paper\", \"matching_algorithm\": 6, \"match\": \"\"}" | jq -r '.id')
+  PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME="Transcription"
+  PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
+      -H "Authorization: Token $PAPERLESS_API_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{\"name\": \"$PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME\", \"matching_algorithm\": 6, \"match\": \"\"}" | jq -r '.id')
+  updateConfigVar PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME "$PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME"
+  updateConfigVar PAPERLESS_TRANSCRIPTION_DOCTYPE_ID "$PAPERLESS_TRANSCRIPTION_DOCTYPE_ID"
+
   PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME="Personal Email"
   jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME\", \"color\": \"#299aa5\" }"
   PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
@@ -70615,11 +70625,6 @@ function performWorkflowsIntegrationPaperless()
   PAPERLESS_KNOWLEDGEBASE_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   updateConfigVar PAPERLESS_KNOWLEDGEBASE_TAG_NAME "$PAPERLESS_KNOWLEDGEBASE_TAG_NAME"
   updateConfigVar PAPERLESS_KNOWLEDGEBASE_TAG_ID "$PAPERLESS_KNOWLEDGEBASE_TAG_ID"
-  PAPERLESS_TRANSCRIPTION_TAG_NAME="Transcription"
-  jsonbody="{ \"name\": \"$PAPERLESS_TRANSCRIPTION_TAG_NAME\", \"color\": \"#8b58d5\", \"matching_algorithm\": 6, \"is_insensitive\": true }"
-  PAPERLESS_TRANSCRIPTION_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
-  updateConfigVar PAPERLESS_TRANSCRIPTION_TAG_NAME "$PAPERLESS_TRANSCRIPTION_TAG_NAME"
-  updateConfigVar PAPERLESS_TRANSCRIPTION_TAG_ID "$PAPERLESS_TRANSCRIPTION_TAG_ID"
   jsonbody="{\"name\": \"PersonalProcessed\",\"path\": \"PersonalProcessed/{{owner_username}}/PersonalProcessed/{{title}}\",\"match\": \"\",\"matching_algorithm\": 6,\"is_insensitive\": true,\"owner\": $PAPERLESS_ADMIN_ID}"
   personalPathID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/storage_paths/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r .id)
   if [ -z "$personalPathID" ] || [ $personalPathID -ne 1 ]; then
@@ -70639,9 +70644,9 @@ function performWorkflowsIntegrationPaperless()
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{ \"name\": \"admin_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/$NEXTCLOUD_ADMIN_USERNAME/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"admin_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/$SPEAKR_ADMIN_USERNAME/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID, \"assign_tags\": [ $PAPERLESS_TRANSCRIPTION_TAG_ID, $PAPERLESS_KNOWLEDGEBASE_TAG_ID ] }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
+  jsonbody="{ \"name\": \"admin_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/$SPEAKR_ADMIN_USERNAME/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID, \"assign_document_type\": [ $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID ] }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"assign_kb\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_has_any_document_types\": [$report_doc_type, $manual_doc_type, $research_doc_type] }, { \"type\": 3, \"filter_has_any_document_types\": [$report_doc_type, $manual_doc_type, $research_doc_type] } ], \"actions\": [ { \"type\": 1, \"assign_tags\": [ $PAPERLESS_KNOWLEDGEBASE_TAG_ID ] } ] }"
+  jsonbody="{ \"name\": \"assign_kb\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_has_any_document_types\": [$report_doc_type, $manual_doc_type, $research_doc_type] }, { \"type\": 3, \"filter_has_any_document_types\": [$report_doc_type, $manual_doc_type, $research_doc_type, $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID] } ], \"actions\": [ { \"type\": 1, \"assign_tags\": [ $PAPERLESS_KNOWLEDGEBASE_TAG_ID ] } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
 }
 
@@ -71837,7 +71842,7 @@ PAPERLESS_API_TOKEN=$PAPERLESS_API_TOKEN
 PAPERLESS_USERNAME=$PAPERLESS_ADMIN_USERNAME
 AI_PROVIDER=custom
 SCAN_INTERVAL=*/5 * * * *
-SYSTEM_PROMPT=\`You are a personalized document analyzer. Your task is to analyze documents and extract relevant information.\n\nAnalyze the document content and extract the following information into a structured JSON object:\n\n1. title: Create a concise, meaningful title for the document\n2. correspondent: Identify the sender/institution but do not include addresses\n3. tags: Select up to 4 relevant thematic tags\n4. document_date: Extract the document date (format: YYYY-MM-DD)\n5. document_type: Determine a precise type that classifies the document (e.g. Invoice, Contract, Employer, Information and so on)\n6. language: Determine the document language (e.g. "de" or "en")\n      \nImportant rules for the analysis:\n\nFor tags:\n-FIRST check the existing tags before suggesting new ones. If a document clearly fits an existing tag, assign it. If the document does NOT fit any existing tag, DO NOT guess or force a match.\n- Use only relevant categories\n- Maximum 4 tags per document, less if sufficient (at least 1)\n- Avoid generic or too specific tags\n- Use only the most important information for tag creation\n- The output language is the one used in the document! IMPORTANT!\n\nFor the title:\n- Short and concise, NO ADDRESSES\n- Contains the most important identification features\n- For invoices/orders, mention invoice/order number if available\n- The output language is the one used in the document! IMPORTANT!\n\nFor the correspondent:\n- Identify the sender or institution\n- When generating the correspondent, always create the shortest possible form of the company name (e.g. "Amazon" instead of "Amazon EU SARL, German branch")\n\nFor the document date:\n- Extract the date of the document\n- Use the format YYYY-MM-DD\n- If multiple dates are present, use the most relevant one\n\nFor the language:\n- Determine the document language\n- Use language codes like "de" for German or "en" for English\n- If the language is not clear, use "und" as a placeholder
+SYSTEM_PROMPT=\`You are a personalized document analyzer. Your task is to analyze documents and extract relevant information.\n\nAnalyze the document content and extract the following information into a structured JSON object:\n\n1. title: Create a concise, meaningful title for the document\n2. correspondent: Identify the sender/institution but do not include addresses\n3. tags: Select up to 4 relevant thematic tags\n4. document_date: Extract the document date (format: YYYY-MM-DD)\n5. document_type: Select the document type from the following list: {{ALL_DOCUMENT_TYPES}}. It MUST come from this list, do NOT fabricate a document type.\n6. language: Determine the document language (e.g. "de" or "en")\n      \nImportant rules for the analysis:\n\nFor tags:\n- Use only relevant categories\n- Maximum 4 tags per document, less if sufficient (at least 1)\n- Avoid generic or too specific tags\n- Use only the most important information for tag creation\n\nFor the title:\n- Short and concise, NO ADDRESSES\n- Contains the most important identification features\n- For invoices/orders, mention invoice/order number if available\n\nFor the correspondent:\n- Identify the sender or institution\n- When generating the correspondent, always create the shortest possible form of the company name (e.g. "Amazon" instead of "Amazon EU SARL, German branch")\n\nFor the document date:\n- Extract the date of the document\n- Use the format YYYY-MM-DD\n- If multiple dates are present, use the most relevant one\n\nFor the language:\n- Determine the document language\n- Use language codes like "de" for German or "en" for English\n- If the language is not clear, use "und" as a placeholder
 \`
 PROCESS_PREDEFINED_DOCUMENTS=no
 TOKEN_LIMIT=32768
@@ -71848,7 +71853,7 @@ AI_PROCESSED_TAG_NAME=AI-Processed
 USE_PROMPT_TAGS=no
 PROMPT_TAGS=
 USE_EXISTING_DATA=yes
-PRE_EXISTING_DATA_PROMPT=\`Pre-existing document types: {{ALL_DOCUMENT_TYPES}}\`
+PRE_EXISTING_DATA_PROMPT=\`Hello.\`
 API_KEY=$PAPERLESS_AI_API_KEY
 JWT_SECRET=$PAPERLESS_AI_JWT_SECRET
 CUSTOM_API_KEY=$LITELLM_MASTER_KEY
