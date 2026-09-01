@@ -24504,7 +24504,6 @@ function version238Update()
   grep -q "linkwarden_claim" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
   if [ $? -ne 0 ]; then
     updauth=$(cat << EOFML
-claims_policies:
       linkwarden_claim:
         id_token:
           - email
@@ -24541,6 +24540,54 @@ EOFIM
     oidcBlock=$(cat $HOME/linkwarden.oidc)
     rm -f $HOME/linkwarden.oidc
     insertOIDCClientAuthelia linkwarden "$oidcBlock"
+  fi
+  grep -q "full_verified_claim" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
+  if [ $? -ne 0 ]; then
+    updauth=$(cat << EOFML
+      full_verified_claim:
+        id_token:
+          - email
+          - name
+          - groups
+          - preferred_username
+          - email_verified
+    authorization_policies:
+EOFML
+  )
+    updauth=$(echo "$updauth" | sed ':a;N;$!ba;s/\n/\\n/g')
+    sed -i "s/authorization_policies:.*/$updauth/" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
+    docker container restart authelia > /dev/null 2>&1
+  fi
+  docker ps | grep -q speakr-app > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    cat <<EOFIM > $HOME/speakr.oidc
+# Authelia OIDC Client speakr BEGIN
+      - client_id: $SPEAKR_OIDC_CLIENT_ID
+        client_name: Speakr
+        client_secret: $SPEAKR_OIDC_CLIENT_SECRET_HASH
+        public: false
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
+        require_pkce: false
+        pkce_challenge_method: ''
+        redirect_uris:
+          - https://$SUB_SPEAKR_APP.$HOMESERVER_DOMAIN/auth/sso/callback
+        scopes:
+          - openid
+          - profile
+          - email
+        claims_policy: full_verified_claim
+        response_types:
+          - code
+        grant_types:
+          - authorization_code
+        access_token_signed_response_alg: none
+        userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_basic
+# Authelia OIDC Client speakr END
+EOFIM
+    oidcBlock=$(cat $HOME/speakr.oidc)
+    rm -f $HOME/speakr.oidc
+    insertOIDCClientAuthelia speakr "$oidcBlock"
   fi
 }
 
@@ -30410,6 +30457,8 @@ function main()
   psql -U \$OPENWEBUI_DATABASE_USER \$OPENWEBUI_DATABASE_NAME -c "insert into auth(id,email,password,active) values('$OPENWEBUI_PU_UUID','$addPUEmailAddress','\$RANDOM_PASSWORD_HASH',true);"
 
   echo "insert into api_key(id,user_id,key,created_at,updated_at) values('key_$OPENWEBUI_PU_UUID','$OPENWEBUI_PU_UUID','$OPENWEBUI_PU_API_KEY','\$curdt','\$curdt');" | psql -U $OPENWEBUI_DATABASE_USER $OPENWEBUI_DATABASE_NAME
+
+  echo "insert into group_member(id,group_id,user_id,created_at,updated_at) values('$(uuidgen)','$OPENWEBUI_PRIMARYUSERS_UUID','$OPENWEBUI_PU_UUID','\$curdt','\$curdt');" | psql -U $OPENWEBUI_DATABASE_USER $OPENWEBUI_DATABASE_NAME
 }
 
 main
@@ -30436,6 +30485,7 @@ EOFIM
         --arg ragflow_api_key "$newuser_ragflow_api_key" \
         '{immich_api_key: $immich_api_key, nextcloud_api_key: $nextcloud_api_key, paperless_api_key: $paperless_api_key, opennotebook_api_key: $opennotebook_api_key, linkwarden_api_key: $linkwarden_api_key, hedgedoc_api_key: $hedgedoc_api_key, mealie_api_key: $mealie_api_key, presenton_api_key: $presenton_api_key, twenty_api_key: $twenty_api_key, ragflow_api_key: $ragflow_api_key}')
     curl -s -X POST "https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/api/v1/tools/id/mcpkeyvault_tool/valves/user/update" -H "Authorization: Bearer $OPENWEBUI_PU_API_KEY" -H "Content-Type: application/json" -d "$jsonbody" > /dev/null 2>&1
+    docker exec openwebui-db bash -lc "PGPASSWORD=\"\$POSTGRES_PASSWORD\" psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -v ON_ERROR_STOP=1 -c \"INSERT INTO access_grant (id, resource_type, resource_id, principal_type, principal_id, permission, created_at) VALUES (gen_random_uuid()::text, 'knowledge', '$AUTOKB_PKB_REMOTE_TARGET_ID', 'user', '$OPENWEBUI_PU_UUID', 'read', EXTRACT(EPOCH FROM NOW())::bigint);\""
   fi
   if ! [ "$addPUIsLDAPAdmin" = "true" ]; then
     echo "Sending Vaultwarden template to ${addPUUID}@${HOMESERVER_DOMAIN}..."
@@ -30629,6 +30679,7 @@ function addPrimaryUserAutoKB()
   akbCode="${akbRes##*$'\n'}"
   akbBody="${akbRes%$'\n'*}"
   [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
+  AUTOKB_PKB_REMOTE_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.remote_target_id')"
   echo "Fetching current links for shared target $AUTOKB_SHARED_OWUI_TARGET_ID..."
   akbRes="$(docker exec autokb-web curl -sS -X GET \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
@@ -41335,7 +41386,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_MINIO}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_SECRET)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_MINIO}-Admin" https://$SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_SECRET)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TABBYML_APP}-Admin" https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN/auth/signin $HOMESERVER_ABBREV $TABBYML_ADMIN_EMAIL_ADDRESS $TABBYML_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DIFY_APP}-Admin" https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $DIFY_ADMIN_EMAIL_ADDRESS $DIFY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MINDSDB_APP}-Admin" https://$SUB_MINDSDB_APP.$HOMESERVER_DOMAIN/local-login $HOMESERVER_ABBREV $MINDSDB_ADMIN_USERNAME $MINDSDB_ADMIN_PASSWORD)"\n"
@@ -41546,7 +41597,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_MINIO}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_SECRET)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_MINIO}-Admin" https://$SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_SECRET)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TABBYML_APP}-Admin" https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN/auth/signin $HOMESERVER_ABBREV $TABBYML_ADMIN_EMAIL_ADDRESS $TABBYML_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DIFY_APP}-Admin" https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $DIFY_ADMIN_EMAIL_ADDRESS $DIFY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MINDSDB_APP}-Admin" https://$SUB_MINDSDB_APP.$HOMESERVER_DOMAIN/local-login $HOMESERVER_ABBREV $MINDSDB_ADMIN_USERNAME $MINDSDB_ADMIN_PASSWORD)"\n"
@@ -51509,6 +51560,7 @@ XML
   docker exec -u www-data nextcloud-app php occ db:add-missing-indices > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ maintenance:repair --include-expensive > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ background:cron
+  docker exec -u www-data nextcloud-app php occ mail:account:create "$NEXTCLOUD_ADMIN_USERNAME" "Nextcloud $(getAdminEmailName)" "$EMAIL_ADMIN_EMAIL_ADDRESS" "mailu-front" 993 ssl "$EMAIL_ADMIN_EMAIL_ADDRESS" "$EMAIL_ADMIN_PASSWORD" "mailu-front" 465 ssl "$EMAIL_ADMIN_EMAIL_ADDRESS" "$EMAIL_ADMIN_PASSWORD" > /dev/null 2>&1
   sleep 5
   cd ~
   docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
@@ -58656,6 +58708,13 @@ identity_providers:
         id_token:
           - email
           - name
+          - preferred_username
+          - email_verified
+      full_verified_claim:
+        id_token:
+          - email
+          - name
+          - groups
           - preferred_username
           - email_verified
     authorization_policies:
@@ -109991,7 +110050,7 @@ EOFMT
           - openid
           - profile
           - email
-        claims_policy: cp_legacy
+        claims_policy: full_verified_claim
         response_types:
           - code
         grant_types:
@@ -117620,6 +117679,8 @@ function addSharedPipelinesAutoKB()
   [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
   AUTOKB_SHARED_OWUI_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.target_id')"
   updateConfigVar AUTOKB_SHARED_OWUI_TARGET_ID $AUTOKB_SHARED_OWUI_TARGET_ID
+  AUTOKB_SHARED_OWUI_REMOTE_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.remote_target_id')"
+  docker exec openwebui-db bash -lc "PGPASSWORD=\"\$POSTGRES_PASSWORD\" psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -v ON_ERROR_STOP=1 -c \"INSERT INTO access_grant (id, resource_type, resource_id, principal_type, principal_id, permission, created_at) VALUES (gen_random_uuid()::text, 'knowledge', '$AUTOKB_SHARED_OWUI_REMOTE_TARGET_ID', 'group', '$OPENWEBUI_PRIMARYUSERS_UUID', 'read', EXTRACT(EPOCH FROM NOW())::bigint);\""
   echo "Done."
 }
 
