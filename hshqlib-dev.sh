@@ -70152,6 +70152,7 @@ ANONYMIZED_TELEMETRY=False
 PAPERLESS_BASE_URL=http://paperless-app:8000
 PAPERLESS_API_TOKEN=$PAPERLESS_API_TOKEN
 PAPERLESS_PUBLIC_URL=https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN
+PAPERLESS_DEFAULT_OBJECT_ACCESS_GROUP=primaryusers
 MANUAL_TAG=paperless-gpt
 AUTO_TAG=paperless-gpt-auto
 LLM_PROVIDER=openai
@@ -71787,6 +71788,7 @@ ANONYMIZED_TELEMETRY=False
 PAPERLESS_BASE_URL=http://paperless-app:8000
 PAPERLESS_API_TOKEN=$PAPERLESS_API_TOKEN
 PAPERLESS_PUBLIC_URL=https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN
+PAPERLESS_DEFAULT_OBJECT_ACCESS_GROUP=primaryusers
 MANUAL_TAG=paperless-gpt
 AUTO_TAG=paperless-gpt-auto
 LLM_PROVIDER=openai
@@ -72140,6 +72142,10 @@ function mfPaperlessV12Update()
   grep -q "PRE_EXISTING_DATA_PROMPT" $HSHQ_STACKS_DIR/paperless/ai/.env.migrated
   if [ $? -ne 0 ]; then
     echo "PRE_EXISTING_DATA_PROMPT=\`Pre-existing document types: {{ALL_DOCUMENT_TYPES}}\`" >> $HSHQ_STACKS_DIR/paperless/ai/.env.migrated
+  fi
+  grep -q "PAPERLESS_DEFAULT_OBJECT_ACCESS_GROUP" $HOME/paperless.env
+  if [ $? -ne 0 ]; then
+    echo "PAPERLESS_DEFAULT_OBJECT_ACCESS_GROUP=primaryusers" >> $HOME/paperless.env
   fi
 }
 
