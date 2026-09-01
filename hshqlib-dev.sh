@@ -51551,17 +51551,6 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ background:cron
   docker exec -u www-data nextcloud-app php occ mail:account:create "$NEXTCLOUD_ADMIN_USERNAME" "Nextcloud $(getAdminEmailName)" "$EMAIL_ADMIN_EMAIL_ADDRESS" "mailu-front" 993 ssl "$EMAIL_ADMIN_EMAIL_ADDRESS" "$EMAIL_ADMIN_PASSWORD" "mailu-front" 465 ssl "$EMAIL_ADMIN_EMAIL_ADDRESS" "$EMAIL_ADMIN_PASSWORD" > /dev/null 2>&1
   sleep 5
-  docker exec -i nextcloud-web curl -fsS -u "$NEXTCLOUD_ADMIN_USERNAME:$NEXTCLOUD_ADMIN_PASSWORD" -X POST \
-    -H 'Content-Type: application/xml; charset=UTF-8' \
-    --data-binary @- "http://localhost/remote.php/dav/addressbooks/users/$NEXTCLOUD_ADMIN_USERNAME/Global" >/dev/null <<XML
-<oc:share xmlns:oc="http://owncloud.org/ns" xmlns:d="DAV:">
-  <oc:set>
-    <d:href>principal:principals/groups/$LDAP_PRIMARY_USER_GROUP_NAME</d:href>
-    <oc:common-name>$LDAP_PRIMARY_USER_GROUP_NAME</oc:common-name>
-    <oc:read-write/>
-  </oc:set>
-</oc:share>
-XML
   cd ~
   docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
   rm -f $HOME/nextcloud-compose-tmp.yml
@@ -51671,6 +51660,17 @@ XML
   echo "Enabling push notifications..."
   docker exec -u www-data nextcloud-app php occ app:enable notify_push
   docker exec -u www-data nextcloud-app php occ notify_push:setup https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/push
+  docker exec -i nextcloud-web curl -fsS -u "$NEXTCLOUD_ADMIN_USERNAME:$NEXTCLOUD_ADMIN_PASSWORD" -X POST \
+    -H 'Content-Type: application/xml; charset=UTF-8' \
+    --data-binary @- "http://localhost/remote.php/dav/addressbooks/users/$NEXTCLOUD_ADMIN_USERNAME/Global" >/dev/null <<XML
+<oc:share xmlns:oc="http://owncloud.org/ns" xmlns:d="DAV:">
+  <oc:set>
+    <d:href>principal:principals/groups/$LDAP_PRIMARY_USER_GROUP_NAME</d:href>
+    <oc:common-name>$LDAP_PRIMARY_USER_GROUP_NAME</oc:common-name>
+    <oc:read-write/>
+  </oc:set>
+</oc:share>
+XML
   outputNextcloudInotifyScan
   echo "Nextcloud stack configured!"
 }
@@ -117555,9 +117555,10 @@ ENCRYPTION_KEY=$AUTOKB_ENCRYPTION_KEY
 MAX_STARTUP_RETRIES=100
 STARTUP_RETRY_SLEEP=1
 LOG_LEVEL=INFO
-OPENWEBUI_API_KEY=$OPENWEBUI_ADMIN_API_KEY
-PAPERLESS_TOKEN=$PAPERLESS_API_KEY
+PAPERLESS_TOKEN=$PAPERLESS_API_TOKEN
 DOCLING_API_KEY=$DOCLING_API_KEY
+OPENWEBUI_API_KEY=$OPENWEBUI_ADMIN_API_KEY
+LIGHTRAG_API_KEY=$LIGHTRAG_API_KEY
 RAGFLOW_API_KEY=$RAGFLOW_ADMIN_API_KEY
 EOFMT
 }
