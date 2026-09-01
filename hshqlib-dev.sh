@@ -4104,18 +4104,18 @@ EOF
     fi
     updateConfigVar EMAIL_ADMIN_USERNAME $EMAIL_ADMIN_USERNAME
   done
-  while [ -z "$EMAIL_SHARED_USERNAME" ]
+  while [ -z "$EMAIL_JOINT_USERNAME" ]
   do
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
-      EMAIL_SHARED_USERNAME="info"
+      EMAIL_JOINT_USERNAME="info"
     else
-      EMAIL_SHARED_USERNAME=$(promptUserInputMenu "info" "Enter Shared Email" "Enter the shared email username: ")
+      EMAIL_JOINT_USERNAME=$(promptUserInputMenu "info" "Enter Shared Email" "Enter the shared email username: ")
     fi
-    if [ $(checkValidString "$EMAIL_SHARED_USERNAME") = "false" ]; then
+    if [ $(checkValidString "$EMAIL_JOINT_USERNAME") = "false" ]; then
       showMessageBox "Invalid Character(s)" "The username contains invalid character(s). It must consist of a-z (lowercase) and/or 0-9"
-      EMAIL_SHARED_USERNAME=""
+      EMAIL_JOINT_USERNAME=""
     fi
-    updateConfigVar EMAIL_SHARED_USERNAME $EMAIL_SHARED_USERNAME
+    updateConfigVar EMAIL_JOINT_USERNAME $EMAIL_JOINT_USERNAME
   done
   initServicesCredentials
   addUserShareDirectories $NEXTCLOUD_ADMIN_USERNAME
@@ -24484,8 +24484,8 @@ function version238Update()
     updateConfigVar PAPERLESS_TRANSCRIPTION_TAG_ID "$PAPERLESS_TRANSCRIPTION_TAG_ID"
   fi
   initServicesCredentials
-  addUserMailu user $EMAIL_SHARED_USERNAME $HOMESERVER_DOMAIN $EMAIL_SHARED_PASSWORD
-  sendEmail -s "Shared Email Account Info" -b "A new email account has been added to Mailu. The intent of this account to share amongst your team members for common access. Here are the credentials:\n\n Shared Email Address: $EMAIL_SHARED_EMAIL_ADDRESS\nShared Email Password: $EMAIL_SHARED_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  addUserMailu user $EMAIL_JOINT_USERNAME $HOMESERVER_DOMAIN $EMAIL_JOINT_PASSWORD
+  sendEmail -s "Joint Email Account Info" -b "A new email account has been added to Mailu. The intent of this account to share amongst your team members for common access. Here are the credentials:\n\n Joint Email Address: $EMAIL_JOINT_EMAIL_ADDRESS\nJoint Email Password: $EMAIL_JOINT_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
   outputDBExportScripts
   outputCaddyHeaders
   restartAllCaddyContainers
@@ -32705,9 +32705,9 @@ SMTP_RELAY_HOST=
 SMTP_RELAY_USERNAME=
 SMTP_RELAY_PASSWORD=
 MAILU_API_TOKEN=
-EMAIL_SHARED_USERNAME=
-EMAIL_SHARED_PASSWORD=
-EMAIL_SHARED_EMAIL_ADDRESS=
+EMAIL_JOINT_USERNAME=
+EMAIL_JOINT_PASSWORD=
+EMAIL_JOINT_EMAIL_ADDRESS=
 # Mailu (Service Details) END
 
 # Wazuh (Service Details) BEGIN
@@ -34727,17 +34727,17 @@ function initServicesCredentials()
     echo $EMAIL_SMTP_EMAIL_ADDRESS > $HSHQ_SECRETS_DIR/smtp_username.txt
     chmod 0400 $HSHQ_SECRETS_DIR/smtp_username.txt
   fi
-  if [ -z "$EMAIL_SHARED_USERNAME" ]; then
-    EMAIL_SHARED_USERNAME=info
-    updateConfigVar EMAIL_SHARED_USERNAME $EMAIL_SHARED_USERNAME
+  if [ -z "$EMAIL_JOINT_USERNAME" ]; then
+    EMAIL_JOINT_USERNAME=info
+    updateConfigVar EMAIL_JOINT_USERNAME $EMAIL_JOINT_USERNAME
   fi
-  if [ -z "$EMAIL_SHARED_PASSWORD" ]; then
-    EMAIL_SHARED_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar EMAIL_SHARED_PASSWORD $EMAIL_SHARED_PASSWORD
+  if [ -z "$EMAIL_JOINT_PASSWORD" ]; then
+    EMAIL_JOINT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar EMAIL_JOINT_PASSWORD $EMAIL_JOINT_PASSWORD
   fi
-  if [ -z "$EMAIL_SHARED_EMAIL_ADDRESS" ]; then
-    EMAIL_SHARED_EMAIL_ADDRESS="$EMAIL_SHARED_USERNAME@$HOMESERVER_DOMAIN"
-    updateConfigVar EMAIL_SHARED_EMAIL_ADDRESS $EMAIL_SHARED_EMAIL_ADDRESS
+  if [ -z "$EMAIL_JOINT_EMAIL_ADDRESS" ]; then
+    EMAIL_JOINT_EMAIL_ADDRESS="$EMAIL_JOINT_USERNAME@$HOMESERVER_DOMAIN"
+    updateConfigVar EMAIL_JOINT_EMAIL_ADDRESS $EMAIL_JOINT_EMAIL_ADDRESS
   fi
   if [ -z "$MAILU_API_TOKEN" ]; then
     MAILU_API_TOKEN=$(pwgen -c -n 32 1)
@@ -41290,7 +41290,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GITLAB}" https://$SUB_GITLAB.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENLDAP_MANAGER}" https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MAILU}-Admin" https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MAILU}-Shared" https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login $HOMESERVER_ABBREV $EMAIL_SHARED_EMAIL_ADDRESS $EMAIL_SHARED_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MAILU}-Shared" https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login $HOMESERVER_ABBREV $EMAIL_JOINT_EMAIL_ADDRESS $EMAIL_JOINT_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MATRIX_ELEMENT_PRIVATE}" https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MATRIX_ELEMENT_PUBLIC}" https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MEALIE}-Admin" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD)"\n"
@@ -41501,7 +41501,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GITLAB}" https://$SUB_GITLAB.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENLDAP_MANAGER}" https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MAILU}-Admin" https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MAILU}-Shared" https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login $HOMESERVER_ABBREV $EMAIL_SHARED_EMAIL_ADDRESS $EMAIL_SHARED_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MAILU}-Shared" https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login $HOMESERVER_ABBREV $EMAIL_JOINT_EMAIL_ADDRESS $EMAIL_JOINT_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MATRIX_ELEMENT_PRIVATE}" https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MATRIX_ELEMENT_PUBLIC}" https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MEALIE}-Admin" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD)"\n"
@@ -44388,7 +44388,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "OpenProject" "OPENPROJECT_SECRET_KEY_BASE=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Twenty" "TWENTY_APP_SECRET=,TWENTY_ENCRYPTION_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Paperless" "PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=,PAPERLESS_KNOWLEDGEBASE_TAG_NAME=,PAPERLESS_KNOWLEDGEBASE_TAG_ID=,PAPERLESS_TRANSCRIPTION_TAG_NAME=,PAPERLESS_TRANSCRIPTION_TAG_ID=" $CONFIG_FILE false
-  checkAddVarsToServiceConfig "Mailu" "EMAIL_SHARED_USERNAME=,EMAIL_SHARED_PASSWORD=,EMAIL_SHARED_EMAIL_ADDRESS=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Mailu" "EMAIL_JOINT_USERNAME=,EMAIL_JOINT_PASSWORD=,EMAIL_JOINT_EMAIL_ADDRESS=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "OpenWebUI" "OPENWEBUI_ADMIN_UUID=,OPENWEBUI_PRIMARYUSERS_UUID=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "AutoKB" "AUTOKB_SHARED_OWUI_TARGET_ID=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Wordpress" "WORDPRESS_APP_PASSWORD=" $CONFIG_FILE false
@@ -48939,7 +48939,7 @@ function installMailu()
   docker exec mailu-admin flask mailu config-import /initconfig/mail-config.yaml > /dev/null 2>&1
   sleep 2
   createStandardMailuMailboxes "$EMAIL_ADMIN_EMAIL_ADDRESS"
-  createStandardMailuMailboxes "$EMAIL_SHARED_EMAIL_ADDRESS"
+  createStandardMailuMailboxes "$EMAIL_JOINT_EMAIL_ADDRESS"
   startStopStack mailu stop
   rm -f $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
   sudo mv $HSHQ_STACKS_DIR/mailu/postfix-override.cf $HSHQ_STACKS_DIR/mailu/overrides/postfix/postfix.cf
@@ -49104,10 +49104,10 @@ user:
     password: '$(openssl passwd -6 $EMAIL_SMTP_PASSWORD)'
     hash_password: false
     displayed_name: '${HOMESERVER_ABBREV^^} SMTP Sender'
-  - email: $EMAIL_SHARED_USERNAME@$HOMESERVER_DOMAIN
-    password: '$(openssl passwd -6 $EMAIL_SHARED_PASSWORD)'
+  - email: $EMAIL_JOINT_USERNAME@$HOMESERVER_DOMAIN
+    password: '$(openssl passwd -6 $EMAIL_JOINT_PASSWORD)'
     hash_password: false
-    displayed_name: '${EMAIL_SHARED_USERNAME^}'
+    displayed_name: '${EMAIL_JOINT_USERNAME^}'
 
 EOFMC
   if ! [ -z "$RELAYSERVER_WGPORTAL_ADMIN_EMAIL" ]; then
@@ -51546,6 +51546,11 @@ function installNextcloud()
        | awk -F'|' '{ gsub(/ /,"",$2); if ($2=="'"Global"'") found=1 } END { exit !found }'; then
     docker exec -u www-data nextcloud-app php occ dav:create-addressbook "$NEXTCLOUD_ADMIN_USERNAME" "Global"
   fi
+  docker exec -u www-data nextcloud-app php occ db:add-missing-indices > /dev/null 2>&1
+  docker exec -u www-data nextcloud-app php occ maintenance:repair --include-expensive > /dev/null 2>&1
+  docker exec -u www-data nextcloud-app php occ background:cron
+  docker exec -u www-data nextcloud-app php occ mail:account:create "$NEXTCLOUD_ADMIN_USERNAME" "Nextcloud $(getAdminEmailName)" "$EMAIL_ADMIN_EMAIL_ADDRESS" "mailu-front" 993 ssl "$EMAIL_ADMIN_EMAIL_ADDRESS" "$EMAIL_ADMIN_PASSWORD" "mailu-front" 465 ssl "$EMAIL_ADMIN_EMAIL_ADDRESS" "$EMAIL_ADMIN_PASSWORD" > /dev/null 2>&1
+  sleep 5
   docker exec -i nextcloud-web curl -fsS -u "$NEXTCLOUD_ADMIN_USERNAME:$NEXTCLOUD_ADMIN_PASSWORD" -X POST \
     -H 'Content-Type: application/xml; charset=UTF-8' \
     --data-binary @- "http://localhost/remote.php/dav/addressbooks/users/$NEXTCLOUD_ADMIN_USERNAME/Global" >/dev/null <<XML
@@ -51557,11 +51562,6 @@ function installNextcloud()
   </oc:set>
 </oc:share>
 XML
-  docker exec -u www-data nextcloud-app php occ db:add-missing-indices > /dev/null 2>&1
-  docker exec -u www-data nextcloud-app php occ maintenance:repair --include-expensive > /dev/null 2>&1
-  docker exec -u www-data nextcloud-app php occ background:cron
-  docker exec -u www-data nextcloud-app php occ mail:account:create "$NEXTCLOUD_ADMIN_USERNAME" "Nextcloud $(getAdminEmailName)" "$EMAIL_ADMIN_EMAIL_ADDRESS" "mailu-front" 993 ssl "$EMAIL_ADMIN_EMAIL_ADDRESS" "$EMAIL_ADMIN_PASSWORD" "mailu-front" 465 ssl "$EMAIL_ADMIN_EMAIL_ADDRESS" "$EMAIL_ADMIN_PASSWORD" > /dev/null 2>&1
-  sleep 5
   cd ~
   docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
   rm -f $HOME/nextcloud-compose-tmp.yml
@@ -70506,7 +70506,7 @@ AI_PROCESSED_TAG_NAME=AI-Processed
 USE_PROMPT_TAGS=no
 PROMPT_TAGS=
 USE_EXISTING_DATA=yes
-PRE_EXISTING_DATA_PROMPT=\`Pre-existing correspondents: {{ALL_CORRESPONDENTS}}\n\nPre-existing document types: {{ALL_DOCUMENT_TYPES}}\`
+PRE_EXISTING_DATA_PROMPT=\`Pre-existing document types: {{ALL_DOCUMENT_TYPES}}\`
 API_KEY=$PAPERLESS_AI_API_KEY
 JWT_SECRET=$PAPERLESS_AI_JWT_SECRET
 CUSTOM_API_KEY=$LITELLM_MASTER_KEY
@@ -71847,7 +71847,7 @@ AI_PROCESSED_TAG_NAME=AI-Processed
 USE_PROMPT_TAGS=no
 PROMPT_TAGS=
 USE_EXISTING_DATA=yes
-PRE_EXISTING_DATA_PROMPT=\`Pre-existing correspondents: {{ALL_CORRESPONDENTS}}\n\nPre-existing document types: {{ALL_DOCUMENT_TYPES}}\`
+PRE_EXISTING_DATA_PROMPT=\`Pre-existing document types: {{ALL_DOCUMENT_TYPES}}\`
 API_KEY=$PAPERLESS_AI_API_KEY
 JWT_SECRET=$PAPERLESS_AI_JWT_SECRET
 CUSTOM_API_KEY=$LITELLM_MASTER_KEY
@@ -72139,7 +72139,7 @@ function mfPaperlessV12Update()
   fi
   grep -q "PRE_EXISTING_DATA_PROMPT" $HSHQ_STACKS_DIR/paperless/ai/.env.migrated
   if [ $? -ne 0 ]; then
-    echo "PRE_EXISTING_DATA_PROMPT=\`Pre-existing correspondents: {{ALL_CORRESPONDENTS}}\n\nPre-existing document types: {{ALL_DOCUMENT_TYPES}}\`" >> $HSHQ_STACKS_DIR/paperless/ai/.env.migrated
+    echo "PRE_EXISTING_DATA_PROMPT=\`Pre-existing document types: {{ALL_DOCUMENT_TYPES}}\`" >> $HSHQ_STACKS_DIR/paperless/ai/.env.migrated
   fi
 }
 
@@ -117610,7 +117610,7 @@ function addSharedPipelinesAutoKB()
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"Shared-IMAP-Personal-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$EMAIL_SHARED_EMAIL_ADDRESS\",\"password\":\"$EMAIL_SHARED_PASSWORD\",\"folder\":\"Processed.Personal\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
+    --data "{\"name\":\"Joint-IMAP-Personal-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$EMAIL_JOINT_EMAIL_ADDRESS\",\"password\":\"$EMAIL_JOINT_PASSWORD\",\"folder\":\"Processed.Personal\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/imapFolderWatchPlugin")"
   akbCode="${akbRes##*$'\n'}"
@@ -117621,7 +117621,7 @@ function addSharedPipelinesAutoKB()
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"Shared-IMAP-Shared-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$EMAIL_SHARED_EMAIL_ADDRESS\",\"password\":\"$EMAIL_SHARED_PASSWORD\",\"folder\":\"Processed.Work\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
+    --data "{\"name\":\"Joint-IMAP-Shared-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"host\":\"$SMTP_HOSTNAME\",\"port\":993,\"use_ssl\":true,\"user\":\"$EMAIL_JOINT_EMAIL_ADDRESS\",\"password\":\"$EMAIL_JOINT_PASSWORD\",\"folder\":\"Processed.Work\",\"monitor_subfolders\":true,\"chunking_enabled\":false}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/imapFolderWatchPlugin")"
   akbCode="${akbRes##*$'\n'}"
