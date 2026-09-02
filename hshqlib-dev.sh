@@ -31644,7 +31644,7 @@ function loadPinnedDockerImages()
   IMG_MORPHIC_APP=ghcr.io/miurla/morphic:6443b20c1205adf233c98b67beb34a6117e1cd7a
   IMG_OPENNOTEBOOK_DB=mirror.gcr.io/surrealdb/surrealdb:v2.4-dev
   IMG_OPENNOTEBOOK_APP=ghcr.io/lfnovo/open-notebook:1.14.0
-  IMG_OPENNOTEBOOK_MCP=ghcr.io/homeserverhq/opennotebook-mcp:v1
+  IMG_OPENNOTEBOOK_MCP=ghcr.io/homeserverhq/opennotebook-mcp:v2
   IMG_APPSMITH_APP=mirror.gcr.io/appsmith/appsmith-ce:v1.94
   IMG_TRILIUM=mirror.gcr.io/triliumnext/trilium:v0.101.3
   IMG_DOCSGPT_FRONTEND=hshq/docsgpt-frontend:v1
@@ -108186,6 +108186,7 @@ function installOpenNotebook()
     updateConfigVar OPENNOTEBOOK_INIT_ENV $OPENNOTEBOOK_INIT_ENV
   fi
   sleep 3
+  initializeOpenNotebook
   if [ -z "$FMLNAME_OPENNOTEBOOK_APP" ]; then
     set +e
     echo "ERROR: Formal name is empty, returning..."
@@ -108336,7 +108337,13 @@ MCP_SERVER_PORT=80
 ALLOW_ALL_AGGREGATE=false
 IS_STATEFUL=false
 OPENNOTEBOOK_PUBLIC_URL=https://$SUB_OPENNOTEBOOK_APP.$HOMESERVER_DOMAIN
+OPENNOTEBOOK_FIRST_NOTEBOOK_NAME=$HOMESERVER_NAME
 EOFMT
+}
+
+function initializeOpenNotebook()
+{
+  return
 }
 
 function performUpdateOpenNotebook()
@@ -108360,17 +108367,17 @@ function performUpdateOpenNotebook()
       curImageList=mirror.gcr.io/surrealdb/surrealdb:v2.4,ghcr.io/lfnovo/open-notebook:1.14.0,ghcr.io/homeserverhq/opennotebook-mcp:v1
       image_update_map[0]="mirror.gcr.io/surrealdb/surrealdb:v2.4,mirror.gcr.io/surrealdb/surrealdb:v2.4-dev"
       image_update_map[1]="ghcr.io/lfnovo/open-notebook:1.14.0,ghcr.io/lfnovo/open-notebook:1.14.0"
-      image_update_map[2]="ghcr.io/homeserverhq/opennotebook-mcp:v1,ghcr.io/homeserverhq/opennotebook-mcp:v1"
+      image_update_map[2]="ghcr.io/homeserverhq/opennotebook-mcp:v1,ghcr.io/homeserverhq/opennotebook-mcp:v2"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfOpenNotebookV3Update
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     3)
       newVer=v3
-      curImageList=mirror.gcr.io/surrealdb/surrealdb:v2.4-dev,ghcr.io/lfnovo/open-notebook:1.14.0,ghcr.io/homeserverhq/opennotebook-mcp:v1
+      curImageList=mirror.gcr.io/surrealdb/surrealdb:v2.4-dev,ghcr.io/lfnovo/open-notebook:1.14.0,ghcr.io/homeserverhq/opennotebook-mcp:v2
       image_update_map[0]="mirror.gcr.io/surrealdb/surrealdb:v2.4-dev,mirror.gcr.io/surrealdb/surrealdb:v2.4-dev"
       image_update_map[1]="ghcr.io/lfnovo/open-notebook:1.14.0,ghcr.io/lfnovo/open-notebook:1.14.0"
-      image_update_map[2]="ghcr.io/homeserverhq/opennotebook-mcp:v1,ghcr.io/homeserverhq/opennotebook-mcp:v1"
+      image_update_map[2]="ghcr.io/homeserverhq/opennotebook-mcp:v2,ghcr.io/homeserverhq/opennotebook-mcp:v2"
     ;;
     *)
       is_upgrade_error=true
@@ -108556,7 +108563,7 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/opennotebook/data:/app/data
 
   opennotebook-mcp:
-    image: ghcr.io/homeserverhq/opennotebook-mcp:v1
+    image: ghcr.io/homeserverhq/opennotebook-mcp:v2
     container_name: opennotebook-mcp
     restart: unless-stopped
     env_file: stack.env
