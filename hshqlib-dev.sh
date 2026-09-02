@@ -31652,7 +31652,7 @@ function loadPinnedDockerImages()
   IMG_MEMOS_APP=mirror.gcr.io/neosmemo/memos:0.25.3
   IMG_SILLYTAVERN=ghcr.io/sillytavern/sillytavern:1.15.0
   IMG_LEMONADE_SERVER=ghcr.io/lemonade-sdk/lemonade-server:v9.2.0
-  IMG_SPEAKR_APP=ghcr.io/homeserverhq/speakr:v0.10.3-alpha
+  IMG_SPEAKR_APP=ghcr.io/homeserverhq/speakr:v0.10.5
   IMG_SPEAKR_WHISPERX=mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1
   IMG_INSANELYFASTWHISPER_APP=hshq/insanelyfastwhisper:v1
   IMG_IVBOX_APP=hshq/ivbox:v1
@@ -70497,7 +70497,7 @@ PAPERLESS_API_TOKEN=$PAPERLESS_API_TOKEN
 PAPERLESS_USERNAME=$PAPERLESS_ADMIN_USERNAME
 AI_PROVIDER=custom
 SCAN_INTERVAL=*/5 * * * *
-SYSTEM_PROMPT=\`You are a personalized document analyzer. Your task is to analyze documents and extract relevant information.\n\nAnalyze the document content and extract the following information into a structured JSON object:\n\n1. title: Create a concise, meaningful title for the document\n2. correspondent: Identify the sender/institution but do not include addresses\n3. tags: Select up to 4 relevant thematic tags\n4. document_date: Extract the document date (format: YYYY-MM-DD)\n5. document_type: Select the document type from the following list: {{ALL_DOCUMENT_TYPES}}. It MUST come from this list, do NOT fabricate a document type.\n6. language: Determine the document language (e.g. "de" or "en")\n      \nImportant rules for the analysis:\n\nFor tags:\n- Use only relevant categories\n- Maximum 4 tags per document, less if sufficient (at least 1)\n- Avoid generic or too specific tags\n- Use only the most important information for tag creation\n\nFor the title:\n- Short and concise, NO ADDRESSES\n- Contains the most important identification features\n- For invoices/orders, mention invoice/order number if available\n\nFor the correspondent:\n- Identify the sender or institution\n- When generating the correspondent, always create the shortest possible form of the company name (e.g. "Amazon" instead of "Amazon EU SARL, German branch")\n\nFor the document date:\n- Extract the date of the document\n- Use the format YYYY-MM-DD\n- If multiple dates are present, use the most relevant one\n\nFor the language:\n- Determine the document language\n- Use language codes like "de" for German or "en" for English\n- If the language is not clear, use "und" as a placeholder
+SYSTEM_PROMPT=\`You are a personalized document analyzer. Your task is to analyze documents and extract relevant information.\n\nAnalyze the document content and extract the following information into a structured JSON object:\n\n1. title: Create a concise, meaningful title for the document\n2. correspondent: Identify the sender/institution but do not include addresses\n3. tags: Select up to 4 relevant thematic tags\n4. document_date: Extract the document date (format: YYYY-MM-DD)\n5. document_type: Select the document type from the following list: {{ALL_DOCUMENT_TYPES}}. **CRITICAL** DO NOT fabricate a document type, ONLY select from the available document types.\n6. language: Determine the document language (e.g. "de" or "en")\n      \nImportant rules for the analysis:\n\nFor tags:\n- Use only relevant categories\n- Maximum 4 tags per document, less if sufficient (at least 1)\n- Avoid generic or too specific tags\n- Use only the most important information for tag creation\n\nFor the title:\n- Short and concise, NO ADDRESSES\n- Contains the most important identification features\n- For invoices/orders, mention invoice/order number if available\n\nFor the correspondent:\n- Identify the sender or institution\n- When generating the correspondent, always create the shortest possible form of the company name (e.g. "Amazon" instead of "Amazon EU SARL, German branch")\n\nFor the document date:\n- Extract the date of the document\n- Use the format YYYY-MM-DD\n- If multiple dates are present, use the most relevant one\n\nFor the language:\n- Determine the document language\n- Use language codes like "de" for German or "en" for English\n- If the language is not clear, use "und" as a placeholder
 \`
 PROCESS_PREDEFINED_DOCUMENTS=no
 TOKEN_LIMIT=32768
@@ -70508,7 +70508,7 @@ AI_PROCESSED_TAG_NAME=AI-Processed
 USE_PROMPT_TAGS=no
 PROMPT_TAGS=
 USE_EXISTING_DATA=yes
-PRE_EXISTING_DATA_PROMPT=\`Hello.\`
+PRE_EXISTING_DATA_PROMPT=\`Available document types: {{ALL_DOCUMENT_TYPES}}\`
 API_KEY=$PAPERLESS_AI_API_KEY
 JWT_SECRET=$PAPERLESS_AI_JWT_SECRET
 CUSTOM_API_KEY=$LITELLM_MASTER_KEY
@@ -70522,6 +70522,7 @@ ACTIVATE_TITLE=no
 ACTIVATE_CUSTOM_FIELDS=no
 CUSTOM_FIELDS={"custom_fields":[]}
 DISABLE_AUTOMATIC_PROCESSING=no
+RESTRICT_TO_EXISTING_CORRESPONDENTS=yes
 AZURE_ENDPOINT=
 AZURE_API_KEY=
 AZURE_DEPLOYMENT_NAME=
@@ -71841,7 +71842,7 @@ PAPERLESS_API_TOKEN=$PAPERLESS_API_TOKEN
 PAPERLESS_USERNAME=$PAPERLESS_ADMIN_USERNAME
 AI_PROVIDER=custom
 SCAN_INTERVAL=*/5 * * * *
-SYSTEM_PROMPT=\`You are a personalized document analyzer. Your task is to analyze documents and extract relevant information.\n\nAnalyze the document content and extract the following information into a structured JSON object:\n\n1. title: Create a concise, meaningful title for the document\n2. correspondent: Identify the sender/institution but do not include addresses\n3. tags: Select up to 4 relevant thematic tags\n4. document_date: Extract the document date (format: YYYY-MM-DD)\n5. document_type: Select the document type from the following list: {{ALL_DOCUMENT_TYPES}}. It MUST come from this list, do NOT fabricate a document type.\n6. language: Determine the document language (e.g. "de" or "en")\n      \nImportant rules for the analysis:\n\nFor tags:\n- Use only relevant categories\n- Maximum 4 tags per document, less if sufficient (at least 1)\n- Avoid generic or too specific tags\n- Use only the most important information for tag creation\n\nFor the title:\n- Short and concise, NO ADDRESSES\n- Contains the most important identification features\n- For invoices/orders, mention invoice/order number if available\n\nFor the correspondent:\n- Identify the sender or institution\n- When generating the correspondent, always create the shortest possible form of the company name (e.g. "Amazon" instead of "Amazon EU SARL, German branch")\n\nFor the document date:\n- Extract the date of the document\n- Use the format YYYY-MM-DD\n- If multiple dates are present, use the most relevant one\n\nFor the language:\n- Determine the document language\n- Use language codes like "de" for German or "en" for English\n- If the language is not clear, use "und" as a placeholder
+SYSTEM_PROMPT=\`You are a personalized document analyzer. Your task is to analyze documents and extract relevant information.\n\nAnalyze the document content and extract the following information into a structured JSON object:\n\n1. title: Create a concise, meaningful title for the document\n2. correspondent: Identify the sender/institution but do not include addresses\n3. tags: Select up to 4 relevant thematic tags\n4. document_date: Extract the document date (format: YYYY-MM-DD)\n5. document_type: Select the document type from the following list: {{ALL_DOCUMENT_TYPES}}. **CRITICAL** DO NOT fabricate a document type, ONLY select from the available document types.\n6. language: Determine the document language (e.g. "de" or "en")\n      \nImportant rules for the analysis:\n\nFor tags:\n- Use only relevant categories\n- Maximum 4 tags per document, less if sufficient (at least 1)\n- Avoid generic or too specific tags\n- Use only the most important information for tag creation\n\nFor the title:\n- Short and concise, NO ADDRESSES\n- Contains the most important identification features\n- For invoices/orders, mention invoice/order number if available\n\nFor the correspondent:\n- Identify the sender or institution\n- When generating the correspondent, always create the shortest possible form of the company name (e.g. "Amazon" instead of "Amazon EU SARL, German branch")\n\nFor the document date:\n- Extract the date of the document\n- Use the format YYYY-MM-DD\n- If multiple dates are present, use the most relevant one\n\nFor the language:\n- Determine the document language\n- Use language codes like "de" for German or "en" for English\n- If the language is not clear, use "und" as a placeholder
 \`
 PROCESS_PREDEFINED_DOCUMENTS=no
 TOKEN_LIMIT=32768
@@ -71852,7 +71853,7 @@ AI_PROCESSED_TAG_NAME=AI-Processed
 USE_PROMPT_TAGS=no
 PROMPT_TAGS=
 USE_EXISTING_DATA=yes
-PRE_EXISTING_DATA_PROMPT=\`Hello.\`
+PRE_EXISTING_DATA_PROMPT=\`Available document types: {{ALL_DOCUMENT_TYPES}}\`
 API_KEY=$PAPERLESS_AI_API_KEY
 JWT_SECRET=$PAPERLESS_AI_JWT_SECRET
 CUSTOM_API_KEY=$LITELLM_MASTER_KEY
@@ -71866,6 +71867,7 @@ ACTIVATE_TITLE=no
 ACTIVATE_CUSTOM_FIELDS=no
 CUSTOM_FIELDS={"custom_fields":[]}
 DISABLE_AUTOMATIC_PROCESSING=no
+RESTRICT_TO_EXISTING_CORRESPONDENTS=yes
 AZURE_ENDPOINT=
 AZURE_API_KEY=
 AZURE_DEPLOYMENT_NAME=
@@ -110198,7 +110200,7 @@ function performUpdateSpeakr()
       newVer=v4
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/learnedmachine/speakr:0.10.0-alpha,mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
-      image_update_map[1]="mirror.gcr.io/learnedmachine/speakr:0.10.0-alpha,ghcr.io/homeserverhq/speakr:v0.10.3-alpha"
+      image_update_map[1]="mirror.gcr.io/learnedmachine/speakr:0.10.0-alpha,ghcr.io/homeserverhq/speakr:v0.10.5"
       image_update_map[2]="mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1,mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateSpeakrV4
       perform_update_report="${perform_update_report}$stack_upgrade_report"
@@ -110206,9 +110208,9 @@ function performUpdateSpeakr()
     ;;
     4)
       newVer=v4
-      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/speakr:v0.10.3-alpha,mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/speakr:v0.10.5,mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
-      image_update_map[1]="ghcr.io/homeserverhq/speakr:v0.10.3-alpha,ghcr.io/homeserverhq/speakr:v0.10.3-alpha"
+      image_update_map[1]="ghcr.io/homeserverhq/speakr:v0.10.5,ghcr.io/homeserverhq/speakr:v0.10.5"
       image_update_map[2]="mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1,mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1"
     ;;
     *)
@@ -110387,7 +110389,7 @@ services:
       - "ofelia.job-exec.speakr-monthly-db.mail-only-on-error=false"
 
   speakr-app:
-    image: ghcr.io/homeserverhq/speakr:v0.10.3-alpha
+    image: ghcr.io/homeserverhq/speakr:v0.10.5
     container_name: speakr-app
     hostname: speakr-app
     restart: unless-stopped
