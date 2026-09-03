@@ -30489,6 +30489,10 @@ EOFIM
     curl -s -X POST "https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/api/v1/tools/id/mcpkeyvault_tool/valves/user/update" -H "Authorization: Bearer $OPENWEBUI_PU_API_KEY" -H "Content-Type: application/json" -d "$jsonbody" > /dev/null 2>&1
     docker exec openwebui-db bash -lc "PGPASSWORD=\"\$POSTGRES_PASSWORD\" psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -v ON_ERROR_STOP=1 -c \"INSERT INTO access_grant (id, resource_type, resource_id, principal_type, principal_id, permission, created_at) VALUES (gen_random_uuid()::text, 'knowledge', '$AUTOKB_PKB_REMOTE_TARGET_ID', 'user', '$OPENWEBUI_PU_UUID', 'read', EXTRACT(EPOCH FROM NOW())::bigint);\""
   fi
+  docker ps | grep -q speakr-app > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    docker container restart speakr-app > /dev/null 2>&1
+  fi
   if ! [ "$addPUIsLDAPAdmin" = "true" ]; then
     echo "Sending Vaultwarden template to ${addPUUID}@${HOMESERVER_DOMAIN}..."
     emailUserVaultwardenCredentials "$addPUUID" "$addPUEmailAddress"
@@ -40174,7 +40178,7 @@ function initServiceVars()
   checkAddSvc "SVCD_TABBYML_APP=tabbyml,tabbyml,primary,admin,TabbyML,tabbyml,hshq"
   checkAddSvc "SVCD_DEEPWIKI_OPEN_APP=deepwikiopen,deepwikiopen,primary,admin,DeepWiki-Open,deepwikiopen,hshq"
   checkAddSvc "SVCD_DEEPWIKI_OPEN_API=deepwikiopen,deepwikiopen-api,primary,admin,DeepWiki-Open API,deepwikiopen-api,hshq"
-  checkAddSvc "SVCD_DOCLING_APP=docling,docling,primary,admin,Docling,docling,hshq"
+  checkAddSvc "SVCD_DOCLING_APP=docling,docling,primary,user,Docling,docling,hshq"
   checkAddSvc "SVCD_DIFY_APP=dify,dify,primary,user,Dify,dify,hshq"
   checkAddSvc "SVCD_MINDSDB_APP=mindsdb,mindsdb,primary,admin,MindsDB,mindsdb,hshq"
   checkAddSvc "SVCD_WATERCRAWL_APP=watercrawl,watercrawl,primary,user,WaterCrawl,watercrawl,hshq"
@@ -70205,6 +70209,7 @@ PAPERLESS_AI_LLM_MODEL=LongContext
 PAPERLESS_AI_LLM_API_KEY=$LITELLM_MASTER_KEY
 PAPERLESS_AI_LLM_ENDPOINT=http://litellm-proxy:4000/v1
 PAPERLESS_AI_LLM_ALLOW_INTERNAL_ENDPOINTS=true
+PAPERLESS_OCR_USER_ARGS='{"invalidate_digital_signatures": true}'
 EOFJT
   rm -f $HOME/paperless.oidc
   cat <<EOFIM > $HOME/paperless.oidc
@@ -70522,7 +70527,7 @@ ACTIVATE_TITLE=no
 ACTIVATE_CUSTOM_FIELDS=no
 CUSTOM_FIELDS={"custom_fields":[]}
 DISABLE_AUTOMATIC_PROCESSING=no
-RESTRICT_TO_EXISTING_CORRESPONDENTS=yes
+RESTRICT_TO_EXISTING_DOCUMENT_TYPES=yes
 AZURE_ENDPOINT=
 AZURE_API_KEY=
 AZURE_DEPLOYMENT_NAME=
@@ -71867,7 +71872,7 @@ ACTIVATE_TITLE=no
 ACTIVATE_CUSTOM_FIELDS=no
 CUSTOM_FIELDS={"custom_fields":[]}
 DISABLE_AUTOMATIC_PROCESSING=no
-RESTRICT_TO_EXISTING_CORRESPONDENTS=yes
+RESTRICT_TO_EXISTING_DOCUMENT_TYPES=yes
 AZURE_ENDPOINT=
 AZURE_API_KEY=
 AZURE_DEPLOYMENT_NAME=
@@ -72143,6 +72148,7 @@ function mfPaperlessV12Update()
     echo "PAPERLESS_AI_LLM_API_KEY=$LITELLM_MASTER_KEY" >> $HOME/paperless.env
     echo "PAPERLESS_AI_LLM_ENDPOINT=http://litellm-proxy:4000/v1" >> $HOME/paperless.env
     echo "PAPERLESS_AI_LLM_ALLOW_INTERNAL_ENDPOINTS=true" >> $HOME/paperless.env
+    echo "PAPERLESS_OCR_USER_ARGS='{\"invalidate_digital_signatures\": true}'" >> $HOME/paperless.env
   fi
   grep -q "PRE_EXISTING_DATA_PROMPT" $HSHQ_STACKS_DIR/paperless/ai/.env.migrated
   if [ $? -ne 0 ]; then
@@ -95611,6 +95617,7 @@ function installDocuSeal()
     updateConfigVar DOCUSEAL_INIT_ENV $DOCUSEAL_INIT_ENV
   fi
   sleep 3
+  performOnboardingDocuSeal
   addReadOnlyUserToDatabase DocuSeal postgres docuseal-db $DOCUSEAL_DATABASE_NAME $DOCUSEAL_DATABASE_USER $DOCUSEAL_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/docuseal/dbexport $DOCUSEAL_DATABASE_READONLYUSER $DOCUSEAL_DATABASE_READONLYUSER_PASSWORD
   if [ -z "$FMLNAME_DOCUSEAL_APP" ]; then
     set +e
@@ -95732,6 +95739,76 @@ POSTGRES_PASSWORD=$DOCUSEAL_DATABASE_USER_PASSWORD
 FORCE_SSL=$SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN
 DATABASE_URL=postgresql://$DOCUSEAL_DATABASE_USER:$DOCUSEAL_DATABASE_USER_PASSWORD@docuseal-db:5432/$DOCUSEAL_DATABASE_NAME
 EOFMT
+}
+
+function performOnboardingDocuSeal()
+{
+  docker exec -i \
+    -e DOCUSEAL_FIRST_NAME="HSHQ" \
+    -e DOCUSEAL_LAST_NAME="Admin" \
+    -e DOCUSEAL_EMAIL="$DOCUSEAL_ADMIN_EMAIL_ADDRESS" \
+    -e DOCUSEAL_PASSWORD="$DOCUSEAL_ADMIN_PASSWORD" \
+    -e DOCUSEAL_COMPANY="$HOMESERVER_NAME" \
+    -e DOCUSEAL_URL="https://$SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN" \
+    -e DOCUSEAL_TIMEZONE="$TZ" \
+    -e DOCUSEAL_LOCALE="en-US" \
+    -e SMTP_HOSTNAME="$SMTP_HOSTNAME" \
+    -e SMTP_HOSTPORT="$SMTP_HOSTPORT" \
+    -e EMAIL_ADMIN_EMAIL_ADDRESS="$EMAIL_ADMIN_EMAIL_ADDRESS" \
+    docuseal-app sh -c 'cd /app && exec bin/rails runner -' 2>&1 <<'RUBY'
+# frozen_string_literal: true
+
+exit 0 if User.exists?
+
+app_url = ENV.fetch('DOCUSEAL_URL')
+
+unless URI.parse(app_url).class.in?([URI::HTTP, URI::HTTPS])
+  abort "Invalid app URL: #{app_url}"
+end
+
+account = Account.new(
+  name: ENV.fetch('DOCUSEAL_COMPANY'),
+  timezone: Accounts.normalize_timezone(ENV.fetch('DOCUSEAL_TIMEZONE', 'UTC')),
+  locale: ENV.fetch('DOCUSEAL_LOCALE', 'en-US')
+)
+
+user = account.users.new(
+  first_name: ENV.fetch('DOCUSEAL_FIRST_NAME'),
+  last_name: ENV.fetch('DOCUSEAL_LAST_NAME'),
+  email: ENV.fetch('DOCUSEAL_EMAIL'),
+  password: ENV.fetch('DOCUSEAL_PASSWORD')
+)
+
+abort "Invalid account: #{account.errors.full_messages.join(', ')}" unless account.valid?
+
+unless user.save
+  abort "User save failed: #{user.errors.full_messages.join(', ')}"
+end
+
+account.encrypted_configs.create!([
+  { key: EncryptedConfig::APP_URL_KEY, value: app_url },
+  { key: EncryptedConfig::ESIGN_CERTS_KEY, value: GenerateCertificate.call.transform_values(&:to_pem) },
+  {
+    key: EncryptedConfig::EMAIL_SMTP_KEY,
+    value: {
+      'host'           => ENV.fetch('SMTP_HOSTNAME'),
+      'port'           => ENV.fetch('SMTP_HOSTPORT'),
+      'from_email'     => ENV.fetch('EMAIL_ADMIN_EMAIL_ADDRESS'),
+      'security'       => 'none',
+      'authentication' => 'plain'
+    }
+  }
+])
+
+account.account_configs.create!(key: :fulltext_search, value: true) if SearchEntry.table_exists?
+
+Docuseal.refresh_default_url_options!
+
+puts "DocuSeal onboarded: #{user.email} (#{account.name})"
+RUBY
+  sleep 3
+  docker container restart docuseal-app > /dev/null 2>&1
+  echo "DocuSeal onboarding wizard complete!"
 }
 
 function performUpdateDocuSeal()
