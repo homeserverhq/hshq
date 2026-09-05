@@ -31619,7 +31619,7 @@ function loadPinnedDockerImages()
   IMG_KHOJ_SANDBOX=ghcr.io/khoj-ai/terrarium:latest
   IMG_KHOJ_COMPUTER=ghcr.io/khoj-ai/khoj-computer:1.42.0
   IMG_KHOJ_SERVER=ghcr.io/khoj-ai/khoj:1.42.10
-  IMG_LOBECHAT_APP=mirror.gcr.io/lobehub/lobe-chat-database:1.143.2
+  IMG_LOBECHAT_APP=mirror.gcr.io/lobehub/lobe-chat-database:1.143.3
   IMG_INVOKEAI_APP=ghcr.io/invoke-ai/invokeai:6.12-cpu
   IMG_RAGFLOW_INFINITY=mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3
   IMG_RAGFLOW_APP=ghcr.io/homeserverhq/ragflow:v0.27.1
@@ -31676,7 +31676,7 @@ function loadPinnedDockerImages()
   IMG_LANGFUSE_APP=mirror.gcr.io/langfuse/langfuse:3.213.0
   IMG_SKYVERN_API=mirror.gcr.io/skyvern/skyvern:v1.0.13
   IMG_SKYVERN_WEB=mirror.gcr.io/skyvern/skyvern-ui:v1.0.13
-  IMG_WGER=mirror.gcr.io/wger/server:2.4
+  IMG_WGER=mirror.gcr.io/wger/server:2.7.0
   IMG_WORKOUTCOOL=ghcr.io/snouzy/workout-cool:1.3.2
   IMG_OPENRAG_DB=mirror.gcr.io/langflowai/openrag-opensearch:0.4.0
   IMG_OPENRAG_BACKEND=mirror.gcr.io/langflowai/openrag-backend:0.4.0
@@ -31691,8 +31691,8 @@ function loadPinnedDockerImages()
   IMG_HERMES_TERMINAL=hshq/hermes-terminal:v1
   IMG_HERMES_CAMOFOX=ghcr.io/jo-inc/camofox-browser:1.11.2
   IMG_HERMES_WEBUI=ghcr.io/nesquena/hermes-webui:0.51.137
-  IMG_AUTOKB_APP=ghcr.io/homeserverhq/autokb-app:v5
-  IMG_AUTOKB_MCP=ghcr.io/homeserverhq/autokb-mcp:v5
+  IMG_AUTOKB_APP=ghcr.io/homeserverhq/autokb-app:v6
+  IMG_AUTOKB_MCP=ghcr.io/homeserverhq/autokb-mcp:v6
   IMG_SUITECRM_APP=ghcr.io/homeserverhq/suitecrm-core:v8.10.1
   IMG_SUITECRM_MCP=ghcr.io/homeserverhq/suitecrm-mcp:v2
   IMG_HEDGEDOC_FRONTEND=ghcr.io/homeserverhq/hedgedoc-frontend:v2.0.1-alpha
@@ -32038,7 +32038,7 @@ function getScriptStackVersion()
     skyvern)
       echo "v1" ;;
     wger)
-      echo "v1" ;;
+      echo "v2" ;;
     workoutcool)
       echo "v1" ;;
     openrag)
@@ -34500,6 +34500,7 @@ AUTOKB_API_KEY=
 AUTOKB_BACKEND_API_KEY=
 AUTOKB_WEBHOOK_API_KEY=
 AUTOKB_ENCRYPTION_KEY=
+AUTOKB_ENCRYPTION_SALT=
 AUTOKB_SHARED_OWUI_TARGET_ID=
 # AutoKB (Service Details) END
 
@@ -39429,6 +39430,10 @@ function initServicesCredentials()
     AUTOKB_ENCRYPTION_KEY=$(pwgen -c -n 32 1)
     updateConfigVar AUTOKB_ENCRYPTION_KEY $AUTOKB_ENCRYPTION_KEY
   fi
+  if [ -z "$AUTOKB_ENCRYPTION_SALT" ]; then
+    AUTOKB_ENCRYPTION_SALT=$(pwgen -c -n 32 1)
+    updateConfigVar AUTOKB_ENCRYPTION_SALT $AUTOKB_ENCRYPTION_SALT
+  fi
   if [ -z "$SUITECRM_ADMIN_USERNAME" ]; then
     SUITECRM_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_suitecrm"
     updateConfigVar SUITECRM_ADMIN_USERNAME $SUITECRM_ADMIN_USERNAME
@@ -41427,13 +41432,13 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_EMAILCLASSIFIERAI_APP}-Admin" https://$SUB_EMAILCLASSIFIERAI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $EMAILCLASSIFIERAI_ADMIN_USERNAME $EMAILCLASSIFIERAI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HERMES_AGENT_DASHBOARD}-Admin" https://$SUB_HERMES_AGENT_DASHBOARD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HERMES_AGENT_ADMIN_USERNAME $HERMES_AGENT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUTOKB_WEB}-Admin" https://$SUB_AUTOKB_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOKB_ADMIN_USERNAME $AUTOKB_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SUITECRM_APP}-Admin" https://$SUB_SUITECRM_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SUITECRM_ADMIN_USERNAME $SUITECRM_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SUITECRM_APP}-Admin" https://$SUB_SUITECRM_APP.$HOMESERVER_DOMAIN/#/Login $HOMESERVER_ABBREV $SUITECRM_ADMIN_USERNAME $SUITECRM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEDGEDOC_APP}-Admin" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEDGEDOC_ADMIN_USERNAME $HEDGEDOC_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEDGEDOC_APP}-User" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PRESENTON_APP}-Admin" https://$SUB_PRESENTON_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $PRESENTON_ADMIN_USERNAME $PRESENTON_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_BASICMEMORY_APP}-Admin" https://$SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $BASICMEMORY_ADMIN_USERNAME $BASICMEMORY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_COGNEE_FRONTEND}-Admin" https://$SUB_COGNEE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $COGNEE_ADMIN_USERNAME $COGNEE_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LIGHTRAG_APP}-Admin" https://$SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_USERNAME $LIGHTRAG_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LIGHTRAG_APP}-Admin" https://$SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN/webui/#/login $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_USERNAME $LIGHTRAG_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LIGHTRAG_QDRANT}-Admin" https://$SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_EMAIL_ADDRESS $LIGHTRAG_QDRANT_API_KEY)"\n"
 #ADD_NEW_VW_CREDS_HERE
 
@@ -41637,13 +41642,13 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_EMAILCLASSIFIERAI_APP}-Admin" https://$SUB_EMAILCLASSIFIERAI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $EMAILCLASSIFIERAI_ADMIN_USERNAME $EMAILCLASSIFIERAI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HERMES_AGENT_DASHBOARD}-Admin" https://$SUB_HERMES_AGENT_DASHBOARD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HERMES_AGENT_ADMIN_USERNAME $HERMES_AGENT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUTOKB_WEB}-Admin" https://$SUB_AUTOKB_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOKB_ADMIN_USERNAME $AUTOKB_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SUITECRM_APP}-Admin" https://$SUB_SUITECRM_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SUITECRM_ADMIN_USERNAME $SUITECRM_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SUITECRM_APP}-Admin" https://$SUB_SUITECRM_APP.$HOMESERVER_DOMAIN/#/Login $HOMESERVER_ABBREV $SUITECRM_ADMIN_USERNAME $SUITECRM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HEDGEDOC_APP}-Admin" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEDGEDOC_ADMIN_USERNAME $HEDGEDOC_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HEDGEDOC_APP}-User" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PRESENTON_APP}-Admin" https://$SUB_PRESENTON_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $PRESENTON_ADMIN_USERNAME $PRESENTON_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_BASICMEMORY_APP}-Admin" https://$SUB_BASICMEMORY_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $BASICMEMORY_ADMIN_USERNAME $BASICMEMORY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_COGNEE_FRONTEND}-Admin" https://$SUB_COGNEE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $COGNEE_ADMIN_USERNAME $COGNEE_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LIGHTRAG_APP}-Admin" https://$SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_USERNAME $LIGHTRAG_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LIGHTRAG_APP}-Admin" https://$SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN/webui/#/login $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_USERNAME $LIGHTRAG_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LIGHTRAG_QDRANT}-Admin" https://$SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_EMAIL_ADDRESS $LIGHTRAG_QDRANT_API_KEY)"\n"
 #ADD_NEW_FMT_CREDS_HERE
 
@@ -42417,7 +42422,7 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,morphic,opennotebook,appsmith,trilium,memos,sillytavern,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,wger,workoutcool,voicebox,opencode,emailclassifierai,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,opennotebook,appsmith,trilium,memos,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,wger,workoutcool,voicebox,opencode,emailclassifierai,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
   DS_MEM_LOW=minimal
   DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
   DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
@@ -42431,7 +42436,7 @@ function initServiceDefaults()
   BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
 #INIT_SERVICE_DEFAULTS_END
   if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
-    HSHQ_OPTIONAL_STACKS=${HSHQ_OPTIONAL_STACKS},surfsense,ente,comfyui,insanelyfastwhisper,ivbox,skyvern,openrag,openskills,hermes-agent
+    HSHQ_OPTIONAL_STACKS=${HSHQ_OPTIONAL_STACKS},surfsense,ente,comfyui,perplexica,morphic,insanelyfastwhisper,ivbox,skyvern,openrag,openskills,hermes-agent,sillytavern
   fi
 }
 
@@ -44343,7 +44348,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "OpenSkills" "OPENSKILLS_INIT_ENV=false,OPENSKILLS_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "EmailClassifierAI" "EMAILCLASSIFIERAI_INIT_ENV=false,EMAILCLASSIFIERAI_ADMIN_USERNAME=,EMAILCLASSIFIERAI_ADMIN_PASSWORD=,EMAILCLASSIFIERAI_REDIS_PASSWORD=,EMAILCLASSIFIERAI_FLASK_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "HermesAgent" "HERMES_AGENT_INIT_ENV=false,HERMES_AGENT_ADMIN_USERNAME=,HERMES_AGENT_ADMIN_PASSWORD=,HERMES_AGENT_SUDO_PASSWORD=,HERMES_AGENT_API_KEY=,HERMES_AGENT_WEBUI_PASSWORD=" $CONFIG_FILE false
-  checkAddServiceToConfig "AutoKB" "AUTOKB_INIT_ENV=false,AUTOKB_ADMIN_USERNAME=,AUTOKB_ADMIN_PASSWORD=,AUTOKB_DATABASE_NAME=,AUTOKB_DATABASE_USER=,AUTOKB_DATABASE_USER_PASSWORD=,AUTOKB_DATABASE_READONLYUSER=,AUTOKB_DATABASE_READONLYUSER_PASSWORD=,AUTOKB_REDIS_PASSWORD=,AUTOKB_API_KEY=,AUTOKB_BACKEND_API_KEY=,AUTOKB_WEBHOOK_API_KEY=,AUTOKB_ENCRYPTION_KEY=,AUTOKB_SHARED_OWUI_TARGET_ID=" $CONFIG_FILE false
+  checkAddServiceToConfig "AutoKB" "AUTOKB_INIT_ENV=false,AUTOKB_ADMIN_USERNAME=,AUTOKB_ADMIN_PASSWORD=,AUTOKB_DATABASE_NAME=,AUTOKB_DATABASE_USER=,AUTOKB_DATABASE_USER_PASSWORD=,AUTOKB_DATABASE_READONLYUSER=,AUTOKB_DATABASE_READONLYUSER_PASSWORD=,AUTOKB_REDIS_PASSWORD=,AUTOKB_API_KEY=,AUTOKB_BACKEND_API_KEY=,AUTOKB_WEBHOOK_API_KEY=,AUTOKB_ENCRYPTION_KEY=,AUTOKB_ENCRYPTION_SALT=,AUTOKB_SHARED_OWUI_TARGET_ID=" $CONFIG_FILE false
   checkAddServiceToConfig "SuiteCRM" "SUITECRM_INIT_ENV=false,SUITECRM_ADMIN_USERNAME=,SUITECRM_ADMIN_EMAIL_ADDRESS=,SUITECRM_ADMIN_PASSWORD=,SUITECRM_DATABASE_NAME=,SUITECRM_DATABASE_ROOT_PASSWORD=,SUITECRM_DATABASE_USER=,SUITECRM_DATABASE_USER_PASSWORD=,SUITECRM_DATABASE_READONLYUSER=,SUITECRM_DATABASE_READONLYUSER_PASSWORD=,SUITECRM_REDIS_PASSWORD=,SUITECRM_APP_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "HedgeDoc" "HEDGEDOC_INIT_ENV=false,HEDGEDOC_ADMIN_USERNAME=,HEDGEDOC_ADMIN_EMAIL_ADDRESS=,HEDGEDOC_ADMIN_PASSWORD=,HEDGEDOC_DATABASE_NAME=,HEDGEDOC_DATABASE_USER=,HEDGEDOC_DATABASE_USER_PASSWORD=,HEDGEDOC_DATABASE_READONLYUSER=,HEDGEDOC_DATABASE_READONLYUSER_PASSWORD=,HEDGEDOC_SESSION_SECRET=,HEDGEDOC_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "Presenton" "PRESENTON_INIT_ENV=false,PRESENTON_ADMIN_USERNAME=,PRESENTON_ADMIN_EMAIL_ADDRESS=,PRESENTON_ADMIN_PASSWORD=,PRESENTON_ADMIN_API_KEY=" $CONFIG_FILE false
@@ -97701,6 +97706,7 @@ function installAnythingLLM()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://anythingllm-app:3001 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -98533,6 +98539,7 @@ function installLibreChat()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://librechat-app:3080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -100914,9 +100921,9 @@ function performUpdateLobeChat()
   case "$perform_stack_ver" in
     1)
       newVer=v1
-      curImageList=mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/lobehub/lobe-chat-database:1.143.2,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      curImageList=mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/lobehub/lobe-chat-database:1.143.3,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
       image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
-      image_update_map[1]="mirror.gcr.io/lobehub/lobe-chat-database:1.143.2,mirror.gcr.io/lobehub/lobe-chat-database:1.143.2"
+      image_update_map[1]="mirror.gcr.io/lobehub/lobe-chat-database:1.143.3,mirror.gcr.io/lobehub/lobe-chat-database:1.143.3"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
     ;;
@@ -100952,7 +100959,7 @@ function installInvokeAI()
   initServicesCredentials
   set +e
   outputConfigInvokeAI
-  installStack invokeai invokeai-app "Invoke running on" $HOME/invokeai.env
+  installStack invokeai invokeai-app "Invoke running on" $HOME/invokeai.env 3
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -108740,6 +108747,7 @@ function installAppsmith()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://appsmith-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -115357,10 +115365,18 @@ function performUpdateWger()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/wger/server:2.4,mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
-      image_update_map[1]="mirror.gcr.io/wger/server:2.4,mirror.gcr.io/wger/server:2.4"
+      image_update_map[1]="mirror.gcr.io/wger/server:2.4,mirror.gcr.io/wger/server:2.7.0"
+      image_update_map[2]="mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
+      image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/wger/server:2.7.0,mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
+      image_update_map[1]="mirror.gcr.io/wger/server:2.7.0,mirror.gcr.io/wger/server:2.7.0"
       image_update_map[2]="mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
       image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
@@ -116046,10 +116062,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - int-voicebox-net
-      - dock-proxy-net
       - dock-ext-net
-      - dock-internalmail-net
       - dock-aipriv-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -116123,7 +116136,7 @@ function buildImageVoiceboxV1()
   echo -e "========================================================================\n"
   sudo rm -fr $HSHQ_BUILD_DIR/voicebox
   cd $HSHQ_BUILD_DIR
-  git -c advice.detachedHead=false clone --depth 1 --branch 0.3.0 https://github.com/jamiepine/voicebox.git
+  git -c advice.detachedHead=false clone --depth 1 --branch v0.5.0 https://github.com/jamiepine/voicebox.git
   cd $HSHQ_BUILD_DIR/voicebox
   sed -i "/CHANGELOG.md/d" .dockerignore
   sed -i "/RUN cd web && bunx --bun vite build/i COPY CHANGELOG.md /build/CHANGELOG.md" ./Dockerfile
@@ -117641,6 +117654,7 @@ SMTP_NOTIFY_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
 SMTP_USE_TLS=True
 SMTP_USE_SSL=False
 ENCRYPTION_KEY=$AUTOKB_ENCRYPTION_KEY
+ENCRYPTION_SALT=$AUTOKB_ENCRYPTION_SALT
 MAX_STARTUP_RETRIES=100
 STARTUP_RETRY_SLEEP=1
 LOG_LEVEL=INFO
@@ -117789,10 +117803,10 @@ function performUpdateAutoKB()
   case "$perform_stack_ver" in
     1)
       newVer=v1
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/homeserverhq/autokb-app:v5,ghcr.io/homeserverhq/autokb-mcp:v5,mirror.gcr.io/valkey/valkey:alpine3.23
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/homeserverhq/autokb-app:v6,ghcr.io/homeserverhq/autokb-mcp:v6,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
-      image_update_map[1]="ghcr.io/homeserverhq/autokb-app:v5,ghcr.io/homeserverhq/autokb-app:v5"
-      image_update_map[2]="ghcr.io/homeserverhq/autokb-mcp:v5,ghcr.io/homeserverhq/autokb-mcp:v5"
+      image_update_map[1]="ghcr.io/homeserverhq/autokb-app:v6,ghcr.io/homeserverhq/autokb-app:v6"
+      image_update_map[2]="ghcr.io/homeserverhq/autokb-mcp:v6,ghcr.io/homeserverhq/autokb-mcp:v6"
       image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
@@ -118204,6 +118218,10 @@ SUITECRM_LDAP_GROUP_NAME=$LDAP_PRIMARY_USER_GROUP_NAME
 SUITECRM_LDAP_GROUP_ATTR=uniqueMember
 SUITECRM_LDAP_GROUP_OBJECTCLASS=groupOfUniqueNames
 SUITECRM_LDAP_GROUP_BASE_DN=ou=groups,${LDAP_BASE_DN}
+SUITECRM_BASE_URL=http://suitecrm-web:80
+MCP_SERVER_PORT=80
+ALLOW_ALL_AGGREGATE=false
+IS_STATEFUL=false
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/suitecrm/web/default.conf
 server {
@@ -131612,7 +131630,7 @@ function outputCaddyHeaders()
 }
 
 ($CADDY_SNIPPET_RELAXEDCSP) {
-  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com github.com *.${HOMESERVER_DOMAIN} data: blob:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; media-src 'self' *.${HOMESERVER_DOMAIN} github.com data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} api.comfy.org huggingface.co data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
+  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' registry.npmmirror.com; font-src 'self' registry.npmmirror.com; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com github.com cdn.anythingllm.com assets.appsmith.com www.authelia.com registry.npmmirror.com *.s3.amazonaws.com *.${HOMESERVER_DOMAIN} data: blob:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; media-src 'self' *.${HOMESERVER_DOMAIN} github.com data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} api.comfy.org huggingface.co cdn.anythingllm.com registry.npmmirror.com data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
 }
 
 # At some point we'll fix the svcs.snip and collapse these two
