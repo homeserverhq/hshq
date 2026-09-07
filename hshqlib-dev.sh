@@ -9940,6 +9940,7 @@ function up()
   done
   iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
   iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  #TODO - delete this next line for client ip passthrough
   iptables -t nat -A POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE
   iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \\\$default_iface -m set --match-set inetusers src -j ACCEPT
   iptables -A FORWARD -i \\\$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
@@ -9950,10 +9951,11 @@ function down()
 {
   iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
   iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  #TODO - delete this next line for client ip passthrough
   iptables -t nat -D POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE
   iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \\\$default_iface -m set --match-set inetusers src -j ACCEPT
   iptables -D FORWARD -i \\\$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
-  iptables -t nat -D POSTROUTING -o \\\$default_iface -m set --match-set inetusers -j MASQUERADE
+  iptables -t nat -D POSTROUTING -o \\\$default_iface -m set --match-set inetusers src -j MASQUERADE
   ipset destroy inetusers
   ipset destroy alldevices
 }
