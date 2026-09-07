@@ -24493,13 +24493,6 @@ function version238Update()
   outputDBExportScripts
   outputCaddyHeaders
   restartAllCaddyContainers
-  docker ps | grep -q wordpress-web > /dev/null 2>&1
-  if [ $? -eq 0 ]; then
-    if [ -z "$WORDPRESS_APP_PASSWORD" ]; then
-      WORDPRESS_APP_PASSWORD=$(docker run --user www-data --rm --name wordpress-cli --hostname wordpress-cli -e TZ="$TZ" --env-file wpstack.env -v "/etc/localtime:/etc/localtime:ro" -v "/etc/timezone:/etc/timezone:ro" -v "/etc/ssl/certs:/etc/ssl/certs:ro" -v "/usr/share/ca-certificates:/usr/share/ca-certificates:ro" -v "/usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro" -v "$HSHQ_STACKS_DIR/wordpress/web:/var/www/html" --restart no --network dock-dbs $(getScriptImageByContainerName wordpress-cli) sh -c "wp user application-password create $WORDPRESS_ADMIN_USERNAME testapp --porcelain")
-      updateConfigVar WORDPRESS_APP_PASSWORD "$WORDPRESS_APP_PASSWORD"
-    fi
-  fi
   sudo grep -q "^HOMESERVER_CURRENCY_CODE" $HSHQ_PLAINTEXT_ROOT_CONFIG
   if [ $? -ne 0 ]; then
     HOMESERVER_CURRENCY_CODE="USD"
@@ -24508,7 +24501,7 @@ function version238Update()
   grep -q "linkwarden_claim" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
   if [ $? -ne 0 ]; then
     updauth=$(cat << EOFML
-      linkwarden_claim:
+  linkwarden_claim:
         id_token:
           - email
           - name
@@ -24548,7 +24541,7 @@ EOFIM
   grep -q "full_verified_claim" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
   if [ $? -ne 0 ]; then
     updauth=$(cat << EOFML
-      full_verified_claim:
+  full_verified_claim:
         id_token:
           - email
           - name
@@ -44432,6 +44425,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Mealie" "MEALIE_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Presenton" "PRESENTON_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "RAGFlow" "RAGFLOW_DATABASE_ROOT_PASSWORD=,RAGFLOW_ADMIN_API_KEY=,RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "AutoKB" "AUTOKB_ENCRYPTION_SALT=" $CONFIG_FILE false
   initServicesCredentials
 }
 
