@@ -30434,7 +30434,10 @@ EOFAU
   addPrimaryUserAutoKB "$addPUUID" "$cleanName" "$addPUEmailAddress" "$addPUEmailPassword" 1
   newuser_immich_api_key=$(pwgen -c -n 41 1)
   addPrimaryUserImmich "${addPUUID}" "$addPUEmailAddress" "$addPUFirstName $addPULastName" "$newuser_immich_api_key"
-  newuser_linkwarden_api_key=$(docker exec linkwarden-app node /data/data/provision-user.mjs $addPUEmailAddress "${addPUFirstName} ${addPULastName}" "MCP" $addPUUID)
+  docker ps | grep -q linkwarden-app > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    newuser_linkwarden_api_key=$(docker exec linkwarden-app node /data/data/provision-user.mjs $addPUEmailAddress "${addPUFirstName} ${addPULastName}" "MCP" $addPUUID)
+  fi
   newuser_hedgedoc_api_key=$(addPrimaryUserHedgeDoc "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress)
   newuser_mealie_api_key=$(addPrimaryUserMealie "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress false)
   newuser_presenton_api_key=$(addPrimaryUserPresenton "$addPUUID" "$addPUPassword")
@@ -30717,6 +30720,10 @@ function addPrimaryUserHedgeDoc()
   local username="$1"
   local display_name="$2"
   local email="$3"
+  docker ps | grep -q hedgedoc-db > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    return
+  fi
   hd_key_id="$(openssl rand 8 | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')"
   hd_secret="$(openssl rand 64 | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')"
   hd_full_token="hd2.${hd_key_id}.${hd_secret}"
@@ -30774,6 +30781,10 @@ function addPrimaryUserMealie()
   mle_full_name="$2"
   mle_email="$3"
   mle_is_admin="$4"
+  docker ps | grep -q mealie-app > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    return
+  fi
   if [ -z "$mle_is_admin" ]; then
     mle_is_admin=false
   fi
@@ -30831,6 +30842,10 @@ function addPrimaryUserPresenton()
 {
   pres_username="$1"
   pres_password="$2"
+  docker ps | grep -q presenton-app > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    return
+  fi
   docker exec -i -w /app/servers/fastapi -e USERNAME="$pres_username" -e PASSWORD="$pres_password" presenton-app python - <<'PYEOF'
 import asyncio
 import os
@@ -30907,6 +30922,10 @@ function addPrimaryUserTwenty()
   local caldav_pass=""
   local caldav_sec=""
   local is_nextcloud_installed=false
+  docker ps | grep -q twenty-app > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    return
+  fi
   docker ps | grep -q nextcloud-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     is_nextcloud_installed=true
