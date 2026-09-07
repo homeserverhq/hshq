@@ -24557,6 +24557,7 @@ EOFML
   fi
   docker ps | grep -q speakr-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
+    SPEAKR_OIDC_CLIENT_SECRET_HASH=$(docker run --rm $IMG_AUTHELIA authelia crypto hash generate pbkdf2 --variant sha512 --password $SPEAKR_OIDC_CLIENT_SECRET | cut -d" " -f2)
     cat <<EOFIM > $HOME/speakr.oidc
 # Authelia OIDC Client speakr BEGIN
       - client_id: $SPEAKR_OIDC_CLIENT_ID
