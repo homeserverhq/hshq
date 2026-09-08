@@ -40072,6 +40072,7 @@ function checkCreateNonbackupDirByStack()
       ;;
     "sysutils")
       mkdir -p $HSHQ_NONBACKUP_DIR/sysutils/prometheus
+      mkdir -p $HSHQ_NONBACKUP_DIR/sysutils/loki
       ;;
     "wazuh")
       mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes
@@ -46001,29 +46002,29 @@ function installSysUtils()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_INFLUXDB $MANAGETLS_INFLUXDB "$is_integrate_hshq" $NETDEFAULT_INFLUXDB "$inner_block"
-  inner_block=""
-  inner_block=$inner_block">>https://$SUB_ALLOY.$HOMESERVER_DOMAIN {\n"
-  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
-  inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
-  inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
-  inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
-  inner_block=$inner_block">>>>>>}\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://alloy:12345 {\n"
-  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
-  inner_block=$inner_block">>>>>>}\n"
-  inner_block=$inner_block">>>>}\n"
-  inner_block=$inner_block">>>>respond 404\n"
-  inner_block=$inner_block">>}"
-  updateCaddyBlocks $SUB_ALLOY $MANAGETLS_ALLOY "$is_integrate_hshq" $NETDEFAULT_ALLOY "$inner_block"
+  #inner_block=""
+  #inner_block=$inner_block">>https://$SUB_ALLOY.$HOMESERVER_DOMAIN {\n"
+  #inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  #inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  #inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  #inner_block=$inner_block">>>>handle @subnet {\n"
+  #inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
+  #inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
+  #inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
+  #inner_block=$inner_block">>>>>>}\n"
+  #inner_block=$inner_block">>>>>>reverse_proxy http://alloy:12345 {\n"
+  #inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  #inner_block=$inner_block">>>>>>}\n"
+  #inner_block=$inner_block">>>>}\n"
+  #inner_block=$inner_block">>>>respond 404\n"
+  #inner_block=$inner_block">>}"
+  #updateCaddyBlocks $SUB_ALLOY $MANAGETLS_ALLOY "$is_integrate_hshq" $NETDEFAULT_ALLOY "$inner_block"
   insertSubAuthelia $SUB_ALLOY.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll sysutils "$FMLNAME_GRAFANA" $USERTYPE_GRAFANA "https://$SUB_GRAFANA.$HOMESERVER_DOMAIN" "grafana.png" "$(getHeimdallOrderFromSub $SUB_GRAFANA $USERTYPE_GRAFANA)"
     insertEnableSvcAll sysutils "$FMLNAME_PROMETHEUS" $USERTYPE_PROMETHEUS "https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN" "prometheus.png" "$(getHeimdallOrderFromSub $SUB_PROMETHEUS $USERTYPE_PROMETHEUS)"
     insertEnableSvcAll sysutils "$FMLNAME_INFLUXDB" $USERTYPE_INFLUXDB "https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN" "influxdb.png" "$(getHeimdallOrderFromSub $SUB_INFLUXDB $USERTYPE_INFLUXDB)"
-    insertEnableSvcAll sysutils "$FMLNAME_ALLOY" $USERTYPE_ALLOY "https://$SUB_ALLOY.$HOMESERVER_DOMAIN" "alloy.png" "$(getHeimdallOrderFromSub $SUB_ALLOY $USERTYPE_ALLOY)"
+    #insertEnableSvcAll sysutils "$FMLNAME_ALLOY" $USERTYPE_ALLOY "https://$SUB_ALLOY.$HOMESERVER_DOMAIN" "alloy.png" "$(getHeimdallOrderFromSub $SUB_ALLOY $USERTYPE_ALLOY)"
     restartAllCaddyContainers
   fi
 }
@@ -46177,7 +46178,7 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/log/docker:/var/log/docker:ro
+      - /var/log:/var/log:ro
       - ${HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
       - ${HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
       - ${HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
@@ -46355,7 +46356,7 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/log/docker:/var/log/docker:ro
+      - /var/log:/var/log:ro
       - ${HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
       - ${HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
       - ${HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
@@ -48737,11 +48738,11 @@ pattern_ingester:
   enabled: true
 EOFPM
   cat <<EOFPM > $HSHQ_STACKS_DIR/sysutils/alloy/config.alloy
-// ─────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────
 // Docker containers → syslog files in /var/log/docker
-// daemon.json uses the syslog driver; files are named by container
 // Docker socket is used for METADATA ONLY
-// ─────────────────────────────────────────────────────────────
+// Just add loki.ship: "true" label to any container to ingest logs
+// ────────────────────────────────────────────────────────────────────
 
 discovery.docker "engine" {
   host = "unix:///var/run/docker.sock"
@@ -48784,9 +48785,10 @@ loki.source.file "docker_logs" {
   forward_to = [loki.write.local.receiver]
 }
 
-// ─────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────
 // Caddy access logs → /caddylogs/caddy-*-access.log (JSON lines)
-// ─────────────────────────────────────────────────────────────
+// Set ENABLE_LOGGING=log_true in caddy stack env to ingest access logs
+// ────────────────────────────────────────────────────────────────────
 
 loki.source.file "caddy" {
   targets = [
@@ -48813,9 +48815,10 @@ loki.relabel "caddy_instance" {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────
 // Device-name enrichment (Caddy access logs only)
-// ─────────────────────────────────────────────────────────────
+// Automatic - no action needed
+// ────────────────────────────────────────────────────────────────────
 
 discovery.file "devices" {
   files            = ["/etc/alloy/devices/devices.json"]
@@ -48852,9 +48855,37 @@ loki.process "caddy_default" {
   forward_to = [loki.write.local.receiver]
 }
 
-// ─────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────
+// Host logs → /var/log/* (one file = one service)
+// Read via the full /var/log mount (subsumes /var/log/docker).
+// Either uncomment existing, or add other paths in /var/log to ingest
+// ────────────────────────────────────────────────────────────────────
+loki.source.file "host" {
+  targets = [
+//    { __path__ = "/var/log/syslog" },
+//    { __path__ = "/var/log/auth.log" },
+//    { __path__ = "/var/log/hshq.log" },
+  ]
+  forward_to = [loki.relabel.host_instance.receiver]
+}
+
+loki.relabel "host_instance" {
+  forward_to = [loki.write.local.receiver]
+  rule {
+    source_labels = ["filename"]
+    regex         = ".*/(.+)"
+    replacement   = "$1"
+    target_label  = "job"
+  }
+  rule {
+    target_label = "log_source"
+    replacement  = "host"
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────
 // Output
-// ─────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────
 
 loki.write "local" {
   endpoint {
@@ -49156,25 +49187,25 @@ function mfUpdateSysUtilsV11()
   mkdir -p $HSHQ_STACKS_DIR/sysutils/alloy/devices
   mkdir -p $HSHQ_NONBACKUP_DIR/sysutils/loki
   outputLokiAlloyConfig
-  inner_block=""
-  inner_block=$inner_block">>https://$SUB_ALLOY.$HOMESERVER_DOMAIN {\n"
-  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
-  inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
-  inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
-  inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
-  inner_block=$inner_block">>>>>>}\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://alloy:12345 {\n"
-  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
-  inner_block=$inner_block">>>>>>}\n"
-  inner_block=$inner_block">>>>}\n"
-  inner_block=$inner_block">>>>respond 404\n"
-  inner_block=$inner_block">>}"
-  updateCaddyBlocks $SUB_ALLOY $MANAGETLS_ALLOY "$is_integrate_hshq" $NETDEFAULT_ALLOY "$inner_block"
+  #inner_block=""
+  #inner_block=$inner_block">>https://$SUB_ALLOY.$HOMESERVER_DOMAIN {\n"
+  #inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  #inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  #inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  #inner_block=$inner_block">>>>handle @subnet {\n"
+  #inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
+  #inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
+  #inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
+  #inner_block=$inner_block">>>>>>}\n"
+  #inner_block=$inner_block">>>>>>reverse_proxy http://alloy:12345 {\n"
+  #inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  #inner_block=$inner_block">>>>>>}\n"
+  #inner_block=$inner_block">>>>}\n"
+  #inner_block=$inner_block">>>>respond 404\n"
+  #inner_block=$inner_block">>}"
+  #updateCaddyBlocks $SUB_ALLOY $MANAGETLS_ALLOY "$is_integrate_hshq" $NETDEFAULT_ALLOY "$inner_block"
   insertSubAuthelia $SUB_ALLOY.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
-  insertEnableSvcAll sysutils "$FMLNAME_ALLOY" $USERTYPE_ALLOY "https://$SUB_ALLOY.$HOMESERVER_DOMAIN" "alloy.png" "$(getHeimdallOrderFromSub $SUB_ALLOY $USERTYPE_ALLOY)"
+  #insertEnableSvcAll sysutils "$FMLNAME_ALLOY" $USERTYPE_ALLOY "https://$SUB_ALLOY.$HOMESERVER_DOMAIN" "alloy.png" "$(getHeimdallOrderFromSub $SUB_ALLOY $USERTYPE_ALLOY)"
   cat <<EOFGF > $HOME/sysutils-compose.yml
 $STACK_VERSION_PREFIX sysutils v11
 
@@ -49311,7 +49342,7 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/log/docker:/var/log/docker:ro
+      - /var/log:/var/log:ro
       - ${HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
       - ${HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
       - ${HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
