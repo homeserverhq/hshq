@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=238
+HSHQ_LIB_SCRIPT_VERSION=239
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -32,7 +32,7 @@ function init()
   IS_STACK_DEBUG=false
   USERNAME=$(id -u -n)
   PRIOR_HSHQ_VERSION=0
-  LAST_RELAYSERVER_VERSION_UPDATE=193
+  LAST_RELAYSERVER_VERSION_UPDATE=239
   IS_AUTO_INSTALL=false
   loadVersionVars
   IS_RUST_UTILS=false
@@ -5653,11 +5653,14 @@ function outputHostedVPNConfigs()
 PrivateKey = $RELAYSERVER_WG_HS_PRIVATEKEY
 Address = ${RELAYSERVER_WG_HS_IP}/32
 MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
+Table = off
+PostUp = ip route add 10.0.0.0/8 dev %i table 1100; ip route add $PRIMARY_VPN_SUBNET dev %i; ip rule add fwmark 1100 table 1100 pref 20000; iptables -t mangle -A PREROUTING -i %i -j CONNMARK --set-mark 1100; iptables -t mangle -A PREROUTING -j CONNMARK --restore-mark
+PreDown = iptables -t mangle -D PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -D PREROUTING -i %i -j CONNMARK --set-mark 1100; ip rule del fwmark 1100 table 1100 pref 20000; ip route del $PRIMARY_VPN_SUBNET dev %i; ip route del 10.0.0.0/8 dev %i table 1100
 
 [Peer]
 PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY
 PresharedKey = $RELAYSERVER_WG_HS_PRESHAREDKEY
-AllowedIPs = $PRIMARY_VPN_SUBNET
+AllowedIPs = 10.0.0.0/8
 Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT
 PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
@@ -5731,11 +5734,12 @@ function insertSQLHostedVPN()
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('RelayServerClientDNS','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','relayserver','$RELAYSERVER_WG_SV_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_SV_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   db_id=$(sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated,Network_Subnet,IsExposeToNetwork,InputAllowPorts,DockerUserAllowPorts) values('Primary-VPN-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_vpn','primary','$RELAYSERVER_WG_HS_PUBLICKEY','$RELAYSERVER_WG_HS_PRESHAREDKEY','$RELAYSERVER_WG_HS_IP',false,'$RELAYSERVER_WG_VPN_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt','$PRIMARY_VPN_SUBNET',true,'$INPUT_PRIMARY_VPN_ALLOW_PORTS_DEFAULT','$DOCKERUSER_PRIMARY_VPN_ALLOW_PORTS_DEFAULT');select last_insert_rowid();")
   mail_host_id=$(sudo sqlite3 $HSHQ_DB "insert into mailhosts(MailHost) values('$SUB_POSTFIX.$HOMESERVER_DOMAIN');select last_insert_rowid();")
-  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,MailHostID,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,RS_VPN_IP) values($db_id,'$HOMESERVER_NAME',1,'$HOMESERVER_DOMAIN','$EXT_DOMAIN_PREFIX','$INT_DOMAIN_PREFIX',$mail_host_id,'$HOMESERVER_ABBREV','$RELAYSERVER_WG_HS_IP','$SUB_CADDY.$HOMESERVER_DOMAIN','https://$SUB_CADDY.$HOMESERVER_DOMAIN/acme/$HOMESERVER_ABBREV/directory' ,'$RELAYSERVER_WG_SV_IP');"
+  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,MailHostID,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,RS_VPN_IP,VPNRoutingTable) values($db_id,'$HOMESERVER_NAME',1,'$HOMESERVER_DOMAIN','$EXT_DOMAIN_PREFIX','$INT_DOMAIN_PREFIX',$mail_host_id,'$HOMESERVER_ABBREV','$RELAYSERVER_WG_HS_IP','$SUB_CADDY.$HOMESERVER_DOMAIN','https://$SUB_CADDY.$HOMESERVER_DOMAIN/acme/$HOMESERVER_ABBREV/directory' ,'$RELAYSERVER_WG_SV_IP',1100);"
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into mailhostmap(MailHostID,Domain,IsFirstDomain) values ($mail_host_id,'$HOMESERVER_DOMAIN',true);"
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-user1','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','primary','$RELAYSERVER_WG_HS_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_HS_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-Internet-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_internet','primary','$RELAYSERVER_WG_INTERNET_HS_PUBLICKEY','$RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY','$RELAYSERVER_WG_INTERNET_HS_IP',true,'$RELAYSERVER_WG_INTERNET_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,EndpointHostname,LastUpdated) values('User-1','$EMAIL_ADMIN_EMAIL_ADDRESS','user','mynetwork','$RELAYSERVER_WG_USER_PUBLICKEY','$RELAYSERVER_WG_USER_PRESHAREDKEY','$RELAYSERVER_WG_USER_IP',true,'$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+  updateDeviceIPMappingFile
 }
 
 function updateHeimdallUptimeKumaRelayServer()
@@ -9940,8 +9944,6 @@ function up()
   done
   iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
   iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
-  #TODO - delete this next line for client ip passthrough
-  iptables -t nat -A POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE
   iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \\\$default_iface -m set --match-set inetusers src -j ACCEPT
   iptables -A FORWARD -i \\\$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
   iptables -t nat -A POSTROUTING -o \\\$default_iface -m set --match-set inetusers src -j MASQUERADE
@@ -9951,8 +9953,6 @@ function down()
 {
   iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
   iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
-  #TODO - delete this next line for client ip passthrough
-  iptables -t nat -D POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE
   iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \\\$default_iface -m set --match-set inetusers src -j ACCEPT
   iptables -D FORWARD -i \\\$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
   iptables -t nat -D POSTROUTING -o \\\$default_iface -m set --match-set inetusers src -j MASQUERADE
@@ -11269,6 +11269,7 @@ function resetRelayServerData()
   sudo rm -fr $HSHQ_RELAYSERVER_DIR/backup/*
   sudo rm -fr $HSHQ_RELAYSERVER_DIR/scripts/*
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where NetworkType in ('relayserver','primary','mynetwork');"
+  updateDeviceIPMappingFile
 }
 
 function createOrJoinPrimaryVPN()
@@ -11863,6 +11864,7 @@ function performMyNetworkCreateClientDNS()
     return
   fi
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-$clientdns_stack_name','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','mynetwork','$wg_pub_key','$wg_pre_key','$wg_ip',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$(getCurrentDate)');"
+  updateDeviceIPMappingFile
   sudo rm -f $HSHQ_WIREGUARD_DIR/users/clientdns-${clientdns_stack_name}.conf
   sudo tee $HSHQ_WIREGUARD_DIR/users/clientdns-${clientdns_stack_name}.conf >/dev/null <<EOFCF
 [Interface]
@@ -11942,6 +11944,7 @@ function performMyNetworkRemoveClientDNS()
     removeMyNetworkNonHomeServerConnection $dbID true
   else
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$dbID;"
+    updateDeviceIPMappingFile
   fi
 }
 
@@ -12387,7 +12390,6 @@ function performNetworkInvite()
     echo "ERROR: Invalid preshared key."
     return 7
   fi
-
   case "$conn_type" in
     "HomeServer VPN")
       domain_name=$(getValueFromConfig "DomainName" $apply_file)
@@ -12466,7 +12468,6 @@ function performNetworkInvite()
       return 7
     ;;
   esac
-
   # Do logical checks
   case "$conn_type" in
     "HomeServer VPN")
@@ -12528,7 +12529,6 @@ function performNetworkInvite()
       fi
     ;;
   esac
-
   # Perform invitation steps
   tmp_preshared_key=$(wg genpsk)
   if [ -z "$preshared_key" ]; then
@@ -12610,6 +12610,7 @@ function performNetworkInvite()
       priv_key=$(getValueFromConfig "PrivateKey" $apply_file)
     ;;
   esac
+  updateDeviceIPMappingFile
   echo "Emailing the invitation..."
   # Finally, email the invitation.
   case "$conn_type" in
@@ -12635,6 +12636,7 @@ function performNetworkInvite()
       mail_body=$mail_body"EndpointPort = $RELAYSERVER_WG_PORT\n"
       mail_body=$mail_body"ClientIP = $new_ip\n"
       mail_body=$mail_body"ClientPublicKey = $pub_key\n"
+      mail_body=$mail_body"RelayServerPublicKey = $RELAYSERVER_WG_SV_PUBLICKEY\n"
       mail_body=$mail_body"PresharedKey = $tmp_preshared_key\n"
       mail_body=$mail_body"HomeServerName = $HOMESERVER_NAME\n"
       mail_body=$mail_body"ExternalPrefix = $EXT_DOMAIN_PREFIX\n"
@@ -12654,19 +12656,7 @@ function performNetworkInvite()
         mail_body=$mail_body"RelayServerExtEmailHostname = $RELAYSERVER_EXT_EMAIL_HOSTNAME\n"
       fi
       mail_body=$mail_body"\n####################### Base Config End ########################\n"
-      mail_body=$mail_body"\n#################### WireGuard Config Begin ####################\n\n"
-      mail_body=$mail_body"[Interface]\n"
-      mail_body=$mail_body"PrivateKey =\n"
-      mail_body=$mail_body"Address = $new_ip/32\n"
-      mail_body=$mail_body"MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU\n\n"
-      mail_body=$mail_body"[Peer]\n"
-      mail_body=$mail_body"PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY\n"
-      mail_body=$mail_body"PresharedKey = $tmp_preshared_key\n"
-      mail_body=$mail_body"AllowedIPs = $PRIMARY_VPN_SUBNET\n"
-      mail_body=$mail_body"Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT\n"
-      mail_body=$mail_body"PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE\n"
-      mail_body=$mail_body"\n##################### WireGuard Config End #####################\n"
-      mail_body=$mail_body"\n#################### RemoteServers DNS Begin #####################\n\n"
+       mail_body=$mail_body"\n#################### RemoteServers DNS Begin #####################\n\n"
       mail_body=$mail_body"$(getMyNetworkHomeServerDNSList)"
       mail_body=$mail_body"\n##################### RemoteServers DNS End ######################\n"
       mail_body=$mail_body"\n######################### Root CA Begin #########################\n\n"
@@ -12864,11 +12854,9 @@ function performNetworkJoin()
   mail_key_section=$(getTextBetweenStrings $join_file "mail.key Begin" "mail.key End")
   join_base_config_file=$HOME/joinvpn_base_config.cnf
   echo -e "$base_config_section" > $join_base_config_file
-
   priv_key=$(getValueFromConfig "PrivateKey" $HSHQ_WIREGUARD_DIR/requestkeys/$request_id)
   req_conn_type=$(getValueFromConfig "ConnectionType" $HSHQ_WIREGUARD_DIR/requestkeys/$request_id)
   req_is_primary=$(getValueFromConfig "IsPrimary" $HSHQ_WIREGUARD_DIR/requestkeys/$request_id)
-
   conn_type=$(getValueFromConfig "ConnectionType" $join_base_config_file)
   if ! [ "$conn_type" = "$req_conn_type" ]; then
     echo "ERROR: Apply/join connection type mismatch. You applied for $req_conn_type, but invitation has $conn_type."
@@ -12924,6 +12912,12 @@ function performNetworkJoin()
     rm -f $join_base_config_file
     return 8
   fi
+  relayserver_public_key=$(getValueFromConfig "RelayServerPublicKey" $join_base_config_file)
+  if [ -z "$relayserver_public_key" ] || [ "$(checkValidWireGuardKey $relayserver_public_key)" = "false" ]; then
+    echo "ERROR: Invalid RelayServer public key."
+    rm -f $join_base_config_file
+    return 8
+  fi
   if ! [ -z "$(getWGNameFromPubkey $client_public_key)" ]; then
     echo "ERROR: Duplicate client public key."
     rm -f $join_base_config_file
@@ -12935,7 +12929,6 @@ function performNetworkJoin()
     rm -f $join_base_config_file
     return 8
   fi
-
   case "$conn_type" in
     "HomeServer VPN")
       cur_hs_name=$(getValueFromConfig "HomeServerName" $join_base_config_file)
@@ -13066,7 +13059,6 @@ function performNetworkJoin()
       return 8
     ;;
   esac
-
   # Do logical checks
   if [ "$domain_name" = "$HOMESERVER_DOMAIN" ]; then
     echo "ERROR: This is your domain, dummy!"
@@ -13099,7 +13091,6 @@ function performNetworkJoin()
     rm -f $join_base_config_file
     return 8
   fi
-
   case "$conn_type" in
     "HomeServer VPN")
       check_ca_dom=$(sqlite3 $HSHQ_DB "select DomainName from hsvpn_connections join connections on hsvpn_connections.ID = connections.ID where hsvpn_connections.DomainName='$domain_name' and connections.NetworkType='other';")
@@ -13130,8 +13121,29 @@ function performNetworkJoin()
         return 8
       fi
       join_wireguard_config_file=$HOME/${interface_name}.conf
-      echo -e "$wireguard_config_section" > $join_wireguard_config_file
-      sed -i "s|^PrivateKey =.*|PrivateKey = $priv_key|g" $join_wireguard_config_file
+      if [ -z "$relayserver_public_key" ]; then
+        # The one var missing, so the ensures compatibility with older versions
+        echo -e "$wireguard_config_section" > /tmp/wgtemp.conf
+        relayserver_public_key=$(awk -F '= ' '/^PublicKey/ {print $2}' /tmp/wgtemp.conf)
+        rm -f /tmp/wgtemp.conf
+      fi
+      nextVPNTableID=$(getNextHSVPNRoutingTable)
+      sudo tee $join_wireguard_config_file >/dev/null <<EOFWG
+[Interface]
+PrivateKey = $priv_key
+Address = $client_ip/32
+MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
+Table = off
+PostUp = ip route add 10.0.0.0/8 dev %i table $nextVPNTableID; ip route add $vpn_subnet dev %i; ip rule add fwmark $nextVPNTableID table $nextVPNTableID pref 20000; iptables -t mangle -A PREROUTING -i %i -j CONNMARK --set-mark $nextVPNTableID; iptables -t mangle -A PREROUTING -j CONNMARK --restore-mark
+PreDown = iptables -t mangle -D PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -D PREROUTING -i %i -j CONNMARK --set-mark $nextVPNTableID; ip rule del fwmark $nextVPNTableID table $nextVPNTableID pref 20000; ip route del $vpn_subnet dev %i; ip route del 10.0.0.0/8 dev %i table $nextVPNTableID
+
+[Peer]
+PublicKey = $relayserver_public_key
+PresharedKey = $preshared_key
+AllowedIPs = 10.0.0.0/8
+Endpoint = $endpoint_hostname:$endpoint_PORT
+PersistentKeepalive = 20
+EOFWG
       config_name="Other-VPN-$domain_name"
       net_type="other"
       isPrimary=0
@@ -13205,7 +13217,8 @@ function performNetworkJoin()
       echo -e "$dns_section" > $dns_file
       curdt=$(getCurrentDate)
       db_id=$(sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated,Network_Subnet,IsExposeToNetwork,InputAllowPorts,DockerUserAllowPorts) values('$config_name','$email_address','homeserver_vpn','$net_type','$my_pub_key','$preshared_key','$client_ip',false,'$interface_name','$endpoint_hostname','$curdt','$vpn_subnet',true,'$input_ports_list','$docker_user_ports_list');select last_insert_rowid();")
-      sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,RS_VPN_IP) values($db_id,'$cur_hs_name','$isPrimary','$domain_name','$ext_prefix','$int_prefix','$ca_abbrev','$ca_ip','$ca_subdomain','$ca_url','$rs_vpn_ip');"
+      updateDeviceIPMappingFile
+      sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,RS_VPN_IP,VPNRoutingTable) values($db_id,'$cur_hs_name','$isPrimary','$domain_name','$ext_prefix','$int_prefix','$ca_abbrev','$ca_ip','$ca_subdomain','$ca_url','$rs_vpn_ip',$nextVPNTableID);"
       checkUpdateAllIPTables performNetworkJoin
       if [ "$IS_INSTALLED" = "true" ]; then
         echo "Updating HomeServer DNS and restarting Heimdall..."
@@ -13286,6 +13299,7 @@ function performNetworkJoin()
       curdt=$(getCurrentDate)
       db_id=$(sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('$config_name','$email_address','homeserver_internet','other','$my_pub_key','$preshared_key','$client_ip',true,'$interface_name','$endpoint_hostname','$curdt');select last_insert_rowid();")
       JOINED_DB_ID=$db_id
+      updateDeviceIPMappingFile
       set -e
       if [ "$is_connect" = "true" ]; then
         connectInternet $db_id
@@ -13477,6 +13491,7 @@ function removeMyNetworkHomeServerVPNConnection()
     removeSecondaryDomainFromRelayServer "$domain_name"
   fi
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$db_id;"
+  updateDeviceIPMappingFile
   # Send update email to other RemoteServers on our network
   notifyMyNetworkHomeServersDNSUpdate remove "$hs_name" "$domain_name"
   # Send update email to other users on our network
@@ -13526,6 +13541,7 @@ function removeMyNetworkNonHomeServerConnection()
     return
   fi
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$db_id;"
+  updateDeviceIPMappingFile
 }
 
 # VPN Disconnect functions
@@ -13553,6 +13569,7 @@ function disconnectOtherNetworkHomeServerVPNConnection()
   rm -f $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-caddy-$ifaceName
   deleteDomainAdguardHS "*.$int_prefix.$domain_name"
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$db_id;"
+  updateDeviceIPMappingFile
   peer_list=($(sqlite3 $HSHQ_DB "select PeerDomain,PeerDomainExtPrefix,IsActive from hsvpn_dns where HostDomain='$domain_name';"))
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from hsvpn_dns where HostDomain='$domain_name';"
   for cur_peer in "${peer_list[@]}"
@@ -13591,7 +13608,7 @@ function disconnectOtherNetworkHomeServerInternetConnection()
   fi
   sudo rm -f $HSHQ_WIREGUARD_DIR/internet/${wg_config}.conf
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$db_id;"
-
+  updateDeviceIPMappingFile
   # Notify host that you have disconnected.
   email_subj="HomeServer Internet Disconnect Notice from $HOMESERVER_NAME"
   email_body=""
@@ -15026,7 +15043,7 @@ function initHSHQDB()
   sudo rm -f $HSHQ_DB
   sqlite3 $HSHQ_DB "create table connections(ID integer not null primary key autoincrement,Name text,EmailAddress text,ConnectionType text,NetworkType text,PublicKey text,PresharedKey text,IPAddress text,IsInternet boolean,InterfaceName text,EndpointHostname text,EndpointIP text default null,LastUpdated datetime,Network_Subnet text default null,IsExposeToNetwork boolean,InputAllowPorts text default null,DockerUserAllowPorts text default null);"
   sqlite3 $HSHQ_DB "create table mailhosts(ID integer not null primary key autoincrement,MailHost text not null);"
-  sqlite3 $HSHQ_DB "create table hsvpn_connections(ID integer not null primary key references connections(ID) on delete cascade,HomeServerName text,IsPrimary boolean,DomainName text default null,ExternalPrefix text default null,InternalPrefix text default null,MailHostID integer references mailhosts(ID) on delete cascade,CA_Abbrev text default null,CA_IP text default null,CA_Subdomain text default null,CA_URL text default null,RS_VPN_IP text default null);"
+  sqlite3 $HSHQ_DB "create table hsvpn_connections(ID integer not null primary key references connections(ID) on delete cascade,HomeServerName text,IsPrimary boolean,DomainName text default null,ExternalPrefix text default null,InternalPrefix text default null,MailHostID integer references mailhosts(ID) on delete cascade,CA_Abbrev text default null,CA_IP text default null,CA_Subdomain text default null,CA_URL text default null,RS_VPN_IP text default null,VPNRoutingTable integer UNIQUE);"
   sqlite3 $HSHQ_DB "create table hsvpn_dns(ID integer not null primary key autoincrement,HostDomain text not null,PeerDomain text not null,PeerDomainExtPrefix text not null,IPAddress text not null,DateAdded datetime,IsActive boolean);"
   sqlite3 $HSHQ_DB "create unique index hpdns on hsvpn_dns(HostDomain,PeerDomain);"
   sqlite3 $HSHQ_DB "create table mailhostmap(MailHostID integer not null references mailhosts(ID) on delete cascade,Domain text not null,IsFirstDomain boolean,primary key (MailHostID,Domain));"
@@ -15283,6 +15300,26 @@ function getCACertificateNameFromDomain()
 {
   dom_name="$1"
   echo ${dom_name}-ca.crt
+}
+
+function outputDeviceIPMapping()
+{
+  map_ouptut_file="$1"
+  sqlite3 -noheader "$HSHQ_DB" "
+    SELECT '{\"targets\":[\"' || IPAddress || '\"],\"labels\":{\"device_name\":\"' ||
+           REPLACE(COALESCE(Name,''),'\"','') || '\"}}'
+    FROM connections
+    WHERE IPAddress IS NOT NULL AND IPAddress <> '';
+  " | {
+    echo '['
+    first=1
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      if [ "$first" -eq 1 ]; then printf '%s\n' "$line"; first=0; else printf ',\n%s\n' "$line"; fi
+    done
+    echo ']'
+  } | jq . > "${map_ouptut_file}.tmp"
+  sudo mv "${map_ouptut_file}.tmp" "${map_ouptut_file}"
 }
 
 function sortCSVList()
@@ -21338,6 +21375,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=238
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 239 ]; then
+    echo "Updating to Version 239..."
+    version239Update
+    HSHQ_VERSION=239
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -21354,10 +21397,7 @@ function checkUpdateVersion()
 
 function performPreUpdateCheck()
 {
-  # This function is more of a placeholder at the moment,
-  # reserved for future possible use. We already have sudo
-  # and decrypted config file, so just return.
-  return
+  sudo chmod 0444 $HSHQ_LIB_DIR/$HSHQ_NEW_LIB_FILENAME
 }
 
 function promptTestRelayServerPassword()
@@ -24557,6 +24597,7 @@ EOFML
   fi
   docker ps | grep -q speakr-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
+    SPEAKR_OIDC_CLIENT_SECRET_HASH=$(docker run --rm $IMG_AUTHELIA authelia crypto hash generate pbkdf2 --variant sha512 --password $SPEAKR_OIDC_CLIENT_SECRET | cut -d" " -f2)
     cat <<EOFIM > $HOME/speakr.oidc
 # Authelia OIDC Client speakr BEGIN
       - client_id: $SPEAKR_OIDC_CLIENT_ID
@@ -24586,6 +24627,164 @@ EOFIM
     rm -f $HOME/speakr.oidc
     insertOIDCClientAuthelia speakr "$oidcBlock"
   fi
+}
+
+function version239Update()
+{
+  set +e
+  sudo sqlite3 $HSHQ_DB "PRAGMA table_info(hsvpn_connections);" | grep -q "VPNRoutingTable" || sudo sqlite3 $HSHQ_DB "ALTER TABLE hsvpn_connections ADD COLUMN VPNRoutingTable integer UNIQUE;"
+  for conf in $HSHQ_WIREGUARD_DIR/vpn/*.conf
+  do
+    sudo grep -q "PostUp" "$conf" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      curAbbrev=$(basename $conf | cut -d"-" -f2 | cut -d"." -f1)
+      curTableInDB=$(sqlite3 $HSHQ_DB "select VPNRoutingTable from hsvpn_connections where CA_Abbrev='$curAbbrev' and CA_IP is not null;")
+      if [ -z "$curTableInDB" ] || [ "$(checkValidNumber $curTableInDB)" = "false" ]; then
+        if [ "$curAbbrev" = "$HOMESERVER_ABBREV" ]; then
+          #Special case for our primary vpn
+          sudo sqlite3 $HSHQ_DB "update hsvpn_connections set VPNRoutingTable=1100 where CA_Abbrev='$curAbbrev' and CA_IP is not null;"
+        else
+          maxTable=$(getNextHSVPNRoutingTable)
+          sudo sqlite3 $HSHQ_DB "update hsvpn_connections set VPNRoutingTable=$maxTable where CA_Abbrev='$curAbbrev' and CA_IP is not null;"
+        fi
+      fi
+      curDBID=$(sqlite3 $HSHQ_DB "select ID from hsvpn_connections where CA_Abbrev='$curAbbrev' and CA_IP is not null;")
+      curTableInDB=$(sqlite3 $HSHQ_DB "select VPNRoutingTable from hsvpn_connections where ID=$curDBID;")
+      curCAIP=$(sqlite3 $HSHQ_DB "select CA_IP from hsvpn_connections where ID=$curDBID;")
+      curVPNRange=$(sqlite3 $HSHQ_DB "select Network_Subnet from connections where ID=$curDBID;")
+      curInterfaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$curDBID;")
+      sudo sed -i "/^MTU =/a Table = off\nPostUp = ip route add 10.0.0.0\/8 dev %i table $curTableInDB; ip route add $curVPNRange dev %i; ip rule add fwmark $curTableInDB table $curTableInDB pref 20000; iptables -t mangle -A PREROUTING -i %i -j CONNMARK --set-mark $curTableInDB; iptables -t mangle -A PREROUTING -j CONNMARK --restore-mark\nPreDown = iptables -t mangle -D PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -D PREROUTING -i %i -j CONNMARK --set-mark $curTableInDB; ip rule del fwmark $curTableInDB table $curTableInDB pref 20000; ip route del $curVPNRange dev %i; ip route del 10.0.0.0\/8 dev %i table $curTableInDB" "$conf"
+      sudo sed -i "s/^AllowedIPs =.*/AllowedIPs = 10.0.0.0\/8/" "$conf"
+      sudo systemctl stop wg-quick@${curInterfaceName}.service
+      sudo cp -f "$conf" /etc/wireguard/
+      sudo systemctl start wg-quick@${curInterfaceName}.service
+    fi
+  done
+  mkdir -p $HSHQ_STACKS_DIR/shared/caddylogs
+  outputCaddyHeaders
+  caddy_arr=($(docker ps -a --filter name=caddy- --format "{{.Names}}"))
+  for curCH in "${caddy_arr[@]}"
+  do
+    updateStackEnv $curCH modFunCaddyAddLogMount
+  done
+  performClearIPTables true
+  checkUpdateAllIPTables versionUpdate
+  # Add logging mounts to caddy compose files
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "========================================================================"
+    echo "  Performing updates on RelayServer."
+    echo "========================================================================"
+    sleep 5
+    rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
+    cat <<EOFUR > $HOME/$RS_UPDATE_SCRIPT_NAME
+#!/bin/bash
+
+function main()
+{
+  read -r -s -p "" rspw
+  echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
+  set +e
+  RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_STACKS_DIR
+  default_iface=\$(getDefaultIface)
+  sudo tee \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/wgupdown.sh >/dev/null <<EOFPU
+#!/bin/bash
+COMMAND=\\\$1
+RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
+set +e
+
+default_iface=\$default_iface
+
+function main()
+{
+  shift
+  shift
+  case "\\\$COMMAND" in
+    up) up ;;
+    down) down ;;
+  esac
+}
+
+function up()
+{
+  ipset create inetusers hash:net
+  iplist=\\\$(cat \\\$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/inetusers.ipset)
+  for curip in \\\$iplist
+  do
+    if [ -z \\\$curip ]; then continue; fi
+    ipset add inetusers \\\$curip
+  done
+  ipset create alldevices hash:net
+  alliplist=(\\\$(sqlite3 \\\$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/wg_portal.db "select ips_str from peers;"))
+  for cur_ip in "\\\${alliplist[@]}"
+  do
+    if [ -z \\\$cur_ip ]; then continue; fi
+    ipset add alldevices \\\$cur_ip
+  done
+  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
+  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \\\$default_iface -m set --match-set inetusers src -j ACCEPT
+  iptables -A FORWARD -i \\\$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -t nat -A POSTROUTING -o \\\$default_iface -m set --match-set inetusers src -j MASQUERADE
+}
+
+function down()
+{
+  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
+  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \\\$default_iface -m set --match-set inetusers src -j ACCEPT
+  iptables -D FORWARD -i \\\$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -t nat -D POSTROUTING -o \\\$default_iface -m set --match-set inetusers src -j MASQUERADE
+  ipset destroy inetusers
+  ipset destroy alldevices
+}
+
+main "\\\$@"
+EOFPU
+  sudo chmod 500 \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/wgupdown.sh
+  sudo iptables -t nat -D POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE > /dev/null 2>&1
+  echo "Updating RelayServer host, please wait..."
+  sudo apt update > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' > /dev/null 2>&1
+  echo "RelayServer update complete!"
+  rm -f ~/$RS_UPDATE_SCRIPT_NAME
+}
+
+function getDefaultIface()
+{
+  echo \$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
+}
+
+main
+EOFUR
+    updateRelayServerWithScript false
+    if [ $? -ne 0 ]; then
+      echo "ERROR: The update process on the RelayServer encountered an error. Please check the logs and retry."
+      exit
+    fi
+  fi
+}
+
+function getNextHSVPNRoutingTable()
+{
+  curTableList=($(sqlite3 $HSHQ_DB "select VPNRoutingTable from hsvpn_connections where CA_IP is not null;"))
+  maxTableNum=1101
+  while [ $maxTableNum -lt 2100 ]
+  do
+    isTblFound=false
+    for curTN in "${curTableList[@]}"
+    do
+      if ! [ -z "$maxTableNum" ] && [ $curTN -eq $maxTableNum ]; then
+        isTblFound=true
+        break
+      fi
+    done
+    if [ "$isTblFound" = "false" ]; then
+      echo $maxTableNum
+      return
+    fi
+    ((maxTableNum++))
+  done
+  echo $maxTableNum
 }
 
 function pruneAndUpdateDocker()
@@ -25313,6 +25512,20 @@ function modFunCaddyHomeBindIPFix()
   grep "CADDY_HSHQ_BIND_IP" $HOME/${updateStackName}.env > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     echo "CADDY_HSHQ_BIND_IP=$fixBindIP" >> $HOME/${updateStackName}.env
+  fi
+}
+
+function modFunCaddyAddLogMount()
+{
+  set +e
+  grep -q "caddylogs" $HOME/${updateStackName}-compose.yml > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sed -i -E 's/^([[:space:]]*)(.*\/config:\/config)$/\1\2\n\1- \${PORTAINER_HSHQ_STACKS_DIR}\/shared\/caddylogs:\/logs/' $HOME/${updateStackName}-compose.yml
+  fi
+  grep -q "ENABLE_LOGGING" $HOME/${updateStackName}.env > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "ENABLE_LOGGING=$CADDY_SNIPPET_LOG_FALSE" >> $HOME/${updateStackName}.env
+    echo "CADDY_STACK_NAME=$updateStackName" >> $HOME/${updateStackName}.env
   fi
 }
 
@@ -26897,8 +27110,8 @@ function checkUpdateAllIPTables()
     comment="HSHQ_BEGIN Temp allow SSH port $CURRENT_SSH_PORT HSHQ_END"
     checkAddRule "$comment" 'sudo iptables -A INPUT -p tcp -m tcp --dport $CURRENT_SSH_PORT -m comment --comment "$comment" -j ACCEPT'
   fi
-  # HomeServer Host and WireGuard interfaces
-  dbIDArr=($(sqlite3 $HSHQ_DB "select ID from connections where (ConnectionType='homeserver_vpn' and NetworkType in ('primary','other')) or (NetworkType='home_network') order by NetworkType;"))
+  # HomeServer Host
+  dbIDArr=($(sqlite3 $HSHQ_DB "select ID from connections where NetworkType='home_network' order by NetworkType;"))
   for curDBID in "${dbIDArr[@]}"
   do
     curInterfaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$curDBID;")
@@ -26929,29 +27142,43 @@ function checkUpdateAllIPTables()
       addDOCKERUSERBySubnetAndPortsList "$hn_ip_list" "$curDockerUserAllowPorts"
     fi
     # Add some anti-spoofing measures
-    if [ "$curConnectionType" = "homeserver_vpn" ]; then
-      addIPTablesSpoofRule "$curInterfaceName" "$curSubnet"
-    elif [ "$curNetworkType" = "home_network" ]; then
-      comment="HSHQ_BEGIN chain-ipspoof -s $DOCKER_NETWORK_RESERVED_RANGE -i $curInterfaceName HSHQ_END"
-      checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s $DOCKER_NETWORK_RESERVED_RANGE -i $curInterfaceName -m comment --comment "$comment" -j DROP'
-      if [ "$curIsIPPrivate" = "false" ]; then
-        # Add special rules when HomeServer interface is on non-private network, i.e. cloud-server, etc.
-        # Insert these at the 3rd position down
-        comment="HSHQ_BEGIN chain-ipspoof -s 10.0.0.0/8 -i $curInterfaceName HSHQ_END"
-        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 10.0.0.0/8 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
-        comment="HSHQ_BEGIN chain-ipspoof -s 172.16.0.0/12 -i $curInterfaceName HSHQ_END"
-        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 172.16.0.0/12 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
-        comment="HSHQ_BEGIN chain-ipspoof -s 192.168.0.0/16 -i $curInterfaceName HSHQ_END"
-        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 192.168.0.0/16 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
-        comment="HSHQ_BEGIN chain-ipspoof -s 169.254.0.0/16 -i $curInterfaceName HSHQ_END"
-        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 169.254.0.0/16 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
-        comment="HSHQ_BEGIN chain-ipspoof -s 224.0.0.0/4 -i $curInterfaceName HSHQ_END"
-        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 224.0.0.0/4 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
-        # Insert this to top of chain-icmp
-        comment="HSHQ_BEGIN chain-icmp echo-request primary $curInterfaceName HSHQ_END"
-        checkAddRule "$comment" 'sudo iptables -t raw -I chain-icmp -p icmp -m icmp --icmp-type echo-request -i $curInterfaceName -m comment --comment "$comment" -j DROP'
-      fi
+    comment="HSHQ_BEGIN chain-ipspoof -s $DOCKER_NETWORK_RESERVED_RANGE -i $curInterfaceName HSHQ_END"
+    checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s $DOCKER_NETWORK_RESERVED_RANGE -i $curInterfaceName -m comment --comment "$comment" -j DROP'
+    if [ "$curIsIPPrivate" = "false" ]; then
+      # Add special rules when HomeServer interface is on non-private network, i.e. cloud-server, etc.
+      # Insert these at the 3rd position down
+      comment="HSHQ_BEGIN chain-ipspoof -s 10.0.0.0/8 -i $curInterfaceName HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 10.0.0.0/8 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
+      comment="HSHQ_BEGIN chain-ipspoof -s 172.16.0.0/12 -i $curInterfaceName HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 172.16.0.0/12 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
+      comment="HSHQ_BEGIN chain-ipspoof -s 192.168.0.0/16 -i $curInterfaceName HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 192.168.0.0/16 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
+      comment="HSHQ_BEGIN chain-ipspoof -s 169.254.0.0/16 -i $curInterfaceName HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 169.254.0.0/16 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
+      comment="HSHQ_BEGIN chain-ipspoof -s 224.0.0.0/4 -i $curInterfaceName HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 224.0.0.0/4 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
+      # Insert this to top of chain-icmp
+      comment="HSHQ_BEGIN chain-icmp echo-request primary $curInterfaceName HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -t raw -I chain-icmp -p icmp -m icmp --icmp-type echo-request -i $curInterfaceName -m comment --comment "$comment" -j DROP'
     fi
+  done
+  # WireGuard interfaces
+  dbIDArr=($(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='homeserver_vpn' and NetworkType in ('primary','other') order by NetworkType;"))
+  for curDBID in "${dbIDArr[@]}"
+  do
+    curInterfaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$curDBID;")
+    curIPAddress=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID=$curDBID;")
+    curSubnet=$(sqlite3 $HSHQ_DB "select Network_Subnet from connections where ID=$curDBID;")
+    curIsExposeToNetwork=$(sqlite3 $HSHQ_DB "select IsExposeToNetwork from connections where ID=$curDBID;")
+    curInputAllowPorts=$(sqlite3 $HSHQ_DB "select InputAllowPorts from connections where ID=$curDBID;")
+    curDockerUserAllowPorts=$(sqlite3 $HSHQ_DB "select DockerUserAllowPorts from connections where ID=$curDBID;")
+    curNetworkType=$(sqlite3 $HSHQ_DB "select NetworkType from connections where ID=$curDBID;")
+    curConnectionType=$(sqlite3 $HSHQ_DB "select ConnectionType from connections where ID=$curDBID;")
+    appendINPUTByInterfaceAndPortsList "$curInterfaceName" "$curInputAllowPorts"
+    addDOCKERUSERByInterfaceAndPortsList "$curInterfaceName" "$curDockerUserAllowPorts"
+    # Add some anti-spoofing measures
+    comment="HSHQ_BEGIN chain-ipspoof ! -s 10.0.0.0/8 -i $curInterfaceName HSHQ_END"
+    checkAddRule "$comment" 'sudo iptables -t raw -A chain-ipspoof ! -s 10.0.0.0/8 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
   done
   # Custom rules
   dbIDArr=($(sqlite3 $HSHQ_DB "select ID from customfwsubnet;"))
@@ -27159,6 +27386,71 @@ function addDOCKERUSERBySubnetAndPortsList()
   done
 }
 
+function appendINPUTByInterfaceAndPortsList()
+{
+  interfaceName="$1"
+  portList="$2"
+  if [ -z "$interfaceName" ] ||  [ -z "$portList" ]; then
+    return
+  fi
+  checkValidPortsList "$portList"
+  if [ $? -ne 0 ]; then
+    strMsg="There was an error with the ports list: $portList"
+    logHSHQEvent error "appendINPUTBySubnetAndPortsList ($netstate) (appendINPUTBySubnetAndPortsList) - $strMsg"
+    echo "ERROR: $strMsg"
+    return
+  fi
+  portsArr=($(echo $portList | tr "," "\n"))
+  for cur_port in "${portsArr[@]}"
+  do
+    port_no=$(echo "$cur_port" | cut -d"/" -f1 | xargs)
+    port_prot=$(echo "$cur_port" | cut -d"/" -f2 | xargs)
+    case $port_prot in
+    tcp|udp)
+      comment="HSHQ_BEGIN INPUT -i $interfaceName -p $port_prot --dport $port_no HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -A INPUT -i $interfaceName -p $port_prot --dport $port_no -m comment --comment "$comment" -j ACCEPT'
+    ;;
+    both)
+      comment="HSHQ_BEGIN INPUT -i $interfaceName -p tcp --dport $port_no HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -A INPUT -i $interfaceNamet -p tcp --dport $port_no -m comment --comment "$comment" -j ACCEPT'
+      comment="HSHQ_BEGIN INPUT -i $interfaceName -p udp --dport $port_no HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -A INPUT -i $interfaceName -p udp --dport $port_no -m comment --comment "$comment" -j ACCEPT'
+    ;;
+    *)
+    ;;
+    esac
+  done
+}
+
+function addDOCKERUSERByInterfaceAndPortsList()
+{
+  interfaceName="$1"
+  portList="$2"
+  if [ -z "$interfaceName" ] ||  [ -z "$portList" ]; then
+    return
+  fi
+  checkValidPortsList "$portList"
+  if [ $? -ne 0 ]; then
+    strMsg="There was an error with the ports list: $portList"
+    logHSHQEvent error "addDOCKERUSERBySubnetAndPortsList ($netstate) (addDOCKERUSERBySubnetAndPortsList) - $strMsg"
+    echo "ERROR: $strMsg"
+    return
+  fi
+  portsArr=($(echo $portList | tr "," "\n"))
+  for cur_port in "${portsArr[@]}"
+  do
+    # Protocol doesn't matter here, but just in case the user added it
+    port_no=$(echo "$cur_port" | cut -d"/" -f1 | xargs)
+    port_prot=$(echo "$cur_port" | cut -d"/" -f2 | xargs)
+    comment="HSHQ_BEGIN DOCKER-USER -i $interfaceName -m conntrack --ctorigdstport $port_no HSHQ_END"
+    checkAddRule "$comment" 'sudo iptables -I DOCKER-USER -i $interfaceName -m conntrack --ctorigdstport $port_no --ctdir ORIGINAL -m comment --comment "$comment" -j RETURN'
+    comment="HSHQ_BEGIN DOCKER-USER -s $DOCKER_NETWORK_RESERVED_RANGE -m conntrack --ctorigdstport $port_no HSHQ_END"
+    checkAddRule "$comment" 'sudo iptables -I DOCKER-USER -s $DOCKER_NETWORK_RESERVED_RANGE -m conntrack --ctorigdstport $port_no --ctdir ORIGINAL -m comment --comment "$comment" -j RETURN'
+    comment="HSHQ_BEGIN DOCKER-USER -m conntrack --ctorigdstport $port_no DROP HSHQ_END"
+    checkAddRule "$comment" 'sudo iptables -A DOCKER-USER -m conntrack --ctorigdstport $port_no --ctdir ORIGINAL -m comment --comment "$comment" -j DROP'
+  done
+}
+
 function deleteIPTableEntryByChainAndComment()
 {
   ipt_table="$1"
@@ -27189,6 +27481,7 @@ function deleteIPTableEntryByChainAndComment()
 
 function addIPTablesSpoofRule()
 {
+  return
   ipt_interface_name="$1"
   ipt_source_subnet="$2"
   comment="HSHQ_BEGIN chain-ipspoof -s $ipt_source_subnet ! -i $ipt_interface_name HSHQ_END"
@@ -28692,6 +28985,7 @@ function addHSInterface()
   fi
   curdt=$(getCurrentDate)
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,ConnectionType,NetworkType,IPAddress,InterfaceName,LastUpdated,Network_Subnet,IsExposeToNetwork,InputAllowPorts,DockerUserAllowPorts) values('HomeServerHost_${iface_name^^}','$isPrimaryInsert','home_network','$ip_addr','$iface_name','$curdt','$interface_subnet',true,'$INPUT_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT','$DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT');"
+  updateDeviceIPMappingFile
 }
 
 function removeHSInterface()
@@ -28702,6 +28996,7 @@ function removeHSInterface()
   updatePlaintextRootConfigVar HOMESERVER_HOST_NETWORK_INTERFACES $HOMESERVER_HOST_NETWORK_INTERFACES
   checkDeleteStackAndDirectory caddy-home-$iface_name "Caddy" true true > /dev/null 2>&1
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where InterfaceName='$iface_name';" > /dev/null 2>&1
+  updateDeviceIPMappingFile
 }
 
 function setHSInterfaceAsPrimary()
@@ -31433,6 +31728,8 @@ function loadPinnedDockerImages()
   IMG_GITEA_APP=mirror.gcr.io/gitea/gitea:1.25.2
   IMG_GITLAB_APP=mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0
   IMG_GRAFANA=mirror.gcr.io/grafana/grafana-oss:13.0.2
+  IMG_LOKI=mirror.gcr.io/grafana/loki:3.7.7
+  IMG_ALLOY=mirror.gcr.io/grafana/alloy:v1.19.2
   IMG_GRAMPSWEB=ghcr.io/gramps-project/grampsweb:25.7.3
   IMG_GUACAMOLE_GUACD=mirror.gcr.io/guacamole/guacd:1.6.0
   IMG_GUACAMOLE_WEB=mirror.gcr.io/guacamole/guacamole:1.6.0
@@ -31732,7 +32029,7 @@ function getScriptStackVersion()
     adguard)
       echo "v9" ;;
     sysutils)
-      echo "v10" ;;
+      echo "v11" ;;
     openldap)
       echo "v1" ;;
     mailu)
@@ -32099,6 +32396,8 @@ function pullDockerImages()
   buildOrPullImage $IMG_GRAFANA
   buildOrPullImage $IMG_PROMETHEUS
   buildOrPullImage $IMG_NODE_EXPORTER
+  buildOrPullImage $IMG_LOKI
+  buildOrPullImage $IMG_ALLOY
   buildOrPullImage $IMG_OPENLDAP_SERVER
   buildOrPullImage $IMG_OPENLDAP_PHP
   buildOrPullImage $IMG_OPENLDAP_MANAGER
@@ -33065,6 +33364,8 @@ CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED=safe-header-cors-automated
 CADDY_SNIPPET_BASEHEADER=base-header
 CADDY_SNIPPET_DEFAULTCSP=default-csp
 CADDY_SNIPPET_RELAXEDCSP=relaxed-csp
+CADDY_SNIPPET_LOG_TRUE=log_true
+CADDY_SNIPPET_LOG_FALSE=log_false
 # Caddy (Service Details) END
 
 # Calibre (Service Details) BEGIN
@@ -40055,6 +40356,7 @@ function initServiceVars()
   checkAddSvc "SVCD_GITEA=gitea,gitea,primary,user,Gitea,gitea,le"
   checkAddSvc "SVCD_GITLAB=gitlab,gitlab,primary,user,Gitlab,gitlab,hshq"
   checkAddSvc "SVCD_GRAFANA=sysutils,grafana,primary,admin,Grafana,grafana,hshq"
+  checkAddSvc "SVCD_ALLOY=sysutils,alloy,primary,admin,Alloy,alloy,hshq"
   checkAddSvc "SVCD_GRAMPSWEB=grampsweb,grampsweb,primary,user,GrampsWeb,grampsweb,le"
   checkAddSvc "SVCD_GUACAMOLE=guacamole,guacamole,primary,admin,Guacamole,guacamole,hshq"
   checkAddSvc "SVCD_HEIMDALL=heimdall,heimdall,other,user,Heimdall,heimdall,hshq"
@@ -41273,6 +41575,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_COGNEE_FRONTEND.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_ALLOY.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_ADMIN_HERE
   retval="${retval}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -41780,6 +42083,9 @@ function getHeimdallOrderFromSub()
       order_num=9
       ;;
     "$SUB_INFLUXDB")
+      order_num=10
+      ;;
+    "$SUB_ALLOY")
       order_num=10
       ;;
     "$SUB_DOZZLE")
@@ -42479,6 +42785,12 @@ function getScriptImageByContainerName()
       ;;
     "influxdb")
       container_image=$IMG_INFLUXDB
+      ;;
+    "loki")
+      container_image=$IMG_LOKI
+      ;;
+    "alloy")
+      container_image=$IMG_ALLOY
       ;;
     "ldapserver")
       container_image=$IMG_OPENLDAP_SERVER
@@ -44409,7 +44721,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Dolibarr" "DOLIBARR_INSTANCE_UNIQUE_ID=,DOLIBARR_API_KEY=,DOLIBARR_MCP_API_KEY=,DOLIBARR_MCP_REDIS_PASSWORD=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_TOKEN_ENCRYPTION_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Immich" "IMMICH_API_KEY=" $CONFIG_FILE false
-  checkAddVarsToServiceConfig "Caddy" "CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED=safe-header-cors-automated,CADDY_SNIPPET_BASEHEADER=base-header,CADDY_SNIPPET_DEFAULTCSP=default-csp,CADDY_SNIPPET_RELAXEDCSP=relaxed-csp" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Caddy" "CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED=safe-header-cors-automated,CADDY_SNIPPET_BASEHEADER=base-header,CADDY_SNIPPET_DEFAULTCSP=default-csp,CADDY_SNIPPET_RELAXEDCSP=relaxed-csp,CADDY_SNIPPET_LOG_TRUE=log_true,CADDY_SNIPPET_LOG_FALSE=log_false" $CONFIG_FILE false
   checkAddVarsToServiceConfig "OpenProject" "OPENPROJECT_SECRET_KEY_BASE=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Twenty" "TWENTY_APP_SECRET=,TWENTY_ENCRYPTION_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Paperless" "PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=,PAPERLESS_KNOWLEDGEBASE_TAG_NAME=,PAPERLESS_KNOWLEDGEBASE_TAG_ID=,PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME=,PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=" $CONFIG_FILE false
@@ -45521,11 +45833,16 @@ function installSysUtils()
   mkdir $HSHQ_STACKS_DIR/sysutils/influxdb/etc
   mkdir $HSHQ_STACKS_DIR/sysutils/influxdb/var
   mkdir $HSHQ_STACKS_DIR/sysutils/prometheus
+  mkdir $HSHQ_STACKS_DIR/sysutils/loki
+  mkdir $HSHQ_STACKS_DIR/sysutils/alloy
+  mkdir $HSHQ_STACKS_DIR/sysutils/alloy/devices
   mkdir $HSHQ_NONBACKUP_DIR/sysutils
   mkdir $HSHQ_NONBACKUP_DIR/sysutils/prometheus
+  mkdir $HSHQ_NONBACKUP_DIR/sysutils/loki
   initServicesCredentials
   generateCert influxdb influxdb
   gf_dataset_uid=$(pwgen -c -n 9 1)
+  gf_loki_uid=$(pwgen -c -n 9 1)
   gf_dashboard_uid=$(pwgen -c -n 9 1)
   # Have had 2 abrupt exits randomly around this point,
   # with the error: "getwd: no such file or directory".
@@ -45586,21 +45903,27 @@ function installSysUtils()
     return 1
   fi
   sleep 5
-  datasource_json=$(jq -n --arg gfid "$gf_dataset_uid" '{name: "Prometheus", uid: $gfid, type: "prometheus", url: "http://prometheus:9090", access: "proxy", basicAuth: false}')
-  num_tries=1
-  total_tries=5
-  isSuccess=false
-  while [ "$isSuccess" = "false" ] && [ $num_tries -lt $total_tries ]
-  do
-    echo $datasource_json | http POST http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/datasources > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-      isSuccess=true
-      break
-    fi
-    echo "ERROR: Grafana datasource import failed, retrying in 5 seconds..."
-    sleep 5
-    ((num_tries++))
-  done
+  import_gf_ds()
+  {
+    num_tries=1
+    total_tries=5
+    isSuccess=false
+    while [ "$isSuccess" = "false" ] && [ $num_tries -lt $total_tries ]
+    do
+      echo "$1" | http POST http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/datasources > /dev/null 2>&1
+      if [ $? -eq 0 ]; then
+        isSuccess=true
+        break
+      fi
+      echo "ERROR: Grafana datasource import failed, retrying in 5 seconds..."
+      sleep 5
+      ((num_tries++))
+    done
+  }
+  prometheus_json=$(jq -n --arg gfid "$gf_dataset_uid" '{name: "Prometheus", uid: $gfid, type: "prometheus", url: "http://prometheus:9090", access: "proxy", basicAuth: false, isDefault: true}')
+  import_gf_ds "$prometheus_json"
+  loki_json=$(jq -n --arg gfid "$gf_loki_uid" '{name: "Loki", uid: $gfid, type: "loki", url: "http://loki:3100", access: "proxy", basicAuth: false, isDefault: false, jsonData: {maxLines: 1000}}')
+  import_gf_ds "$prometheus_json"
   if [ "$isSuccess" = "false" ]; then
     echo "ERROR: Could not import datasource into Grafana."
   else
@@ -45625,7 +45948,6 @@ function installSysUtils()
   set -e
   pref_string=$(jq -n --arg gfid "$gf_dashboard_uid" --arg tz "$TZ" '{theme: "dark", homeDashboardUID: $gfid, timezone: $tz}')
   echo $pref_string | http PATCH http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/org/preferences > /dev/null 2>&1
-
   sleep 2
   cd ~
   docker compose -f $HOME/sysutils-compose-tmp.yml down -v
@@ -45635,10 +45957,8 @@ function installSysUtils()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-
   rm -f $HOME/sysutils-compose-tmp.yml
   rm -f $HOME/gfdashboard.json
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GRAFANA.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -45653,7 +45973,6 @@ function installSysUtils()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_GRAFANA $MANAGETLS_GRAFANA "$is_integrate_hshq" $NETDEFAULT_GRAFANA "$inner_block"
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -45668,7 +45987,6 @@ function installSysUtils()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_PROMETHEUS $MANAGETLS_PROMETHEUS "$is_integrate_hshq" $NETDEFAULT_PROMETHEUS "$inner_block"
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -45683,11 +46001,29 @@ function installSysUtils()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_INFLUXDB $MANAGETLS_INFLUXDB "$is_integrate_hshq" $NETDEFAULT_INFLUXDB "$inner_block"
-
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_ALLOY.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
+  inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://alloy:12345 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_ALLOY $MANAGETLS_ALLOY "$is_integrate_hshq" $NETDEFAULT_ALLOY "$inner_block"
+  insertSubAuthelia $SUB_ALLOY.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll sysutils "$FMLNAME_GRAFANA" $USERTYPE_GRAFANA "https://$SUB_GRAFANA.$HOMESERVER_DOMAIN" "grafana.png" "$(getHeimdallOrderFromSub $SUB_GRAFANA $USERTYPE_GRAFANA)"
     insertEnableSvcAll sysutils "$FMLNAME_PROMETHEUS" $USERTYPE_PROMETHEUS "https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN" "prometheus.png" "$(getHeimdallOrderFromSub $SUB_PROMETHEUS $USERTYPE_PROMETHEUS)"
     insertEnableSvcAll sysutils "$FMLNAME_INFLUXDB" $USERTYPE_INFLUXDB "https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN" "influxdb.png" "$(getHeimdallOrderFromSub $SUB_INFLUXDB $USERTYPE_INFLUXDB)"
+    insertEnableSvcAll sysutils "$FMLNAME_ALLOY" $USERTYPE_ALLOY "https://$SUB_ALLOY.$HOMESERVER_DOMAIN" "alloy.png" "$(getHeimdallOrderFromSub $SUB_ALLOY $USERTYPE_ALLOY)"
     restartAllCaddyContainers
   fi
 }
@@ -45778,6 +46114,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
+      - int-sysutils-net
       - dock-proxy-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -45799,6 +46136,52 @@ services:
       - INFLUXD_TLS_CERT=/certs/influxdb.crt
       - INFLUXD_TLS_KEY=/certs/influxdb.key
 
+  loki:
+    image: $(getScriptImageByContainerName loki)
+    container_name: loki
+    hostname: loki
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: -config.file=/etc/loki/config.yml
+    networks:
+      - int-sysutils-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - ${HSHQ_STACKS_DIR}/sysutils/loki/config.yml:/etc/loki/config.yml:ro
+      - v-sysutils-loki:/loki
+
+  alloy:
+    image: $(getScriptImageByContainerName alloy)
+    container_name: alloy
+    hostname: alloy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - run
+      - --stability.level=experimental
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    networks:
+      - int-sysutils-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/log/docker:/var/log/docker:ro
+      - ${HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
+      - ${HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
+      - ${HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
+
 volumes:
   v-sysutils-grafana:
     driver: local
@@ -45812,6 +46195,12 @@ volumes:
       type: none
       o: bind
       device: ${HSHQ_NONBACKUP_DIR}/sysutils/prometheus
+  v-sysutils-loki:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HSHQ_NONBACKUP_DIR}/sysutils/loki
 
 networks:
   dock-proxy-net:
@@ -45912,6 +46301,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
+      - int-sysutils-net
       - dock-proxy-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -45923,6 +46313,52 @@ services:
       - \${PORTAINER_HSHQ_SSL_DIR}/influxdb.key:/certs/influxdb.key
       - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/influxdb/etc:/etc/influxdb2
       - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/influxdb/var:/var/lib/influxdb2
+
+  loki:
+    image: $(getScriptImageByContainerName loki)
+    container_name: loki
+    hostname: loki
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: -config.file=/etc/loki/config.yml
+    networks:
+      - int-sysutils-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - ${HSHQ_STACKS_DIR}/sysutils/loki/config.yml:/etc/loki/config.yml:ro
+      - v-sysutils-loki:/loki
+
+  alloy:
+    image: $(getScriptImageByContainerName alloy)
+    container_name: alloy
+    hostname: alloy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - run
+      - --stability.level=experimental
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    networks:
+      - int-sysutils-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/log/docker:/var/log/docker:ro
+      - ${HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
+      - ${HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
+      - ${HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
 
 volumes:
   v-sysutils-grafana:
@@ -45937,6 +46373,12 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/sysutils/prometheus
+  v-sysutils-loki:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/sysutils/loki
 
 networks:
   dock-proxy-net:
@@ -48247,6 +48689,191 @@ EOFPM
 	}
 }
 EOFJS
+  outputLokiAlloyConfig
+}
+
+function outputLokiAlloyConfig()
+{
+  cat <<EOFPM > $HSHQ_STACKS_DIR/sysutils/loki/config.yml
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  volume_enabled: true
+  max_query_lookback: 168h
+  retention_period: 744h
+  discover_log_levels: true
+  discover_service_name:
+    - service_name
+    - job
+    - container
+    - service
+    - host
+
+pattern_ingester:
+  enabled: true
+EOFPM
+  cat <<EOFPM > $HSHQ_STACKS_DIR/sysutils/alloy/config.alloy
+// ─────────────────────────────────────────────────────────────
+// Docker containers → syslog files in /var/log/docker
+// daemon.json uses the syslog driver; files are named by container
+// Docker socket is used for METADATA ONLY
+// ─────────────────────────────────────────────────────────────
+
+discovery.docker "engine" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.engine.targets
+  rule {
+    source_labels = ["__meta_docker_container_label_loki_ship"]
+    action        = "keep"
+    regex         = "true"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "__path__"
+    replacement   = "/var/log/docker/\$1.log"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "project"
+  }
+  rule {
+    target_label = "log_source"
+    replacement  = "docker"
+  }
+}
+
+loki.source.file "docker_logs" {
+  targets    = discovery.relabel.containers.output
+  forward_to = [loki.write.local.receiver]
+}
+
+// ─────────────────────────────────────────────────────────────
+// Caddy access logs → /caddylogs/caddy-*-access.log (JSON lines)
+// ─────────────────────────────────────────────────────────────
+
+loki.source.file "caddy" {
+  targets = [
+    { __path__ = "/caddylogs/caddy-*-access.log" },
+  ]
+  forward_to = [loki.relabel.caddy_instance.receiver]
+  file_match {
+    enabled     = true
+    sync_period = "10s"
+  }
+}
+
+loki.relabel "caddy_instance" {
+  forward_to = [loki.process.caddy_parse.receiver]
+  rule {
+    source_labels = ["filename"]
+    regex         = ".*/(caddy-.+)-access\\.log"
+    replacement   = "$1-access"
+    target_label  = "job"
+  }
+  rule {
+    target_label = "log_source"
+    replacement  = "caddy_access"
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Device-name enrichment (Caddy access logs only)
+// ─────────────────────────────────────────────────────────────
+
+discovery.file "devices" {
+  files            = ["/etc/alloy/devices/devices.json"]
+  refresh_interval = "30s"
+}
+
+loki.process "caddy_parse" {
+  stage.json {
+    expressions = {
+      client_ip = "request.client_ip",
+    }
+  }
+  stage.labels {
+    values = { client_ip = "" }
+  }
+  forward_to = [loki.enrich.devices.receiver]
+}
+
+loki.enrich "devices" {
+  targets            = discovery.file.devices.targets
+  target_match_label = "__address__"
+  logs_match_label   = "client_ip"
+  labels_to_copy     = ["device_name"]
+  forward_to         = [loki.process.caddy_default.receiver]
+}
+
+loki.process "caddy_default" {
+  stage.match {
+    selector = \`{device_name=""}\`
+    stage.static_labels {
+      values = { device_name = "UNKNOWN" }
+    }
+  }
+  forward_to = [loki.write.local.receiver]
+}
+
+// ─────────────────────────────────────────────────────────────
+// Output
+// ─────────────────────────────────────────────────────────────
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+EOFPM
+  outputDeviceIPMapping $HSHQ_STACKS_DIR/sysutils/alloy/devices/devices.json
+}
+
+function updateDeviceIPMappingFile()
+{
+  if ! [ -d $HSHQ_STACKS_DIR/sysutils/alloy/devices ]; then
+    return
+  fi
+  outputDeviceIPMapping $HSHQ_STACKS_DIR/sysutils/alloy/devices/devices.json
+  if docker ps | grep -q alloy && docker ps | grep -q grafana; then
+    docker exec grafana bash -c "curl -fsS -X POST http://alloy:12345/-/reload" > /dev/null 2>&1
+  fi
 }
 
 function performUpdateSysUtils()
@@ -48336,12 +48963,25 @@ function performUpdateSysUtils()
       image_update_map[3]="mirror.gcr.io/influxdb:2.7.12-alpine,mirror.gcr.io/influxdb:2.7.12-alpine"
     ;;
     10)
-      newVer=v10
+      newVer=v11
       curImageList=mirror.gcr.io/grafana/grafana-oss:13.0.2,mirror.gcr.io/prom/prometheus:v3.13.1,mirror.gcr.io/prom/node-exporter:v1.12.0,mirror.gcr.io/influxdb:2.7.12-alpine
       image_update_map[0]="mirror.gcr.io/grafana/grafana-oss:13.0.2,mirror.gcr.io/grafana/grafana-oss:13.0.2"
       image_update_map[1]="mirror.gcr.io/prom/prometheus:v3.13.1,mirror.gcr.io/prom/prometheus:v3.13.1"
       image_update_map[2]="mirror.gcr.io/prom/node-exporter:v1.12.0,mirror.gcr.io/prom/node-exporter:v1.12.0"
       image_update_map[3]="mirror.gcr.io/influxdb:2.7.12-alpine,mirror.gcr.io/influxdb:2.7.12-alpine"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateSysUtilsV11
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    11)
+      newVer=v11
+      curImageList=mirror.gcr.io/grafana/grafana-oss:13.0.2,mirror.gcr.io/prom/prometheus:v3.13.1,mirror.gcr.io/prom/node-exporter:v1.12.0,mirror.gcr.io/influxdb:2.7.12-alpine,mirror.gcr.io/grafana/loki:3.7.7,mirror.gcr.io/grafana/alloy:v1.19.2
+      image_update_map[0]="mirror.gcr.io/grafana/grafana-oss:13.0.2,mirror.gcr.io/grafana/grafana-oss:13.0.2"
+      image_update_map[1]="mirror.gcr.io/prom/prometheus:v3.13.1,mirror.gcr.io/prom/prometheus:v3.13.1"
+      image_update_map[2]="mirror.gcr.io/prom/node-exporter:v1.12.0,mirror.gcr.io/prom/node-exporter:v1.12.0"
+      image_update_map[3]="mirror.gcr.io/influxdb:2.7.12-alpine,mirror.gcr.io/influxdb:2.7.12-alpine"
+      image_update_map[4]="mirror.gcr.io/grafana/loki:3.7.7,mirror.gcr.io/grafana/loki:3.7.7"
+      image_update_map[5]="mirror.gcr.io/grafana/alloy:v1.19.2,mirror.gcr.io/grafana/alloy:v1.19.2"
     ;;
     *)
       is_upgrade_error=true
@@ -48379,7 +49019,6 @@ function mfAddPrometheusWeb()
       - targets: ["host.docker.internal:$DOCKER_METRICS_PORT"]
 EOFPR
   fi
-
   cat <<EOFGF > $HOME/sysutils-compose.yml
 $STACK_VERSION_PREFIX sysutils $(getScriptStackVersion sysutils)
 
@@ -48504,11 +49143,215 @@ networks:
     ipam:
       driver: default
 EOFGF
-
   # Too many edits to the compose file, just replace the whole darn thing...
   chmod 600 $HOME/sysutils-compose.yml
   sudo chown root:root $HOME/sysutils-compose.yml
   sudo mv $HOME/sysutils-compose.yml $upgrade_compose_file
+}
+
+function mfUpdateSysUtilsV11()
+{
+  mkdir -p $HSHQ_STACKS_DIR/sysutils/loki
+  mkdir -p $HSHQ_STACKS_DIR/sysutils/alloy
+  mkdir -p $HSHQ_STACKS_DIR/sysutils/alloy/devices
+  mkdir -p $HSHQ_NONBACKUP_DIR/sysutils/loki
+  outputLokiAlloyConfig
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_ALLOY.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
+  inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://alloy:12345 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_ALLOY $MANAGETLS_ALLOY "$is_integrate_hshq" $NETDEFAULT_ALLOY "$inner_block"
+  insertSubAuthelia $SUB_ALLOY.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  insertEnableSvcAll sysutils "$FMLNAME_ALLOY" $USERTYPE_ALLOY "https://$SUB_ALLOY.$HOMESERVER_DOMAIN" "alloy.png" "$(getHeimdallOrderFromSub $SUB_ALLOY $USERTYPE_ALLOY)"
+  cat <<EOFGF > $HOME/sysutils-compose.yml
+$STACK_VERSION_PREFIX sysutils v11
+
+services:
+  grafana:
+    image: mirror.gcr.io/grafana/grafana-oss:13.0.2
+    container_name: grafana
+    hostname: grafana
+    user: "\${PORTAINER_UID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-sysutils-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-sysutils-grafana:/var/lib/grafana
+
+  prometheus:
+    image: mirror.gcr.io/prom/prometheus:v3.13.1
+    container_name: prometheus
+    hostname: prometheus
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - int-sysutils-net
+      - dock-proxy-net
+      - dock-privateip-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/prometheus:/etc/prometheus
+      - v-sysutils-prometheus:/prometheus
+      
+  node-exporter:
+    image: mirror.gcr.io/prom/node-exporter:v1.12.0
+    container_name: node-exporter
+    hostname: node-exporter
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    user: "0:0"
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|var/lib/docker/(containers|devicemapper|volumes)/.+)(\$\$|/)'
+    networks:
+      - int-sysutils-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+
+  influxdb:
+    image: mirror.gcr.io/influxdb:2.7.12-alpine
+    container_name: influxdb
+    hostname: influxdb
+    user: "\${PORTAINER_UID}"
+    restart: unless-stopped
+    env_file: stack.env
+    command:
+      - '--reporting-disabled'
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-sysutils-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/influxdb.crt:/certs/influxdb.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/influxdb.key:/certs/influxdb.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/influxdb/etc:/etc/influxdb2
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/influxdb/var:/var/lib/influxdb2
+
+  loki:
+    image: mirror.gcr.io/grafana/loki:3.7.7
+    container_name: loki
+    hostname: loki
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: -config.file=/etc/loki/config.yml
+    networks:
+      - int-sysutils-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - ${HSHQ_STACKS_DIR}/sysutils/loki/config.yml:/etc/loki/config.yml:ro
+      - v-sysutils-loki:/loki
+
+  alloy:
+    image: mirror.gcr.io/grafana/alloy:v1.19.2
+    container_name: alloy
+    hostname: alloy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - run
+      - --stability.level=experimental
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    networks:
+      - int-sysutils-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/log/docker:/var/log/docker:ro
+      - ${HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
+      - ${HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
+      - ${HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
+
+volumes:
+  v-sysutils-grafana:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/grafana
+  v-sysutils-prometheus:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/sysutils/prometheus
+  v-sysutils-loki:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/sysutils/loki
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-privateip-net:
+    name: dock-privateip
+    external: true
+  int-sysutils-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+EOFGF
 }
 
 # OpenLDAP
@@ -123190,7 +124033,7 @@ if [ -f \$HSHQ_NEW_LIB_SCRIPT ]; then
   fi
   performPreUpdateCheck
   if [ \$? -eq 0 ]; then
-    mv \$HSHQ_NEW_LIB_SCRIPT \$HSHQ_LIB_SCRIPT
+    sudo mv \$HSHQ_NEW_LIB_SCRIPT \$HSHQ_LIB_SCRIPT
     is_any_updated=true
   else
     performExitFunctions false
@@ -124520,8 +125363,8 @@ EOFSC
       "type": "text",
       "max_length": "64",
       "regex": {
-        "pattern": "^[a-z0-9][a-z0-9-]+\$",
-        "description": "Only lowercase letters, numbers, and/or hyphens"
+        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9-]+\$",
+        "description": "Only letters, numbers, and/or hyphens"
       },
       "ui": {
         "width_weight": 2,
@@ -124630,8 +125473,8 @@ EOFSC
       "type": "text",
       "max_length": "64",
       "regex": {
-        "pattern": "^[a-z0-9][a-z0-9-]+\$",
-        "description": "Only lowercase letters, numbers, and/or hyphens"
+        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9-]+\$",
+        "description": "Only letters, numbers, and/or hyphens"
       },
       "ui": {
         "width_weight": 2,
@@ -131709,8 +132552,28 @@ function outputCaddyHeaders()
   not remote_ip {\$CADDY_HSHQ_PRIVATE_IPS}
 }
 
+($CADDY_SNIPPET_LOG_TRUE) {
+  @aclog_filter {
+    remote_ip $DOCKER_NETWORK_RESERVED_RANGE
+  }
+  log_skip @aclog_filter
+  log {
+    output file /logs/{\$CADDY_STACK_NAME}-access.log {
+      roll_size 100MiB
+      roll_interval 168h
+      roll_keep 8
+      roll_keep_for 2160h
+      roll_local_time
+    }
+  }
+}
+
+($CADDY_SNIPPET_LOG_FALSE) {
+}
+
 ($CADDY_SNIPPET_RIP) {
   @subnet remote_ip {\$CADDY_HSHQ_CA_SUBNET}
+  import {\$ENABLE_LOGGING:$CADDY_SNIPPET_LOG_FALSE}
 }
 
 EOFCF
@@ -131795,6 +132658,7 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-Home:/config/CaddyfileBody
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/logs
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/scripts:/scripts:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
@@ -131863,6 +132727,8 @@ CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 $add_ri
 CADDY_HSHQ_PRIVATE_IPS=\${$priv_ip_net} $(getPrivateIPRangesCaddy $bind_ip)
 CADDY_HSHQ_CA_URL=$ca_url
 CADDY_HSHQ_BIND_IP=\${$ipVarName}
+ENABLE_LOGGING=$CADDY_SNIPPET_LOG_FALSE
+CADDY_STACK_NAME=$caddy_net_name
 EOFCE
       ;;
     primary)
@@ -131898,6 +132764,7 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-Primary:/config/CaddyfileBody
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/logs
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/scripts:/scripts:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
@@ -131993,6 +132860,7 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-Primary:/config/CaddyfileBody
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/logs
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/scripts:/scripts:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
@@ -132051,6 +132919,8 @@ CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
 CADDY_HSHQ_PRIVATE_IPS=
 CADDY_HSHQ_CA_URL=$ca_url
 CADDY_HSHQ_BIND_IP=$bind_ip
+ENABLE_LOGGING=$CADDY_SNIPPET_LOG_FALSE
+CADDY_STACK_NAME=$caddy_net_name
 EOFCE
       ;;
     other)
@@ -132083,6 +132953,7 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-$caddy_net_name:/config/CaddyfileBody
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/logs
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/lecerts:/lecerts:ro
@@ -132130,6 +133001,8 @@ CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
 CADDY_HSHQ_PRIVATE_IPS=
 CADDY_HSHQ_CA_URL=$ca_url
 CADDY_HSHQ_BIND_IP=$bind_ip
+ENABLE_LOGGING=$CADDY_SNIPPET_LOG_FALSE
+CADDY_STACK_NAME=$caddy_net_name
 EOFCE
       ;;
     *)
