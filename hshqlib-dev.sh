@@ -32990,6 +32990,8 @@ INFLUXDB_ADMIN_PASSWORD=
 INFLUXDB_ORG=
 INFLUXDB_TOKEN=
 INFLUXDB_HA_BUCKET=
+ALLOY_ADMIN_USERNAME=
+ALLOY_ADMIN_PASSWORD=
 # SysUtils (Service Details) END
 
 # OpenLDAP (Service Details) BEGIN
@@ -35129,6 +35131,14 @@ function initServicesCredentials()
   if [ -z "$INFLUXDB_HA_BUCKET" ]; then
     INFLUXDB_HA_BUCKET="home_assistant"
     updateConfigVar INFLUXDB_HA_BUCKET $INFLUXDB_HA_BUCKET
+  fi
+  if [ -z "$ALLOY_ADMIN_USERNAME" ]; then
+    ALLOY_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_alloy"
+    updateConfigVar ALLOY_ADMIN_USERNAME $ALLOY_ADMIN_USERNAME
+  fi
+  if [ -z "$ALLOY_ADMIN_PASSWORD" ]; then
+    ALLOY_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ALLOY_ADMIN_PASSWORD $ALLOY_ADMIN_PASSWORD
   fi
   if [ -z "$LDAP_BASE_DN"  ]; then
     LDAP_BASE_DN=$(echo "dc="$(echo $HOMESERVER_DOMAIN | sed 's/\./,dc=/g'))
@@ -41596,6 +41606,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUTHELIA}" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_WAZUH}" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_ADMIN_USERNAME $WAZUH_USERS_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GRAFANA}" https://$SUB_GRAFANA.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAFANA_ADMIN_USERNAME $GRAFANA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ALLOY}" https://$SUB_ALLOY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $ALLOY_ADMIN_USERNAME $ALLOY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_INFLUXDB}" https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $INFLUXDB_ADMIN_USERNAME $INFLUXDB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DOZZLE}" https://$SUB_DOZZLE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DOZZLE_USERNAME $DOZZLE_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JELLYFIN}-Admin" "\"https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/wizard/user\"" $HOMESERVER_ABBREV $JELLYFIN_ADMIN_USERNAME $JELLYFIN_ADMIN_PASSWORD)"\n"
@@ -41807,6 +41818,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUTHELIA}" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_WAZUH}" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_ADMIN_USERNAME $WAZUH_USERS_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GRAFANA}" https://$SUB_GRAFANA.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAFANA_ADMIN_USERNAME $GRAFANA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ALLOY}" https://$SUB_ALLOY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $ALLOY_ADMIN_USERNAME $ALLOY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_INFLUXDB}" https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $INFLUXDB_ADMIN_USERNAME $INFLUXDB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DOZZLE}" https://$SUB_DOZZLE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DOZZLE_USERNAME $DOZZLE_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_JELLYFIN}-Admin" "\"https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/wizard/user\"" $HOMESERVER_ABBREV $JELLYFIN_ADMIN_USERNAME $JELLYFIN_ADMIN_PASSWORD)"\n"
@@ -42790,8 +42802,11 @@ function getScriptImageByContainerName()
     "loki")
       container_image=$IMG_LOKI
       ;;
-    "alloy")
+    "alloy-app")
       container_image=$IMG_ALLOY
+      ;;
+    "alloy-web")
+      container_image=mirror.gcr.io/caddy:2.11.4
       ;;
     "ldapserver")
       container_image=$IMG_OPENLDAP_SERVER
@@ -44739,6 +44754,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Presenton" "PRESENTON_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "RAGFlow" "RAGFLOW_DATABASE_ROOT_PASSWORD=,RAGFLOW_ADMIN_API_KEY=,RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "AutoKB" "AUTOKB_ENCRYPTION_SALT=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "SysUtils" "ALLOY_ADMIN_USERNAME=,ALLOY_ADMIN_PASSWORD=" $CONFIG_FILE false
   initServicesCredentials
 }
 
@@ -46002,29 +46018,29 @@ function installSysUtils()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_INFLUXDB $MANAGETLS_INFLUXDB "$is_integrate_hshq" $NETDEFAULT_INFLUXDB "$inner_block"
-  #inner_block=""
-  #inner_block=$inner_block">>https://$SUB_ALLOY.$HOMESERVER_DOMAIN {\n"
-  #inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
-  #inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
-  #inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
-  #inner_block=$inner_block">>>>handle @subnet {\n"
-  #inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
-  #inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
-  #inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
-  #inner_block=$inner_block">>>>>>}\n"
-  #inner_block=$inner_block">>>>>>reverse_proxy http://alloy:12345 {\n"
-  #inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
-  #inner_block=$inner_block">>>>>>}\n"
-  #inner_block=$inner_block">>>>}\n"
-  #inner_block=$inner_block">>>>respond 404\n"
-  #inner_block=$inner_block">>}"
-  #updateCaddyBlocks $SUB_ALLOY $MANAGETLS_ALLOY "$is_integrate_hshq" $NETDEFAULT_ALLOY "$inner_block"
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_ALLOY.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
+  inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://alloy-web:80 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_ALLOY $MANAGETLS_ALLOY "$is_integrate_hshq" $NETDEFAULT_ALLOY "$inner_block"
   insertSubAuthelia $SUB_ALLOY.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll sysutils "$FMLNAME_GRAFANA" $USERTYPE_GRAFANA "https://$SUB_GRAFANA.$HOMESERVER_DOMAIN" "grafana.png" "$(getHeimdallOrderFromSub $SUB_GRAFANA $USERTYPE_GRAFANA)"
     insertEnableSvcAll sysutils "$FMLNAME_PROMETHEUS" $USERTYPE_PROMETHEUS "https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN" "prometheus.png" "$(getHeimdallOrderFromSub $SUB_PROMETHEUS $USERTYPE_PROMETHEUS)"
     insertEnableSvcAll sysutils "$FMLNAME_INFLUXDB" $USERTYPE_INFLUXDB "https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN" "influxdb.png" "$(getHeimdallOrderFromSub $SUB_INFLUXDB $USERTYPE_INFLUXDB)"
-    #insertEnableSvcAll sysutils "$FMLNAME_ALLOY" $USERTYPE_ALLOY "https://$SUB_ALLOY.$HOMESERVER_DOMAIN" "alloy.png" "$(getHeimdallOrderFromSub $SUB_ALLOY $USERTYPE_ALLOY)"
+    insertEnableSvcAll sysutils "$FMLNAME_ALLOY" $USERTYPE_ALLOY "https://$SUB_ALLOY.$HOMESERVER_DOMAIN" "alloy.png" "$(getHeimdallOrderFromSub $SUB_ALLOY $USERTYPE_ALLOY)"
     restartAllCaddyContainers
   fi
 }
@@ -46156,10 +46172,10 @@ services:
       - ${HSHQ_STACKS_DIR}/sysutils/loki/config.yml:/etc/loki/config.yml:ro
       - v-sysutils-loki:/loki
 
-  alloy:
-    image: $(getScriptImageByContainerName alloy)
-    container_name: alloy
-    hostname: alloy
+  alloy-app:
+    image: $(getScriptImageByContainerName alloy-app)
+    container_name: alloy-app
+    hostname: alloy-app
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -46170,7 +46186,6 @@ services:
       - /etc/alloy/config.alloy
     networks:
       - int-sysutils-net
-      - dock-proxy-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -46182,6 +46197,25 @@ services:
       - ${HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
       - ${HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
       - ${HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
+
+  alloy-web:
+    image: $(getScriptImageByContainerName alloy-web)
+    container_name: alloy-web
+    hostname: alloy-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-sysutils-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/alloy/Caddyfile:/etc/caddy/Caddyfile
 
 volumes:
   v-sysutils-grafana:
@@ -46334,10 +46368,10 @@ services:
       - ${HSHQ_STACKS_DIR}/sysutils/loki/config.yml:/etc/loki/config.yml:ro
       - v-sysutils-loki:/loki
 
-  alloy:
-    image: $(getScriptImageByContainerName alloy)
-    container_name: alloy
-    hostname: alloy
+  alloy-app:
+    image: $(getScriptImageByContainerName alloy-app)
+    container_name: alloy-app
+    hostname: alloy-app
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -46348,7 +46382,6 @@ services:
       - /etc/alloy/config.alloy
     networks:
       - int-sysutils-net
-      - dock-proxy-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -46360,6 +46393,25 @@ services:
       - ${HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
       - ${HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
       - ${HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
+
+  alloy-web:
+    image: $(getScriptImageByContainerName alloy-web)
+    container_name: alloy-web
+    hostname: alloy-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-sysutils-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/alloy/Caddyfile:/etc/caddy/Caddyfile
 
 volumes:
   v-sysutils-grafana:
@@ -46403,6 +46455,8 @@ UID=$USERID
 GID=$GROUPID
 INFLUXD_TLS_CERT=/certs/influxdb.crt
 INFLUXD_TLS_KEY=/certs/influxdb.key
+ALLOY_ADMIN_USERNAME=$ALLOY_ADMIN_USERNAME
+ALLOY_ADMIN_PASSWORD=$ALLOY_ADMIN_PASSWORD
 EOFGF
   cat <<EOFPM > $HSHQ_STACKS_DIR/sysutils/prometheus/prometheus.yml
 global:
@@ -48883,6 +48937,29 @@ loki.relabel "host_instance" {
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// LiteLLM request/response records → /loki/api/v1/raw (NDJSON)
+// ─────────────────────────────────────────────────────────────
+/*
+loki.source.api "litellm" {
+  http {
+    listen_address = "0.0.0.0"
+    listen_port    = 3101
+  }
+  forward_to = [loki.process.llm.receiver]
+}
+*/
+
+loki.process "llm" {
+  stage.static_labels {
+    values = {
+      job        = "litellm",
+      log_source = "litellm",
+    }
+  }
+  forward_to = [loki.write.local.receiver]
+}
+
 // ────────────────────────────────────────────────────────────────────
 // Output
 // ────────────────────────────────────────────────────────────────────
@@ -48894,6 +48971,26 @@ loki.write "local" {
 }
 EOFPM
   outputDeviceIPMapping $HSHQ_STACKS_DIR/sysutils/alloy/devices/devices.json
+  cat <<EOFPM > $HSHQ_STACKS_DIR/sysutils/alloy/Caddyfile
+:80 {
+  basic_auth {
+     $ALLOY_ADMIN_USERNAME $(htpasswd -nbBc 12 $ALLOY_ADMIN_USERNAME $ALLOY_ADMIN_PASSWORD | cut -d: -f2)
+  }
+  reverse_proxy alloy-app:12345
+}
+
+:3101 {
+  @unauth not header Authorization "Bearer {\$ALLOY_ADMIN_PASSWORD}"
+  respond @unauth 401 {
+    close
+  }
+  @badmethod not method POST
+  @badpath not path /loki/api/v1/raw
+  respond @badmethod 405 { close }
+  respond @badpath 404 { close }
+  reverse_proxy alloy-app:3101
+}
+EOFPM
 }
 
 function updateDeviceIPMappingFile()
@@ -48903,7 +49000,7 @@ function updateDeviceIPMappingFile()
   fi
   outputDeviceIPMapping $HSHQ_STACKS_DIR/sysutils/alloy/devices/devices.json
   if docker ps | grep -q alloy && docker ps | grep -q grafana; then
-    docker exec grafana bash -c "curl -fsS -X POST http://alloy:12345/-/reload" > /dev/null 2>&1
+    docker exec grafana bash -c "curl -fsS -X POST http://alloy-app:12345/-/reload" > /dev/null 2>&1
   fi
 }
 
@@ -49006,13 +49103,14 @@ function performUpdateSysUtils()
     ;;
     11)
       newVer=v11
-      curImageList=mirror.gcr.io/grafana/grafana-oss:13.0.2,mirror.gcr.io/prom/prometheus:v3.13.1,mirror.gcr.io/prom/node-exporter:v1.12.0,mirror.gcr.io/influxdb:2.7.12-alpine,mirror.gcr.io/grafana/loki:3.7.7,mirror.gcr.io/grafana/alloy:v1.19.2
+      curImageList=mirror.gcr.io/grafana/grafana-oss:13.0.2,mirror.gcr.io/prom/prometheus:v3.13.1,mirror.gcr.io/prom/node-exporter:v1.12.0,mirror.gcr.io/influxdb:2.7.12-alpine,mirror.gcr.io/grafana/loki:3.7.7,mirror.gcr.io/grafana/alloy:v1.19.2,mirror.gcr.io/caddy:2.11.4
       image_update_map[0]="mirror.gcr.io/grafana/grafana-oss:13.0.2,mirror.gcr.io/grafana/grafana-oss:13.0.2"
       image_update_map[1]="mirror.gcr.io/prom/prometheus:v3.13.1,mirror.gcr.io/prom/prometheus:v3.13.1"
       image_update_map[2]="mirror.gcr.io/prom/node-exporter:v1.12.0,mirror.gcr.io/prom/node-exporter:v1.12.0"
       image_update_map[3]="mirror.gcr.io/influxdb:2.7.12-alpine,mirror.gcr.io/influxdb:2.7.12-alpine"
       image_update_map[4]="mirror.gcr.io/grafana/loki:3.7.7,mirror.gcr.io/grafana/loki:3.7.7"
       image_update_map[5]="mirror.gcr.io/grafana/alloy:v1.19.2,mirror.gcr.io/grafana/alloy:v1.19.2"
+      image_update_map[6]="mirror.gcr.io/caddy:2.11.4,mirror.gcr.io/caddy:2.11.4"
     ;;
     *)
       is_upgrade_error=true
@@ -49187,25 +49285,25 @@ function mfUpdateSysUtilsV11()
   mkdir -p $HSHQ_STACKS_DIR/sysutils/alloy/devices
   mkdir -p $HSHQ_NONBACKUP_DIR/sysutils/loki
   outputLokiAlloyConfig
-  #inner_block=""
-  #inner_block=$inner_block">>https://$SUB_ALLOY.$HOMESERVER_DOMAIN {\n"
-  #inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
-  #inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
-  #inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
-  #inner_block=$inner_block">>>>handle @subnet {\n"
-  #inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
-  #inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
-  #inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
-  #inner_block=$inner_block">>>>>>}\n"
-  #inner_block=$inner_block">>>>>>reverse_proxy http://alloy:12345 {\n"
-  #inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
-  #inner_block=$inner_block">>>>>>}\n"
-  #inner_block=$inner_block">>>>}\n"
-  #inner_block=$inner_block">>>>respond 404\n"
-  #inner_block=$inner_block">>}"
-  #updateCaddyBlocks $SUB_ALLOY $MANAGETLS_ALLOY "$is_integrate_hshq" $NETDEFAULT_ALLOY "$inner_block"
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_ALLOY.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
+  inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://alloy-web {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_ALLOY $MANAGETLS_ALLOY "$is_integrate_hshq" $NETDEFAULT_ALLOY "$inner_block"
   insertSubAuthelia $SUB_ALLOY.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
-  #insertEnableSvcAll sysutils "$FMLNAME_ALLOY" $USERTYPE_ALLOY "https://$SUB_ALLOY.$HOMESERVER_DOMAIN" "alloy.png" "$(getHeimdallOrderFromSub $SUB_ALLOY $USERTYPE_ALLOY)"
+  insertEnableSvcAll sysutils "$FMLNAME_ALLOY" $USERTYPE_ALLOY "https://$SUB_ALLOY.$HOMESERVER_DOMAIN" "alloy.png" "$(getHeimdallOrderFromSub $SUB_ALLOY $USERTYPE_ALLOY)"
   cat <<EOFGF > $HOME/sysutils-compose.yml
 $STACK_VERSION_PREFIX sysutils v11
 
@@ -49320,10 +49418,10 @@ services:
       - ${HSHQ_STACKS_DIR}/sysutils/loki/config.yml:/etc/loki/config.yml:ro
       - v-sysutils-loki:/loki
 
-  alloy:
+  alloy-app:
     image: mirror.gcr.io/grafana/alloy:v1.19.2
-    container_name: alloy
-    hostname: alloy
+    container_name: alloy-app
+    hostname: alloy-app
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -49334,7 +49432,6 @@ services:
       - /etc/alloy/config.alloy
     networks:
       - int-sysutils-net
-      - dock-proxy-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -49346,6 +49443,25 @@ services:
       - ${HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
       - ${HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
       - ${HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
+
+  alloy-web:
+    image: mirror.gcr.io/caddy:2.11.4
+    container_name: alloy-web
+    hostname: alloy-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-sysutils-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/alloy/Caddyfile:/etc/caddy/Caddyfile
 
 volumes:
   v-sysutils-grafana:
@@ -49383,6 +49499,13 @@ networks:
     ipam:
       driver: default
 EOFGF
+  set +e
+  grep -q ALLOY_ADMIN_USERNAME $HOME/sysutils.env
+  if [ $? -ne 0 ]; then
+    echo "ALLOY_ADMIN_USERNAME=$ALLOY_ADMIN_USERNAME" >> $HOME/sysutils.env
+    echo "ALLOY_ADMIN_PASSWORD=$ALLOY_ADMIN_PASSWORD" >> $HOME/sysutils.env
+    sendEmail -s "Alloy Admin Login Info" -b "Alloy Admin Username: $ALLOY_ADMIN_USERNAME\nAlloy Admin Password: $ALLOY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  fi
 }
 
 # OpenLDAP
@@ -114895,7 +115018,7 @@ general_settings:
 litellm_settings:
   turn_off_message_logging: False
   drop_params: True
-  callbacks: []
+  callbacks: ["llm_logs"]
   success_callback: []
   num_retries: 5
   request_timeout: 900
@@ -114918,7 +115041,14 @@ router_settings:
   redis_password: os.environ/REDIS_PASSWORD
   redis_port: os.environ/REDIS_PORT
   enable_pre_call_checks: true
-  model_group_alias: {"my-special-fake-model-alias-name": "fake-openai-endpoint-3"} 
+  model_group_alias: {"my-special-fake-model-alias-name": "fake-openai-endpoint-3"}
+callback_settings:
+  llm_logs:
+    callback_type: generic_api
+    endpoint: http://alloy-web:3101/loki/api/v1/raw
+    log_format: ndjson
+    headers:
+      Authorization: Bearer $ALLOY_ADMIN_PASSWORD
 EOFMT
 }
 
