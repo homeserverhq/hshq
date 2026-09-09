@@ -45843,6 +45843,18 @@ function installSysUtils()
   if [ $? -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName loki)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName alloy-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName alloy-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/sysutils
   mkdir $HSHQ_STACKS_DIR/sysutils/grafana
@@ -45864,7 +45876,6 @@ function installSysUtils()
   # Have had 2 abrupt exits randomly around this point,
   # with the error: "getwd: no such file or directory".
   # So adding some debug statements and potential solutions.
-  echo "Sysutils - Output config"
   outputConfigSysUtils
   # This may seem silly, but Since gfdashboard.json is
   # very large, there could be a strange race condition.
@@ -45874,7 +45885,6 @@ function installSysUtils()
     sleep 1
   done
   cd ~
-  echo "Sysutils - Starting stack"
   sleep 3
   cd ~
   docker compose -f $HOME/sysutils-compose-tmp.yml up -d
@@ -45940,7 +45950,7 @@ function installSysUtils()
   prometheus_json=$(jq -n --arg gfid "$gf_dataset_uid" '{name: "Prometheus", uid: $gfid, type: "prometheus", url: "http://prometheus:9090", access: "proxy", basicAuth: false, isDefault: true}')
   import_gf_ds "$prometheus_json"
   loki_json=$(jq -n --arg gfid "$gf_loki_uid" '{name: "Loki", uid: $gfid, type: "loki", url: "http://loki:3100", access: "proxy", basicAuth: false, isDefault: false, jsonData: {maxLines: 1000}}')
-  import_gf_ds "$prometheus_json"
+  import_gf_ds "$loki_json"
   if [ "$isSuccess" = "false" ]; then
     echo "ERROR: Could not import datasource into Grafana."
   else
@@ -46171,6 +46181,12 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - ${HSHQ_STACKS_DIR}/sysutils/loki/config.yml:/etc/loki/config.yml:ro
       - v-sysutils-loki:/loki
+    environment:
+      - TZ=$TZ
+      - UID=$USERID
+      - GID=$GROUPID
+      - ALLOY_ADMIN_USERNAME=$ALLOY_ADMIN_USERNAME
+      - ALLOY_ADMIN_PASSWORD=$ALLOY_ADMIN_PASSWORD
 
   alloy-app:
     image: $(getScriptImageByContainerName alloy-app)
@@ -46197,13 +46213,18 @@ services:
       - ${HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
       - ${HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
       - ${HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
+    environment:
+      - TZ=$TZ
+      - UID=$USERID
+      - GID=$GROUPID
+      - ALLOY_ADMIN_USERNAME=$ALLOY_ADMIN_USERNAME
+      - ALLOY_ADMIN_PASSWORD=$ALLOY_ADMIN_PASSWORD
 
   alloy-web:
     image: $(getScriptImageByContainerName alloy-web)
     container_name: alloy-web
     hostname: alloy-web
     restart: unless-stopped
-    env_file: stack.env
     security_opt:
       - no-new-privileges:true
     networks:
@@ -46215,7 +46236,13 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/Caddyfile:/etc/caddy/Caddyfile
+      - ${HSHQ_STACKS_DIR}/sysutils/alloy/Caddyfile:/etc/caddy/Caddyfile
+    environment:
+      - TZ=$TZ
+      - UID=$USERID
+      - GID=$GROUPID
+      - ALLOY_ADMIN_USERNAME=$ALLOY_ADMIN_USERNAME
+      - ALLOY_ADMIN_PASSWORD=$ALLOY_ADMIN_PASSWORD
 
 volumes:
   v-sysutils-grafana:
@@ -48842,8 +48869,8 @@ loki.relabel "caddy_instance" {
   forward_to = [loki.process.caddy_parse.receiver]
   rule {
     source_labels = ["filename"]
-    regex         = ".*/(caddy-.+)-access\\.log"
-    replacement   = "$1-access"
+    regex         = ".*/(caddy-.+)-access\\\\.log"
+    replacement   = "\$1-access"
     target_label  = "job"
   }
   rule {
@@ -48911,7 +48938,7 @@ loki.relabel "host_instance" {
   rule {
     source_labels = ["filename"]
     regex         = ".*/(.+)"
-    replacement   = "$1"
+    replacement   = "\$1"
     target_label  = "job"
   }
   rule {
