@@ -31887,8 +31887,8 @@ function loadPinnedDockerImages()
   IMG_ZAMMAD=ghcr.io/zammad/zammad:6.5.2-49
   IMG_ZULIP_APP=mirror.gcr.io/zulip/docker-zulip:11.4-0
   IMG_ZULIP_DB=mirror.gcr.io/zulip/zulip-postgresql:14
-  IMG_BESZEL_APP=mirror.gcr.io/henrygd/beszel:0.17.0
-  IMG_BESZEL_AGENT=mirror.gcr.io/henrygd/beszel-agent:0.17.0
+  IMG_BESZEL_APP=ghcr.io/henrygd/beszel/beszel:0.19.0
+  IMG_BESZEL_AGENT=ghcr.io/henrygd/beszel/beszel-agent:0.19.0
   IMG_TAIGA_BACK=mirror.gcr.io/taigaio/taiga-back:6.9.0
   IMG_TAIGA_BACK=mirror.gcr.io/taigaio/taiga-back:6.9.0
   IMG_TAIGA_FRONT=mirror.gcr.io/taigaio/taiga-front:6.9.0
@@ -32243,7 +32243,7 @@ function getScriptStackVersion()
     wgportal)
       echo "v2" ;;
     beszel)
-      echo "v2" ;;
+      echo "v3" ;;
     taiga)
       echo "v1" ;;
     opensign)
@@ -46215,7 +46215,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/alloy/Caddyfile:/etc/caddy/Caddyfile
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/Caddyfile:/etc/caddy/Caddyfile
 
 volumes:
   v-sysutils-grafana:
@@ -46365,7 +46365,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - ${HSHQ_STACKS_DIR}/sysutils/loki/config.yml:/etc/loki/config.yml:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/loki/config.yml:/etc/loki/config.yml:ro
       - v-sysutils-loki:/loki
 
   alloy-app:
@@ -46390,9 +46390,9 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/log:/var/log:ro
-      - ${HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
-      - ${HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
-      - ${HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
 
   alloy-web:
     image: $(getScriptImageByContainerName alloy-web)
@@ -46411,7 +46411,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/alloy/Caddyfile:/etc/caddy/Caddyfile
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/Caddyfile:/etc/caddy/Caddyfile
 
 volumes:
   v-sysutils-grafana:
@@ -46458,23 +46458,6 @@ INFLUXD_TLS_KEY=/certs/influxdb.key
 ALLOY_ADMIN_USERNAME=$ALLOY_ADMIN_USERNAME
 ALLOY_ADMIN_PASSWORD=$ALLOY_ADMIN_PASSWORD
 EOFGF
-  cat <<EOFPM > $HSHQ_STACKS_DIR/sysutils/prometheus/prometheus.yml
-global:
-  scrape_interval: 15s
-scrape_configs:
-  - job_name: 'prometheus'
-    static_configs:
-      - targets: ['localhost:9090']
-  - job_name: 'node-exporter'
-    static_configs:
-      - targets: ['node-exporter:9100']
-  - job_name: 'docker'
-    static_configs:
-      - targets: ["host.docker.internal:$DOCKER_METRICS_PORT"]
-  - job_name: 'litellm'
-    static_configs:
-      - targets: ['litellm-proxy:4000']
-EOFPM
   cat <<EOFJS > $HOME/gfdashboard.json
 {
 	"dashboard": {
@@ -48940,6 +48923,7 @@ loki.relabel "host_instance" {
 // ─────────────────────────────────────────────────────────────
 // LiteLLM request/response records → /loki/api/v1/raw (NDJSON)
 // ─────────────────────────────────────────────────────────────
+// Uncomment the following block to ingest from LiteLLM
 /*
 loki.source.api "litellm" {
   http {
@@ -48974,7 +48958,7 @@ EOFPM
   cat <<EOFPM > $HSHQ_STACKS_DIR/sysutils/alloy/Caddyfile
 :80 {
   basic_auth {
-     $ALLOY_ADMIN_USERNAME $(htpasswd -nbBc 12 $ALLOY_ADMIN_USERNAME $ALLOY_ADMIN_PASSWORD | cut -d: -f2)
+     $ALLOY_ADMIN_USERNAME $(htpasswd -nbBC 12 $ALLOY_ADMIN_USERNAME $ALLOY_ADMIN_PASSWORD | cut -d: -f2)
   }
   reverse_proxy alloy-app:12345
 }
@@ -48986,10 +48970,35 @@ EOFPM
   }
   @badmethod not method POST
   @badpath not path /loki/api/v1/raw
-  respond @badmethod 405 { close }
-  respond @badpath 404 { close }
+  respond @badmethod 405 {
+    close
+  }
+  respond @badpath 404 {
+    close
+  }
   reverse_proxy alloy-app:3101
 }
+EOFPM
+  cat <<EOFPM > $HSHQ_STACKS_DIR/sysutils/prometheus/prometheus.yml
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+  - job_name: 'docker'
+    static_configs:
+      - targets: ["host.docker.internal:$DOCKER_METRICS_PORT"]
+  - job_name: 'litellm'
+    metrics_path: '/metrics/'
+    static_configs:
+      - targets: ['litellm-proxy:4000']
+    authorization:
+      type: Bearer
+      credentials: "$LITELLM_MASTER_KEY"
 EOFPM
 }
 
@@ -49415,7 +49424,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - ${HSHQ_STACKS_DIR}/sysutils/loki/config.yml:/etc/loki/config.yml:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/loki/config.yml:/etc/loki/config.yml:ro
       - v-sysutils-loki:/loki
 
   alloy-app:
@@ -49440,9 +49449,9 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/log:/var/log:ro
-      - ${HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
-      - ${HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
-      - ${HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
 
   alloy-web:
     image: mirror.gcr.io/caddy:2.11.4
@@ -49461,7 +49470,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/alloy/Caddyfile:/etc/caddy/Caddyfile
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/Caddyfile:/etc/caddy/Caddyfile
 
 volumes:
   v-sysutils-grafana:
@@ -95698,10 +95707,8 @@ function installBeszel()
     BESZEL_INIT_ENV=true
     updateConfigVar BESZEL_INIT_ENV $BESZEL_INIT_ENV
   fi
-  sendEmail -s "$FMLNAME_BESZEL_APP Install Instructions" -b "There is one extra action that you must perform manually to enable the Beszel agent on your local system. Here are the steps:\n\n\t1. Log in to the Beszel web UI using the admin credentials (https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN).\n\t2. Go to Settings (press the gear button on top right of window), then to Tokens & Fingerprints.\n\t3. Under the Universal token section, move the toggle button to the right. You should see a UUID for the token, i.e. something like 9df4ceb0-af96-413a-ab2b-7246cca7422c, etc.\n\t4. Select this generated value and copy it to the clipboard.\n\t5. Go to Portainer (https://$SUB_PORTAINER.$HOMESERVER_DOMAIN), and open up the beszel stack.\n\t6. Select the Editor tab, then in the docker-compose area scoll halfway down to the beszel-agent container.\n\t7. At the end of that block is an environment section with a single variable, TOKEN. It should be assigned to nothing, i.e. - TOKEN=. Paste the generated token from the clipboard on the RHS, i.e. it should then look like this: - TOKEN=9df4ceb0-af96-413a-ab2b-7246cca7422c\n\t8. After pasting the value, scroll down and press the Update the stack button. Your local system should now be connected to the hub. Go back to Beszel and refresh the page (click the word Beszel on top left corner of window to go to the home landing page)." -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
   sleep 3
   beszel_app_key=$(sudo ssh-keygen -y -f $HSHQ_STACKS_DIR/beszel/hubdata/id_ed25519)
-  #beszel_app_token=$(sqlite3 $HSHQ_STACKS_DIR/beszel/hubdata/data.db "select token from fingerprints limit 1;")
   updateStackEnv beszel modFunBeszelUpdateKeyToken > /dev/null 2>&1
   if [ -z "$FMLNAME_BESZEL_APP" ]; then
     set +e
@@ -95728,6 +95735,7 @@ function installBeszel()
     insertEnableSvcAll beszel "$FMLNAME_BESZEL_APP" $USERTYPE_BESZEL_APP "https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN" "beszel.png" "$(getHeimdallOrderFromSub $SUB_BESZEL_APP $USERTYPE_BESZEL_APP)"
     restartAllCaddyContainers
   fi
+  updateStackEnv beszel modFunBeszelUpdateAgentToken > /dev/null 2>&1
 }
 
 function outputConfigBeszel()
@@ -95776,8 +95784,6 @@ services:
       - v-beszel-agentdata:/var/lib/beszel-agent
       - v-beszel-socket:/beszel_socket
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:
-      - TOKEN=
 
 volumes:
   v-beszel-hubdata:
@@ -95818,12 +95824,39 @@ HUB_URL=http://127.0.0.1:8090
 USER_EMAIL=$BESZEL_ADMIN_EMAIL_ADDRESS
 USER_PASSWORD=$BESZEL_ADMIN_PASSWORD
 KEY=
+TOKEN=
 EOFMT
 }
 
 function modFunBeszelUpdateKeyToken()
 {
   sed -i "s|^KEY=.*|KEY=${beszel_app_key}|g" $HOME/beszel.env
+}
+
+function modFunBeszelUpdateAgentToken()
+{
+  curTries=1
+  maxTries=30
+  is_success=false
+  while [ $curTries -le $maxTries ]
+  do
+    if curl -sf "https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN/api/beszel/first-run" >/dev/null 2>&1; then
+      is_success=true
+      break
+    fi
+    sleep 3
+    ((curTries++))
+  done
+  if ! [ "$is_success" = "true" ]; then
+    echo "Failed to configure agent token, returning..."
+    return
+  fi
+  AUTH_TOKEN=$(curl -s -X POST "https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN/api/collections/users/auth-with-password" \
+    -H "Content-Type: application/json" \
+    -d "{\"identity\":\"$BESZEL_ADMIN_EMAIL_ADDRESS\",\"password\":\"$BESZEL_ADMIN_PASSWORD\"}" | jq -r '.token')
+  AGENT_TOKEN=$(curl -s "https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN/api/beszel/universal-token?enable=1&permanent=1" \
+    -H "Authorization: Bearer $AUTH_TOKEN" | jq -r '.token')
+  sed -i "s|^TOKEN=.*|TOKEN=${AGENT_TOKEN}|g" $HOME/beszel.env
 }
 
 function performUpdateBeszel()
@@ -95840,10 +95873,16 @@ function performUpdateBeszel()
       image_update_map[1]="mirror.gcr.io/henrygd/beszel-agent:0.13.2,mirror.gcr.io/henrygd/beszel-agent:0.17.0"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/henrygd/beszel:0.17.0,mirror.gcr.io/henrygd/beszel-agent:0.17.0
-      image_update_map[0]="mirror.gcr.io/henrygd/beszel:0.17.0,mirror.gcr.io/henrygd/beszel:0.17.0"
-      image_update_map[1]="mirror.gcr.io/henrygd/beszel-agent:0.17.0,mirror.gcr.io/henrygd/beszel-agent:0.17.0"
+      image_update_map[0]="mirror.gcr.io/henrygd/beszel:0.17.0,ghcr.io/henrygd/beszel/beszel:0.19.0"
+      image_update_map[1]="mirror.gcr.io/henrygd/beszel-agent:0.17.0,ghcr.io/henrygd/beszel/beszel-agent:0.19.0"
+    ;;
+    3)
+      newVer=v3
+      curImageList=ghcr.io/henrygd/beszel/beszel:0.19.0,ghcr.io/henrygd/beszel/beszel-agent:0.19.0
+      image_update_map[0]="ghcr.io/henrygd/beszel/beszel:0.19.0,ghcr.io/henrygd/beszel/beszel:0.19.0"
+      image_update_map[1]="ghcr.io/henrygd/beszel/beszel-agent:0.19.0,ghcr.io/henrygd/beszel/beszel-agent:0.19.0"
     ;;
     *)
       is_upgrade_error=true
@@ -115018,7 +115057,7 @@ general_settings:
 litellm_settings:
   turn_off_message_logging: False
   drop_params: True
-  callbacks: ["llm_logs"]
+  callbacks: ["llm_logs", "prometheus"]
   success_callback: []
   num_retries: 5
   request_timeout: 900
@@ -115036,7 +115075,7 @@ litellm_settings:
     port: os.environ/REDIS_PORT
     supported_call_types: []
 router_settings:
-  routing_strategy: usage-based-routing-v2 
+  routing_strategy: usage-based-routing-v2
   redis_host: os.environ/REDIS_HOST
   redis_password: os.environ/REDIS_PASSWORD
   redis_port: os.environ/REDIS_PORT
@@ -115048,7 +115087,7 @@ callback_settings:
     endpoint: http://alloy-web:3101/loki/api/v1/raw
     log_format: ndjson
     headers:
-      Authorization: Bearer $ALLOY_ADMIN_PASSWORD
+      Authorization: "Bearer $ALLOY_ADMIN_PASSWORD"
 EOFMT
 }
 
