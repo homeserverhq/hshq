@@ -30811,6 +30811,7 @@ function addUserEmailClassifierAI()
   sudo sqlite3 $HSHQ_STACKS_DIR/emailclassifierai/data/accounts.db "insert into accounts(server, user, password, consume_folder, processed_folder, is_active) values('mailu-front','$addUserCAI_email','$addUserCAI_pw','$addUserCAI_consume','$addUserCAI_processed',1);"
   docker ps | grep -q emailclassifierai-monitor > /dev/null 2>&1
   if [ $? -eq 0 ]; then
+    docker container restart emailclassifierai-worker > /dev/null 2>&1
     docker container restart emailclassifierai-monitor > /dev/null 2>&1
   fi
 }
