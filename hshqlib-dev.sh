@@ -118797,7 +118797,7 @@ function performAutoKBInstallIntegrations()
     if ! [ -z "$AKB_WORKFLOW" ]; then
       NEW_ACTION="{ \"type\": 4, \"order\": 99, \"webhook\": { \"url\": \"http://autokb-web/api/subscriptions/$PAPERLESS_SUB_ID/trigger\", \"headers\": { \"Authorization\": \"Bearer $AUTOKB_WEBHOOK_API_KEY\" }, \"include_document\": false } }"
       UPDATED_WF=$(echo "$AKB_WORKFLOW" | jq --argjson action "$NEW_ACTION" '.actions += [$action]')
-      echo "$UPDATED" | curl -X PUT https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @-
+      echo "$UPDATED_WF" | curl -X PUT https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @-
     fi
   fi
   docker ps | grep -q openwebui-app > /dev/null 2>&1
@@ -118870,7 +118870,7 @@ function addSharedPipelinesAutoKB()
   docker ps | grep paperless-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     jsonbody="{ \"name\": \"notify_akb\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_filename\": null, \"matching_algorithm\": 0 }, { \"type\": 3, \"filter_filename\": null, \"matching_algorithm\": 0 } ], \"actions\": [ { \"type\": 4,\"order\": 0, \"webhook\": { \"url\": \"http://autokb-web/api/subscriptions/$PAPERLESS_SUB_ID/trigger\", \"headers\": { \"Authorization\": \"Bearer $AUTOKB_WEBHOOK_API_KEY\" }, \"include_document\": false } } ] }"
-    PAPERLESS_AKB_WORKFLOW_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody")
+    PAPERLESS_AKB_WORKFLOW_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
     updateConfigVar PAPERLESS_AKB_WORKFLOW_ID "$PAPERLESS_AKB_WORKFLOW_ID"
   fi
   echo "Creating Nextcloud/Twenty contact sync subscription..."
