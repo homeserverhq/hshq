@@ -24480,14 +24480,15 @@ function version237Update()
 
 function version238Update()
 {
-  mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput
+  sudo mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput
-  mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$SPEAKR_ADMIN_USERNAME
+  sudo mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$SPEAKR_ADMIN_USERNAME
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$SPEAKR_ADMIN_USERNAME
-  mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$NEXTCLOUD_ADMIN_USERNAME
+  sudo mkdir -p $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$NEXTCLOUD_ADMIN_USERNAME
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$NEXTCLOUD_ADMIN_USERNAME
   sudo rm -fr $HSHQ_STACKS_DIR/shared/KnowledgeBases/{Bible,YouTube,Paperless,Speakr,WebScrapes,Email,HSHQ}
-  mkdir -p $HSHQ_STACKS_DIR/shared/KnowledgeBases
+  sudo mkdir -p $HSHQ_STACKS_DIR/shared/KnowledgeBases
+  sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/KnowledgeBases
   outputNextcloudInotifyScan
   set +e
   docker ps | grep -q paperless-app > /dev/null 2>&1
@@ -118797,7 +118798,7 @@ function performAutoKBInstallIntegrations()
     if ! [ -z "$AKB_WORKFLOW" ]; then
       NEW_ACTION="{ \"type\": 4, \"order\": 99, \"webhook\": { \"url\": \"http://autokb-web/api/subscriptions/$PAPERLESS_SUB_ID/trigger\", \"headers\": { \"Authorization\": \"Bearer $AUTOKB_WEBHOOK_API_KEY\" }, \"include_document\": false } }"
       UPDATED_WF=$(echo "$AKB_WORKFLOW" | jq --argjson action "$NEW_ACTION" '.actions += [$action]')
-      echo "$UPDATED_WF" | curl -X PUT https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @-
+      echo "$UPDATED_WF" | curl -X PUT https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @- > /dev/null 2>&1
     fi
   fi
   docker ps | grep -q openwebui-app > /dev/null 2>&1
