@@ -24488,7 +24488,8 @@ function version238Update()
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$NEXTCLOUD_ADMIN_USERNAME
   sudo rm -fr $HSHQ_STACKS_DIR/shared/KnowledgeBases/{Bible,YouTube,Paperless,Speakr,WebScrapes,Email,HSHQ}
   sudo mkdir -p $HSHQ_STACKS_DIR/shared/KnowledgeBases
-  sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/KnowledgeBases
+  sudo chown -R $USERID:82 $HSHQ_STACKS_DIR/shared/KnowledgeBases
+  sudo chown $USERID:82 $HSHQ_STACKS_DIR/shared
   outputNextcloudInotifyScan
   set +e
   docker ps | grep -q paperless-app > /dev/null 2>&1
@@ -24633,6 +24634,8 @@ EOFIM
 function version239Update()
 {
   set +e
+  sudo chown -R $USERID:82 $HSHQ_STACKS_DIR/shared/KnowledgeBases
+  sudo chown $USERID:82 $HSHQ_STACKS_DIR/shared
   sudo sqlite3 $HSHQ_DB "PRAGMA table_info(hsvpn_connections);" | grep -q "VPNRoutingTable" || sudo sqlite3 $HSHQ_DB "ALTER TABLE hsvpn_connections ADD COLUMN VPNRoutingTable integer UNIQUE;"
   for conf in $HSHQ_WIREGUARD_DIR/vpn/*.conf
   do
