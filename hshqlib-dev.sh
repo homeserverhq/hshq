@@ -5654,8 +5654,8 @@ PrivateKey = $RELAYSERVER_WG_HS_PRIVATEKEY
 Address = ${RELAYSERVER_WG_HS_IP}/32
 MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
 Table = off
-PostUp = ip route add 10.0.0.0/8 dev %i table 1100; ip route add $PRIMARY_VPN_SUBNET dev %i; ip rule add fwmark 1100 table 1100 pref 20000; iptables -t mangle -A PREROUTING -i %i -j CONNMARK --set-mark 1100; iptables -t mangle -A PREROUTING -j CONNMARK --restore-mark
-PreDown = iptables -t mangle -D PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -D PREROUTING -i %i -j CONNMARK --set-mark 1100; ip rule del fwmark 1100 table 1100 pref 20000; ip route del $PRIMARY_VPN_SUBNET dev %i; ip route del 10.0.0.0/8 dev %i table 1100
+PostUp = ip route add 10.0.0.0/8 dev %i table 1100; ip route add $PRIMARY_VPN_SUBNET dev %i; ip rule add fwmark 1100 table 1100 pref 20000; iptables -t mangle -A PREROUTING -i %i -j CONNMARK --set-mark 1100; iptables -t mangle -A PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -A OUTPUT -j CONNMARK --restore-mark --nfmask 0xffffffff --ctmask 0xffffffff
+PreDown = iptables -t mangle -D OUTPUT -j CONNMARK --restore-mark --nfmask 0xffffffff --ctmask 0xffffffff; iptables -t mangle -D PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -D PREROUTING -i %i -j CONNMARK --set-mark 1100; ip rule del fwmark 1100 table 1100 pref 20000; ip route del $PRIMARY_VPN_SUBNET dev %i; ip route del 10.0.0.0/8 dev %i table 1100
 
 [Peer]
 PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY
@@ -5720,7 +5720,7 @@ MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
 [Peer]
 PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY
 PresharedKey = $RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY
-AllowedIPs = $PRIMARY_VPN_SUBNET
+AllowedIPs = 10.0.0.0/8
 Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT
 PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
@@ -10222,7 +10222,7 @@ MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
 [Peer]
 PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY
 PresharedKey = $RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY
-AllowedIPs = $PRIMARY_VPN_SUBNET
+AllowedIPs = 10.0.0.0/8
 Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT
 PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFWQ
@@ -11875,7 +11875,7 @@ MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
 [Peer]
 PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY
 PresharedKey = $wg_pre_key
-AllowedIPs = $PRIMARY_VPN_SUBNET
+AllowedIPs = 10.0.0.0/8
 Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT
 PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
@@ -13134,8 +13134,8 @@ PrivateKey = $priv_key
 Address = $client_ip/32
 MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
 Table = off
-PostUp = ip route add 10.0.0.0/8 dev %i table $nextVPNTableID; ip route add $vpn_subnet dev %i; ip rule add fwmark $nextVPNTableID table $nextVPNTableID pref 20000; iptables -t mangle -A PREROUTING -i %i -j CONNMARK --set-mark $nextVPNTableID; iptables -t mangle -A PREROUTING -j CONNMARK --restore-mark
-PreDown = iptables -t mangle -D PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -D PREROUTING -i %i -j CONNMARK --set-mark $nextVPNTableID; ip rule del fwmark $nextVPNTableID table $nextVPNTableID pref 20000; ip route del $vpn_subnet dev %i; ip route del 10.0.0.0/8 dev %i table $nextVPNTableID
+PostUp = ip route add 10.0.0.0/8 dev %i table $nextVPNTableID; ip route add $vpn_subnet dev %i; ip rule add fwmark $nextVPNTableID table $nextVPNTableID pref 20000; iptables -t mangle -A PREROUTING -i %i -j CONNMARK --set-mark $nextVPNTableID; iptables -t mangle -A PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -A OUTPUT -j CONNMARK --restore-mark --nfmask 0xffffffff --ctmask 0xffffffff
+PreDown = iptables -t mangle -D OUTPUT -j CONNMARK --restore-mark --nfmask 0xffffffff --ctmask 0xffffffff; iptables -t mangle -D PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -D PREROUTING -i %i -j CONNMARK --set-mark $nextVPNTableID; ip rule del fwmark $nextVPNTableID table $nextVPNTableID pref 20000; ip route del $vpn_subnet dev %i; ip route del 10.0.0.0/8 dev %i table $nextVPNTableID
 
 [Peer]
 PublicKey = $relayserver_public_key
@@ -15043,7 +15043,7 @@ function initHSHQDB()
   sudo rm -f $HSHQ_DB
   sqlite3 $HSHQ_DB "create table connections(ID integer not null primary key autoincrement,Name text,EmailAddress text,ConnectionType text,NetworkType text,PublicKey text,PresharedKey text,IPAddress text,IsInternet boolean,InterfaceName text,EndpointHostname text,EndpointIP text default null,LastUpdated datetime,Network_Subnet text default null,IsExposeToNetwork boolean,InputAllowPorts text default null,DockerUserAllowPorts text default null);"
   sqlite3 $HSHQ_DB "create table mailhosts(ID integer not null primary key autoincrement,MailHost text not null);"
-  sqlite3 $HSHQ_DB "create table hsvpn_connections(ID integer not null primary key references connections(ID) on delete cascade,HomeServerName text,IsPrimary boolean,DomainName text default null,ExternalPrefix text default null,InternalPrefix text default null,MailHostID integer references mailhosts(ID) on delete cascade,CA_Abbrev text default null,CA_IP text default null,CA_Subdomain text default null,CA_URL text default null,RS_VPN_IP text default null,VPNRoutingTable integer UNIQUE);"
+  sqlite3 $HSHQ_DB "create table hsvpn_connections(ID integer not null primary key references connections(ID) on delete cascade,HomeServerName text,IsPrimary boolean,DomainName text default null,ExternalPrefix text default null,InternalPrefix text default null,MailHostID integer references mailhosts(ID) on delete cascade,CA_Abbrev text default null,CA_IP text default null,CA_Subdomain text default null,CA_URL text default null,RS_VPN_IP text default null,VPNRoutingTable integer);"
   sqlite3 $HSHQ_DB "create table hsvpn_dns(ID integer not null primary key autoincrement,HostDomain text not null,PeerDomain text not null,PeerDomainExtPrefix text not null,IPAddress text not null,DateAdded datetime,IsActive boolean);"
   sqlite3 $HSHQ_DB "create unique index hpdns on hsvpn_dns(HostDomain,PeerDomain);"
   sqlite3 $HSHQ_DB "create table mailhostmap(MailHostID integer not null references mailhosts(ID) on delete cascade,Domain text not null,IsFirstDomain boolean,primary key (MailHostID,Domain));"
@@ -24636,7 +24636,9 @@ function version239Update()
   set +e
   sudo chown -R $USERID:82 $HSHQ_STACKS_DIR/shared/KnowledgeBases
   sudo chown $USERID:82 $HSHQ_STACKS_DIR/shared
-  sudo sqlite3 $HSHQ_DB "PRAGMA table_info(hsvpn_connections);" | grep -q "VPNRoutingTable" || sudo sqlite3 $HSHQ_DB "ALTER TABLE hsvpn_connections ADD COLUMN VPNRoutingTable integer UNIQUE;"
+  CADDY_SNIPPET_LOG_TRUE=log_true
+  CADDY_SNIPPET_LOG_FALSE=log_false
+  sudo sqlite3 $HSHQ_DB "PRAGMA table_info(hsvpn_connections);" | grep -q "VPNRoutingTable" || sudo sqlite3 $HSHQ_DB "ALTER TABLE hsvpn_connections ADD COLUMN VPNRoutingTable integer;"
   for conf in $HSHQ_WIREGUARD_DIR/vpn/*.conf
   do
     sudo grep -q "PostUp" "$conf" > /dev/null 2>&1
@@ -24657,14 +24659,27 @@ function version239Update()
       curCAIP=$(sqlite3 $HSHQ_DB "select CA_IP from hsvpn_connections where ID=$curDBID;")
       curVPNRange=$(sqlite3 $HSHQ_DB "select Network_Subnet from connections where ID=$curDBID;")
       curInterfaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$curDBID;")
-      sudo sed -i "/^MTU =/a Table = off\nPostUp = ip route add 10.0.0.0\/8 dev %i table $curTableInDB; ip route add $curVPNRange dev %i; ip rule add fwmark $curTableInDB table $curTableInDB pref 20000; iptables -t mangle -A PREROUTING -i %i -j CONNMARK --set-mark $curTableInDB; iptables -t mangle -A PREROUTING -j CONNMARK --restore-mark\nPreDown = iptables -t mangle -D PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -D PREROUTING -i %i -j CONNMARK --set-mark $curTableInDB; ip rule del fwmark $curTableInDB table $curTableInDB pref 20000; ip route del $curVPNRange dev %i; ip route del 10.0.0.0\/8 dev %i table $curTableInDB" "$conf"
+      sudo sed -i "/^MTU =/a Table = off\nPostUp = ip route add 10.0.0.0\/8 dev %i table $curTableInDB; ip route add $curVPNRange dev %i; ip rule add fwmark $curTableInDB table $curTableInDB pref 20000; iptables -t mangle -A PREROUTING -i %i -j CONNMARK --set-mark $curTableInDB; iptables -t mangle -A PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -A OUTPUT -j CONNMARK --restore-mark --nfmask 0xffffffff --ctmask 0xffffffff\nPreDown = iptables -t mangle -D OUTPUT -j CONNMARK --restore-mark --nfmask 0xffffffff --ctmask 0xffffffff; iptables -t mangle -D PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -D PREROUTING -i %i -j CONNMARK --set-mark $curTableInDB; ip rule del fwmark $curTableInDB table $curTableInDB pref 20000; ip route del $curVPNRange dev %i; ip route del 10.0.0.0\/8 dev %i table $curTableInDB" "$conf"
       sudo sed -i "s/^AllowedIPs =.*/AllowedIPs = 10.0.0.0\/8/" "$conf"
       sudo systemctl stop wg-quick@${curInterfaceName}.service
       sudo cp -f "$conf" /etc/wireguard/
       sudo systemctl start wg-quick@${curInterfaceName}.service
     fi
   done
+  clientdns_arr=($(docker ps -a --filter name=clientdns.*wireguard --format "{{.Names}}"))
+  for curCDNS in "${clientdns_arr[@]}"
+  do
+    curStackName=$(echo "$curCDNS" | rev | cut -d"-" -f2- | rev)
+    if ! [ -d "$HSHQ_STACKS_DIR/$curStackName" ] || ! [ -f "$HSHQ_STACKS_DIR/$curStackName/${curStackName}.conf" ]; then
+      continue
+    fi
+    sudo sed -i "s/^AllowedIPs =.*/AllowedIPs = 10.0.0.0\/8/" "$HSHQ_STACKS_DIR/$curStackName/${curStackName}.conf"
+    startStopStack "$curStackName" stop
+    startStopStack "$curStackName" start
+  done
   mkdir -p $HSHQ_STACKS_DIR/shared/caddylogs
+  find $HSHQ_STACKS_DIR/caddy-common/caddyfiles -type f -exec sed -i "s/$CADDY_SNIPPET_SAFEHEADERALLOWCORS/$CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED/g" {} +
+  find $HSHQ_STACKS_DIR/caddy-common/caddyfiles -type f -exec sed -i "/$CADDY_SNIPPET_SAFEHEADERCORSPREFLIGHT/d" {} +
   outputCaddyHeaders
   caddy_arr=($(docker ps -a --filter name=caddy- --format "{{.Names}}"))
   for curCH in "${caddy_arr[@]}"
@@ -24688,6 +24703,7 @@ function main()
   read -r -s -p "" rspw
   echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
   set +e
+  source ~/$RS_UPDATE_UTILS_SCRIPT_NAME
   RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_STACKS_DIR
   default_iface=\$(getDefaultIface)
   sudo tee \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/wgupdown.sh >/dev/null <<EOFPU
@@ -24745,22 +24761,21 @@ function down()
 main "\\\$@"
 EOFPU
   sudo chmod 500 \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/wgupdown.sh
+  sudo sed -i "s/^AllowedIPs =.*/AllowedIPs = 10.0.0.0\/8/" \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/clientdns/rsClientDNS.conf
+  startStopStack clientdns stop
+  startStopStack clientdns start
   sudo iptables -t nat -D POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE > /dev/null 2>&1
   echo "Updating RelayServer host, please wait..."
   sudo apt update > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' > /dev/null 2>&1
   echo "RelayServer update complete!"
+  rm -f ~/$RS_UPDATE_UTILS_SCRIPT_NAME
   rm -f ~/$RS_UPDATE_SCRIPT_NAME
-}
-
-function getDefaultIface()
-{
-  echo \$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
 }
 
 main
 EOFUR
-    updateRelayServerWithScript false
+    updateRelayServerWithScript true
     if [ $? -ne 0 ]; then
       echo "ERROR: The update process on the RelayServer encountered an error. Please check the logs and retry."
       exit
@@ -24861,6 +24876,11 @@ function init()
   USERID=\$(id -u)
   GROUPID=\$(id -g)
   loadVersionVars
+}
+
+function getDefaultIface()
+{
+  echo \$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
 }
 
 function setPortainerToken()
