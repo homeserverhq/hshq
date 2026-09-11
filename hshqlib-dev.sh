@@ -5909,8 +5909,11 @@ function webTransferHostedVPN()
       break
     fi
     if [ $countRSPreRetries -ge $maxRSPreRetries ]; then
-      echo "Max retries reached. Something has likely gone wrong with the RelayServer transfer init script, exiting..."
-      return 2
+      echo "Max retries reached. Something has likely gone wrong with the RelayServer transfer init script."
+      read -r -p "Enter cancel to exit or any other key to retry: " raRetry
+      if [ "$raRetry" = "cancel" ]; then
+        return 2
+      fi
     fi
     ((countRSPreRetries++))
     echo "($countRSPreRetries of $maxRSPreRetries) RelayServer not ready for transfer, sleeping 15 seconds then will retry..."
@@ -6875,7 +6878,6 @@ function setupMain()
   fi
   sudo hostnamectl set-hostname \$new_hostname
   rm -f \$HOME/dead.letter
-
   # Ensure we can login during the installation process,
   # since the firewall will block the connection if we
   # haven't logged in before the firewall goes up.
@@ -6890,12 +6892,9 @@ function setupMain()
     performAptInstall iptables > /dev/null 2>&1
   fi
   sudo iptables -C INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT
-
-  set +e
   # Change SSH port on host
   sudo sed -i "s|^#*Port .*\$|Port $RELAYSERVER_SSH_PORT|g" /etc/ssh/sshd_config
   sudo sed -i "s|^Port .*\$|Port $RELAYSERVER_SSH_PORT|g" /etc/ssh/sshd_config
-  
   # Some other SSH settings
   sudo sed -i "s|^ClientAliveInterval .*\$|ClientAliveInterval 15|g" /etc/ssh/sshd_config
   sudo sed -i "s|^ClientAliveCountMax .*\$|ClientAliveCountMax 3|g" /etc/ssh/sshd_config
@@ -6903,7 +6902,6 @@ function setupMain()
   sudo sed -i "s|^#*ClientAliveInterval .*\$|ClientAliveInterval 15|g" /etc/ssh/sshd_config
   sudo sed -i "s|^#*ClientAliveCountMax .*\$|ClientAliveCountMax 3|g" /etc/ssh/sshd_config
   sudo sed -i "s|^#*PermitEmptyPasswords .*\$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
-
   # Update sudoers file
   sudo sed -i '/\/userasroot/d' /etc/sudoers >/dev/null
   echo "\$USERNAME ALL=(ALL) NOPASSWD: \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/*.sh" | sudo tee -a /etc/sudoers >/dev/null
@@ -6918,13 +6916,10 @@ function setupMain()
   fi
   sudo sed -i '/includedir/d' /etc/sudoers >/dev/null
   echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
-
   # Set timezone
   sudo timedatectl set-timezone "$TZ"
-
   # Create swap file
   createSwapfile
-
   installDependencies
   createDockerNetworks
 }
@@ -7554,6 +7549,7 @@ function initTransfer()
   sudo tar xvzf \$HOME/rsbackup.tar.gz >/dev/null
   sudo rm -fr \$RELAYSERVER_HSHQ_DATA_DIR
   sudo mv \$HOME/backup \$RELAYSERVER_HSHQ_DATA_DIR
+  sudo sed -i "s/SSH_PORT=.*/SSH_PORT=$RELAYSERVER_SSH_PORT/" \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
   restoreNonBackupDir
   restoreSSL
   pullDockerImages
@@ -7622,12 +7618,10 @@ function pullImage()
     is_success=\$?
     ((num_tries++))
   done
-  set -e
   if [ \$is_success -ne 0 ]; then
     echo "Error pulling docker image: \$img_and_version"
     return 5
   fi
-  set -e
 }
 
 function pullDockerImages()
@@ -7727,7 +7721,7 @@ EOFR
   np_path="/etc/netplan/*"
   for cur_np in "\$np_path"
   do
-    if ! sudo test -f $cur_np; then
+    if ! sudo test -f "\$cur_np"; then
       continue
     fi
     sudo sed -i "s|8.8.8.8|9.9.9.9|g" \$cur_np
@@ -70230,8 +70224,7 @@ function installKeila()
     return $retval
   fi
   sleep 3
-  KEILA_ADMIN_API_KEY=$(createProjectKeyKeila "$KEILA_ADMIN_EMAIL_ADDRESS" "$HOMESERVER_NAME")
-  updateConfigVar KEILA_ADMIN_API_KEY "$KEILA_ADMIN_API_KEY"
+  performIntegrationKeila
   addReadOnlyUserToDatabase Keila postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/keila/dbexport $KEILA_DATABASE_READONLYUSER $KEILA_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_KEILA.$HOMESERVER_DOMAIN {\n"
@@ -70380,10 +70373,11 @@ DB_URL=postgres://$KEILA_DATABASE_USER:$KEILA_DATABASE_USER_PASSWORD@keila-db/$K
 URL_HOST=$SUB_KEILA.$HOMESERVER_DOMAIN
 URL_SCHEMA=https
 MAILER_SMTP_HOST=$SMTP_HOSTNAME
-MAILER_SMTP_PORT=$SMTP_HOSTPORT
+MAILER_SMTP_PORT=587
 MAILER_SMTP_USER=$EMAIL_SMTP_EMAIL_ADDRESS
 MAILER_SMTP_PASSWORD=$EMAIL_SMTP_PASSWORD
-MAILER_SMTP_FROM_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
+MAILER_SMTP_FROM_EMAIL=$EMAIL_SMTP_EMAIL_ADDRESS
+MAILER_SMTP_FROM_NAME=$HOMESERVER_NAME
 MAILER_ENABLE_STARTTLS=true
 KEILA_USER=$KEILA_ADMIN_EMAIL_ADDRESS
 KEILA_PASSWORD=$KEILA_ADMIN_PASSWORD
@@ -70397,13 +70391,11 @@ KEILA_PUBLIC_URL=$SUB_KEILA.$HOMESERVER_DOMAIN
 EOFBA
 }
 
-function createProjectKeyKeila()
+function performIntegrationKeila()
 {
-  kla_username="$1"
-  kla_project_name="$2"
   local usr project_esc
-  usr=$(printf '%s' "$kla_username" | sed 's/\\/\\\\/g; s/"/\\"/g')
-  project_esc=$(printf '%s' "$kla_project_name" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  usr=$(printf '%s' "$KEILA_ADMIN_EMAIL_ADDRESS" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  project_esc=$(printf '%s' "$HOMESERVER_NAME" | sed 's/\\/\\\\/g; s/"/\\"/g')
   local elixir="import Ecto.Query
 admin = Keila.Auth.find_user_by_email(\"$usr\")
 unless admin, do: throw(:admin_not_found)
@@ -70412,6 +70404,31 @@ project = case project do
   %Keila.Projects.Project{} -> project
   nil -> {:ok, project} = Keila.Projects.create_project(admin.id, %{name: \"$project_esc\"}); project
 end
+sender = Keila.Repo.one(from s in Keila.Mailings.Sender, where: s.project_id == ^project.id)
+unless sender do
+  smtp_port = (System.get_env(\"MAILER_SMTP_PORT\") || \"587\") |> String.to_integer()
+  smtp_username = System.get_env(\"MAILER_SMTP_USER\")
+  smtp_password = System.get_env(\"MAILER_SMTP_PASSWORD\")
+  tls_mode = cond do
+    System.get_env(\"MAILER_ENABLE_STARTTLS\") in [\"1\", \"true\", \"TRUE\"] -> \"starttls\"
+    System.get_env(\"MAILER_ENABLE_SSL\") in [\"1\", \"true\", \"TRUE\"] -> \"tls\"
+    true -> \"\"
+  end
+  {:ok, _sender} = Keila.Mailings.create_sender(project.id, %{
+    name: project.name,
+    from_email: System.fetch_env!(\"MAILER_SMTP_FROM_EMAIL\"),
+    from_name: System.get_env(\"MAILER_SMTP_FROM_NAME\") || project.name,
+    config: %{
+      type: \"smtp\",
+      smtp_relay: System.fetch_env!(\"MAILER_SMTP_HOST\"),
+      smtp_port: smtp_port,
+      smtp_username: smtp_username,
+      smtp_password: smtp_password,
+      smtp_tls_mode: tls_mode,
+      smtp_auth_method: if smtp_username && smtp_password, do: \"password\", else: \"none\"
+    }
+  })
+end
 Keila.Repo.delete_all(
   from t in Keila.Auth.Token,
   where: t.user_id == ^admin.id and t.scope == \"api\" and
@@ -70419,7 +70436,8 @@ Keila.Repo.delete_all(
 )
 {:ok, key} = Keila.Auth.create_api_key(admin.id, project.id, \"$project_esc\")
 IO.puts(key.key)"
-  docker exec keila-app /opt/app/bin/keila rpc "$elixir" 2>/dev/null | grep -E '^[A-Za-z0-9_-]{43}$'
+  KEILA_ADMIN_API_KEY=$(docker exec keila-app /opt/app/bin/keila rpc "$elixir" 2>/dev/null | grep -E '^[A-Za-z0-9_-]{43}$')
+  updateConfigVar KEILA_ADMIN_API_KEY "$KEILA_ADMIN_API_KEY"
 }
 
 function performUpdateKeila()
