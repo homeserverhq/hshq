@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=239
+HSHQ_LIB_SCRIPT_VERSION=240
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -5774,6 +5774,175 @@ function prepSvcsHostedVPN()
   checkUpdateAllIPTables prepSvcsHostedVPN
 }
 
+function webTransferHostedVPN()
+{
+  # These variables should already be set by Script-server
+  # rs_cur_username
+  # rs_external_ip
+  # rs_cur_password
+  # rs_new_password
+  # rs_cur_ssh_port
+  # rs_new_ssh_port
+  set +e
+  # Clear out any old hosts
+  ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN]:$RELAYSERVER_SSH_PORT" > /dev/null 2>&1
+  ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$RELAYSERVER_SERVER_IP]:$RELAYSERVER_SSH_PORT" > /dev/null 2>&1
+  ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$rs_external_ip]:$rs_cur_ssh_port" > /dev/null 2>&1
+  ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$rs_external_ip]:$rs_new_ssh_port" > /dev/null 2>&1
+  if ! [ "$rs_cur_username" = "root" ] && ! [ "$rs_cur_username" = "$RELAYSERVER_REMOTE_USERNAME" ]; then
+    echo "ERROR: The username on the new RelayServer must match the existing username ($RELAYSERVER_REMOTE_USERNAME)"
+    return 2
+  fi
+  rs_new_username="$RELAYSERVER_REMOTE_USERNAME"
+  if ! [ "$rs_cur_username" = "root" ]; then
+    rs_new_password="$rs_cur_password"
+  fi
+  # Login, upload check script, log back in and run check script
+  # 1. Login
+  echo "Logging into RelayServer..."
+  perfRemoteAction -m ssh -p $rs_cur_ssh_port -s "$rs_cur_password" -o "-T -o ConnectTimeout=5 -o 'StrictHostKeyChecking accept-new'" -u "$rs_cur_username" -h "$rs_external_ip" -c "echo hello >/dev/null" -f
+  is_err=$?
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: There was a problem logging in to the RelayServer, returning..."
+    return 2
+  fi
+  # 2. Upload check script
+  echo "Uploading validation script..."
+  outputRelayServerValidationScript
+  outputRelayServerInstallSetupScript
+  perfRemoteAction -m scp -p $rs_cur_ssh_port -s "$rs_cur_password" -a $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME -u $rs_cur_username -h $rs_external_ip -c ":~" -f
+  is_err=$?
+  rm -f $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: There was an problem uploading the validation script to the RelayServer, returning..."
+    return 2
+  fi
+  perfRemoteAction -m scp -p $rs_cur_ssh_port -s "$rs_cur_password" -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $rs_cur_username -h $rs_external_ip -c ":~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME" -f
+  is_err=$?
+  rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: There was an problem uploading the lib script to the RelayServer, returning..."
+    return 2
+  fi
+  # 3. Log back in and run check script
+  echo "Performing pre-installation checks, please wait..."
+  perfRemoteAction -m ssh -p $rs_cur_ssh_port -s "$rs_cur_password" -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $rs_cur_username -h $rs_external_ip -c "bash ~/$RS_INSTALL_VALIDATION_SCRIPT_NAME -s" -f -i "$rs_new_password"
+  is_err=$?
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: There was a problem with the RelayServer, see above."
+    return 2
+  fi
+  echo "Testing RelayServer login with pub/priv key..."
+  perfRemoteAction -m ssh -p $rs_cur_ssh_port -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $rs_external_ip -c "echo \"Successfully logged in to RelayServer with key! \"" -f
+  is_err=$?
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: Could not login to RelayServer with pub/priv key."
+    return 2
+  fi
+  setSudoTimeoutInstall
+  setSystemState $SS_TRANSFERRING
+  # Pause syncthing RelayServer
+  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "{\"paused\": true}" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
+  echo "Compressing RelayServer data..."
+  sudo tar cvzf $HOME/rsbackup.tar.gz -C $HSHQ_RELAYSERVER_DIR/ ./backup >/dev/null
+  echo "Checking if RelayServer is ready..."
+  countRSPreRetries=0
+  maxRSPreRetries=20
+  while true;
+  do
+    perfRemoteAction -m ssh -p $rs_cur_ssh_port -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $rs_new_username -h $rs_external_ip -c "sleep 1;if [ -f ~/$RELAYSERVER_NOT_READY_FILE ]; then exit 1; fi" -r 1 -b 1
+    if [ $? -eq 0 ]; then
+      break
+    fi
+    if [ $countRSPreRetries -ge $maxRSPreRetries ]; then
+      echo "Max retries reached. Something has likely gone wrong with the RelayServer pre-installation script, exiting..."
+      return 2
+    fi
+    ((countRSPreRetries++))
+    echo "($countRSPreRetries of $maxRSPreRetries) RelayServer not ready for installation, sleeping 30 seconds then will retry..."
+    sleep 30
+  done
+  removeHomeNetIP ${RELAYSERVER_SERVER_IP}/32 false
+  RELAYSERVER_SERVER_IP="$rs_external_ip"
+  RELAYSERVER_CURRENT_SSH_PORT="$rs_cur_ssh_port"
+  RELAYSERVER_SSH_PORT="$rs_new_ssh_port"
+  updateConfigVar RELAYSERVER_SERVER_IP $RELAYSERVER_SERVER_IP
+  updateConfigVar RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_CURRENT_SSH_PORT
+  updateConfigVar RELAYSERVER_SSH_PORT $RELAYSERVER_SSH_PORT
+  addHomeNetIP ${RELAYSERVER_SERVER_IP}/32 true
+  addDomainAdguardHS "*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "$RELAYSERVER_SERVER_IP"
+  outputRelayServerInstallSetupScript
+  outputRelayServerInstallTransferScript
+  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_new_password" -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $rs_new_username -h $rs_external_ip -c ":~/$RS_INSTALL_SETUP_SCRIPT_NAME" -f
+  is_err=$?
+  rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: There was an problem uploading the setup script to the RelayServer, returning..."
+    return 2
+  fi
+  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_new_password" -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME -u $rs_new_username -h $rs_external_ip -c ":~/$RS_INSTALL_TRANSFER_SCRIPT_NAME" -f
+  is_err=$?
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: There was an problem uploading the transfer script to the RelayServer, returning..."
+    return 2
+  fi
+  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HOME/rsbackup.tar.gz -u $rs_new_username -h $rs_external_ip -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
+  sudo rm -f $HOME/rsbackup.tar.gz
+  echo "Initializing transfer process..."
+  perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_new_password" -o "-tt -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $rs_new_username -h $rs_external_ip -c "bash ~/$RS_INSTALL_TRANSFER_SCRIPT_NAME -i" -f -i "$rs_new_password" -r 1 -b 1
+  echo
+  echo
+  echo "============================================================"
+  echo "                  RelayServer is rebooting...               "
+  echo "           You can now modify your DNS Records to           "
+  echo "          point to the new RelayServer's IP Address         "
+  echo "============================================================"
+  echo
+  echo
+  sleep 30
+  countRSPreRetries=0
+  maxRSPreRetries=20
+  while true;
+  do
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $rs_new_username -h $rs_external_ip -c "echo hello >/dev/null" -r 1 -b 1
+    if [ $? -eq 0 ]; then
+      break
+    fi
+    if [ $countRSPreRetries -ge $maxRSPreRetries ]; then
+      echo "Max retries reached. Something has likely gone wrong with the RelayServer transfer init script, exiting..."
+      return 2
+    fi
+    ((countRSPreRetries++))
+    echo "($countRSPreRetries of $maxRSPreRetries) RelayServer not ready for transfer, sleeping 15 seconds then will retry..."
+    sleep 15
+  done
+  echo "RelayServer has rebooted, finishing transfer..."
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -s "$rs_new_password" -o "-tt -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $rs_new_username -h $rs_external_ip -c "bash ~/$RS_INSTALL_TRANSFER_SCRIPT_NAME -s" -f -i "$rs_new_password" -r 1 -b 1
+  # Restart all vpn connections
+  echo "Restarting all wg connections..."
+  db_id=$(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='homeserver_vpn' and NetworkType='primary';")
+  ifaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$db_id;")
+  sudo systemctl restart wg-quick@$ifaceName
+  db_id=$(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='homeserver_internet' and NetworkType='primary';")
+  ifaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$db_id;")
+  sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${ifaceName}.conf restart
+  clientdns_arr=($(docker ps -a --filter name=clientdns.*wireguard --format "{{.Names}}"))
+  for curCDNS in "${clientdns_arr[@]}"
+  do
+    curStackName=$(echo "$curCDNS" | rev | cut -d"-" -f2- | rev)
+    if ! [ -d "$HSHQ_STACKS_DIR/$curStackName" ] || ! [ -f "$HSHQ_STACKS_DIR/$curStackName/${curStackName}.conf" ]; then
+      continue
+    fi
+    startStopStack "$curStackName" stop
+    startStopStack "$curStackName" start
+  done
+  updateEndpointIPs
+  jsonbody="{\"paused\": false}"
+  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
+  docker container restart syncthing
+  notifyMyNetworkTransferRelayServer
+}
+
 function webSetupHostedVPN()
 {
   set +e
@@ -6029,7 +6198,6 @@ function webSetupHostedVPN()
   echo "Generating RelayServer install scripts..."
   outputRelayServerInstallSetupScript
   outputRelayServerInstallFreshScript
-  outputRelayServerInstallTransferScript
   addDomainAdguardHS "*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "$RELAYSERVER_SERVER_IP"
   perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
   perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
@@ -6326,9 +6494,8 @@ function setupHostedVPN()
   echo "Generating RelayServer install scripts..."
   outputRelayServerInstallSetupScript
   outputRelayServerInstallFreshScript
-  outputRelayServerInstallTransferScript
   set +e
-  uploadVPNInstallScripts false
+  uploadVPNInstallScripts
   if [ $? -ne 0 ]; then
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from lecertdomains;"
     return 1
@@ -6343,125 +6510,6 @@ function setupHostedVPN()
     prepSvcsHostedVPN
   fi
   updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
-}
-
-function transferHostedVPN()
-{
-  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    showMessageBox "Invalid Selection" "You are not hosting a RelayServer, returning..."
-    return
-  fi
-  set +e
-  tgLock="$(tryGetLock networkchecks transferHostedVPN)"
-  if ! [ "$tgLock" = "true" ]; then
-    checkRes="$(getLockOpenMsg networkchecks)"
-    strErr="transferHostedVPN - Cannot obtain networkchecks lock: $checkRes. Please try again shortly, returning..."
-    logHSHQEvent warning "$strErr"
-    showMessageBox "WARNING" "WARNING: $strErr"
-    return
-  fi
-  is_transfer=$(promptUserInputMenu "" "Transfer RelayServer" "If you wish to transfer your RelayServer, enter the word 'transfer' below:")
-  if ! [ $is_transfer = "transfer" ]; then
-    showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
-    return 0
-  fi
-  temp_pw=""
-  sudo -k
-  while [ -z "$temp_pw" ]
-  do
-    temp_pw=$(promptPasswordMenu "Enter Password" "Enter the sudo password for $USERNAME: ")
-    if [ $? -ne 0 ]; then
-      exit 3
-    fi
-    echo "$temp_pw" | sudo -S -v -p "" > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-      showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
-      temp_pw=""
-      continue
-    fi
-  done
-  unset temp_pw=""
-  temp_pw=""
-  setSudoTimeoutInstall
-  setSystemState $SS_TRANSFERRING
-  # Pause syncthing RelayServer
-  jsonbody="{\"paused\": true}"
-  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
-  outputRelayServerInstallSetupScript
-  outputRelayServerInstallTransferScript
-  sudo tar cvzf $HOME/rsbackup.tar.gz -C $HSHQ_RELAYSERVER_DIR/ ./backup >/dev/null
-  old_rsIP=$RELAYSERVER_SERVER_IP
-  uploadVPNInstallScripts true
-  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HOME/rsbackup.tar.gz -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
-  sudo rm -f $HOME/rsbackup.tar.gz
-  showMessageBox "Upload Success" "The scripts and data have been uploaded to the RelayServer host. Please run 'bash $RS_INSTALL_TRANSFER_SCRIPT_NAME' on the remote host. After the installation has completed and the server has fully rebooted, press okay to begin monitoring for a successful connection transfer."
-  # Remove old RelayIP with no update
-  removeHomeNetIP $old_rsIP false
-  set +e
-  totalTries=720
-  numTries=1
-  sleepSeconds=5
-  isMatchWG=false
-  isMatchRS=false
-  while [ $numTries -lt $totalTries ]
-  do
-    ipFromHostname=$(getIPFromHostname $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
-    if [ "$RELAYSERVER_SERVER_IP" = "$ipFromHostname" ]; then
-      isMatchWG=true
-    else
-      isMatchWG=false
-    fi
-    ipFromHostname=$(getIPFromHostname $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
-    if [ "$RELAYSERVER_SERVER_IP" = "$ipFromHostname" ]; then
-      isMatchRS=true
-    else
-      isMatchRS=false
-    fi
-    if [ "$isMatchWG" = "true" ] && [ "$isMatchRS" = "true" ]; then
-      break
-    else
-      echo "($numTries/$totalTries)RelayServer IP: $RELAYSERVER_SERVER_IP, $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN points to $ipFromHostname, $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN points to $ipFromHostname. Trying again in $sleepSeconds seconds..."
-    fi
-    sleep $sleepSeconds
-    ((numTries++))
-  done
-  if [ "$isMatchWG" = "true" ] && [ "$isMatchRS" = "true" ]; then
-    echo "External IP updated successfully!"
-  else
-    echo "The RelayServer IP does not match."
-  fi
-  removeRelayServerAgentFromWazuhManager
-  echo "Updating endpoint IP addresses..."
-  updateEndpointIPs
-  numTries=1
-  isMatch=false
-  timeout_length=5
-  while [ $numTries -lt $totalTries ]
-  do
-    timeout $timeout_length ping -c 1 $RELAYSERVER_SUB_RELAYSERVER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN > /dev/null
-    if [ $? -eq 0 ]; then
-      isMatch=true
-      break
-    fi
-    echo "($numTries/$totalTries)Could not ping RelayServer. Trying again in $sleepSeconds seconds..."
-    sleep $sleepSeconds
-    ((numTries++))
-  done
-  if [ "$isMatch" = "true" ]; then
-    echo "Successfully connected to RelayServer!"
-  else
-    echo "Unable to ping RelayServer."
-  fi
-  # Resume syncthing RelayServer
-  jsonbody="{\"paused\": false}"
-  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
-  docker container restart syncthing
-  echo "Test login to new RelayServer: $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN"
-  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "echo \"Successful! IP Address is: \$(curl --silent https://api.ipify.org)\"" -f
-  notifyMyNetworkTransferRelayServer "$RELAYSERVER_SERVER_IP"
-  removeSudoTimeoutInstall
-  setSystemState $SS_RUNNING
-  releaseLock networkchecks transferHostedVPN false
 }
 
 function outputRelayServerValidationScript()
@@ -6815,7 +6863,7 @@ function init()
   fi
 }
 
-function main()
+function setupMain()
 {
   init
   echo "Running setup script..."
@@ -6877,7 +6925,6 @@ function main()
   # Create swap file
   createSwapfile
 
-  set -e
   installDependencies
   createDockerNetworks
 }
@@ -7441,7 +7488,7 @@ function createDockerNetworks()
 
 case "\$1" in
   "lib")     init;;
-  *)         main "\$@";;
+  *)         setupMain "\$@";;
 esac
 
 EOFRS
@@ -7454,7 +7501,7 @@ function outputRelayServerInstallTransferScript()
   cat <<EOFRS > $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME
 #!/bin/bash
 
-set -e
+set +e
 
 TZ=$TZ
 USERNAME=\$(id -u -n)
@@ -7475,13 +7522,35 @@ function main()
     echo "This script should be run as a non-root user. Exiting..."
     exit 1
   fi
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  read -r -s -t 30 -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
+  echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    echo "Error with RelayServer sudo password, exiting..."
+    exit 8
+  fi
+  while getopts ':is' opt; do
+    case "\$opt" in
+      s)
+        startTransfer ;;
+      i)
+        initTransfer ;;
+      ?|h)
+        echo "Usage: \$(basename \$0)"
+        exit 1 ;;
+    esac
+  done
+  shift "\$((\$OPTIND -1))"
+}
+
+function initTransfer()
+{
+  sudo DEBIAN_FRONTEND=noninteractive apt update 2>&1
   echo -e "\n\nInstalling a few utilities..."
   performAptInstall curl > /dev/null 2>&1
   performAptInstall dnsutils > /dev/null 2>&1
   performAptInstall screen > /dev/null 2>&1
-  mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
   bash \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
+  mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
   sudo tar xvzf \$HOME/rsbackup.tar.gz >/dev/null
   sudo rm -fr \$RELAYSERVER_HSHQ_DATA_DIR
   sudo mv \$HOME/backup \$RELAYSERVER_HSHQ_DATA_DIR
@@ -7489,10 +7558,14 @@ function main()
   restoreSSL
   pullDockerImages
   restoreScripts
+  sudo reboot
+}
+
+function startTransfer()
+{
   restorePortainer
   restoreAdguard
   restoreMailRelay
-  haltAndWaitForConfirmation
   restoreWireGuard
   restoreCaddy
   restoreOfelia
@@ -7501,19 +7574,6 @@ function main()
   sudo rm -f \$HOME/rsbackup.tar.gz
   sudo rm -f \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
   sudo rm -f \$HOME/$RS_INSTALL_TRANSFER_SCRIPT_NAME
-  clear
-  echo
-  echo
-  echo
-  echo
-  echo "============================================================"
-  echo "Transfer Complete!"
-  echo "Rebooting in 60 seconds..."
-  echo "============================================================"
-  echo
-  echo
-  sleep 60
-  sudo reboot
 }
 
 function getIPFromHostname()
@@ -7524,53 +7584,6 @@ function getIPFromHostname()
 function performAptInstall()
 {
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' \$1
-}
-
-function haltAndWaitForConfirmation()
-{
-  clear
-  echo
-  echo
-  echo
-  echo
-  echo "============================================================"
-  echo "This server has been prepped for transfer. Please modify"
-  echo "your DNS A records to point to this new IP Address:"
-  echo
-  echo "$RELAYSERVER_SERVER_IP"
-  echo
-  echo "After this has been done, enter 'transfer' to complete"
-  echo "the remaining steps of the process."
-  echo "============================================================"
-  echo
-  echo
-  read -r -p "Type 'transfer' (no quotes) to continue: " isTransfer
-  while ! [ "\$isTransfer" = "transfer" ]
-  do
-    echo "The string does not match, please try again."
-    read -r -p "Type 'transfer' (no quotes) to continue: " isTransfer
-  done
-  totalTries=720
-  numTries=1
-  sleepSeconds=5
-  isMatch=false
-  while [ \$numTries -lt \$totalTries ]
-  do
-    ipFromHostname=\$(getIPFromHostname $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
-    if [ "$RELAYSERVER_SERVER_IP" = "\$ipFromHostname" ]; then
-      isMatch=true
-      break
-    fi
-    echo "(\$numTries/\$totalTries)This host's IP: $RELAYSERVER_SERVER_IP, $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN points to \$ipFromHostname. Trying again in \$sleepSeconds seconds..."
-    sleep \$sleepSeconds
-    ((numTries++))
-  done
-
-  if [ "\$isMatch" = "true" ]; then
-    echo "Success! The IP matches the hostname, continuing the installation..."
-  else
-    read -r -p "Failure. The IP does not match. The installation will continue, but you need to point the IP address correctly in order for everything to function properly. Press Enter to continue.   "
-  fi
 }
 
 function restoreNonBackupDir()
@@ -7611,7 +7624,7 @@ function pullImage()
   done
   set -e
   if [ \$is_success -ne 0 ]; then
-    echo "Error pulling docker image: $img_and_version"
+    echo "Error pulling docker image: \$img_and_version"
     return 5
   fi
   set -e
@@ -7629,13 +7642,7 @@ function pullDockerImages()
     pullImage \$cur_img
   done
   IFS=\$OLDIFS
-
   mkdir -p \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build
-  sudo rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
-  git clone https://github.com/homeserverhq/mail-relay.git \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
-  docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix
-  docker image build --network host -t $IMG_MAIL_RELAY_RSPAMD -f \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/rspamd/Dockerfile \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/rspamd
-  sudo rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
 }
 
 function restoreScripts()
@@ -7720,14 +7727,15 @@ EOFR
   np_path="/etc/netplan/*"
   for cur_np in "\$np_path"
   do
+    if ! sudo test -f $cur_np; then
+      continue
+    fi
     sudo sed -i "s|8.8.8.8|9.9.9.9|g" \$cur_np
     sudo sed -i "s|8.8.4.4|149.112.112.112|g" \$cur_np
   done
   set +e
   sudo which netplan && sudo netplan apply > /dev/null 2>&1
-  set -e
-  oldIP=\$(grep -A 1 "$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml | tail -n 1 | cut -d":" -f2 | xargs)
-  sed -i "s|\$oldIP|$RELAYSERVER_SERVER_IP|g" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
+  sed -i "/$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/{n;s/.*/      answer: $RELAYSERVER_SERVER_IP/}" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
   sudo chown -R \${USERID}:\${GROUPID} \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf
   sudo chown -R \${USERID}:\${GROUPID} \$RELAYSERVER_HSHQ_NONBACKUP_DIR/adguard/work
   startStopStack adguard stop
@@ -10785,7 +10793,6 @@ EOFRS
 
 function uploadVPNInstallScripts()
 {
-  isTransfer=$1
   if [ -z "$RELAYSERVER_SSH_PRIVATE_KEY_FILENAME" ]; then
     echo "Generating keys, please wait..."
     RELAYSERVER_SSH_PRIVATE_KEY_FILENAME=$HOMESERVER_ABBREV".key"
@@ -10851,26 +10858,18 @@ EOF
       fi
       while [ -z "$rs_new_username" ]
       do
-        if [ "$isTransfer" = "true" ]; then
-          rs_new_username=$trUsername
-        else
-          rs_new_username=$(promptUserInputMenu "$USERNAME" "Enter New Username" "Enter a NEW Linux OS username to add (in place of root): ")
-          if [ $? -ne 0 ]; then
-            return 1
-          fi
-          if [ $(checkValidString "$rs_new_username" "-") = "false" ]; then
-            showMessageBox "Invalid Character(s)" "The name contains invalid character(s). It must consist of a-z (lowercase), 0-9, and/or hyphens"
-            rs_new_username=""
-          fi
+        rs_new_username=$(promptUserInputMenu "$USERNAME" "Enter New Username" "Enter a NEW Linux OS username to add (in place of root): ")
+        if [ $? -ne 0 ]; then
+          return 1
+        fi
+        if [ $(checkValidString "$rs_new_username" "-") = "false" ]; then
+          showMessageBox "Invalid Character(s)" "The name contains invalid character(s). It must consist of a-z (lowercase), 0-9, and/or hyphens"
+          rs_new_username=""
         fi
       done
       RELAYSERVER_REMOTE_USERNAME="$rs_new_username"
     else
       RELAYSERVER_REMOTE_USERNAME="$rs_cur_username"
-    fi
-    if [ "$isTransfer" = "true" ] && ! [ "$RELAYSERVER_REMOTE_USERNAME" = "$trUsername" ]; then
-      showMessageBox "Invalid Username" "The username must match the username from the previous installation ($trUsername) when doing a transfer. Either login with root and allow this script to create this user or create it manually on the RelayServer."
-      continue
     fi
     tmp_pw1=""
     tmp_pw2=""
@@ -10914,7 +10913,7 @@ EOF
     tmp_pw1=""
     tmp_pw2=""
     domain_ip_guess=$(getIPFromHostname ip.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
-    if [ -z "$domain_ip_guess" ] || [ "$isTransfer" = "true" ]; then
+    if [ -z "$domain_ip_guess" ]; then
       domain_ip_guess="0.0.0.0"
     fi
     RELAYSERVER_SERVER_IP=""
@@ -10994,30 +10993,24 @@ EOF
   if [ "$IS_INSTALLED" = "true" ]; then
     addDomainAdguardHS "*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "$RELAYSERVER_SERVER_IP"
   fi
-  if ! [ "$isTransfer" = "true" ]; then
-    updateConfigVar RELAYSERVER_REMOTE_USERNAME $RELAYSERVER_REMOTE_USERNAME
-    RELAYSERVER_HSHQ_BASE_DIR=/home/$RELAYSERVER_REMOTE_USERNAME/hshq
-    RELAYSERVER_HSHQ_DATA_DIR=$RELAYSERVER_HSHQ_BASE_DIR/data
-    RELAYSERVER_HSHQ_NONBACKUP_DIR=$RELAYSERVER_HSHQ_BASE_DIR/nonbackup
-    RELAYSERVER_HSHQ_SCRIPTS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/scripts
-    RELAYSERVER_HSHQ_SECRETS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/secrets
-    RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/stacks
-    RELAYSERVER_HSHQ_SSL_DIR=$RELAYSERVER_HSHQ_DATA_DIR/ssl
-    updateConfigVar RELAYSERVER_HSHQ_BASE_DIR $RELAYSERVER_HSHQ_BASE_DIR
-    updateConfigVar RELAYSERVER_HSHQ_DATA_DIR $RELAYSERVER_HSHQ_DATA_DIR
-    updateConfigVar RELAYSERVER_HSHQ_NONBACKUP_DIR $RELAYSERVER_HSHQ_NONBACKUP_DIR
-    updateConfigVar RELAYSERVER_HSHQ_SCRIPTS_DIR $RELAYSERVER_HSHQ_SCRIPTS_DIR
-    updateConfigVar RELAYSERVER_HSHQ_SECRETS_DIR $RELAYSERVER_HSHQ_SECRETS_DIR
-    updateConfigVar RELAYSERVER_HSHQ_STACKS_DIR $RELAYSERVER_HSHQ_STACKS_DIR
-    updateConfigVar RELAYSERVER_HSHQ_SSL_DIR $RELAYSERVER_HSHQ_SSL_DIR
-  fi
+  updateConfigVar RELAYSERVER_REMOTE_USERNAME $RELAYSERVER_REMOTE_USERNAME
+  RELAYSERVER_HSHQ_BASE_DIR=/home/$RELAYSERVER_REMOTE_USERNAME/hshq
+  RELAYSERVER_HSHQ_DATA_DIR=$RELAYSERVER_HSHQ_BASE_DIR/data
+  RELAYSERVER_HSHQ_NONBACKUP_DIR=$RELAYSERVER_HSHQ_BASE_DIR/nonbackup
+  RELAYSERVER_HSHQ_SCRIPTS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/scripts
+  RELAYSERVER_HSHQ_SECRETS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/secrets
+  RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/stacks
+  RELAYSERVER_HSHQ_SSL_DIR=$RELAYSERVER_HSHQ_DATA_DIR/ssl
+  updateConfigVar RELAYSERVER_HSHQ_BASE_DIR $RELAYSERVER_HSHQ_BASE_DIR
+  updateConfigVar RELAYSERVER_HSHQ_DATA_DIR $RELAYSERVER_HSHQ_DATA_DIR
+  updateConfigVar RELAYSERVER_HSHQ_NONBACKUP_DIR $RELAYSERVER_HSHQ_NONBACKUP_DIR
+  updateConfigVar RELAYSERVER_HSHQ_SCRIPTS_DIR $RELAYSERVER_HSHQ_SCRIPTS_DIR
+  updateConfigVar RELAYSERVER_HSHQ_SECRETS_DIR $RELAYSERVER_HSHQ_SECRETS_DIR
+  updateConfigVar RELAYSERVER_HSHQ_STACKS_DIR $RELAYSERVER_HSHQ_STACKS_DIR
+  updateConfigVar RELAYSERVER_HSHQ_SSL_DIR $RELAYSERVER_HSHQ_SSL_DIR
   perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
-  if [ "$isTransfer" = "true" ]; then
-    perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
-  else
-    perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
-    rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
-  fi
+  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
+  rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
   perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-T -o ConnectTimeout=10" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c "touch ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE" -f
 }
 
@@ -24762,8 +24755,8 @@ main "\\\$@"
 EOFPU
   sudo chmod 500 \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/wgupdown.sh
   sudo sed -i "s/^AllowedIPs =.*/AllowedIPs = 10.0.0.0\/8/" \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/clientdns/rsClientDNS.conf
-  startStopStack clientdns stop
-  startStopStack clientdns start
+  #startStopStack clientdns stop
+  #startStopStack clientdns start
   sudo iptables -t nat -D POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE > /dev/null 2>&1
   echo "Updating RelayServer host, please wait..."
   sudo apt update > /dev/null 2>&1
@@ -127175,6 +127168,208 @@ EOFSC
       "secure": false,
       "pass_as": "env_variable",
       "env_var": "mydisreason"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/transferVPN.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+read -r -s -p "$rs_cur_password_prompt" rs_cur_password
+if [ -z "\$rs_cur_password" ]; then
+  read -r -t 5 -s -p "" rs_cur_password
+fi
+if [ -z "\$rs_cur_password" ]; then
+  rs_cur_password=""
+  cat <<< "ERROR: Invalid RelayServer current password, please try again." 1>&2
+  exit 3
+fi
+echo "ok"
+read -r -s -p "$rs_new_password_prompt" rs_new_password
+if [ -z "\$rs_new_password" ]; then
+  read -r -t 5 -s -p "" rs_new_password
+fi
+if [ -z "\$rs_new_password" ]; then
+  rs_new_password=""
+  cat <<< "ERROR: Invalid RelayServer new password, please try again." 1>&2
+  exit 3
+fi
+echo "ok"
+echo "Obtaining networkchecks lock..."
+tgLock="\$(tryGetLock networkchecks Script-server-transferVPN)"
+if ! [ "\$tgLock" = "true" ]; then
+  checkRes="\$(getLockOpenMsg networkchecks)"
+  totLockAttempts=\$(getIncrementLockAttempts networkchecks)
+  strErr="Cannot obtain networkchecks lock(\$totLockAttempts): \$checkRes, exiting..."
+  exit
+fi
+setSystemState $SS_INSTALLING
+echo "Loading environment..."
+decryptConfigFileAndLoadEnvNoPrompts
+rs_cur_username=\$(getArgumentValue rs_cur_username "\$@")
+rs_external_ip=\$(getArgumentValue rs_external_ip "\$@")
+rs_cur_ssh_port=\$(getArgumentValue rs_cur_ssh_port "\$@")
+rs_new_ssh_port=\$(getArgumentValue rs_new_ssh_port "\$@")
+webTransferHostedVPN
+set +e
+performExitFunctions false
+setSystemState $SS_RUNNING
+releaseLock networkchecks "Script-server-transferVPN" false
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/transferVPN.json
+{
+  "name": "16 Transfer Hosted VPN",
+  "script_path": "conf/scripts/transferVPN.sh",
+  "description": "Transfer hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "group": "$group_id_mynetwork",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
+    },
+    {
+      "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
+    },
+    {
+      "name": "CURRENT Linux username",
+      "required": true,
+      "param": "-rs_cur_username=",
+      "same_arg_param": true,
+      "type": "text",
+      "max_length": "64",
+      "regex": {
+        "pattern": "^[a-z][a-z0-9_-]+\$",
+        "description": "Only letters, numbers, hyphens, underscores."
+      },
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": "root",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "RelayServer IP address",
+      "required": true,
+      "param": "-rs_external_ip=",
+      "same_arg_param": true,
+      "type": "ip4",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "CURRENT Linux password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "param": "-rs_cur_password=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$rs_cur_password_prompt"
+    },
+    {
+      "name": "NEW Linux password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex_w_min16",
+        "description": "$password_text_description_w_min16"
+      },
+      "required": true,
+      "param": "-rs_new_password=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "default": "",
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$rs_new_password_prompt"
+    },
+    {
+      "name": "CURRENT SSH port",
+      "required": true,
+      "param": "-rs_cur_ssh_port=",
+      "same_arg_param": true,
+      "type": "int",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": "22",
+      "min": "1",
+      "max": "65535",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "NEW SSH port",
+      "required": true,
+      "param": "-rs_new_ssh_port=",
+      "same_arg_param": true,
+      "type": "int",
+      "ui": {
+        "width_weight": 2
+      },
+      "default": "$SSH_PORT",
+      "min": "1024",
+      "max": "65535",
+      "secure": false,
+      "pass_as": "argument"
     }
   ]
 }
