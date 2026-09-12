@@ -5944,6 +5944,8 @@ function webTransferHostedVPN()
   curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
   docker container restart syncthing
   notifyMyNetworkTransferRelayServer
+  removeSudoTimeoutInstall
+  setSystemState $SS_RUNNING
 }
 
 function webSetupHostedVPN()
@@ -127245,7 +127247,7 @@ EOFSC
 {
   "name": "16 Transfer Hosted VPN",
   "script_path": "conf/scripts/transferVPN.sh",
-  "description": "Transfer hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Transfer hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will transfer your RelayServer to another host. It will use the backup that was automatically created during original installation and synced with syncthing. Your username on the new host MUST match the username of the original installation. If you enter root, then that user will automatically be created for you.<br/><br/>The transfer proces takes around 7-8 minutes to complete. About halfway through, the RelayServer will be restarted, and you will be notified of a good time to update your DNS records to the IP address of this new server. For minimal downtime, ensure you are logged into to your domain name provider and ready to modify those records when the time comes.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
