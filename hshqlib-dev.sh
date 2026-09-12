@@ -421,7 +421,7 @@ function showNotInstalledMenu()
   refreshSudo
   setSudoTimeoutInstall
   if [[ "$(isProgramInstalled sshd)" = "false" ]]; then
-    sudo DEBIAN_FRONTEND=noninteractive apt update
+    sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
     echo "Installing openssh-server, please wait..."
     performAptInstall openssh-server > /dev/null 2>&1
   fi
@@ -3338,10 +3338,10 @@ function installDependencies()
 {
   set +e
   createHSHQLog
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
   upgradeHostOS
-  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
   # Install utils
   installHostNTPServer
@@ -5866,11 +5866,6 @@ function webTransferHostedVPN()
   RELAYSERVER_SERVER_IP="$rs_external_ip"
   RELAYSERVER_CURRENT_SSH_PORT="$rs_cur_ssh_port"
   RELAYSERVER_SSH_PORT="$rs_new_ssh_port"
-  updateConfigVar RELAYSERVER_SERVER_IP $RELAYSERVER_SERVER_IP
-  updateConfigVar RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_CURRENT_SSH_PORT
-  updateConfigVar RELAYSERVER_SSH_PORT $RELAYSERVER_SSH_PORT
-  addHomeNetIP ${RELAYSERVER_SERVER_IP}/32 true
-  addDomainAdguardHS "*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "$RELAYSERVER_SERVER_IP"
   outputRelayServerInstallSetupScript
   outputRelayServerInstallTransferScript
   perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_new_password" -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $rs_new_username -h $rs_external_ip -c ":~/$RS_INSTALL_SETUP_SCRIPT_NAME" -f
@@ -5890,6 +5885,13 @@ function webTransferHostedVPN()
   sudo rm -f $HOME/rsbackup.tar.gz
   echo "Initializing transfer process..."
   perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_new_password" -o "-tt -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $rs_new_username -h $rs_external_ip -c "bash ~/$RS_INSTALL_TRANSFER_SCRIPT_NAME -i" -f -i "$rs_new_password" -r 1 -b 1
+  is_err=$?
+  if [ $is_err -ne 0 ]; then
+    echo "There was a problem initializing the transfer, see above."
+    return $is_err
+  fi
+  echo "Transfer Initialization complete! Rebooting.."
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -s "$rs_new_password" -o "-tt -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $rs_new_username -h $rs_external_ip -c "sudo reboot" -f -i "$rs_new_password"
   echo
   echo
   echo "============================================================"
@@ -5921,6 +5923,28 @@ function webTransferHostedVPN()
   done
   echo "RelayServer has rebooted, finishing transfer..."
   perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -s "$rs_new_password" -o "-tt -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $rs_new_username -h $rs_external_ip -c "bash ~/$RS_INSTALL_TRANSFER_SCRIPT_NAME -s" -f -i "$rs_new_password" -r 1 -b 1
+  is_err=$?
+  if [ $is_err -ne 0 ]; then
+    echo "There was a problem performing the transfer, see above."
+    return $is_err
+  fi
+  echo "The RelayServer is fully prepped for transfer. If you haven't already updated your DNS records, ensure to do that now. Both A records should point to $rs_external_ip. Please also review the above logs to ensure there were no errors. If everything appears normal, then enter continue. If there are any errors, then enter cancel to halt the process."
+  while true;
+  do
+    read -r -p "Enter continue or cancel: " raRetry
+    if [ "$raRetry" = "cancel" ]; then
+      return 2
+    elif [ "$raRetry" = "continue" ]; then
+      break
+    else
+      echo "Invalid input."
+    fi
+  done
+  updateConfigVar RELAYSERVER_SERVER_IP $RELAYSERVER_SERVER_IP
+  updateConfigVar RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_CURRENT_SSH_PORT
+  updateConfigVar RELAYSERVER_SSH_PORT $RELAYSERVER_SSH_PORT
+  addHomeNetIP ${RELAYSERVER_SERVER_IP}/32 true
+  addDomainAdguardHS "*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "$RELAYSERVER_SERVER_IP"
   # Restart all vpn connections
   echo "Restarting all wg connections..."
   db_id=$(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='homeserver_vpn' and NetworkType='primary';")
@@ -5943,6 +5967,7 @@ function webTransferHostedVPN()
   jsonbody="{\"paused\": false}"
   curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
   docker container restart syncthing
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "echo \"Successful! IP Address is: \$(curl --silent https://api.ipify.org)\"" -f
   notifyMyNetworkTransferRelayServer
   removeSudoTimeoutInstall
   setSystemState $SS_RUNNING
@@ -6734,9 +6759,9 @@ function checkPerformPreInstall()
 
 function performDebian12PreInstall()
 {
-  sudo DEBIAN_FRONTEND=noninteractive apt update
-  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
-  sudo DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' > /dev/null 2>&1
   source ~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME lib
   installDocker
   echo "Checking for uploaded scripts..."
@@ -6890,7 +6915,7 @@ function setupMain()
     cur_ssh_port=\$(sudo grep ^Port /etc/ssh/sshd_config | xargs | cut -d" " -f2)
   fi
   if [[ "\$(isProgramInstalled iptables)" = "false" ]]; then
-    sudo DEBIAN_FRONTEND=noninteractive apt update
+    sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
     performAptInstall iptables > /dev/null 2>&1
   fi
   sudo iptables -C INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT
@@ -7080,14 +7105,14 @@ function installDependencies()
 {
   UTILS_LIST="$RELAYSERVER_UTILS_LIST"
   APT_REMOVE_LIST="$APT_REMOVE_LIST"
-
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  echo "Updating host..."
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
-  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
-  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
-
-  performAptInstall ssmtp
+  echo "Host update complete!"
+  performAptInstall ssmtp > /dev/null 2>&1
   sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
 root=$EMAIL_ADMIN_EMAIL_ADDRESS
 mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:$MAILU_PORT_5
@@ -7104,7 +7129,7 @@ root:$EMAIL_SMTP_EMAIL_ADDRESS
 \$USERNAME:$EMAIL_SMTP_EMAIL_ADDRESS
 EOFSM
 
-  performAptInstall mailutils
+  performAptInstall mailutils > /dev/null 2>&1
   getent group mailsenders >/dev/null || sudo groupadd mailsenders
   sudo usermod -aG mailsenders \$USERNAME
   sudo chown root:mailsenders /usr/bin/mail.mailutils
@@ -7313,7 +7338,7 @@ function installDockerUbuntu2204()
   echo "deb [arch=\$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing docker..."
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2204 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2204 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
 }
 
 function installDockerUbuntu2404()
@@ -7325,7 +7350,7 @@ function installDockerUbuntu2404()
   echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \$(. /etc/os-release && echo "\$DISTRO_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing docker..."
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2404 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2404 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
 }
 
 function installDockerUbuntu2604()
@@ -7337,7 +7362,7 @@ function installDockerUbuntu2604()
   echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \$(. /etc/os-release && echo "\$DISTRO_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing docker..."
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2604 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2604 containerd.io docker-buildx-plugin docker-compose-plugin
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2604 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2604 containerd.io docker-buildx-plugin docker-compose-plugin > /dev/null 2>&1
 }
 
 function installDockerDebian12()
@@ -7349,7 +7374,7 @@ function installDockerDebian12()
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "\$DISTRO_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing docker..."
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_DEBIAN_12 docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_DEBIAN_12 docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
 }
 
 function outputNukeScript()
@@ -7411,10 +7436,11 @@ function main()
   # Check if systemd-resolved is installed.
   # If not, then modify /etc/resolv.conf directly.
   if [ -f /etc/systemd/resolved.conf ]; then
+    sudo systemctl unmask systemd-resolved > /dev/null 2>&1
     sudo systemctl enable systemd-resolved > /dev/null 2>&1
     sudo systemctl start systemd-resolved > /dev/null 2>&1
     sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
-    sudo grep "^nameserver 9.9.9.9" /etc/resolv.conf > /dev/null 2>&1
+    sudo grep -q "^nameserver 9.9.9.9" /etc/resolv.conf > /dev/null 2>&1
     if [ \\\$? -ne 0 ]; then
       sudo tee /etc/systemd/resolved.conf >/dev/null <<EOFRE
 [Resolve]
@@ -7541,7 +7567,7 @@ function main()
 
 function initTransfer()
 {
-  sudo DEBIAN_FRONTEND=noninteractive apt update 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo -e "\n\nInstalling a few utilities..."
   performAptInstall curl > /dev/null 2>&1
   performAptInstall dnsutils > /dev/null 2>&1
@@ -7556,7 +7582,8 @@ function initTransfer()
   restoreSSL
   pullDockerImages
   restoreScripts
-  sudo reboot
+  sudo systemctl restart ssh > /dev/null 2>&1
+  sudo systemctl restart sshd > /dev/null 2>&1
 }
 
 function startTransfer()
@@ -7628,14 +7655,20 @@ function pullImage()
 
 function pullDockerImages()
 {
+  portainerImage=\$(sudo grep -r "image: " \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml | xargs | cut -d" " -f2)
+  pullImage "\$portainerImage"
+  if [ \$? -ne 0 ]; then
+    echo "There was a problem pulling the portainer image, exiting..."
+    exit 5
+  fi
   OLDIFS=\$IFS
   IFS=\$(echo -en "\n\b")
   img_arr=(\$(sudo grep -r "image: " \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/compose))
   for cur_item in "\${img_arr[@]}"
   do
-    cur_img=\$(echo \$cur_item | xargs | cut -d" " -f3)
+    cur_img=\$(echo "\$cur_item" | xargs | cut -d" " -f3)
     if [[ "\$cur_img" =~ ^hshq ]]; then continue; fi
-    pullImage \$cur_img
+    pullImage "\$cur_img"
   done
   IFS=\$OLDIFS
   mkdir -p \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build
@@ -7704,11 +7737,15 @@ function startStopStack()
 
 function restorePortainer()
 {
-  sed -i "s|^UID=.*|UID=\${USERID}|g" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
-  sed -i "s|^GID=.*|GID=\${GROUPID}|g" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
+  sed -i "s|^PORTAINER_UID=.*|PORTAINER_UID=\${USERID}|g" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
+  sed -i "s|^PORTAINER_GID=.*|PORTAINER_GID=\${GROUPID}|g" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
   cd ~
   docker compose -f \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   RELAYSERVER_PORTAINER_TOKEN="\$(getPortainerToken -u $RELAYSERVER_PORTAINER_ADMIN_USERNAME -p $RELAYSERVER_PORTAINER_ADMIN_PASSWORD)"
+  if [ \$? -ne 0 ] || [ -z "\$RELAYSERVER_PORTAINER_TOKEN" ]; then
+    echo "There was a problem obtaining the portainer token, exiting..."
+    exit 6
+  fi
 }
 
 function restoreAdguard()
@@ -7731,7 +7768,7 @@ EOFR
   done
   set +e
   sudo which netplan && sudo netplan apply > /dev/null 2>&1
-  sed -i "/$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/{n;s/.*/      answer: $RELAYSERVER_SERVER_IP/}" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
+  sudo sed -i "/$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/{n;s/.*/      answer: $RELAYSERVER_SERVER_IP/}" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
   sudo chown -R \${USERID}:\${GROUPID} \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf
   sudo chown -R \${USERID}:\${GROUPID} \$RELAYSERVER_HSHQ_NONBACKUP_DIR/adguard/work
   startStopStack adguard stop
@@ -7781,7 +7818,7 @@ function startWazuhAgent()
 {
   curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
   echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$WAZUH_AGENT_VERSION
   sudo apt-mark hold wazuh-agent
   sudo systemctl daemon-reload
@@ -7870,7 +7907,7 @@ function startInstall()
   fi
   loadVersionVars
   echo "Update apt..."
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   sudo dpkg --configure -a > /dev/null 2>&1
   echo "Checking for required utils..."
   set +e
@@ -29608,7 +29645,7 @@ function installDocker()
 function upgradeDocker()
 {
   echo "Upgrading docker, this could take 5-10 minutes, please wait..."
-  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   sudo apt-mark unhold docker-ce
   sudo apt-mark unhold docker-ce-cli
   case "$DISTRO_ID" in
@@ -29729,7 +29766,7 @@ function installDockerUbuntu2204()
   # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing docker, please wait..."
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2204 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
 }
@@ -29751,7 +29788,7 @@ function installDockerUbuntu2404()
   sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$DISTRO_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing docker, please wait..."
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2404 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
 }
@@ -29775,7 +29812,7 @@ function installDockerUbuntu2604()
   # Use noble for now, fix it later when repos are available
   # Also ensure to update DOCKER_VERSION_UBUNTU_2604
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing docker, please wait..."
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2604 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2604 containerd.io docker-buildx-plugin docker-compose-plugin
 }
@@ -29797,7 +29834,7 @@ function installDockerDebian12()
   sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$DISTRO_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing docker, please wait..."
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_DEBIAN_12 docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
 }
@@ -52016,7 +52053,7 @@ function installWazuhAgent()
   fi
   curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
   echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$WAZUH_AGENT_VERSION
   sudo apt-mark hold wazuh-agent
   sudo systemctl daemon-reload
@@ -52042,7 +52079,7 @@ function updateWazuhAgents()
     agent_ver=$WAZUH_AGENT_VERSION
   fi
   sudo apt-mark unhold wazuh-agent
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   sudo systemctl daemon-reload > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$agent_ver
   sudo apt-mark hold wazuh-agent
@@ -52057,8 +52094,8 @@ function main()
   read -r -s -p "" rspw
   echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
   sudo apt-mark unhold wazuh-agent
-  sudo DEBIAN_FRONTEND=noninteractive apt update
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$agent_ver
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$agent_ver > /dev/null 2>&1
   sudo apt-mark hold wazuh-agent
 }
 main "\$@"
@@ -127247,7 +127284,7 @@ EOFSC
 {
   "name": "16 Transfer Hosted VPN",
   "script_path": "conf/scripts/transferVPN.sh",
-  "description": "Transfer hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will transfer your RelayServer to another host. It will use the backup that was automatically created during original installation and synced with syncthing. Your username on the new host MUST match the username of the original installation. If you enter root, then that user will automatically be created for you.<br/><br/>The transfer proces takes around 7-8 minutes to complete. About halfway through, the RelayServer will be restarted, and you will be notified of a good time to update your DNS records to the IP address of this new server. For minimal downtime, ensure you are logged into to your domain name provider and ready to modify those records when the time comes.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Transfer hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will transfer your RelayServer to another host. It will use the backup that was automatically created during original installation and synced with syncthing. Your username on the new host MUST match the username of the original installation. If you enter root, then that user will automatically be created for you.<br/><br/>The transfer proces takes around 7-8 minutes to complete. About halfway through, the RelayServer will be restarted, and you will be notified of a good time to update your DNS records to the IP address of this new server. For minimal downtime, ensure you are logged into to your domain name provider and ready to modify those records when the time comes.<br/><br/>When the RelayServer is fully prepped, you will be given a final prompt to either continue or cancel. Ensure to review the logs for any errors, and if everything looks fine, the enter continue to complete the process.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
