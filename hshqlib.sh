@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=238
+HSHQ_LIB_SCRIPT_VERSION=240
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -32,7 +32,7 @@ function init()
   IS_STACK_DEBUG=false
   USERNAME=$(id -u -n)
   PRIOR_HSHQ_VERSION=0
-  LAST_RELAYSERVER_VERSION_UPDATE=193
+  LAST_RELAYSERVER_VERSION_UPDATE=239
   IS_AUTO_INSTALL=false
   loadVersionVars
   IS_RUST_UTILS=false
@@ -421,7 +421,7 @@ function showNotInstalledMenu()
   refreshSudo
   setSudoTimeoutInstall
   if [[ "$(isProgramInstalled sshd)" = "false" ]]; then
-    sudo DEBIAN_FRONTEND=noninteractive apt update
+    sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
     echo "Installing openssh-server, please wait..."
     performAptInstall openssh-server > /dev/null 2>&1
   fi
@@ -3338,10 +3338,10 @@ function installDependencies()
 {
   set +e
   createHSHQLog
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
   upgradeHostOS
-  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
   # Install utils
   installHostNTPServer
@@ -5653,11 +5653,14 @@ function outputHostedVPNConfigs()
 PrivateKey = $RELAYSERVER_WG_HS_PRIVATEKEY
 Address = ${RELAYSERVER_WG_HS_IP}/32
 MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
+Table = off
+PostUp = ip route add 10.0.0.0/8 dev %i table 1100; ip route add $PRIMARY_VPN_SUBNET dev %i; ip rule add fwmark 1100 table 1100 pref 20000; iptables -t mangle -A PREROUTING -i %i -j CONNMARK --set-mark 1100; iptables -t mangle -A PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -A OUTPUT -j CONNMARK --restore-mark --nfmask 0xffffffff --ctmask 0xffffffff
+PreDown = iptables -t mangle -D OUTPUT -j CONNMARK --restore-mark --nfmask 0xffffffff --ctmask 0xffffffff; iptables -t mangle -D PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -D PREROUTING -i %i -j CONNMARK --set-mark 1100; ip rule del fwmark 1100 table 1100 pref 20000; ip route del $PRIMARY_VPN_SUBNET dev %i; ip route del 10.0.0.0/8 dev %i table 1100
 
 [Peer]
 PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY
 PresharedKey = $RELAYSERVER_WG_HS_PRESHAREDKEY
-AllowedIPs = $PRIMARY_VPN_SUBNET
+AllowedIPs = 10.0.0.0/8
 Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT
 PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
@@ -5717,7 +5720,7 @@ MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
 [Peer]
 PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY
 PresharedKey = $RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY
-AllowedIPs = $PRIMARY_VPN_SUBNET
+AllowedIPs = 10.0.0.0/8
 Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT
 PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
@@ -5731,11 +5734,12 @@ function insertSQLHostedVPN()
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('RelayServerClientDNS','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','relayserver','$RELAYSERVER_WG_SV_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_SV_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   db_id=$(sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated,Network_Subnet,IsExposeToNetwork,InputAllowPorts,DockerUserAllowPorts) values('Primary-VPN-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_vpn','primary','$RELAYSERVER_WG_HS_PUBLICKEY','$RELAYSERVER_WG_HS_PRESHAREDKEY','$RELAYSERVER_WG_HS_IP',false,'$RELAYSERVER_WG_VPN_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt','$PRIMARY_VPN_SUBNET',true,'$INPUT_PRIMARY_VPN_ALLOW_PORTS_DEFAULT','$DOCKERUSER_PRIMARY_VPN_ALLOW_PORTS_DEFAULT');select last_insert_rowid();")
   mail_host_id=$(sudo sqlite3 $HSHQ_DB "insert into mailhosts(MailHost) values('$SUB_POSTFIX.$HOMESERVER_DOMAIN');select last_insert_rowid();")
-  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,MailHostID,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,RS_VPN_IP) values($db_id,'$HOMESERVER_NAME',1,'$HOMESERVER_DOMAIN','$EXT_DOMAIN_PREFIX','$INT_DOMAIN_PREFIX',$mail_host_id,'$HOMESERVER_ABBREV','$RELAYSERVER_WG_HS_IP','$SUB_CADDY.$HOMESERVER_DOMAIN','https://$SUB_CADDY.$HOMESERVER_DOMAIN/acme/$HOMESERVER_ABBREV/directory' ,'$RELAYSERVER_WG_SV_IP');"
+  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,MailHostID,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,RS_VPN_IP,VPNRoutingTable) values($db_id,'$HOMESERVER_NAME',1,'$HOMESERVER_DOMAIN','$EXT_DOMAIN_PREFIX','$INT_DOMAIN_PREFIX',$mail_host_id,'$HOMESERVER_ABBREV','$RELAYSERVER_WG_HS_IP','$SUB_CADDY.$HOMESERVER_DOMAIN','https://$SUB_CADDY.$HOMESERVER_DOMAIN/acme/$HOMESERVER_ABBREV/directory' ,'$RELAYSERVER_WG_SV_IP',1100);"
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into mailhostmap(MailHostID,Domain,IsFirstDomain) values ($mail_host_id,'$HOMESERVER_DOMAIN',true);"
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-user1','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','primary','$RELAYSERVER_WG_HS_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_HS_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-Internet-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_internet','primary','$RELAYSERVER_WG_INTERNET_HS_PUBLICKEY','$RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY','$RELAYSERVER_WG_INTERNET_HS_IP',true,'$RELAYSERVER_WG_INTERNET_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,EndpointHostname,LastUpdated) values('User-1','$EMAIL_ADMIN_EMAIL_ADDRESS','user','mynetwork','$RELAYSERVER_WG_USER_PUBLICKEY','$RELAYSERVER_WG_USER_PRESHAREDKEY','$RELAYSERVER_WG_USER_IP',true,'$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+  updateDeviceIPMappingFile
 }
 
 function updateHeimdallUptimeKumaRelayServer()
@@ -5768,6 +5772,205 @@ function prepSvcsHostedVPN()
   set +e
   echo "Updating IP tables..."
   checkUpdateAllIPTables prepSvcsHostedVPN
+}
+
+function webTransferHostedVPN()
+{
+  # These variables should already be set by Script-server
+  # rs_cur_username
+  # rs_external_ip
+  # rs_cur_password
+  # rs_new_password
+  # rs_cur_ssh_port
+  # rs_new_ssh_port
+  set +e
+  # Clear out any old hosts
+  ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN]:$RELAYSERVER_SSH_PORT" > /dev/null 2>&1
+  ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$RELAYSERVER_SERVER_IP]:$RELAYSERVER_SSH_PORT" > /dev/null 2>&1
+  ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$rs_external_ip]:$rs_cur_ssh_port" > /dev/null 2>&1
+  ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$rs_external_ip]:$rs_new_ssh_port" > /dev/null 2>&1
+  if ! [ "$rs_cur_username" = "root" ] && ! [ "$rs_cur_username" = "$RELAYSERVER_REMOTE_USERNAME" ]; then
+    echo "ERROR: The username on the new RelayServer must match the existing username ($RELAYSERVER_REMOTE_USERNAME)"
+    return 2
+  fi
+  rs_new_username="$RELAYSERVER_REMOTE_USERNAME"
+  if ! [ "$rs_cur_username" = "root" ]; then
+    rs_new_password="$rs_cur_password"
+  fi
+  # Login, upload check script, log back in and run check script
+  # 1. Login
+  echo "Logging into RelayServer..."
+  perfRemoteAction -m ssh -p $rs_cur_ssh_port -s "$rs_cur_password" -o "-T -o ConnectTimeout=5 -o 'StrictHostKeyChecking accept-new'" -u "$rs_cur_username" -h "$rs_external_ip" -c "echo hello >/dev/null" -f
+  is_err=$?
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: There was a problem logging in to the RelayServer, returning..."
+    return 2
+  fi
+  # 2. Upload check script
+  echo "Uploading validation script..."
+  outputRelayServerValidationScript
+  outputRelayServerInstallSetupScript
+  perfRemoteAction -m scp -p $rs_cur_ssh_port -s "$rs_cur_password" -a $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME -u $rs_cur_username -h $rs_external_ip -c ":~" -f
+  is_err=$?
+  rm -f $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: There was an problem uploading the validation script to the RelayServer, returning..."
+    return 2
+  fi
+  perfRemoteAction -m scp -p $rs_cur_ssh_port -s "$rs_cur_password" -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $rs_cur_username -h $rs_external_ip -c ":~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME" -f
+  is_err=$?
+  rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: There was an problem uploading the lib script to the RelayServer, returning..."
+    return 2
+  fi
+  # 3. Log back in and run check script
+  echo "Performing pre-installation checks, please wait..."
+  perfRemoteAction -m ssh -p $rs_cur_ssh_port -s "$rs_cur_password" -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $rs_cur_username -h $rs_external_ip -c "bash ~/$RS_INSTALL_VALIDATION_SCRIPT_NAME -s" -f -i "$rs_new_password"
+  is_err=$?
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: There was a problem with the RelayServer, see above."
+    return 2
+  fi
+  echo "Testing RelayServer login with pub/priv key..."
+  perfRemoteAction -m ssh -p $rs_cur_ssh_port -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $rs_external_ip -c "echo \"Successfully logged in to RelayServer with key! \"" -f
+  is_err=$?
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: Could not login to RelayServer with pub/priv key."
+    return 2
+  fi
+  setSudoTimeoutInstall
+  setSystemState $SS_TRANSFERRING
+  # Pause syncthing RelayServer
+  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "{\"paused\": true}" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
+  echo "Compressing RelayServer data..."
+  sudo tar cvzf $HOME/rsbackup.tar.gz -C $HSHQ_RELAYSERVER_DIR/ ./backup >/dev/null
+  echo "Checking if RelayServer is ready..."
+  countRSPreRetries=0
+  maxRSPreRetries=20
+  while true;
+  do
+    perfRemoteAction -m ssh -p $rs_cur_ssh_port -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $rs_new_username -h $rs_external_ip -c "sleep 1;if [ -f ~/$RELAYSERVER_NOT_READY_FILE ]; then exit 1; fi" -r 1 -b 1
+    if [ $? -eq 0 ]; then
+      break
+    fi
+    if [ $countRSPreRetries -ge $maxRSPreRetries ]; then
+      echo "Max retries reached. Something has likely gone wrong with the RelayServer pre-installation script, exiting..."
+      return 2
+    fi
+    ((countRSPreRetries++))
+    echo "($countRSPreRetries of $maxRSPreRetries) RelayServer not ready for installation, sleeping 30 seconds then will retry..."
+    sleep 30
+  done
+  removeHomeNetIP ${RELAYSERVER_SERVER_IP}/32 false
+  RELAYSERVER_SERVER_IP="$rs_external_ip"
+  RELAYSERVER_CURRENT_SSH_PORT="$rs_cur_ssh_port"
+  RELAYSERVER_SSH_PORT="$rs_new_ssh_port"
+  outputRelayServerInstallSetupScript
+  outputRelayServerInstallTransferScript
+  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_new_password" -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $rs_new_username -h $rs_external_ip -c ":~/$RS_INSTALL_SETUP_SCRIPT_NAME" -f
+  is_err=$?
+  rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: There was an problem uploading the setup script to the RelayServer, returning..."
+    return 2
+  fi
+  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_new_password" -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME -u $rs_new_username -h $rs_external_ip -c ":~/$RS_INSTALL_TRANSFER_SCRIPT_NAME" -f
+  is_err=$?
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: There was an problem uploading the transfer script to the RelayServer, returning..."
+    return 2
+  fi
+  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HOME/rsbackup.tar.gz -u $rs_new_username -h $rs_external_ip -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
+  sudo rm -f $HOME/rsbackup.tar.gz
+  echo "Initializing transfer process..."
+  perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_new_password" -o "-tt -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $rs_new_username -h $rs_external_ip -c "bash ~/$RS_INSTALL_TRANSFER_SCRIPT_NAME -i" -f -i "$rs_new_password" -r 1 -b 1
+  is_err=$?
+  if [ $is_err -ne 0 ]; then
+    echo "There was a problem initializing the transfer, see above."
+    return $is_err
+  fi
+  echo "Transfer Initialization complete! Rebooting.."
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -s "$rs_new_password" -o "-tt -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $rs_new_username -h $rs_external_ip -c "sudo reboot" -f -i "$rs_new_password"
+  echo
+  echo
+  echo "============================================================"
+  echo "                  RelayServer is rebooting...               "
+  echo "           You can now modify your DNS Records to           "
+  echo "          point to the new RelayServer's IP Address         "
+  echo "============================================================"
+  echo
+  echo
+  sleep 30
+  countRSPreRetries=0
+  maxRSPreRetries=20
+  while true;
+  do
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $rs_new_username -h $rs_external_ip -c "echo hello >/dev/null" -r 1 -b 1
+    if [ $? -eq 0 ]; then
+      break
+    fi
+    if [ $countRSPreRetries -ge $maxRSPreRetries ]; then
+      echo "Max retries reached. Something has likely gone wrong with the RelayServer transfer init script."
+      read -r -p "Enter cancel to exit or any other key to retry: " raRetry
+      if [ "$raRetry" = "cancel" ]; then
+        return 2
+      fi
+    fi
+    ((countRSPreRetries++))
+    echo "($countRSPreRetries of $maxRSPreRetries) RelayServer not ready for transfer, sleeping 15 seconds then will retry..."
+    sleep 15
+  done
+  echo "RelayServer has rebooted, finishing transfer..."
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -s "$rs_new_password" -o "-tt -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $rs_new_username -h $rs_external_ip -c "bash ~/$RS_INSTALL_TRANSFER_SCRIPT_NAME -s" -f -i "$rs_new_password" -r 1 -b 1
+  is_err=$?
+  if [ $is_err -ne 0 ]; then
+    echo "There was a problem performing the transfer, see above."
+    return $is_err
+  fi
+  echo "The RelayServer is fully prepped for transfer. If you haven't already updated your DNS records, ensure to do that now. Both A records should point to $rs_external_ip. Please also review the above logs to ensure there were no errors. If everything appears normal, then enter continue. If there are any errors, then enter cancel to halt the process."
+  while true;
+  do
+    read -r -p "Enter continue or cancel: " raRetry
+    if [ "$raRetry" = "cancel" ]; then
+      return 2
+    elif [ "$raRetry" = "continue" ]; then
+      break
+    else
+      echo "Invalid input."
+    fi
+  done
+  updateConfigVar RELAYSERVER_SERVER_IP $RELAYSERVER_SERVER_IP
+  updateConfigVar RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_CURRENT_SSH_PORT
+  updateConfigVar RELAYSERVER_SSH_PORT $RELAYSERVER_SSH_PORT
+  addHomeNetIP ${RELAYSERVER_SERVER_IP}/32 true
+  addDomainAdguardHS "*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "$RELAYSERVER_SERVER_IP"
+  # Restart all vpn connections
+  echo "Restarting all wg connections..."
+  db_id=$(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='homeserver_vpn' and NetworkType='primary';")
+  ifaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$db_id;")
+  sudo systemctl restart wg-quick@$ifaceName
+  db_id=$(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='homeserver_internet' and NetworkType='primary';")
+  ifaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$db_id;")
+  sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${ifaceName}.conf restart
+  clientdns_arr=($(docker ps -a --filter name=clientdns.*wireguard --format "{{.Names}}"))
+  for curCDNS in "${clientdns_arr[@]}"
+  do
+    curStackName=$(echo "$curCDNS" | rev | cut -d"-" -f2- | rev)
+    if ! [ -d "$HSHQ_STACKS_DIR/$curStackName" ] || ! [ -f "$HSHQ_STACKS_DIR/$curStackName/${curStackName}.conf" ]; then
+      continue
+    fi
+    startStopStack "$curStackName" stop
+    startStopStack "$curStackName" start
+  done
+  updateEndpointIPs
+  jsonbody="{\"paused\": false}"
+  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
+  docker container restart syncthing
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "echo \"Successful! IP Address is: \$(curl --silent https://api.ipify.org)\"" -f
+  notifyMyNetworkTransferRelayServer
+  removeSudoTimeoutInstall
+  setSystemState $SS_RUNNING
 }
 
 function webSetupHostedVPN()
@@ -6025,7 +6228,6 @@ function webSetupHostedVPN()
   echo "Generating RelayServer install scripts..."
   outputRelayServerInstallSetupScript
   outputRelayServerInstallFreshScript
-  outputRelayServerInstallTransferScript
   addDomainAdguardHS "*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "$RELAYSERVER_SERVER_IP"
   perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
   perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
@@ -6322,9 +6524,8 @@ function setupHostedVPN()
   echo "Generating RelayServer install scripts..."
   outputRelayServerInstallSetupScript
   outputRelayServerInstallFreshScript
-  outputRelayServerInstallTransferScript
   set +e
-  uploadVPNInstallScripts false
+  uploadVPNInstallScripts
   if [ $? -ne 0 ]; then
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from lecertdomains;"
     return 1
@@ -6339,125 +6540,6 @@ function setupHostedVPN()
     prepSvcsHostedVPN
   fi
   updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
-}
-
-function transferHostedVPN()
-{
-  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    showMessageBox "Invalid Selection" "You are not hosting a RelayServer, returning..."
-    return
-  fi
-  set +e
-  tgLock="$(tryGetLock networkchecks transferHostedVPN)"
-  if ! [ "$tgLock" = "true" ]; then
-    checkRes="$(getLockOpenMsg networkchecks)"
-    strErr="transferHostedVPN - Cannot obtain networkchecks lock: $checkRes. Please try again shortly, returning..."
-    logHSHQEvent warning "$strErr"
-    showMessageBox "WARNING" "WARNING: $strErr"
-    return
-  fi
-  is_transfer=$(promptUserInputMenu "" "Transfer RelayServer" "If you wish to transfer your RelayServer, enter the word 'transfer' below:")
-  if ! [ $is_transfer = "transfer" ]; then
-    showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
-    return 0
-  fi
-  temp_pw=""
-  sudo -k
-  while [ -z "$temp_pw" ]
-  do
-    temp_pw=$(promptPasswordMenu "Enter Password" "Enter the sudo password for $USERNAME: ")
-    if [ $? -ne 0 ]; then
-      exit 3
-    fi
-    echo "$temp_pw" | sudo -S -v -p "" > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-      showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
-      temp_pw=""
-      continue
-    fi
-  done
-  unset temp_pw=""
-  temp_pw=""
-  setSudoTimeoutInstall
-  setSystemState $SS_TRANSFERRING
-  # Pause syncthing RelayServer
-  jsonbody="{\"paused\": true}"
-  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
-  outputRelayServerInstallSetupScript
-  outputRelayServerInstallTransferScript
-  sudo tar cvzf $HOME/rsbackup.tar.gz -C $HSHQ_RELAYSERVER_DIR/ ./backup >/dev/null
-  old_rsIP=$RELAYSERVER_SERVER_IP
-  uploadVPNInstallScripts true
-  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HOME/rsbackup.tar.gz -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
-  sudo rm -f $HOME/rsbackup.tar.gz
-  showMessageBox "Upload Success" "The scripts and data have been uploaded to the RelayServer host. Please run 'bash $RS_INSTALL_TRANSFER_SCRIPT_NAME' on the remote host. After the installation has completed and the server has fully rebooted, press okay to begin monitoring for a successful connection transfer."
-  # Remove old RelayIP with no update
-  removeHomeNetIP $old_rsIP false
-  set +e
-  totalTries=720
-  numTries=1
-  sleepSeconds=5
-  isMatchWG=false
-  isMatchRS=false
-  while [ $numTries -lt $totalTries ]
-  do
-    ipFromHostname=$(getIPFromHostname $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
-    if [ "$RELAYSERVER_SERVER_IP" = "$ipFromHostname" ]; then
-      isMatchWG=true
-    else
-      isMatchWG=false
-    fi
-    ipFromHostname=$(getIPFromHostname $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
-    if [ "$RELAYSERVER_SERVER_IP" = "$ipFromHostname" ]; then
-      isMatchRS=true
-    else
-      isMatchRS=false
-    fi
-    if [ "$isMatchWG" = "true" ] && [ "$isMatchRS" = "true" ]; then
-      break
-    else
-      echo "($numTries/$totalTries)RelayServer IP: $RELAYSERVER_SERVER_IP, $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN points to $ipFromHostname, $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN points to $ipFromHostname. Trying again in $sleepSeconds seconds..."
-    fi
-    sleep $sleepSeconds
-    ((numTries++))
-  done
-  if [ "$isMatchWG" = "true" ] && [ "$isMatchRS" = "true" ]; then
-    echo "External IP updated successfully!"
-  else
-    echo "The RelayServer IP does not match."
-  fi
-  removeRelayServerAgentFromWazuhManager
-  echo "Updating endpoint IP addresses..."
-  updateEndpointIPs
-  numTries=1
-  isMatch=false
-  timeout_length=5
-  while [ $numTries -lt $totalTries ]
-  do
-    timeout $timeout_length ping -c 1 $RELAYSERVER_SUB_RELAYSERVER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN > /dev/null
-    if [ $? -eq 0 ]; then
-      isMatch=true
-      break
-    fi
-    echo "($numTries/$totalTries)Could not ping RelayServer. Trying again in $sleepSeconds seconds..."
-    sleep $sleepSeconds
-    ((numTries++))
-  done
-  if [ "$isMatch" = "true" ]; then
-    echo "Successfully connected to RelayServer!"
-  else
-    echo "Unable to ping RelayServer."
-  fi
-  # Resume syncthing RelayServer
-  jsonbody="{\"paused\": false}"
-  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
-  docker container restart syncthing
-  echo "Test login to new RelayServer: $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN"
-  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "echo \"Successful! IP Address is: \$(curl --silent https://api.ipify.org)\"" -f
-  notifyMyNetworkTransferRelayServer "$RELAYSERVER_SERVER_IP"
-  removeSudoTimeoutInstall
-  setSystemState $SS_RUNNING
-  releaseLock networkchecks transferHostedVPN false
 }
 
 function outputRelayServerValidationScript()
@@ -6677,9 +6759,9 @@ function checkPerformPreInstall()
 
 function performDebian12PreInstall()
 {
-  sudo DEBIAN_FRONTEND=noninteractive apt update
-  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
-  sudo DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' > /dev/null 2>&1
   source ~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME lib
   installDocker
   echo "Checking for uploaded scripts..."
@@ -6811,7 +6893,7 @@ function init()
   fi
 }
 
-function main()
+function setupMain()
 {
   init
   echo "Running setup script..."
@@ -6823,7 +6905,6 @@ function main()
   fi
   sudo hostnamectl set-hostname \$new_hostname
   rm -f \$HOME/dead.letter
-
   # Ensure we can login during the installation process,
   # since the firewall will block the connection if we
   # haven't logged in before the firewall goes up.
@@ -6834,16 +6915,13 @@ function main()
     cur_ssh_port=\$(sudo grep ^Port /etc/ssh/sshd_config | xargs | cut -d" " -f2)
   fi
   if [[ "\$(isProgramInstalled iptables)" = "false" ]]; then
-    sudo DEBIAN_FRONTEND=noninteractive apt update
+    sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
     performAptInstall iptables > /dev/null 2>&1
   fi
   sudo iptables -C INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT
-
-  set +e
   # Change SSH port on host
   sudo sed -i "s|^#*Port .*\$|Port $RELAYSERVER_SSH_PORT|g" /etc/ssh/sshd_config
   sudo sed -i "s|^Port .*\$|Port $RELAYSERVER_SSH_PORT|g" /etc/ssh/sshd_config
-  
   # Some other SSH settings
   sudo sed -i "s|^ClientAliveInterval .*\$|ClientAliveInterval 15|g" /etc/ssh/sshd_config
   sudo sed -i "s|^ClientAliveCountMax .*\$|ClientAliveCountMax 3|g" /etc/ssh/sshd_config
@@ -6851,7 +6929,6 @@ function main()
   sudo sed -i "s|^#*ClientAliveInterval .*\$|ClientAliveInterval 15|g" /etc/ssh/sshd_config
   sudo sed -i "s|^#*ClientAliveCountMax .*\$|ClientAliveCountMax 3|g" /etc/ssh/sshd_config
   sudo sed -i "s|^#*PermitEmptyPasswords .*\$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
-
   # Update sudoers file
   sudo sed -i '/\/userasroot/d' /etc/sudoers >/dev/null
   echo "\$USERNAME ALL=(ALL) NOPASSWD: \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/*.sh" | sudo tee -a /etc/sudoers >/dev/null
@@ -6866,14 +6943,10 @@ function main()
   fi
   sudo sed -i '/includedir/d' /etc/sudoers >/dev/null
   echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
-
   # Set timezone
   sudo timedatectl set-timezone "$TZ"
-
   # Create swap file
   createSwapfile
-
-  set -e
   installDependencies
   createDockerNetworks
 }
@@ -7032,14 +7105,14 @@ function installDependencies()
 {
   UTILS_LIST="$RELAYSERVER_UTILS_LIST"
   APT_REMOVE_LIST="$APT_REMOVE_LIST"
-
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  echo "Updating host..."
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
-  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
-  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
-
-  performAptInstall ssmtp
+  echo "Host update complete!"
+  performAptInstall ssmtp > /dev/null 2>&1
   sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
 root=$EMAIL_ADMIN_EMAIL_ADDRESS
 mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:$MAILU_PORT_5
@@ -7056,7 +7129,7 @@ root:$EMAIL_SMTP_EMAIL_ADDRESS
 \$USERNAME:$EMAIL_SMTP_EMAIL_ADDRESS
 EOFSM
 
-  performAptInstall mailutils
+  performAptInstall mailutils > /dev/null 2>&1
   getent group mailsenders >/dev/null || sudo groupadd mailsenders
   sudo usermod -aG mailsenders \$USERNAME
   sudo chown root:mailsenders /usr/bin/mail.mailutils
@@ -7265,7 +7338,7 @@ function installDockerUbuntu2204()
   echo "deb [arch=\$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing docker..."
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2204 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2204 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
 }
 
 function installDockerUbuntu2404()
@@ -7277,7 +7350,7 @@ function installDockerUbuntu2404()
   echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \$(. /etc/os-release && echo "\$DISTRO_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing docker..."
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2404 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2404 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
 }
 
 function installDockerUbuntu2604()
@@ -7289,7 +7362,7 @@ function installDockerUbuntu2604()
   echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \$(. /etc/os-release && echo "\$DISTRO_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing docker..."
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2604 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2604 containerd.io docker-buildx-plugin docker-compose-plugin
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2604 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2604 containerd.io docker-buildx-plugin docker-compose-plugin > /dev/null 2>&1
 }
 
 function installDockerDebian12()
@@ -7301,7 +7374,7 @@ function installDockerDebian12()
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "\$DISTRO_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing docker..."
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_DEBIAN_12 docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_DEBIAN_12 docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin > /dev/null 2>&1
 }
 
 function outputNukeScript()
@@ -7363,10 +7436,11 @@ function main()
   # Check if systemd-resolved is installed.
   # If not, then modify /etc/resolv.conf directly.
   if [ -f /etc/systemd/resolved.conf ]; then
+    sudo systemctl unmask systemd-resolved > /dev/null 2>&1
     sudo systemctl enable systemd-resolved > /dev/null 2>&1
     sudo systemctl start systemd-resolved > /dev/null 2>&1
     sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
-    sudo grep "^nameserver 9.9.9.9" /etc/resolv.conf > /dev/null 2>&1
+    sudo grep -q "^nameserver 9.9.9.9" /etc/resolv.conf > /dev/null 2>&1
     if [ \\\$? -ne 0 ]; then
       sudo tee /etc/systemd/resolved.conf >/dev/null <<EOFRE
 [Resolve]
@@ -7437,7 +7511,7 @@ function createDockerNetworks()
 
 case "\$1" in
   "lib")     init;;
-  *)         main "\$@";;
+  *)         setupMain "\$@";;
 esac
 
 EOFRS
@@ -7450,7 +7524,7 @@ function outputRelayServerInstallTransferScript()
   cat <<EOFRS > $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME
 #!/bin/bash
 
-set -e
+set +e
 
 TZ=$TZ
 USERNAME=\$(id -u -n)
@@ -7471,24 +7545,52 @@ function main()
     echo "This script should be run as a non-root user. Exiting..."
     exit 1
   fi
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  read -r -s -t 30 -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
+  echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    echo "Error with RelayServer sudo password, exiting..."
+    exit 8
+  fi
+  while getopts ':is' opt; do
+    case "\$opt" in
+      s)
+        startTransfer ;;
+      i)
+        initTransfer ;;
+      ?|h)
+        echo "Usage: \$(basename \$0)"
+        exit 1 ;;
+    esac
+  done
+  shift "\$((\$OPTIND -1))"
+}
+
+function initTransfer()
+{
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo -e "\n\nInstalling a few utilities..."
   performAptInstall curl > /dev/null 2>&1
   performAptInstall dnsutils > /dev/null 2>&1
   performAptInstall screen > /dev/null 2>&1
-  mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
   bash \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
+  mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
   sudo tar xvzf \$HOME/rsbackup.tar.gz >/dev/null
   sudo rm -fr \$RELAYSERVER_HSHQ_DATA_DIR
   sudo mv \$HOME/backup \$RELAYSERVER_HSHQ_DATA_DIR
+  sudo sed -i "s/SSH_PORT=.*/SSH_PORT=$RELAYSERVER_SSH_PORT/" \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
   restoreNonBackupDir
   restoreSSL
   pullDockerImages
   restoreScripts
+  sudo systemctl restart ssh > /dev/null 2>&1
+  sudo systemctl restart sshd > /dev/null 2>&1
+}
+
+function startTransfer()
+{
   restorePortainer
   restoreAdguard
   restoreMailRelay
-  haltAndWaitForConfirmation
   restoreWireGuard
   restoreCaddy
   restoreOfelia
@@ -7497,19 +7599,6 @@ function main()
   sudo rm -f \$HOME/rsbackup.tar.gz
   sudo rm -f \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
   sudo rm -f \$HOME/$RS_INSTALL_TRANSFER_SCRIPT_NAME
-  clear
-  echo
-  echo
-  echo
-  echo
-  echo "============================================================"
-  echo "Transfer Complete!"
-  echo "Rebooting in 60 seconds..."
-  echo "============================================================"
-  echo
-  echo
-  sleep 60
-  sudo reboot
 }
 
 function getIPFromHostname()
@@ -7520,53 +7609,6 @@ function getIPFromHostname()
 function performAptInstall()
 {
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' \$1
-}
-
-function haltAndWaitForConfirmation()
-{
-  clear
-  echo
-  echo
-  echo
-  echo
-  echo "============================================================"
-  echo "This server has been prepped for transfer. Please modify"
-  echo "your DNS A records to point to this new IP Address:"
-  echo
-  echo "$RELAYSERVER_SERVER_IP"
-  echo
-  echo "After this has been done, enter 'transfer' to complete"
-  echo "the remaining steps of the process."
-  echo "============================================================"
-  echo
-  echo
-  read -r -p "Type 'transfer' (no quotes) to continue: " isTransfer
-  while ! [ "\$isTransfer" = "transfer" ]
-  do
-    echo "The string does not match, please try again."
-    read -r -p "Type 'transfer' (no quotes) to continue: " isTransfer
-  done
-  totalTries=720
-  numTries=1
-  sleepSeconds=5
-  isMatch=false
-  while [ \$numTries -lt \$totalTries ]
-  do
-    ipFromHostname=\$(getIPFromHostname $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
-    if [ "$RELAYSERVER_SERVER_IP" = "\$ipFromHostname" ]; then
-      isMatch=true
-      break
-    fi
-    echo "(\$numTries/\$totalTries)This host's IP: $RELAYSERVER_SERVER_IP, $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN points to \$ipFromHostname. Trying again in \$sleepSeconds seconds..."
-    sleep \$sleepSeconds
-    ((numTries++))
-  done
-
-  if [ "\$isMatch" = "true" ]; then
-    echo "Success! The IP matches the hostname, continuing the installation..."
-  else
-    read -r -p "Failure. The IP does not match. The installation will continue, but you need to point the IP address correctly in order for everything to function properly. Press Enter to continue.   "
-  fi
 }
 
 function restoreNonBackupDir()
@@ -7605,33 +7647,31 @@ function pullImage()
     is_success=\$?
     ((num_tries++))
   done
-  set -e
   if [ \$is_success -ne 0 ]; then
-    echo "Error pulling docker image: $img_and_version"
+    echo "Error pulling docker image: \$img_and_version"
     return 5
   fi
-  set -e
 }
 
 function pullDockerImages()
 {
+  portainerImage=\$(sudo grep -r "image: " \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml | xargs | cut -d" " -f2)
+  pullImage "\$portainerImage"
+  if [ \$? -ne 0 ]; then
+    echo "There was a problem pulling the portainer image, exiting..."
+    exit 5
+  fi
   OLDIFS=\$IFS
   IFS=\$(echo -en "\n\b")
   img_arr=(\$(sudo grep -r "image: " \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/compose))
   for cur_item in "\${img_arr[@]}"
   do
-    cur_img=\$(echo \$cur_item | xargs | cut -d" " -f3)
+    cur_img=\$(echo "\$cur_item" | xargs | cut -d" " -f3)
     if [[ "\$cur_img" =~ ^hshq ]]; then continue; fi
-    pullImage \$cur_img
+    pullImage "\$cur_img"
   done
   IFS=\$OLDIFS
-
   mkdir -p \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build
-  sudo rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
-  git clone https://github.com/homeserverhq/mail-relay.git \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
-  docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix
-  docker image build --network host -t $IMG_MAIL_RELAY_RSPAMD -f \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/rspamd/Dockerfile \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/rspamd
-  sudo rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
 }
 
 function restoreScripts()
@@ -7697,11 +7737,15 @@ function startStopStack()
 
 function restorePortainer()
 {
-  sed -i "s|^UID=.*|UID=\${USERID}|g" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
-  sed -i "s|^GID=.*|GID=\${GROUPID}|g" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
+  sed -i "s|^PORTAINER_UID=.*|PORTAINER_UID=\${USERID}|g" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
+  sed -i "s|^PORTAINER_GID=.*|PORTAINER_GID=\${GROUPID}|g" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
   cd ~
   docker compose -f \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   RELAYSERVER_PORTAINER_TOKEN="\$(getPortainerToken -u $RELAYSERVER_PORTAINER_ADMIN_USERNAME -p $RELAYSERVER_PORTAINER_ADMIN_PASSWORD)"
+  if [ \$? -ne 0 ] || [ -z "\$RELAYSERVER_PORTAINER_TOKEN" ]; then
+    echo "There was a problem obtaining the portainer token, exiting..."
+    exit 6
+  fi
 }
 
 function restoreAdguard()
@@ -7716,14 +7760,15 @@ EOFR
   np_path="/etc/netplan/*"
   for cur_np in "\$np_path"
   do
+    if ! sudo test -f "\$cur_np"; then
+      continue
+    fi
     sudo sed -i "s|8.8.8.8|9.9.9.9|g" \$cur_np
     sudo sed -i "s|8.8.4.4|149.112.112.112|g" \$cur_np
   done
   set +e
   sudo which netplan && sudo netplan apply > /dev/null 2>&1
-  set -e
-  oldIP=\$(grep -A 1 "$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml | tail -n 1 | cut -d":" -f2 | xargs)
-  sed -i "s|\$oldIP|$RELAYSERVER_SERVER_IP|g" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
+  sudo sed -i "/$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/{n;s/.*/      answer: $RELAYSERVER_SERVER_IP/}" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
   sudo chown -R \${USERID}:\${GROUPID} \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf
   sudo chown -R \${USERID}:\${GROUPID} \$RELAYSERVER_HSHQ_NONBACKUP_DIR/adguard/work
   startStopStack adguard stop
@@ -7773,7 +7818,7 @@ function startWazuhAgent()
 {
   curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
   echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$WAZUH_AGENT_VERSION
   sudo apt-mark hold wazuh-agent
   sudo systemctl daemon-reload
@@ -7862,7 +7907,7 @@ function startInstall()
   fi
   loadVersionVars
   echo "Update apt..."
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   sudo dpkg --configure -a > /dev/null 2>&1
   echo "Checking for required utils..."
   set +e
@@ -9940,8 +9985,6 @@ function up()
   done
   iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
   iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
-  #TODO - delete this next line for client ip passthrough
-  iptables -t nat -A POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE
   iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \\\$default_iface -m set --match-set inetusers src -j ACCEPT
   iptables -A FORWARD -i \\\$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
   iptables -t nat -A POSTROUTING -o \\\$default_iface -m set --match-set inetusers src -j MASQUERADE
@@ -9951,8 +9994,6 @@ function down()
 {
   iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
   iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
-  #TODO - delete this next line for client ip passthrough
-  iptables -t nat -D POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE
   iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \\\$default_iface -m set --match-set inetusers src -j ACCEPT
   iptables -D FORWARD -i \\\$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
   iptables -t nat -D POSTROUTING -o \\\$default_iface -m set --match-set inetusers src -j MASQUERADE
@@ -10222,7 +10263,7 @@ MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
 [Peer]
 PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY
 PresharedKey = $RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY
-AllowedIPs = $PRIMARY_VPN_SUBNET
+AllowedIPs = 10.0.0.0/8
 Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT
 PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFWQ
@@ -10785,7 +10826,6 @@ EOFRS
 
 function uploadVPNInstallScripts()
 {
-  isTransfer=$1
   if [ -z "$RELAYSERVER_SSH_PRIVATE_KEY_FILENAME" ]; then
     echo "Generating keys, please wait..."
     RELAYSERVER_SSH_PRIVATE_KEY_FILENAME=$HOMESERVER_ABBREV".key"
@@ -10851,26 +10891,18 @@ EOF
       fi
       while [ -z "$rs_new_username" ]
       do
-        if [ "$isTransfer" = "true" ]; then
-          rs_new_username=$trUsername
-        else
-          rs_new_username=$(promptUserInputMenu "$USERNAME" "Enter New Username" "Enter a NEW Linux OS username to add (in place of root): ")
-          if [ $? -ne 0 ]; then
-            return 1
-          fi
-          if [ $(checkValidString "$rs_new_username" "-") = "false" ]; then
-            showMessageBox "Invalid Character(s)" "The name contains invalid character(s). It must consist of a-z (lowercase), 0-9, and/or hyphens"
-            rs_new_username=""
-          fi
+        rs_new_username=$(promptUserInputMenu "$USERNAME" "Enter New Username" "Enter a NEW Linux OS username to add (in place of root): ")
+        if [ $? -ne 0 ]; then
+          return 1
+        fi
+        if [ $(checkValidString "$rs_new_username" "-") = "false" ]; then
+          showMessageBox "Invalid Character(s)" "The name contains invalid character(s). It must consist of a-z (lowercase), 0-9, and/or hyphens"
+          rs_new_username=""
         fi
       done
       RELAYSERVER_REMOTE_USERNAME="$rs_new_username"
     else
       RELAYSERVER_REMOTE_USERNAME="$rs_cur_username"
-    fi
-    if [ "$isTransfer" = "true" ] && ! [ "$RELAYSERVER_REMOTE_USERNAME" = "$trUsername" ]; then
-      showMessageBox "Invalid Username" "The username must match the username from the previous installation ($trUsername) when doing a transfer. Either login with root and allow this script to create this user or create it manually on the RelayServer."
-      continue
     fi
     tmp_pw1=""
     tmp_pw2=""
@@ -10914,7 +10946,7 @@ EOF
     tmp_pw1=""
     tmp_pw2=""
     domain_ip_guess=$(getIPFromHostname ip.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
-    if [ -z "$domain_ip_guess" ] || [ "$isTransfer" = "true" ]; then
+    if [ -z "$domain_ip_guess" ]; then
       domain_ip_guess="0.0.0.0"
     fi
     RELAYSERVER_SERVER_IP=""
@@ -10994,30 +11026,24 @@ EOF
   if [ "$IS_INSTALLED" = "true" ]; then
     addDomainAdguardHS "*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "$RELAYSERVER_SERVER_IP"
   fi
-  if ! [ "$isTransfer" = "true" ]; then
-    updateConfigVar RELAYSERVER_REMOTE_USERNAME $RELAYSERVER_REMOTE_USERNAME
-    RELAYSERVER_HSHQ_BASE_DIR=/home/$RELAYSERVER_REMOTE_USERNAME/hshq
-    RELAYSERVER_HSHQ_DATA_DIR=$RELAYSERVER_HSHQ_BASE_DIR/data
-    RELAYSERVER_HSHQ_NONBACKUP_DIR=$RELAYSERVER_HSHQ_BASE_DIR/nonbackup
-    RELAYSERVER_HSHQ_SCRIPTS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/scripts
-    RELAYSERVER_HSHQ_SECRETS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/secrets
-    RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/stacks
-    RELAYSERVER_HSHQ_SSL_DIR=$RELAYSERVER_HSHQ_DATA_DIR/ssl
-    updateConfigVar RELAYSERVER_HSHQ_BASE_DIR $RELAYSERVER_HSHQ_BASE_DIR
-    updateConfigVar RELAYSERVER_HSHQ_DATA_DIR $RELAYSERVER_HSHQ_DATA_DIR
-    updateConfigVar RELAYSERVER_HSHQ_NONBACKUP_DIR $RELAYSERVER_HSHQ_NONBACKUP_DIR
-    updateConfigVar RELAYSERVER_HSHQ_SCRIPTS_DIR $RELAYSERVER_HSHQ_SCRIPTS_DIR
-    updateConfigVar RELAYSERVER_HSHQ_SECRETS_DIR $RELAYSERVER_HSHQ_SECRETS_DIR
-    updateConfigVar RELAYSERVER_HSHQ_STACKS_DIR $RELAYSERVER_HSHQ_STACKS_DIR
-    updateConfigVar RELAYSERVER_HSHQ_SSL_DIR $RELAYSERVER_HSHQ_SSL_DIR
-  fi
+  updateConfigVar RELAYSERVER_REMOTE_USERNAME $RELAYSERVER_REMOTE_USERNAME
+  RELAYSERVER_HSHQ_BASE_DIR=/home/$RELAYSERVER_REMOTE_USERNAME/hshq
+  RELAYSERVER_HSHQ_DATA_DIR=$RELAYSERVER_HSHQ_BASE_DIR/data
+  RELAYSERVER_HSHQ_NONBACKUP_DIR=$RELAYSERVER_HSHQ_BASE_DIR/nonbackup
+  RELAYSERVER_HSHQ_SCRIPTS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/scripts
+  RELAYSERVER_HSHQ_SECRETS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/secrets
+  RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/stacks
+  RELAYSERVER_HSHQ_SSL_DIR=$RELAYSERVER_HSHQ_DATA_DIR/ssl
+  updateConfigVar RELAYSERVER_HSHQ_BASE_DIR $RELAYSERVER_HSHQ_BASE_DIR
+  updateConfigVar RELAYSERVER_HSHQ_DATA_DIR $RELAYSERVER_HSHQ_DATA_DIR
+  updateConfigVar RELAYSERVER_HSHQ_NONBACKUP_DIR $RELAYSERVER_HSHQ_NONBACKUP_DIR
+  updateConfigVar RELAYSERVER_HSHQ_SCRIPTS_DIR $RELAYSERVER_HSHQ_SCRIPTS_DIR
+  updateConfigVar RELAYSERVER_HSHQ_SECRETS_DIR $RELAYSERVER_HSHQ_SECRETS_DIR
+  updateConfigVar RELAYSERVER_HSHQ_STACKS_DIR $RELAYSERVER_HSHQ_STACKS_DIR
+  updateConfigVar RELAYSERVER_HSHQ_SSL_DIR $RELAYSERVER_HSHQ_SSL_DIR
   perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
-  if [ "$isTransfer" = "true" ]; then
-    perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
-  else
-    perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
-    rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
-  fi
+  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
+  rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
   perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-T -o ConnectTimeout=10" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c "touch ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE" -f
 }
 
@@ -11269,6 +11295,7 @@ function resetRelayServerData()
   sudo rm -fr $HSHQ_RELAYSERVER_DIR/backup/*
   sudo rm -fr $HSHQ_RELAYSERVER_DIR/scripts/*
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where NetworkType in ('relayserver','primary','mynetwork');"
+  updateDeviceIPMappingFile
 }
 
 function createOrJoinPrimaryVPN()
@@ -11863,6 +11890,7 @@ function performMyNetworkCreateClientDNS()
     return
   fi
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-$clientdns_stack_name','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','mynetwork','$wg_pub_key','$wg_pre_key','$wg_ip',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$(getCurrentDate)');"
+  updateDeviceIPMappingFile
   sudo rm -f $HSHQ_WIREGUARD_DIR/users/clientdns-${clientdns_stack_name}.conf
   sudo tee $HSHQ_WIREGUARD_DIR/users/clientdns-${clientdns_stack_name}.conf >/dev/null <<EOFCF
 [Interface]
@@ -11873,7 +11901,7 @@ MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
 [Peer]
 PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY
 PresharedKey = $wg_pre_key
-AllowedIPs = $PRIMARY_VPN_SUBNET
+AllowedIPs = 10.0.0.0/8
 Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT
 PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
@@ -11942,6 +11970,7 @@ function performMyNetworkRemoveClientDNS()
     removeMyNetworkNonHomeServerConnection $dbID true
   else
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$dbID;"
+    updateDeviceIPMappingFile
   fi
 }
 
@@ -12387,7 +12416,6 @@ function performNetworkInvite()
     echo "ERROR: Invalid preshared key."
     return 7
   fi
-
   case "$conn_type" in
     "HomeServer VPN")
       domain_name=$(getValueFromConfig "DomainName" $apply_file)
@@ -12466,7 +12494,6 @@ function performNetworkInvite()
       return 7
     ;;
   esac
-
   # Do logical checks
   case "$conn_type" in
     "HomeServer VPN")
@@ -12528,7 +12555,6 @@ function performNetworkInvite()
       fi
     ;;
   esac
-
   # Perform invitation steps
   tmp_preshared_key=$(wg genpsk)
   if [ -z "$preshared_key" ]; then
@@ -12610,6 +12636,7 @@ function performNetworkInvite()
       priv_key=$(getValueFromConfig "PrivateKey" $apply_file)
     ;;
   esac
+  updateDeviceIPMappingFile
   echo "Emailing the invitation..."
   # Finally, email the invitation.
   case "$conn_type" in
@@ -12635,6 +12662,7 @@ function performNetworkInvite()
       mail_body=$mail_body"EndpointPort = $RELAYSERVER_WG_PORT\n"
       mail_body=$mail_body"ClientIP = $new_ip\n"
       mail_body=$mail_body"ClientPublicKey = $pub_key\n"
+      mail_body=$mail_body"RelayServerPublicKey = $RELAYSERVER_WG_SV_PUBLICKEY\n"
       mail_body=$mail_body"PresharedKey = $tmp_preshared_key\n"
       mail_body=$mail_body"HomeServerName = $HOMESERVER_NAME\n"
       mail_body=$mail_body"ExternalPrefix = $EXT_DOMAIN_PREFIX\n"
@@ -12654,19 +12682,7 @@ function performNetworkInvite()
         mail_body=$mail_body"RelayServerExtEmailHostname = $RELAYSERVER_EXT_EMAIL_HOSTNAME\n"
       fi
       mail_body=$mail_body"\n####################### Base Config End ########################\n"
-      mail_body=$mail_body"\n#################### WireGuard Config Begin ####################\n\n"
-      mail_body=$mail_body"[Interface]\n"
-      mail_body=$mail_body"PrivateKey =\n"
-      mail_body=$mail_body"Address = $new_ip/32\n"
-      mail_body=$mail_body"MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU\n\n"
-      mail_body=$mail_body"[Peer]\n"
-      mail_body=$mail_body"PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY\n"
-      mail_body=$mail_body"PresharedKey = $tmp_preshared_key\n"
-      mail_body=$mail_body"AllowedIPs = $PRIMARY_VPN_SUBNET\n"
-      mail_body=$mail_body"Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT\n"
-      mail_body=$mail_body"PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE\n"
-      mail_body=$mail_body"\n##################### WireGuard Config End #####################\n"
-      mail_body=$mail_body"\n#################### RemoteServers DNS Begin #####################\n\n"
+       mail_body=$mail_body"\n#################### RemoteServers DNS Begin #####################\n\n"
       mail_body=$mail_body"$(getMyNetworkHomeServerDNSList)"
       mail_body=$mail_body"\n##################### RemoteServers DNS End ######################\n"
       mail_body=$mail_body"\n######################### Root CA Begin #########################\n\n"
@@ -12864,11 +12880,9 @@ function performNetworkJoin()
   mail_key_section=$(getTextBetweenStrings $join_file "mail.key Begin" "mail.key End")
   join_base_config_file=$HOME/joinvpn_base_config.cnf
   echo -e "$base_config_section" > $join_base_config_file
-
   priv_key=$(getValueFromConfig "PrivateKey" $HSHQ_WIREGUARD_DIR/requestkeys/$request_id)
   req_conn_type=$(getValueFromConfig "ConnectionType" $HSHQ_WIREGUARD_DIR/requestkeys/$request_id)
   req_is_primary=$(getValueFromConfig "IsPrimary" $HSHQ_WIREGUARD_DIR/requestkeys/$request_id)
-
   conn_type=$(getValueFromConfig "ConnectionType" $join_base_config_file)
   if ! [ "$conn_type" = "$req_conn_type" ]; then
     echo "ERROR: Apply/join connection type mismatch. You applied for $req_conn_type, but invitation has $conn_type."
@@ -12924,6 +12938,12 @@ function performNetworkJoin()
     rm -f $join_base_config_file
     return 8
   fi
+  relayserver_public_key=$(getValueFromConfig "RelayServerPublicKey" $join_base_config_file)
+  if [ -z "$relayserver_public_key" ] || [ "$(checkValidWireGuardKey $relayserver_public_key)" = "false" ]; then
+    echo "ERROR: Invalid RelayServer public key."
+    rm -f $join_base_config_file
+    return 8
+  fi
   if ! [ -z "$(getWGNameFromPubkey $client_public_key)" ]; then
     echo "ERROR: Duplicate client public key."
     rm -f $join_base_config_file
@@ -12935,7 +12955,6 @@ function performNetworkJoin()
     rm -f $join_base_config_file
     return 8
   fi
-
   case "$conn_type" in
     "HomeServer VPN")
       cur_hs_name=$(getValueFromConfig "HomeServerName" $join_base_config_file)
@@ -13066,7 +13085,6 @@ function performNetworkJoin()
       return 8
     ;;
   esac
-
   # Do logical checks
   if [ "$domain_name" = "$HOMESERVER_DOMAIN" ]; then
     echo "ERROR: This is your domain, dummy!"
@@ -13099,7 +13117,6 @@ function performNetworkJoin()
     rm -f $join_base_config_file
     return 8
   fi
-
   case "$conn_type" in
     "HomeServer VPN")
       check_ca_dom=$(sqlite3 $HSHQ_DB "select DomainName from hsvpn_connections join connections on hsvpn_connections.ID = connections.ID where hsvpn_connections.DomainName='$domain_name' and connections.NetworkType='other';")
@@ -13130,8 +13147,29 @@ function performNetworkJoin()
         return 8
       fi
       join_wireguard_config_file=$HOME/${interface_name}.conf
-      echo -e "$wireguard_config_section" > $join_wireguard_config_file
-      sed -i "s|^PrivateKey =.*|PrivateKey = $priv_key|g" $join_wireguard_config_file
+      if [ -z "$relayserver_public_key" ]; then
+        # The one var missing, so the ensures compatibility with older versions
+        echo -e "$wireguard_config_section" > /tmp/wgtemp.conf
+        relayserver_public_key=$(awk -F '= ' '/^PublicKey/ {print $2}' /tmp/wgtemp.conf)
+        rm -f /tmp/wgtemp.conf
+      fi
+      nextVPNTableID=$(getNextHSVPNRoutingTable)
+      sudo tee $join_wireguard_config_file >/dev/null <<EOFWG
+[Interface]
+PrivateKey = $priv_key
+Address = $client_ip/32
+MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
+Table = off
+PostUp = ip route add 10.0.0.0/8 dev %i table $nextVPNTableID; ip route add $vpn_subnet dev %i; ip rule add fwmark $nextVPNTableID table $nextVPNTableID pref 20000; iptables -t mangle -A PREROUTING -i %i -j CONNMARK --set-mark $nextVPNTableID; iptables -t mangle -A PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -A OUTPUT -j CONNMARK --restore-mark --nfmask 0xffffffff --ctmask 0xffffffff
+PreDown = iptables -t mangle -D OUTPUT -j CONNMARK --restore-mark --nfmask 0xffffffff --ctmask 0xffffffff; iptables -t mangle -D PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -D PREROUTING -i %i -j CONNMARK --set-mark $nextVPNTableID; ip rule del fwmark $nextVPNTableID table $nextVPNTableID pref 20000; ip route del $vpn_subnet dev %i; ip route del 10.0.0.0/8 dev %i table $nextVPNTableID
+
+[Peer]
+PublicKey = $relayserver_public_key
+PresharedKey = $preshared_key
+AllowedIPs = 10.0.0.0/8
+Endpoint = $endpoint_hostname:$endpoint_PORT
+PersistentKeepalive = 20
+EOFWG
       config_name="Other-VPN-$domain_name"
       net_type="other"
       isPrimary=0
@@ -13205,7 +13243,8 @@ function performNetworkJoin()
       echo -e "$dns_section" > $dns_file
       curdt=$(getCurrentDate)
       db_id=$(sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated,Network_Subnet,IsExposeToNetwork,InputAllowPorts,DockerUserAllowPorts) values('$config_name','$email_address','homeserver_vpn','$net_type','$my_pub_key','$preshared_key','$client_ip',false,'$interface_name','$endpoint_hostname','$curdt','$vpn_subnet',true,'$input_ports_list','$docker_user_ports_list');select last_insert_rowid();")
-      sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,RS_VPN_IP) values($db_id,'$cur_hs_name','$isPrimary','$domain_name','$ext_prefix','$int_prefix','$ca_abbrev','$ca_ip','$ca_subdomain','$ca_url','$rs_vpn_ip');"
+      updateDeviceIPMappingFile
+      sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,RS_VPN_IP,VPNRoutingTable) values($db_id,'$cur_hs_name','$isPrimary','$domain_name','$ext_prefix','$int_prefix','$ca_abbrev','$ca_ip','$ca_subdomain','$ca_url','$rs_vpn_ip',$nextVPNTableID);"
       checkUpdateAllIPTables performNetworkJoin
       if [ "$IS_INSTALLED" = "true" ]; then
         echo "Updating HomeServer DNS and restarting Heimdall..."
@@ -13286,6 +13325,7 @@ function performNetworkJoin()
       curdt=$(getCurrentDate)
       db_id=$(sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('$config_name','$email_address','homeserver_internet','other','$my_pub_key','$preshared_key','$client_ip',true,'$interface_name','$endpoint_hostname','$curdt');select last_insert_rowid();")
       JOINED_DB_ID=$db_id
+      updateDeviceIPMappingFile
       set -e
       if [ "$is_connect" = "true" ]; then
         connectInternet $db_id
@@ -13477,6 +13517,7 @@ function removeMyNetworkHomeServerVPNConnection()
     removeSecondaryDomainFromRelayServer "$domain_name"
   fi
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$db_id;"
+  updateDeviceIPMappingFile
   # Send update email to other RemoteServers on our network
   notifyMyNetworkHomeServersDNSUpdate remove "$hs_name" "$domain_name"
   # Send update email to other users on our network
@@ -13526,6 +13567,7 @@ function removeMyNetworkNonHomeServerConnection()
     return
   fi
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$db_id;"
+  updateDeviceIPMappingFile
 }
 
 # VPN Disconnect functions
@@ -13553,6 +13595,7 @@ function disconnectOtherNetworkHomeServerVPNConnection()
   rm -f $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-caddy-$ifaceName
   deleteDomainAdguardHS "*.$int_prefix.$domain_name"
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$db_id;"
+  updateDeviceIPMappingFile
   peer_list=($(sqlite3 $HSHQ_DB "select PeerDomain,PeerDomainExtPrefix,IsActive from hsvpn_dns where HostDomain='$domain_name';"))
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from hsvpn_dns where HostDomain='$domain_name';"
   for cur_peer in "${peer_list[@]}"
@@ -13591,7 +13634,7 @@ function disconnectOtherNetworkHomeServerInternetConnection()
   fi
   sudo rm -f $HSHQ_WIREGUARD_DIR/internet/${wg_config}.conf
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$db_id;"
-
+  updateDeviceIPMappingFile
   # Notify host that you have disconnected.
   email_subj="HomeServer Internet Disconnect Notice from $HOMESERVER_NAME"
   email_body=""
@@ -13844,6 +13887,7 @@ function releaseLock()
 }
 
 EOFUS
+  chmod 0444 $HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME
 }
 
 function getHSHQScriptOpenMsg()
@@ -15026,7 +15070,7 @@ function initHSHQDB()
   sudo rm -f $HSHQ_DB
   sqlite3 $HSHQ_DB "create table connections(ID integer not null primary key autoincrement,Name text,EmailAddress text,ConnectionType text,NetworkType text,PublicKey text,PresharedKey text,IPAddress text,IsInternet boolean,InterfaceName text,EndpointHostname text,EndpointIP text default null,LastUpdated datetime,Network_Subnet text default null,IsExposeToNetwork boolean,InputAllowPorts text default null,DockerUserAllowPorts text default null);"
   sqlite3 $HSHQ_DB "create table mailhosts(ID integer not null primary key autoincrement,MailHost text not null);"
-  sqlite3 $HSHQ_DB "create table hsvpn_connections(ID integer not null primary key references connections(ID) on delete cascade,HomeServerName text,IsPrimary boolean,DomainName text default null,ExternalPrefix text default null,InternalPrefix text default null,MailHostID integer references mailhosts(ID) on delete cascade,CA_Abbrev text default null,CA_IP text default null,CA_Subdomain text default null,CA_URL text default null,RS_VPN_IP text default null);"
+  sqlite3 $HSHQ_DB "create table hsvpn_connections(ID integer not null primary key references connections(ID) on delete cascade,HomeServerName text,IsPrimary boolean,DomainName text default null,ExternalPrefix text default null,InternalPrefix text default null,MailHostID integer references mailhosts(ID) on delete cascade,CA_Abbrev text default null,CA_IP text default null,CA_Subdomain text default null,CA_URL text default null,RS_VPN_IP text default null,VPNRoutingTable integer);"
   sqlite3 $HSHQ_DB "create table hsvpn_dns(ID integer not null primary key autoincrement,HostDomain text not null,PeerDomain text not null,PeerDomainExtPrefix text not null,IPAddress text not null,DateAdded datetime,IsActive boolean);"
   sqlite3 $HSHQ_DB "create unique index hpdns on hsvpn_dns(HostDomain,PeerDomain);"
   sqlite3 $HSHQ_DB "create table mailhostmap(MailHostID integer not null references mailhosts(ID) on delete cascade,Domain text not null,IsFirstDomain boolean,primary key (MailHostID,Domain));"
@@ -15283,6 +15327,26 @@ function getCACertificateNameFromDomain()
 {
   dom_name="$1"
   echo ${dom_name}-ca.crt
+}
+
+function outputDeviceIPMapping()
+{
+  map_ouptut_file="$1"
+  sqlite3 -noheader "$HSHQ_DB" "
+    SELECT '{\"targets\":[\"' || IPAddress || '\"],\"labels\":{\"device_name\":\"' ||
+           REPLACE(COALESCE(Name,''),'\"','') || '\"}}'
+    FROM connections
+    WHERE IPAddress IS NOT NULL AND IPAddress <> '';
+  " | {
+    echo '['
+    first=1
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      if [ "$first" -eq 1 ]; then printf '%s\n' "$line"; first=0; else printf ',\n%s\n' "$line"; fi
+    done
+    echo ']'
+  } | jq . > "${map_ouptut_file}.tmp"
+  sudo mv "${map_ouptut_file}.tmp" "${map_ouptut_file}"
 }
 
 function sortCSVList()
@@ -21338,6 +21402,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=238
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 239 ]; then
+    echo "Updating to Version 239..."
+    version239Update
+    HSHQ_VERSION=239
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -21354,10 +21424,7 @@ function checkUpdateVersion()
 
 function performPreUpdateCheck()
 {
-  # This function is more of a placeholder at the moment,
-  # reserved for future possible use. We already have sudo
-  # and decrypted config file, so just return.
-  return
+  sudo chmod 0444 $HSHQ_LIB_DIR/$HSHQ_NEW_LIB_FILENAME
 }
 
 function promptTestRelayServerPassword()
@@ -24448,7 +24515,8 @@ function version238Update()
   sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/PersonalTranscribeInput/$NEXTCLOUD_ADMIN_USERNAME
   sudo rm -fr $HSHQ_STACKS_DIR/shared/KnowledgeBases/{Bible,YouTube,Paperless,Speakr,WebScrapes,Email,HSHQ}
   sudo mkdir -p $HSHQ_STACKS_DIR/shared/KnowledgeBases
-  sudo chown -R 82:82 $HSHQ_STACKS_DIR/shared/KnowledgeBases
+  sudo chown -R $USERID:82 $HSHQ_STACKS_DIR/shared/KnowledgeBases
+  sudo chown $USERID:82 $HSHQ_STACKS_DIR/shared
   outputNextcloudInotifyScan
   set +e
   docker ps | grep -q paperless-app > /dev/null 2>&1
@@ -24590,6 +24658,181 @@ EOFIM
   fi
 }
 
+function version239Update()
+{
+  set +e
+  sudo chown -R $USERID:82 $HSHQ_STACKS_DIR/shared/KnowledgeBases
+  sudo chown $USERID:82 $HSHQ_STACKS_DIR/shared
+  chmod 0444 $HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME
+  CADDY_SNIPPET_LOG_TRUE=log_true
+  CADDY_SNIPPET_LOG_FALSE=log_false
+  sudo sqlite3 $HSHQ_DB "PRAGMA table_info(hsvpn_connections);" | grep -q "VPNRoutingTable" || sudo sqlite3 $HSHQ_DB "ALTER TABLE hsvpn_connections ADD COLUMN VPNRoutingTable integer;"
+  for conf in $HSHQ_WIREGUARD_DIR/vpn/*.conf
+  do
+    sudo grep -q "PostUp" "$conf" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      curAbbrev=$(basename $conf | cut -d"-" -f2 | cut -d"." -f1)
+      curTableInDB=$(sqlite3 $HSHQ_DB "select VPNRoutingTable from hsvpn_connections where CA_Abbrev='$curAbbrev' and CA_IP is not null;")
+      if [ -z "$curTableInDB" ] || [ "$(checkValidNumber $curTableInDB)" = "false" ]; then
+        if [ "$curAbbrev" = "$HOMESERVER_ABBREV" ]; then
+          #Special case for our primary vpn
+          sudo sqlite3 $HSHQ_DB "update hsvpn_connections set VPNRoutingTable=1100 where CA_Abbrev='$curAbbrev' and CA_IP is not null;"
+        else
+          maxTable=$(getNextHSVPNRoutingTable)
+          sudo sqlite3 $HSHQ_DB "update hsvpn_connections set VPNRoutingTable=$maxTable where CA_Abbrev='$curAbbrev' and CA_IP is not null;"
+        fi
+      fi
+      curDBID=$(sqlite3 $HSHQ_DB "select ID from hsvpn_connections where CA_Abbrev='$curAbbrev' and CA_IP is not null;")
+      curTableInDB=$(sqlite3 $HSHQ_DB "select VPNRoutingTable from hsvpn_connections where ID=$curDBID;")
+      curCAIP=$(sqlite3 $HSHQ_DB "select CA_IP from hsvpn_connections where ID=$curDBID;")
+      curVPNRange=$(sqlite3 $HSHQ_DB "select Network_Subnet from connections where ID=$curDBID;")
+      curInterfaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$curDBID;")
+      sudo sed -i "/^MTU =/a Table = off\nPostUp = ip route add 10.0.0.0\/8 dev %i table $curTableInDB; ip route add $curVPNRange dev %i; ip rule add fwmark $curTableInDB table $curTableInDB pref 20000; iptables -t mangle -A PREROUTING -i %i -j CONNMARK --set-mark $curTableInDB; iptables -t mangle -A PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -A OUTPUT -j CONNMARK --restore-mark --nfmask 0xffffffff --ctmask 0xffffffff\nPreDown = iptables -t mangle -D OUTPUT -j CONNMARK --restore-mark --nfmask 0xffffffff --ctmask 0xffffffff; iptables -t mangle -D PREROUTING -j CONNMARK --restore-mark; iptables -t mangle -D PREROUTING -i %i -j CONNMARK --set-mark $curTableInDB; ip rule del fwmark $curTableInDB table $curTableInDB pref 20000; ip route del $curVPNRange dev %i; ip route del 10.0.0.0\/8 dev %i table $curTableInDB" "$conf"
+      sudo sed -i "s/^AllowedIPs =.*/AllowedIPs = 10.0.0.0\/8/" "$conf"
+      sudo systemctl stop wg-quick@${curInterfaceName}.service
+      sudo cp -f "$conf" /etc/wireguard/
+      sudo systemctl start wg-quick@${curInterfaceName}.service
+    fi
+  done
+  clientdns_arr=($(docker ps -a --filter name=clientdns.*wireguard --format "{{.Names}}"))
+  for curCDNS in "${clientdns_arr[@]}"
+  do
+    curStackName=$(echo "$curCDNS" | rev | cut -d"-" -f2- | rev)
+    if ! [ -d "$HSHQ_STACKS_DIR/$curStackName" ] || ! [ -f "$HSHQ_STACKS_DIR/$curStackName/${curStackName}.conf" ]; then
+      continue
+    fi
+    sudo sed -i "s/^AllowedIPs =.*/AllowedIPs = 10.0.0.0\/8/" "$HSHQ_STACKS_DIR/$curStackName/${curStackName}.conf"
+    startStopStack "$curStackName" stop
+    startStopStack "$curStackName" start
+  done
+  mkdir -p $HSHQ_STACKS_DIR/shared/caddylogs
+  find $HSHQ_STACKS_DIR/caddy-common/caddyfiles -type f -exec sed -i "s/$CADDY_SNIPPET_SAFEHEADERALLOWCORS/$CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED/g" {} +
+  find $HSHQ_STACKS_DIR/caddy-common/caddyfiles -type f -exec sed -i "/$CADDY_SNIPPET_SAFEHEADERCORSPREFLIGHT/d" {} +
+  outputCaddyHeaders
+  caddy_arr=($(docker ps -a --filter name=caddy- --format "{{.Names}}"))
+  for curCH in "${caddy_arr[@]}"
+  do
+    updateStackEnv $curCH modFunCaddyAddLogMount
+  done
+  performClearIPTables true
+  checkUpdateAllIPTables versionUpdate
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "========================================================================"
+    echo "  Performing updates on RelayServer."
+    echo "========================================================================"
+    sleep 5
+    rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
+    cat <<EOFUR > $HOME/$RS_UPDATE_SCRIPT_NAME
+#!/bin/bash
+
+function main()
+{
+  read -r -s -p "" rspw
+  echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
+  set +e
+  source ~/$RS_UPDATE_UTILS_SCRIPT_NAME
+  RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_STACKS_DIR
+  default_iface=\$(getDefaultIface)
+  sudo tee \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/wgupdown.sh >/dev/null <<EOFPU
+#!/bin/bash
+COMMAND=\\\$1
+RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
+set +e
+
+default_iface=\$default_iface
+
+function main()
+{
+  shift
+  shift
+  case "\\\$COMMAND" in
+    up) up ;;
+    down) down ;;
+  esac
+}
+
+function up()
+{
+  ipset create inetusers hash:net
+  iplist=\\\$(cat \\\$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/inetusers.ipset)
+  for curip in \\\$iplist
+  do
+    if [ -z \\\$curip ]; then continue; fi
+    ipset add inetusers \\\$curip
+  done
+  ipset create alldevices hash:net
+  alliplist=(\\\$(sqlite3 \\\$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/wg_portal.db "select ips_str from peers;"))
+  for cur_ip in "\\\${alliplist[@]}"
+  do
+    if [ -z \\\$cur_ip ]; then continue; fi
+    ipset add alldevices \\\$cur_ip
+  done
+  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
+  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \\\$default_iface -m set --match-set inetusers src -j ACCEPT
+  iptables -A FORWARD -i \\\$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -t nat -A POSTROUTING -o \\\$default_iface -m set --match-set inetusers src -j MASQUERADE
+}
+
+function down()
+{
+  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
+  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \\\$default_iface -m set --match-set inetusers src -j ACCEPT
+  iptables -D FORWARD -i \\\$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -t nat -D POSTROUTING -o \\\$default_iface -m set --match-set inetusers src -j MASQUERADE
+  ipset destroy inetusers
+  ipset destroy alldevices
+}
+
+main "\\\$@"
+EOFPU
+  sudo chmod 500 \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/wgupdown.sh
+  sudo sed -i "s/^AllowedIPs =.*/AllowedIPs = 10.0.0.0\/8/" \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/clientdns/rsClientDNS.conf
+  startStopStack clientdns stop
+  startStopStack clientdns start
+  sudo iptables -t nat -D POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE > /dev/null 2>&1
+  echo "Updating RelayServer host, please wait..."
+  sudo apt update > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' > /dev/null 2>&1
+  echo "RelayServer update complete!"
+  rm -f ~/$RS_UPDATE_UTILS_SCRIPT_NAME
+  rm -f ~/$RS_UPDATE_SCRIPT_NAME
+}
+
+main
+EOFUR
+    updateRelayServerWithScript true
+    if [ $? -ne 0 ]; then
+      echo "ERROR: The update process on the RelayServer encountered an error. Please check the logs and retry."
+      exit
+    fi
+  fi
+}
+
+function getNextHSVPNRoutingTable()
+{
+  curTableList=($(sqlite3 $HSHQ_DB "select VPNRoutingTable from hsvpn_connections where CA_IP is not null;"))
+  maxTableNum=1101
+  while [ $maxTableNum -lt 2100 ]
+  do
+    isTblFound=false
+    for curTN in "${curTableList[@]}"
+    do
+      if ! [ -z "$maxTableNum" ] && [ $curTN -eq $maxTableNum ]; then
+        isTblFound=true
+        break
+      fi
+    done
+    if [ "$isTblFound" = "false" ]; then
+      echo $maxTableNum
+      return
+    fi
+    ((maxTableNum++))
+  done
+  echo $maxTableNum
+}
+
 function pruneAndUpdateDocker()
 {
   set +e
@@ -24662,6 +24905,11 @@ function init()
   loadVersionVars
 }
 
+function getDefaultIface()
+{
+  echo \$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
+}
+
 function setPortainerToken()
 {
   cur_timeout=5
@@ -24717,6 +24965,9 @@ function getStackID()
 {
   stackID="NA"
   stackName=\$1
+  if [ -z "\$PORTAINER_TOKEN" ]; then
+    setPortainerToken
+  fi
   qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":1} "Authorization: Bearer \$PORTAINER_TOKEN")
   for row in \$(echo "\${qry}" | jq -r '.[] | @base64'); do
     _jq()
@@ -24737,6 +24988,9 @@ function startStopStack()
 {
   stackName=\$1
   startStop=\$2
+  if [ -z "\$PORTAINER_TOKEN" ]; then
+    setPortainerToken
+  fi
   stackID=\$(getStackID \$stackName)
   http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop endpointId==1 "Authorization: Bearer \$PORTAINER_TOKEN" > /dev/null
 }
@@ -24746,6 +25000,9 @@ function startStopStackByID()
   stackID=\$1
   startStop=\$2
   set +e
+  if [ -z "\$PORTAINER_TOKEN" ]; then
+    setPortainerToken
+  fi
   sss_numTries=1
   sss_totalTries=5
   sss_retVal=1
@@ -24782,6 +25039,9 @@ function updateStackByID()
   update_stack_id=\$2
   update_compose_file=\$3
   update_env_file=\$4
+  if [ -z "\$PORTAINER_TOKEN" ]; then
+    setPortainerToken
+  fi
   echo "\$(createStackJson \$update_stack_name \$update_compose_file "\$update_env_file")" > \$HOME/\${update_stack_name}-json.tmp
   usid_numTries=1
   usid_totalTries=5
@@ -24810,6 +25070,9 @@ function installStack()
   envfile=\$4
   installLogNotify "Installing Stack (\$stack_name)"
   sudo -v
+  if [ -z "\$PORTAINER_TOKEN" ]; then
+    setPortainerToken
+  fi
   echo
   echo "Creating stack: \$stack_name"
   echo "\$(createStackJson \$stack_name \$HOME/\$stack_name-compose.yml "\$envfile")" > \$HOME/\$stack_name-json.tmp
@@ -25315,6 +25578,20 @@ function modFunCaddyHomeBindIPFix()
   grep "CADDY_HSHQ_BIND_IP" $HOME/${updateStackName}.env > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     echo "CADDY_HSHQ_BIND_IP=$fixBindIP" >> $HOME/${updateStackName}.env
+  fi
+}
+
+function modFunCaddyAddLogMount()
+{
+  set +e
+  grep -q "caddylogs" $HOME/${updateStackName}-compose.yml > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sed -i -E 's/^([[:space:]]*)(.*\/config:\/config)$/\1\2\n\1- \${PORTAINER_HSHQ_STACKS_DIR}\/shared\/caddylogs:\/logs/' $HOME/${updateStackName}-compose.yml
+  fi
+  grep -q "ENABLE_LOGGING" $HOME/${updateStackName}.env > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "ENABLE_LOGGING=$CADDY_SNIPPET_LOG_FALSE" >> $HOME/${updateStackName}.env
+    echo "CADDY_STACK_NAME=$updateStackName" >> $HOME/${updateStackName}.env
   fi
 }
 
@@ -26899,8 +27176,8 @@ function checkUpdateAllIPTables()
     comment="HSHQ_BEGIN Temp allow SSH port $CURRENT_SSH_PORT HSHQ_END"
     checkAddRule "$comment" 'sudo iptables -A INPUT -p tcp -m tcp --dport $CURRENT_SSH_PORT -m comment --comment "$comment" -j ACCEPT'
   fi
-  # HomeServer Host and WireGuard interfaces
-  dbIDArr=($(sqlite3 $HSHQ_DB "select ID from connections where (ConnectionType='homeserver_vpn' and NetworkType in ('primary','other')) or (NetworkType='home_network') order by NetworkType;"))
+  # HomeServer Host
+  dbIDArr=($(sqlite3 $HSHQ_DB "select ID from connections where NetworkType='home_network' order by NetworkType;"))
   for curDBID in "${dbIDArr[@]}"
   do
     curInterfaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$curDBID;")
@@ -26931,29 +27208,43 @@ function checkUpdateAllIPTables()
       addDOCKERUSERBySubnetAndPortsList "$hn_ip_list" "$curDockerUserAllowPorts"
     fi
     # Add some anti-spoofing measures
-    if [ "$curConnectionType" = "homeserver_vpn" ]; then
-      addIPTablesSpoofRule "$curInterfaceName" "$curSubnet"
-    elif [ "$curNetworkType" = "home_network" ]; then
-      comment="HSHQ_BEGIN chain-ipspoof -s $DOCKER_NETWORK_RESERVED_RANGE -i $curInterfaceName HSHQ_END"
-      checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s $DOCKER_NETWORK_RESERVED_RANGE -i $curInterfaceName -m comment --comment "$comment" -j DROP'
-      if [ "$curIsIPPrivate" = "false" ]; then
-        # Add special rules when HomeServer interface is on non-private network, i.e. cloud-server, etc.
-        # Insert these at the 3rd position down
-        comment="HSHQ_BEGIN chain-ipspoof -s 10.0.0.0/8 -i $curInterfaceName HSHQ_END"
-        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 10.0.0.0/8 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
-        comment="HSHQ_BEGIN chain-ipspoof -s 172.16.0.0/12 -i $curInterfaceName HSHQ_END"
-        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 172.16.0.0/12 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
-        comment="HSHQ_BEGIN chain-ipspoof -s 192.168.0.0/16 -i $curInterfaceName HSHQ_END"
-        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 192.168.0.0/16 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
-        comment="HSHQ_BEGIN chain-ipspoof -s 169.254.0.0/16 -i $curInterfaceName HSHQ_END"
-        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 169.254.0.0/16 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
-        comment="HSHQ_BEGIN chain-ipspoof -s 224.0.0.0/4 -i $curInterfaceName HSHQ_END"
-        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 224.0.0.0/4 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
-        # Insert this to top of chain-icmp
-        comment="HSHQ_BEGIN chain-icmp echo-request primary $curInterfaceName HSHQ_END"
-        checkAddRule "$comment" 'sudo iptables -t raw -I chain-icmp -p icmp -m icmp --icmp-type echo-request -i $curInterfaceName -m comment --comment "$comment" -j DROP'
-      fi
+    comment="HSHQ_BEGIN chain-ipspoof -s $DOCKER_NETWORK_RESERVED_RANGE -i $curInterfaceName HSHQ_END"
+    checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s $DOCKER_NETWORK_RESERVED_RANGE -i $curInterfaceName -m comment --comment "$comment" -j DROP'
+    if [ "$curIsIPPrivate" = "false" ]; then
+      # Add special rules when HomeServer interface is on non-private network, i.e. cloud-server, etc.
+      # Insert these at the 3rd position down
+      comment="HSHQ_BEGIN chain-ipspoof -s 10.0.0.0/8 -i $curInterfaceName HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 10.0.0.0/8 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
+      comment="HSHQ_BEGIN chain-ipspoof -s 172.16.0.0/12 -i $curInterfaceName HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 172.16.0.0/12 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
+      comment="HSHQ_BEGIN chain-ipspoof -s 192.168.0.0/16 -i $curInterfaceName HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 192.168.0.0/16 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
+      comment="HSHQ_BEGIN chain-ipspoof -s 169.254.0.0/16 -i $curInterfaceName HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 169.254.0.0/16 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
+      comment="HSHQ_BEGIN chain-ipspoof -s 224.0.0.0/4 -i $curInterfaceName HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 224.0.0.0/4 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
+      # Insert this to top of chain-icmp
+      comment="HSHQ_BEGIN chain-icmp echo-request primary $curInterfaceName HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -t raw -I chain-icmp -p icmp -m icmp --icmp-type echo-request -i $curInterfaceName -m comment --comment "$comment" -j DROP'
     fi
+  done
+  # WireGuard interfaces
+  dbIDArr=($(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='homeserver_vpn' and NetworkType in ('primary','other') order by NetworkType;"))
+  for curDBID in "${dbIDArr[@]}"
+  do
+    curInterfaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$curDBID;")
+    curIPAddress=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID=$curDBID;")
+    curSubnet=$(sqlite3 $HSHQ_DB "select Network_Subnet from connections where ID=$curDBID;")
+    curIsExposeToNetwork=$(sqlite3 $HSHQ_DB "select IsExposeToNetwork from connections where ID=$curDBID;")
+    curInputAllowPorts=$(sqlite3 $HSHQ_DB "select InputAllowPorts from connections where ID=$curDBID;")
+    curDockerUserAllowPorts=$(sqlite3 $HSHQ_DB "select DockerUserAllowPorts from connections where ID=$curDBID;")
+    curNetworkType=$(sqlite3 $HSHQ_DB "select NetworkType from connections where ID=$curDBID;")
+    curConnectionType=$(sqlite3 $HSHQ_DB "select ConnectionType from connections where ID=$curDBID;")
+    appendINPUTByInterfaceAndPortsList "$curInterfaceName" "$curInputAllowPorts"
+    addDOCKERUSERByInterfaceAndPortsList "$curInterfaceName" "$curDockerUserAllowPorts"
+    # Add some anti-spoofing measures
+    comment="HSHQ_BEGIN chain-ipspoof ! -s 10.0.0.0/8 -i $curInterfaceName HSHQ_END"
+    checkAddRule "$comment" 'sudo iptables -t raw -A chain-ipspoof ! -s 10.0.0.0/8 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
   done
   # Custom rules
   dbIDArr=($(sqlite3 $HSHQ_DB "select ID from customfwsubnet;"))
@@ -27161,6 +27452,71 @@ function addDOCKERUSERBySubnetAndPortsList()
   done
 }
 
+function appendINPUTByInterfaceAndPortsList()
+{
+  interfaceName="$1"
+  portList="$2"
+  if [ -z "$interfaceName" ] ||  [ -z "$portList" ]; then
+    return
+  fi
+  checkValidPortsList "$portList"
+  if [ $? -ne 0 ]; then
+    strMsg="There was an error with the ports list: $portList"
+    logHSHQEvent error "appendINPUTBySubnetAndPortsList ($netstate) (appendINPUTBySubnetAndPortsList) - $strMsg"
+    echo "ERROR: $strMsg"
+    return
+  fi
+  portsArr=($(echo $portList | tr "," "\n"))
+  for cur_port in "${portsArr[@]}"
+  do
+    port_no=$(echo "$cur_port" | cut -d"/" -f1 | xargs)
+    port_prot=$(echo "$cur_port" | cut -d"/" -f2 | xargs)
+    case $port_prot in
+    tcp|udp)
+      comment="HSHQ_BEGIN INPUT -i $interfaceName -p $port_prot --dport $port_no HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -A INPUT -i $interfaceName -p $port_prot --dport $port_no -m comment --comment "$comment" -j ACCEPT'
+    ;;
+    both)
+      comment="HSHQ_BEGIN INPUT -i $interfaceName -p tcp --dport $port_no HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -A INPUT -i $interfaceNamet -p tcp --dport $port_no -m comment --comment "$comment" -j ACCEPT'
+      comment="HSHQ_BEGIN INPUT -i $interfaceName -p udp --dport $port_no HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -A INPUT -i $interfaceName -p udp --dport $port_no -m comment --comment "$comment" -j ACCEPT'
+    ;;
+    *)
+    ;;
+    esac
+  done
+}
+
+function addDOCKERUSERByInterfaceAndPortsList()
+{
+  interfaceName="$1"
+  portList="$2"
+  if [ -z "$interfaceName" ] ||  [ -z "$portList" ]; then
+    return
+  fi
+  checkValidPortsList "$portList"
+  if [ $? -ne 0 ]; then
+    strMsg="There was an error with the ports list: $portList"
+    logHSHQEvent error "addDOCKERUSERBySubnetAndPortsList ($netstate) (addDOCKERUSERBySubnetAndPortsList) - $strMsg"
+    echo "ERROR: $strMsg"
+    return
+  fi
+  portsArr=($(echo $portList | tr "," "\n"))
+  for cur_port in "${portsArr[@]}"
+  do
+    # Protocol doesn't matter here, but just in case the user added it
+    port_no=$(echo "$cur_port" | cut -d"/" -f1 | xargs)
+    port_prot=$(echo "$cur_port" | cut -d"/" -f2 | xargs)
+    comment="HSHQ_BEGIN DOCKER-USER -i $interfaceName -m conntrack --ctorigdstport $port_no HSHQ_END"
+    checkAddRule "$comment" 'sudo iptables -I DOCKER-USER -i $interfaceName -m conntrack --ctorigdstport $port_no --ctdir ORIGINAL -m comment --comment "$comment" -j RETURN'
+    comment="HSHQ_BEGIN DOCKER-USER -s $DOCKER_NETWORK_RESERVED_RANGE -m conntrack --ctorigdstport $port_no HSHQ_END"
+    checkAddRule "$comment" 'sudo iptables -I DOCKER-USER -s $DOCKER_NETWORK_RESERVED_RANGE -m conntrack --ctorigdstport $port_no --ctdir ORIGINAL -m comment --comment "$comment" -j RETURN'
+    comment="HSHQ_BEGIN DOCKER-USER -m conntrack --ctorigdstport $port_no DROP HSHQ_END"
+    checkAddRule "$comment" 'sudo iptables -A DOCKER-USER -m conntrack --ctorigdstport $port_no --ctdir ORIGINAL -m comment --comment "$comment" -j DROP'
+  done
+}
+
 function deleteIPTableEntryByChainAndComment()
 {
   ipt_table="$1"
@@ -27191,6 +27547,7 @@ function deleteIPTableEntryByChainAndComment()
 
 function addIPTablesSpoofRule()
 {
+  return
   ipt_interface_name="$1"
   ipt_source_subnet="$2"
   comment="HSHQ_BEGIN chain-ipspoof -s $ipt_source_subnet ! -i $ipt_interface_name HSHQ_END"
@@ -28694,6 +29051,7 @@ function addHSInterface()
   fi
   curdt=$(getCurrentDate)
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,ConnectionType,NetworkType,IPAddress,InterfaceName,LastUpdated,Network_Subnet,IsExposeToNetwork,InputAllowPorts,DockerUserAllowPorts) values('HomeServerHost_${iface_name^^}','$isPrimaryInsert','home_network','$ip_addr','$iface_name','$curdt','$interface_subnet',true,'$INPUT_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT','$DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT');"
+  updateDeviceIPMappingFile
 }
 
 function removeHSInterface()
@@ -28704,6 +29062,7 @@ function removeHSInterface()
   updatePlaintextRootConfigVar HOMESERVER_HOST_NETWORK_INTERFACES $HOMESERVER_HOST_NETWORK_INTERFACES
   checkDeleteStackAndDirectory caddy-home-$iface_name "Caddy" true true > /dev/null 2>&1
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where InterfaceName='$iface_name';" > /dev/null 2>&1
+  updateDeviceIPMappingFile
 }
 
 function setHSInterfaceAsPrimary()
@@ -29302,7 +29661,7 @@ function installDocker()
 function upgradeDocker()
 {
   echo "Upgrading docker, this could take 5-10 minutes, please wait..."
-  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   sudo apt-mark unhold docker-ce
   sudo apt-mark unhold docker-ce-cli
   case "$DISTRO_ID" in
@@ -29423,7 +29782,7 @@ function installDockerUbuntu2204()
   # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing docker, please wait..."
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2204 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
 }
@@ -29445,7 +29804,7 @@ function installDockerUbuntu2404()
   sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$DISTRO_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing docker, please wait..."
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2404 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
 }
@@ -29469,7 +29828,7 @@ function installDockerUbuntu2604()
   # Use noble for now, fix it later when repos are available
   # Also ensure to update DOCKER_VERSION_UBUNTU_2604
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing docker, please wait..."
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_UBUNTU_2604 docker-ce-cli=$DOCKER_VERSION_UBUNTU_2604 containerd.io docker-buildx-plugin docker-compose-plugin
 }
@@ -29491,7 +29850,7 @@ function installDockerDebian12()
   sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$DISTRO_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing docker, please wait..."
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' docker-ce=$DOCKER_VERSION_DEBIAN_12 docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 containerd.io docker-buildx-plugin docker-compose docker-compose-plugin
 }
@@ -30325,14 +30684,18 @@ function addPrimaryUser()
   addPULastName="$4"
   addPUIsLDAPAdmin="$5"
   addPUEmailAddress="${addPUUID}@$HOMESERVER_DOMAIN"
-  addPUEmailPassword="$addPUPassword"
   if [ -z "$addPUIsLDAPAdmin" ]; then
     addPUIsLDAPAdmin=false
   elif [ "$addPUIsLDAPAdmin" = "true" ]; then
     addPUEmailAddress="$EMAIL_ADMIN_EMAIL_ADDRESS"
-    addPUEmailPassword="$EMAIL_ADMIN_PASSWORD"
   fi
   set +e
+  newuser_mailu_app_password=abcd
+  newuser_nextcloud_app_password=abcd
+  newuser_paperless_apitoken=abcd
+  newuser_immich_api_key=abcd
+  newuser_linkwarden_api_key=abcd
+  newuser_twenty_api_key=abcd
   if ! [ "$addPUIsLDAPAdmin" = "true" ]; then
     # Check if user exists
     docker exec ldapserver bash -c "ldapsearch -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -b \"uid=$addPUUID,ou=people,$LDAP_BASE_DN\"" > /dev/null 2>&1
@@ -30357,9 +30720,8 @@ function addPrimaryUser()
       echo "ERROR: There was a problem adding this email address ($addPUEmailAddress)..."
       return
     fi
-    set +e
     createStandardMailuMailboxes "$addPUEmailAddress"
-    addUserEmailClassifierAI "$addPUEmailAddress" "$addPUPassword" "Consume" "Processed"
+    set +e
     echo "Adding primary user to LDAP..."
     lastUID=$(docker exec ldapserver bash -c "ldapsearch -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -b \"cn=lastUID,$LDAP_BASE_DN\" -LLL serialNumber | grep serialNumber | cut -d\" \" -f2 | xargs")
     ((lastUID++))
@@ -30407,18 +30769,15 @@ EOFAU
     rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
     sleep 5
   fi
+  newuser_mailu_app_password=$(curl -s -X POST https://$SUB_MAILU.$HOMESERVER_DOMAIN/api/v1/token   -H "Authorization: Bearer $MAILU_API_TOKEN"   -H "Content-Type: application/json"   -d "{\"email\": \"$addPUEmailAddress\", \"comment\": \"MCP\"}" | jq -r .token)
+  addUserEmailClassifierAI "$addPUEmailAddress" "$newuser_mailu_app_password" "Consume" "Processed"
   sudo sqlite3 $HSHQ_STACKS_DIR/authelia/config/db.sqlite3 "insert into user_preferences(username,second_factor_method) values('$addPUUID','totp');"
   auth_uuid=$(uuidgen)
   sudo sqlite3 $HSHQ_STACKS_DIR/authelia/config/db.sqlite3 "insert into user_opaque_identifier(service,sector_id,username,identifier) values('openid','','$addPUUID','$auth_uuid');"
   echo "Adding primary user shared directories..."
   addUserShareDirectories ${addPUUID}
-  newuser_nextcloud_app_password=abcd
-  newuser_paperless_apitoken=abcd
-  newuser_immich_api_key=abcd
-  newuser_linkwarden_api_key=abcd
-  newuser_twenty_api_key=abcd
-  addPrimaryUserNextcloud "${addPUUID}" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName $addPULastName" "$addPUEmailPassword"
-  addPrimaryUserPaperless "${addPUUID}" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName" "$addPULastName" "$addPUEmailPassword"
+  addPrimaryUserNextcloud "${addPUUID}" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName $addPULastName" "$newuser_mailu_app_password"
+  addPrimaryUserPaperless "${addPUUID}" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName" "$addPULastName" "$newuser_mailu_app_password"
   docker ps | grep -q paperless-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     jsonbody="username=${addPUUID}&password=$addPUPassword"
@@ -30426,7 +30785,7 @@ EOFAU
   fi
   fullName="${addPUFirstName}${addPULastName}"
   cleanName="${fullName//[![:alnum:]]/}"
-  addPrimaryUserAutoKB "$addPUUID" "$cleanName" "$addPUEmailAddress" "$addPUEmailPassword" 1
+  addPrimaryUserAutoKB "$addPUUID" "$cleanName" "$addPUEmailAddress" "$newuser_mailu_app_password" 1
   newuser_immich_api_key=$(pwgen -c -n 41 1)
   addPrimaryUserImmich "${addPUUID}" "$addPUEmailAddress" "$addPUFirstName $addPULastName" "$newuser_immich_api_key"
   docker ps | grep -q linkwarden-app > /dev/null 2>&1
@@ -30436,7 +30795,7 @@ EOFAU
   newuser_hedgedoc_api_key=$(addPrimaryUserHedgeDoc "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress)
   newuser_mealie_api_key=$(addPrimaryUserMealie "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress false)
   newuser_presenton_api_key=$(addPrimaryUserPresenton "$addPUUID" "$addPUPassword")
-  newuser_twenty_api_key=$(addPrimaryUserTwenty "$addPUUID" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName" "$addPULastName" "$addPUEmailPassword")
+  newuser_twenty_api_key=$(addPrimaryUserTwenty "$addPUUID" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName" "$addPULastName" "$newuser_mailu_app_password")
   newuser_ragflow_api_key=$(addPrimaryUserRAGFlow "$addPUEmailAddress" "$addPUFirstName $addPULastName")
   docker ps | grep -q openwebui-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
@@ -30470,7 +30829,7 @@ EOFIM
     rm -f $HSHQ_STACKS_DIR/openwebui/dbexport/addPrimaryUserOWUI.sh
     jsonbody=$(jq -n \
         --arg imap_username "$addPUEmailAddress" \
-        --arg imap_password "$addPUEmailPassword" \
+        --arg imap_password "$newuser_mailu_app_password" \
         --arg sender_name "$addPUFirstName $addPULastName" \
         '{imap_host: "mailu-front", imap_username: $imap_username, imap_password: $imap_password, smtp_host: "mailu-front", sender_name: $sender_name}')
     curl -s -X POST "https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN/api/v1/tools/id/imap_email_tool/valves/user/update" -H "Authorization: Bearer $OPENWEBUI_PU_API_KEY" -H "Content-Type: application/json" -d "$jsonbody" > /dev/null 2>&1
@@ -30516,6 +30875,11 @@ function addUserEmailClassifierAI()
     return
   fi
   sudo sqlite3 $HSHQ_STACKS_DIR/emailclassifierai/data/accounts.db "insert into accounts(server, user, password, consume_folder, processed_folder, is_active) values('mailu-front','$addUserCAI_email','$addUserCAI_pw','$addUserCAI_consume','$addUserCAI_processed',1);"
+  docker ps | grep -q emailclassifierai-monitor > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    docker container restart emailclassifierai-worker > /dev/null 2>&1
+    docker container restart emailclassifierai-monitor > /dev/null 2>&1
+  fi
 }
 
 function addPrimaryUserImmich()
@@ -30602,10 +30966,12 @@ function addPrimaryUserPaperless()
   jsonbody="{ \"name\": \"${addUserPaper_uid} Email\", \"imap_server\": \"$SMTP_HOSTNAME\", \"imap_port\": 143, \"imap_security\": 3, \"username\": \"$addUserPaper_email\", \"password\": \"$addUserPaper_emailpw\", \"account_type\": 1, \"owner\": $add_user_id, \"user_can_change\": true }"
   mail_account_id=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   if [ -n "$mail_account_id" ]; then
-    jsonbody="{ \"name\": \"${addUserPaper_uid} Email Personal\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 1, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $add_user_id, \"user_can_change\": true, \"stop_processing\": false }"
+    jsonbody="{ \"name\": \"${addUserPaper_uid} Email Personal\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $add_user_id, \"user_can_change\": true, \"stop_processing\": false }"
+    curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+    jsonbody="{ \"name\": \"${addUserPaper_uid} Email Work\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Work\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $add_user_id, \"user_can_change\": true, \"stop_processing\": false }"
     curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   fi
-  jsonbody="{ \"name\": \"${addUserPaper_uid}_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/${addUserPaper_uid}/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
+  jsonbody="{ \"name\": \"${addUserPaper_uid}_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/${addUserPaper_uid}/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{ \"name\": \"${addUserPaper_uid}_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/${addUserPaper_uid}/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id, \"assign_document_type\": $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
@@ -30657,6 +31023,15 @@ function addPrimaryUserAutoKB()
   akbBody="${akbRes%$'\n'*}"
   [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Paperless source failed: $akbBody" >&2; return 1; }
   PAPERLESS_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
+  docker ps | grep paperless-app > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    AKB_WORKFLOW=$(curl -s https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN")
+    if ! [ -z "$AKB_WORKFLOW" ]; then
+      NEW_ACTION="{ \"type\": 4, \"order\": 99, \"webhook\": { \"url\": \"http://autokb-web/api/subscriptions/$PAPERLESS_SUB_ID/trigger\", \"headers\": { \"Authorization\": \"Bearer $AUTOKB_WEBHOOK_API_KEY\" }, \"include_document\": false } }"
+      UPDATED_WF=$(echo "$AKB_WORKFLOW" | jq --argjson action "$NEW_ACTION" '.actions += [$action]')
+      echo "$UPDATED_WF" | curl -X PUT https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @- > /dev/null 2>&1
+    fi
+  fi
   docker ps | grep -q openwebui-app > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     return
@@ -31435,6 +31810,8 @@ function loadPinnedDockerImages()
   IMG_GITEA_APP=mirror.gcr.io/gitea/gitea:1.25.2
   IMG_GITLAB_APP=mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0
   IMG_GRAFANA=mirror.gcr.io/grafana/grafana-oss:13.0.2
+  IMG_LOKI=mirror.gcr.io/grafana/loki:3.7.7
+  IMG_ALLOY=mirror.gcr.io/grafana/alloy:v1.19.2
   IMG_GRAMPSWEB=ghcr.io/gramps-project/grampsweb:25.7.3
   IMG_GUACAMOLE_GUACD=mirror.gcr.io/guacamole/guacd:1.6.0
   IMG_GUACAMOLE_WEB=mirror.gcr.io/guacamole/guacamole:1.6.0
@@ -31592,8 +31969,8 @@ function loadPinnedDockerImages()
   IMG_ZAMMAD=ghcr.io/zammad/zammad:6.5.2-49
   IMG_ZULIP_APP=mirror.gcr.io/zulip/docker-zulip:11.4-0
   IMG_ZULIP_DB=mirror.gcr.io/zulip/zulip-postgresql:14
-  IMG_BESZEL_APP=mirror.gcr.io/henrygd/beszel:0.17.0
-  IMG_BESZEL_AGENT=mirror.gcr.io/henrygd/beszel-agent:0.17.0
+  IMG_BESZEL_APP=ghcr.io/henrygd/beszel/beszel:0.19.0
+  IMG_BESZEL_AGENT=ghcr.io/henrygd/beszel/beszel-agent:0.19.0
   IMG_TAIGA_BACK=mirror.gcr.io/taigaio/taiga-back:6.9.0
   IMG_TAIGA_BACK=mirror.gcr.io/taigaio/taiga-back:6.9.0
   IMG_TAIGA_FRONT=mirror.gcr.io/taigaio/taiga-front:6.9.0
@@ -31734,7 +32111,7 @@ function getScriptStackVersion()
     adguard)
       echo "v9" ;;
     sysutils)
-      echo "v10" ;;
+      echo "v11" ;;
     openldap)
       echo "v1" ;;
     mailu)
@@ -31948,7 +32325,7 @@ function getScriptStackVersion()
     wgportal)
       echo "v2" ;;
     beszel)
-      echo "v2" ;;
+      echo "v3" ;;
     taiga)
       echo "v1" ;;
     opensign)
@@ -32101,6 +32478,8 @@ function pullDockerImages()
   buildOrPullImage $IMG_GRAFANA
   buildOrPullImage $IMG_PROMETHEUS
   buildOrPullImage $IMG_NODE_EXPORTER
+  buildOrPullImage $IMG_LOKI
+  buildOrPullImage $IMG_ALLOY
   buildOrPullImage $IMG_OPENLDAP_SERVER
   buildOrPullImage $IMG_OPENLDAP_PHP
   buildOrPullImage $IMG_OPENLDAP_MANAGER
@@ -32693,6 +33072,8 @@ INFLUXDB_ADMIN_PASSWORD=
 INFLUXDB_ORG=
 INFLUXDB_TOKEN=
 INFLUXDB_HA_BUCKET=
+ALLOY_ADMIN_USERNAME=
+ALLOY_ADMIN_PASSWORD=
 # SysUtils (Service Details) END
 
 # OpenLDAP (Service Details) BEGIN
@@ -33067,6 +33448,8 @@ CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED=safe-header-cors-automated
 CADDY_SNIPPET_BASEHEADER=base-header
 CADDY_SNIPPET_DEFAULTCSP=default-csp
 CADDY_SNIPPET_RELAXEDCSP=relaxed-csp
+CADDY_SNIPPET_LOG_TRUE=log_true
+CADDY_SNIPPET_LOG_FALSE=log_false
 # Caddy (Service Details) END
 
 # Calibre (Service Details) BEGIN
@@ -33166,6 +33549,7 @@ PAPERLESS_KNOWLEDGEBASE_TAG_NAME=
 PAPERLESS_KNOWLEDGEBASE_TAG_ID=
 PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME=
 PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=
+PAPERLESS_AKB_WORKFLOW_ID=
 # Paperless (Service Details) END
 
 # SpeedtestTrackerLocal (Service Details) BEGIN
@@ -34830,6 +35214,14 @@ function initServicesCredentials()
   if [ -z "$INFLUXDB_HA_BUCKET" ]; then
     INFLUXDB_HA_BUCKET="home_assistant"
     updateConfigVar INFLUXDB_HA_BUCKET $INFLUXDB_HA_BUCKET
+  fi
+  if [ -z "$ALLOY_ADMIN_USERNAME" ]; then
+    ALLOY_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_alloy"
+    updateConfigVar ALLOY_ADMIN_USERNAME $ALLOY_ADMIN_USERNAME
+  fi
+  if [ -z "$ALLOY_ADMIN_PASSWORD" ]; then
+    ALLOY_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ALLOY_ADMIN_PASSWORD $ALLOY_ADMIN_PASSWORD
   fi
   if [ -z "$LDAP_BASE_DN"  ]; then
     LDAP_BASE_DN=$(echo "dc="$(echo $HOMESERVER_DOMAIN | sed 's/\./,dc=/g'))
@@ -39773,6 +40165,7 @@ function checkCreateNonbackupDirByStack()
       ;;
     "sysutils")
       mkdir -p $HSHQ_NONBACKUP_DIR/sysutils/prometheus
+      mkdir -p $HSHQ_NONBACKUP_DIR/sysutils/loki
       ;;
     "wazuh")
       mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes
@@ -40057,6 +40450,7 @@ function initServiceVars()
   checkAddSvc "SVCD_GITEA=gitea,gitea,primary,user,Gitea,gitea,le"
   checkAddSvc "SVCD_GITLAB=gitlab,gitlab,primary,user,Gitlab,gitlab,hshq"
   checkAddSvc "SVCD_GRAFANA=sysutils,grafana,primary,admin,Grafana,grafana,hshq"
+  checkAddSvc "SVCD_ALLOY=sysutils,alloy,primary,admin,Alloy,alloy,hshq"
   checkAddSvc "SVCD_GRAMPSWEB=grampsweb,grampsweb,primary,user,GrampsWeb,grampsweb,le"
   checkAddSvc "SVCD_GUACAMOLE=guacamole,guacamole,primary,admin,Guacamole,guacamole,hshq"
   checkAddSvc "SVCD_HEIMDALL=heimdall,heimdall,other,user,Heimdall,heimdall,hshq"
@@ -41275,6 +41669,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_COGNEE_FRONTEND.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_ALLOY.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_ADMIN_HERE
   retval="${retval}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -41294,6 +41689,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUTHELIA}" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_WAZUH}" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_ADMIN_USERNAME $WAZUH_USERS_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GRAFANA}" https://$SUB_GRAFANA.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAFANA_ADMIN_USERNAME $GRAFANA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ALLOY}" https://$SUB_ALLOY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $ALLOY_ADMIN_USERNAME $ALLOY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_INFLUXDB}" https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $INFLUXDB_ADMIN_USERNAME $INFLUXDB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DOZZLE}" https://$SUB_DOZZLE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DOZZLE_USERNAME $DOZZLE_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JELLYFIN}-Admin" "\"https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/wizard/user\"" $HOMESERVER_ABBREV $JELLYFIN_ADMIN_USERNAME $JELLYFIN_ADMIN_PASSWORD)"\n"
@@ -41505,6 +41901,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUTHELIA}" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_WAZUH}" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_ADMIN_USERNAME $WAZUH_USERS_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GRAFANA}" https://$SUB_GRAFANA.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAFANA_ADMIN_USERNAME $GRAFANA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ALLOY}" https://$SUB_ALLOY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $ALLOY_ADMIN_USERNAME $ALLOY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_INFLUXDB}" https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $INFLUXDB_ADMIN_USERNAME $INFLUXDB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DOZZLE}" https://$SUB_DOZZLE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DOZZLE_USERNAME $DOZZLE_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_JELLYFIN}-Admin" "\"https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/wizard/user\"" $HOMESERVER_ABBREV $JELLYFIN_ADMIN_USERNAME $JELLYFIN_ADMIN_PASSWORD)"\n"
@@ -41782,6 +42179,9 @@ function getHeimdallOrderFromSub()
       order_num=9
       ;;
     "$SUB_INFLUXDB")
+      order_num=10
+      ;;
+    "$SUB_ALLOY")
       order_num=10
       ;;
     "$SUB_DOZZLE")
@@ -42481,6 +42881,15 @@ function getScriptImageByContainerName()
       ;;
     "influxdb")
       container_image=$IMG_INFLUXDB
+      ;;
+    "loki")
+      container_image=$IMG_LOKI
+      ;;
+    "alloy-app")
+      container_image=$IMG_ALLOY
+      ;;
+    "alloy-web")
+      container_image=mirror.gcr.io/caddy:2.11.4
       ;;
     "ldapserver")
       container_image=$IMG_OPENLDAP_SERVER
@@ -44411,10 +44820,10 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Dolibarr" "DOLIBARR_INSTANCE_UNIQUE_ID=,DOLIBARR_API_KEY=,DOLIBARR_MCP_API_KEY=,DOLIBARR_MCP_REDIS_PASSWORD=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_TOKEN_ENCRYPTION_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Immich" "IMMICH_API_KEY=" $CONFIG_FILE false
-  checkAddVarsToServiceConfig "Caddy" "CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED=safe-header-cors-automated,CADDY_SNIPPET_BASEHEADER=base-header,CADDY_SNIPPET_DEFAULTCSP=default-csp,CADDY_SNIPPET_RELAXEDCSP=relaxed-csp" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Caddy" "CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED=safe-header-cors-automated,CADDY_SNIPPET_BASEHEADER=base-header,CADDY_SNIPPET_DEFAULTCSP=default-csp,CADDY_SNIPPET_RELAXEDCSP=relaxed-csp,CADDY_SNIPPET_LOG_TRUE=log_true,CADDY_SNIPPET_LOG_FALSE=log_false" $CONFIG_FILE false
   checkAddVarsToServiceConfig "OpenProject" "OPENPROJECT_SECRET_KEY_BASE=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Twenty" "TWENTY_APP_SECRET=,TWENTY_ENCRYPTION_KEY=" $CONFIG_FILE false
-  checkAddVarsToServiceConfig "Paperless" "PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=,PAPERLESS_KNOWLEDGEBASE_TAG_NAME=,PAPERLESS_KNOWLEDGEBASE_TAG_ID=,PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME=,PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Paperless" "PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=,PAPERLESS_KNOWLEDGEBASE_TAG_NAME=,PAPERLESS_KNOWLEDGEBASE_TAG_ID=,PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME=,PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=,PAPERLESS_AKB_WORKFLOW_ID=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Mailu" "EMAIL_JOINT_USERNAME=,EMAIL_JOINT_PASSWORD=,EMAIL_JOINT_EMAIL_ADDRESS=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "OpenWebUI" "OPENWEBUI_ADMIN_UUID=,OPENWEBUI_PRIMARYUSERS_UUID=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "AutoKB" "AUTOKB_SHARED_OWUI_TARGET_ID=" $CONFIG_FILE false
@@ -44428,6 +44837,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Presenton" "PRESENTON_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "RAGFlow" "RAGFLOW_DATABASE_ROOT_PASSWORD=,RAGFLOW_ADMIN_API_KEY=,RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "AutoKB" "AUTOKB_ENCRYPTION_SALT=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "SysUtils" "ALLOY_ADMIN_USERNAME=,ALLOY_ADMIN_PASSWORD=" $CONFIG_FILE false
   initServicesCredentials
 }
 
@@ -45516,6 +45926,18 @@ function installSysUtils()
   if [ $? -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName loki)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName alloy-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName alloy-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/sysutils
   mkdir $HSHQ_STACKS_DIR/sysutils/grafana
@@ -45523,16 +45945,20 @@ function installSysUtils()
   mkdir $HSHQ_STACKS_DIR/sysutils/influxdb/etc
   mkdir $HSHQ_STACKS_DIR/sysutils/influxdb/var
   mkdir $HSHQ_STACKS_DIR/sysutils/prometheus
+  mkdir $HSHQ_STACKS_DIR/sysutils/loki
+  mkdir $HSHQ_STACKS_DIR/sysutils/alloy
+  mkdir $HSHQ_STACKS_DIR/sysutils/alloy/devices
   mkdir $HSHQ_NONBACKUP_DIR/sysutils
   mkdir $HSHQ_NONBACKUP_DIR/sysutils/prometheus
+  mkdir $HSHQ_NONBACKUP_DIR/sysutils/loki
   initServicesCredentials
   generateCert influxdb influxdb
   gf_dataset_uid=$(pwgen -c -n 9 1)
+  gf_loki_uid=$(pwgen -c -n 9 1)
   gf_dashboard_uid=$(pwgen -c -n 9 1)
   # Have had 2 abrupt exits randomly around this point,
   # with the error: "getwd: no such file or directory".
   # So adding some debug statements and potential solutions.
-  echo "Sysutils - Output config"
   outputConfigSysUtils
   # This may seem silly, but Since gfdashboard.json is
   # very large, there could be a strange race condition.
@@ -45542,7 +45968,6 @@ function installSysUtils()
     sleep 1
   done
   cd ~
-  echo "Sysutils - Starting stack"
   sleep 3
   cd ~
   docker compose -f $HOME/sysutils-compose-tmp.yml up -d
@@ -45588,21 +46013,27 @@ function installSysUtils()
     return 1
   fi
   sleep 5
-  datasource_json=$(jq -n --arg gfid "$gf_dataset_uid" '{name: "Prometheus", uid: $gfid, type: "prometheus", url: "http://prometheus:9090", access: "proxy", basicAuth: false}')
-  num_tries=1
-  total_tries=5
-  isSuccess=false
-  while [ "$isSuccess" = "false" ] && [ $num_tries -lt $total_tries ]
-  do
-    echo $datasource_json | http POST http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/datasources > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-      isSuccess=true
-      break
-    fi
-    echo "ERROR: Grafana datasource import failed, retrying in 5 seconds..."
-    sleep 5
-    ((num_tries++))
-  done
+  import_gf_ds()
+  {
+    num_tries=1
+    total_tries=5
+    isSuccess=false
+    while [ "$isSuccess" = "false" ] && [ $num_tries -lt $total_tries ]
+    do
+      echo "$1" | http POST http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/datasources > /dev/null 2>&1
+      if [ $? -eq 0 ]; then
+        isSuccess=true
+        break
+      fi
+      echo "ERROR: Grafana datasource import failed, retrying in 5 seconds..."
+      sleep 5
+      ((num_tries++))
+    done
+  }
+  prometheus_json=$(jq -n --arg gfid "$gf_dataset_uid" '{name: "Prometheus", uid: $gfid, type: "prometheus", url: "http://prometheus:9090", access: "proxy", basicAuth: false, isDefault: true}')
+  import_gf_ds "$prometheus_json"
+  loki_json=$(jq -n --arg gfid "$gf_loki_uid" '{name: "Loki", uid: $gfid, type: "loki", url: "http://loki:3100", access: "proxy", basicAuth: false, isDefault: false, jsonData: {maxLines: 1000}}')
+  import_gf_ds "$loki_json"
   if [ "$isSuccess" = "false" ]; then
     echo "ERROR: Could not import datasource into Grafana."
   else
@@ -45627,7 +46058,6 @@ function installSysUtils()
   set -e
   pref_string=$(jq -n --arg gfid "$gf_dashboard_uid" --arg tz "$TZ" '{theme: "dark", homeDashboardUID: $gfid, timezone: $tz}')
   echo $pref_string | http PATCH http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/org/preferences > /dev/null 2>&1
-
   sleep 2
   cd ~
   docker compose -f $HOME/sysutils-compose-tmp.yml down -v
@@ -45637,10 +46067,8 @@ function installSysUtils()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-
   rm -f $HOME/sysutils-compose-tmp.yml
   rm -f $HOME/gfdashboard.json
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GRAFANA.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -45655,7 +46083,6 @@ function installSysUtils()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_GRAFANA $MANAGETLS_GRAFANA "$is_integrate_hshq" $NETDEFAULT_GRAFANA "$inner_block"
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -45670,7 +46097,6 @@ function installSysUtils()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_PROMETHEUS $MANAGETLS_PROMETHEUS "$is_integrate_hshq" $NETDEFAULT_PROMETHEUS "$inner_block"
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -45685,11 +46111,29 @@ function installSysUtils()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_INFLUXDB $MANAGETLS_INFLUXDB "$is_integrate_hshq" $NETDEFAULT_INFLUXDB "$inner_block"
-
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_ALLOY.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
+  inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://alloy-web:80 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_ALLOY $MANAGETLS_ALLOY "$is_integrate_hshq" $NETDEFAULT_ALLOY "$inner_block"
+  insertSubAuthelia $SUB_ALLOY.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll sysutils "$FMLNAME_GRAFANA" $USERTYPE_GRAFANA "https://$SUB_GRAFANA.$HOMESERVER_DOMAIN" "grafana.png" "$(getHeimdallOrderFromSub $SUB_GRAFANA $USERTYPE_GRAFANA)"
     insertEnableSvcAll sysutils "$FMLNAME_PROMETHEUS" $USERTYPE_PROMETHEUS "https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN" "prometheus.png" "$(getHeimdallOrderFromSub $SUB_PROMETHEUS $USERTYPE_PROMETHEUS)"
     insertEnableSvcAll sysutils "$FMLNAME_INFLUXDB" $USERTYPE_INFLUXDB "https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN" "influxdb.png" "$(getHeimdallOrderFromSub $SUB_INFLUXDB $USERTYPE_INFLUXDB)"
+    insertEnableSvcAll sysutils "$FMLNAME_ALLOY" $USERTYPE_ALLOY "https://$SUB_ALLOY.$HOMESERVER_DOMAIN" "alloy.png" "$(getHeimdallOrderFromSub $SUB_ALLOY $USERTYPE_ALLOY)"
     restartAllCaddyContainers
   fi
 }
@@ -45780,6 +46224,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
+      - int-sysutils-net
       - dock-proxy-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -45801,6 +46246,87 @@ services:
       - INFLUXD_TLS_CERT=/certs/influxdb.crt
       - INFLUXD_TLS_KEY=/certs/influxdb.key
 
+  loki:
+    image: $(getScriptImageByContainerName loki)
+    container_name: loki
+    hostname: loki
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: -config.file=/etc/loki/config.yml
+    networks:
+      - int-sysutils-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - ${HSHQ_STACKS_DIR}/sysutils/loki/config.yml:/etc/loki/config.yml:ro
+      - v-sysutils-loki:/loki
+    environment:
+      - TZ=$TZ
+      - UID=$USERID
+      - GID=$GROUPID
+      - ALLOY_ADMIN_USERNAME=$ALLOY_ADMIN_USERNAME
+      - ALLOY_ADMIN_PASSWORD=$ALLOY_ADMIN_PASSWORD
+
+  alloy-app:
+    image: $(getScriptImageByContainerName alloy-app)
+    container_name: alloy-app
+    hostname: alloy-app
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - run
+      - --stability.level=experimental
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    networks:
+      - int-sysutils-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/log:/var/log:ro
+      - ${HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
+      - ${HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
+      - ${HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
+    environment:
+      - TZ=$TZ
+      - UID=$USERID
+      - GID=$GROUPID
+      - ALLOY_ADMIN_USERNAME=$ALLOY_ADMIN_USERNAME
+      - ALLOY_ADMIN_PASSWORD=$ALLOY_ADMIN_PASSWORD
+
+  alloy-web:
+    image: $(getScriptImageByContainerName alloy-web)
+    container_name: alloy-web
+    hostname: alloy-web
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-sysutils-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - ${HSHQ_STACKS_DIR}/sysutils/alloy/Caddyfile:/etc/caddy/Caddyfile
+    environment:
+      - TZ=$TZ
+      - UID=$USERID
+      - GID=$GROUPID
+      - ALLOY_ADMIN_USERNAME=$ALLOY_ADMIN_USERNAME
+      - ALLOY_ADMIN_PASSWORD=$ALLOY_ADMIN_PASSWORD
+
 volumes:
   v-sysutils-grafana:
     driver: local
@@ -45814,6 +46340,12 @@ volumes:
       type: none
       o: bind
       device: ${HSHQ_NONBACKUP_DIR}/sysutils/prometheus
+  v-sysutils-loki:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HSHQ_NONBACKUP_DIR}/sysutils/loki
 
 networks:
   dock-proxy-net:
@@ -45914,6 +46446,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
+      - int-sysutils-net
       - dock-proxy-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -45925,6 +46458,70 @@ services:
       - \${PORTAINER_HSHQ_SSL_DIR}/influxdb.key:/certs/influxdb.key
       - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/influxdb/etc:/etc/influxdb2
       - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/influxdb/var:/var/lib/influxdb2
+
+  loki:
+    image: $(getScriptImageByContainerName loki)
+    container_name: loki
+    hostname: loki
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: -config.file=/etc/loki/config.yml
+    networks:
+      - int-sysutils-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/loki/config.yml:/etc/loki/config.yml:ro
+      - v-sysutils-loki:/loki
+
+  alloy-app:
+    image: $(getScriptImageByContainerName alloy-app)
+    container_name: alloy-app
+    hostname: alloy-app
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - run
+      - --stability.level=experimental
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    networks:
+      - int-sysutils-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/log:/var/log:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
+
+  alloy-web:
+    image: $(getScriptImageByContainerName alloy-web)
+    container_name: alloy-web
+    hostname: alloy-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-sysutils-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/Caddyfile:/etc/caddy/Caddyfile
 
 volumes:
   v-sysutils-grafana:
@@ -45939,6 +46536,12 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/sysutils/prometheus
+  v-sysutils-loki:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/sysutils/loki
 
 networks:
   dock-proxy-net:
@@ -45962,24 +46565,9 @@ UID=$USERID
 GID=$GROUPID
 INFLUXD_TLS_CERT=/certs/influxdb.crt
 INFLUXD_TLS_KEY=/certs/influxdb.key
+ALLOY_ADMIN_USERNAME=$ALLOY_ADMIN_USERNAME
+ALLOY_ADMIN_PASSWORD=$ALLOY_ADMIN_PASSWORD
 EOFGF
-  cat <<EOFPM > $HSHQ_STACKS_DIR/sysutils/prometheus/prometheus.yml
-global:
-  scrape_interval: 15s
-scrape_configs:
-  - job_name: 'prometheus'
-    static_configs:
-      - targets: ['localhost:9090']
-  - job_name: 'node-exporter'
-    static_configs:
-      - targets: ['node-exporter:9100']
-  - job_name: 'docker'
-    static_configs:
-      - targets: ["host.docker.internal:$DOCKER_METRICS_PORT"]
-  - job_name: 'litellm'
-    static_configs:
-      - targets: ['litellm-proxy:4000']
-EOFPM
   cat <<EOFJS > $HOME/gfdashboard.json
 {
 	"dashboard": {
@@ -48249,6 +48837,290 @@ EOFPM
 	}
 }
 EOFJS
+  outputLokiAlloyConfig
+}
+
+function outputLokiAlloyConfig()
+{
+  cat <<EOFPM > $HSHQ_STACKS_DIR/sysutils/loki/config.yml
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  volume_enabled: true
+  max_query_lookback: 168h
+  retention_period: 744h
+  discover_log_levels: true
+  discover_service_name:
+    - service_name
+    - job
+    - container
+    - service
+    - host
+
+pattern_ingester:
+  enabled: true
+EOFPM
+  cat <<EOFPM > $HSHQ_STACKS_DIR/sysutils/alloy/config.alloy
+// ────────────────────────────────────────────────────────────────────
+// Docker containers → syslog files in /var/log/docker
+// Docker socket is used for METADATA ONLY
+// Just add loki.ship: "true" label to any container to ingest logs
+// ────────────────────────────────────────────────────────────────────
+
+discovery.docker "engine" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.engine.targets
+  rule {
+    source_labels = ["__meta_docker_container_label_loki_ship"]
+    action        = "keep"
+    regex         = "true"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "__path__"
+    replacement   = "/var/log/docker/\$1.log"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "project"
+  }
+  rule {
+    target_label = "log_source"
+    replacement  = "docker"
+  }
+}
+
+loki.source.file "docker_logs" {
+  targets    = discovery.relabel.containers.output
+  forward_to = [loki.write.local.receiver]
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Caddy access logs → /caddylogs/caddy-*-access.log (JSON lines)
+// Set ENABLE_LOGGING=log_true in caddy stack env to ingest access logs
+// ────────────────────────────────────────────────────────────────────
+
+loki.source.file "caddy" {
+  targets = [
+    { __path__ = "/caddylogs/caddy-*-access.log" },
+  ]
+  forward_to = [loki.relabel.caddy_instance.receiver]
+  file_match {
+    enabled     = true
+    sync_period = "10s"
+  }
+}
+
+loki.relabel "caddy_instance" {
+  forward_to = [loki.process.caddy_parse.receiver]
+  rule {
+    source_labels = ["filename"]
+    regex         = ".*/(caddy-.+)-access\\\\.log"
+    replacement   = "\$1-access"
+    target_label  = "job"
+  }
+  rule {
+    target_label = "log_source"
+    replacement  = "caddy_access"
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Device-name enrichment (Caddy access logs only)
+// Automatic - no action needed
+// ────────────────────────────────────────────────────────────────────
+
+discovery.file "devices" {
+  files            = ["/etc/alloy/devices/devices.json"]
+  refresh_interval = "30s"
+}
+
+loki.process "caddy_parse" {
+  stage.json {
+    expressions = {
+      client_ip = "request.client_ip",
+    }
+  }
+  stage.labels {
+    values = { client_ip = "" }
+  }
+  forward_to = [loki.enrich.devices.receiver]
+}
+
+loki.enrich "devices" {
+  targets            = discovery.file.devices.targets
+  target_match_label = "__address__"
+  logs_match_label   = "client_ip"
+  labels_to_copy     = ["device_name"]
+  forward_to         = [loki.process.caddy_default.receiver]
+}
+
+loki.process "caddy_default" {
+  stage.match {
+    selector = \`{device_name=""}\`
+    stage.static_labels {
+      values = { device_name = "UNKNOWN" }
+    }
+  }
+  forward_to = [loki.write.local.receiver]
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Host logs → /var/log/* (one file = one service)
+// Read via the full /var/log mount (subsumes /var/log/docker).
+// Either uncomment existing, or add other paths in /var/log to ingest
+// ────────────────────────────────────────────────────────────────────
+loki.source.file "host" {
+  targets = [
+//    { __path__ = "/var/log/syslog" },
+//    { __path__ = "/var/log/auth.log" },
+//    { __path__ = "/var/log/hshq.log" },
+  ]
+  forward_to = [loki.relabel.host_instance.receiver]
+}
+
+loki.relabel "host_instance" {
+  forward_to = [loki.write.local.receiver]
+  rule {
+    source_labels = ["filename"]
+    regex         = ".*/(.+)"
+    replacement   = "\$1"
+    target_label  = "job"
+  }
+  rule {
+    target_label = "log_source"
+    replacement  = "host"
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// LiteLLM request/response records → /loki/api/v1/raw (NDJSON)
+// ─────────────────────────────────────────────────────────────
+// Uncomment the following block to ingest from LiteLLM
+/*
+loki.source.api "litellm" {
+  http {
+    listen_address = "0.0.0.0"
+    listen_port    = 3101
+  }
+  forward_to = [loki.process.llm.receiver]
+}
+*/
+
+loki.process "llm" {
+  stage.static_labels {
+    values = {
+      job        = "litellm",
+      log_source = "litellm",
+    }
+  }
+  forward_to = [loki.write.local.receiver]
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Output
+// ────────────────────────────────────────────────────────────────────
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+EOFPM
+  outputDeviceIPMapping $HSHQ_STACKS_DIR/sysutils/alloy/devices/devices.json
+  cat <<EOFPM > $HSHQ_STACKS_DIR/sysutils/alloy/Caddyfile
+:80 {
+  basic_auth {
+     $ALLOY_ADMIN_USERNAME $(htpasswd -nbBC 12 $ALLOY_ADMIN_USERNAME $ALLOY_ADMIN_PASSWORD | cut -d: -f2)
+  }
+  reverse_proxy alloy-app:12345
+}
+
+:3101 {
+  @unauth not header Authorization "Bearer {\$ALLOY_ADMIN_PASSWORD}"
+  respond @unauth 401 {
+    close
+  }
+  @badmethod not method POST
+  @badpath not path /loki/api/v1/raw
+  respond @badmethod 405 {
+    close
+  }
+  respond @badpath 404 {
+    close
+  }
+  reverse_proxy alloy-app:3101
+}
+EOFPM
+  cat <<EOFPM > $HSHQ_STACKS_DIR/sysutils/prometheus/prometheus.yml
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+  - job_name: 'docker'
+    static_configs:
+      - targets: ["host.docker.internal:$DOCKER_METRICS_PORT"]
+  - job_name: 'litellm'
+    metrics_path: '/metrics/'
+    static_configs:
+      - targets: ['litellm-proxy:4000']
+    authorization:
+      type: Bearer
+      credentials: "$LITELLM_MASTER_KEY"
+EOFPM
+}
+
+function updateDeviceIPMappingFile()
+{
+  if ! [ -d $HSHQ_STACKS_DIR/sysutils/alloy/devices ]; then
+    return
+  fi
+  outputDeviceIPMapping $HSHQ_STACKS_DIR/sysutils/alloy/devices/devices.json
+  if docker ps | grep -q alloy && docker ps | grep -q grafana; then
+    docker exec grafana bash -c "curl -fsS -X POST http://alloy-app:12345/-/reload" > /dev/null 2>&1
+  fi
 }
 
 function performUpdateSysUtils()
@@ -48338,12 +49210,26 @@ function performUpdateSysUtils()
       image_update_map[3]="mirror.gcr.io/influxdb:2.7.12-alpine,mirror.gcr.io/influxdb:2.7.12-alpine"
     ;;
     10)
-      newVer=v10
+      newVer=v11
       curImageList=mirror.gcr.io/grafana/grafana-oss:13.0.2,mirror.gcr.io/prom/prometheus:v3.13.1,mirror.gcr.io/prom/node-exporter:v1.12.0,mirror.gcr.io/influxdb:2.7.12-alpine
       image_update_map[0]="mirror.gcr.io/grafana/grafana-oss:13.0.2,mirror.gcr.io/grafana/grafana-oss:13.0.2"
       image_update_map[1]="mirror.gcr.io/prom/prometheus:v3.13.1,mirror.gcr.io/prom/prometheus:v3.13.1"
       image_update_map[2]="mirror.gcr.io/prom/node-exporter:v1.12.0,mirror.gcr.io/prom/node-exporter:v1.12.0"
       image_update_map[3]="mirror.gcr.io/influxdb:2.7.12-alpine,mirror.gcr.io/influxdb:2.7.12-alpine"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateSysUtilsV11
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    11)
+      newVer=v11
+      curImageList=mirror.gcr.io/grafana/grafana-oss:13.0.2,mirror.gcr.io/prom/prometheus:v3.13.1,mirror.gcr.io/prom/node-exporter:v1.12.0,mirror.gcr.io/influxdb:2.7.12-alpine,mirror.gcr.io/grafana/loki:3.7.7,mirror.gcr.io/grafana/alloy:v1.19.2,mirror.gcr.io/caddy:2.11.4
+      image_update_map[0]="mirror.gcr.io/grafana/grafana-oss:13.0.2,mirror.gcr.io/grafana/grafana-oss:13.0.2"
+      image_update_map[1]="mirror.gcr.io/prom/prometheus:v3.13.1,mirror.gcr.io/prom/prometheus:v3.13.1"
+      image_update_map[2]="mirror.gcr.io/prom/node-exporter:v1.12.0,mirror.gcr.io/prom/node-exporter:v1.12.0"
+      image_update_map[3]="mirror.gcr.io/influxdb:2.7.12-alpine,mirror.gcr.io/influxdb:2.7.12-alpine"
+      image_update_map[4]="mirror.gcr.io/grafana/loki:3.7.7,mirror.gcr.io/grafana/loki:3.7.7"
+      image_update_map[5]="mirror.gcr.io/grafana/alloy:v1.19.2,mirror.gcr.io/grafana/alloy:v1.19.2"
+      image_update_map[6]="mirror.gcr.io/caddy:2.11.4,mirror.gcr.io/caddy:2.11.4"
     ;;
     *)
       is_upgrade_error=true
@@ -48381,7 +49267,6 @@ function mfAddPrometheusWeb()
       - targets: ["host.docker.internal:$DOCKER_METRICS_PORT"]
 EOFPR
   fi
-
   cat <<EOFGF > $HOME/sysutils-compose.yml
 $STACK_VERSION_PREFIX sysutils $(getScriptStackVersion sysutils)
 
@@ -48506,11 +49391,240 @@ networks:
     ipam:
       driver: default
 EOFGF
-
   # Too many edits to the compose file, just replace the whole darn thing...
   chmod 600 $HOME/sysutils-compose.yml
   sudo chown root:root $HOME/sysutils-compose.yml
   sudo mv $HOME/sysutils-compose.yml $upgrade_compose_file
+}
+
+function mfUpdateSysUtilsV11()
+{
+  mkdir -p $HSHQ_STACKS_DIR/sysutils/loki
+  mkdir -p $HSHQ_STACKS_DIR/sysutils/alloy
+  mkdir -p $HSHQ_STACKS_DIR/sysutils/alloy/devices
+  mkdir -p $HSHQ_NONBACKUP_DIR/sysutils/loki
+  outputLokiAlloyConfig
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_ALLOY.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
+  inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://alloy-web {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_ALLOY $MANAGETLS_ALLOY "$is_integrate_hshq" $NETDEFAULT_ALLOY "$inner_block"
+  insertSubAuthelia $SUB_ALLOY.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  insertEnableSvcAll sysutils "$FMLNAME_ALLOY" $USERTYPE_ALLOY "https://$SUB_ALLOY.$HOMESERVER_DOMAIN" "alloy.png" "$(getHeimdallOrderFromSub $SUB_ALLOY $USERTYPE_ALLOY)"
+  cat <<EOFGF > $HOME/sysutils-compose.yml
+$STACK_VERSION_PREFIX sysutils v11
+
+services:
+  grafana:
+    image: mirror.gcr.io/grafana/grafana-oss:13.0.2
+    container_name: grafana
+    hostname: grafana
+    user: "\${PORTAINER_UID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-sysutils-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-sysutils-grafana:/var/lib/grafana
+
+  prometheus:
+    image: mirror.gcr.io/prom/prometheus:v3.13.1
+    container_name: prometheus
+    hostname: prometheus
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - int-sysutils-net
+      - dock-proxy-net
+      - dock-privateip-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/prometheus:/etc/prometheus
+      - v-sysutils-prometheus:/prometheus
+      
+  node-exporter:
+    image: mirror.gcr.io/prom/node-exporter:v1.12.0
+    container_name: node-exporter
+    hostname: node-exporter
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    user: "0:0"
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|var/lib/docker/(containers|devicemapper|volumes)/.+)(\$\$|/)'
+    networks:
+      - int-sysutils-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+
+  influxdb:
+    image: mirror.gcr.io/influxdb:2.7.12-alpine
+    container_name: influxdb
+    hostname: influxdb
+    user: "\${PORTAINER_UID}"
+    restart: unless-stopped
+    env_file: stack.env
+    command:
+      - '--reporting-disabled'
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-sysutils-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/influxdb.crt:/certs/influxdb.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/influxdb.key:/certs/influxdb.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/influxdb/etc:/etc/influxdb2
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/influxdb/var:/var/lib/influxdb2
+
+  loki:
+    image: mirror.gcr.io/grafana/loki:3.7.7
+    container_name: loki
+    hostname: loki
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: -config.file=/etc/loki/config.yml
+    networks:
+      - int-sysutils-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/loki/config.yml:/etc/loki/config.yml:ro
+      - v-sysutils-loki:/loki
+
+  alloy-app:
+    image: mirror.gcr.io/grafana/alloy:v1.19.2
+    container_name: alloy-app
+    hostname: alloy-app
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - run
+      - --stability.level=experimental
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    networks:
+      - int-sysutils-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/log:/var/log:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
+
+  alloy-web:
+    image: mirror.gcr.io/caddy:2.11.4
+    container_name: alloy-web
+    hostname: alloy-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-sysutils-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/Caddyfile:/etc/caddy/Caddyfile
+
+volumes:
+  v-sysutils-grafana:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/grafana
+  v-sysutils-prometheus:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/sysutils/prometheus
+  v-sysutils-loki:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/sysutils/loki
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-privateip-net:
+    name: dock-privateip
+    external: true
+  int-sysutils-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+EOFGF
+  set +e
+  grep -q ALLOY_ADMIN_USERNAME $HOME/sysutils.env
+  if [ $? -ne 0 ]; then
+    echo "ALLOY_ADMIN_USERNAME=$ALLOY_ADMIN_USERNAME" >> $HOME/sysutils.env
+    echo "ALLOY_ADMIN_PASSWORD=$ALLOY_ADMIN_PASSWORD" >> $HOME/sysutils.env
+    sendEmail -s "Alloy Admin Login Info" -b "Alloy Admin Username: $ALLOY_ADMIN_USERNAME\nAlloy Admin Password: $ALLOY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  fi
 }
 
 # OpenLDAP
@@ -50955,7 +52069,7 @@ function installWazuhAgent()
   fi
   curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
   echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$WAZUH_AGENT_VERSION
   sudo apt-mark hold wazuh-agent
   sudo systemctl daemon-reload
@@ -50981,7 +52095,7 @@ function updateWazuhAgents()
     agent_ver=$WAZUH_AGENT_VERSION
   fi
   sudo apt-mark unhold wazuh-agent
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   sudo systemctl daemon-reload > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$agent_ver
   sudo apt-mark hold wazuh-agent
@@ -50996,8 +52110,8 @@ function main()
   read -r -s -p "" rspw
   echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
   sudo apt-mark unhold wazuh-agent
-  sudo DEBIAN_FRONTEND=noninteractive apt update
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$agent_ver
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$agent_ver > /dev/null 2>&1
   sudo apt-mark hold wazuh-agent
 }
 main "\$@"
@@ -69165,8 +70279,7 @@ function installKeila()
     return $retval
   fi
   sleep 3
-  KEILA_ADMIN_API_KEY=$(createProjectKeyKeila "$KEILA_ADMIN_EMAIL_ADDRESS" "$HOMESERVER_NAME")
-  updateConfigVar KEILA_ADMIN_API_KEY "$KEILA_ADMIN_API_KEY"
+  performIntegrationKeila
   addReadOnlyUserToDatabase Keila postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/keila/dbexport $KEILA_DATABASE_READONLYUSER $KEILA_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_KEILA.$HOMESERVER_DOMAIN {\n"
@@ -69315,10 +70428,11 @@ DB_URL=postgres://$KEILA_DATABASE_USER:$KEILA_DATABASE_USER_PASSWORD@keila-db/$K
 URL_HOST=$SUB_KEILA.$HOMESERVER_DOMAIN
 URL_SCHEMA=https
 MAILER_SMTP_HOST=$SMTP_HOSTNAME
-MAILER_SMTP_PORT=$SMTP_HOSTPORT
+MAILER_SMTP_PORT=587
 MAILER_SMTP_USER=$EMAIL_SMTP_EMAIL_ADDRESS
 MAILER_SMTP_PASSWORD=$EMAIL_SMTP_PASSWORD
-MAILER_SMTP_FROM_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
+MAILER_SMTP_FROM_EMAIL=$EMAIL_SMTP_EMAIL_ADDRESS
+MAILER_SMTP_FROM_NAME=$HOMESERVER_NAME
 MAILER_ENABLE_STARTTLS=true
 KEILA_USER=$KEILA_ADMIN_EMAIL_ADDRESS
 KEILA_PASSWORD=$KEILA_ADMIN_PASSWORD
@@ -69332,13 +70446,11 @@ KEILA_PUBLIC_URL=$SUB_KEILA.$HOMESERVER_DOMAIN
 EOFBA
 }
 
-function createProjectKeyKeila()
+function performIntegrationKeila()
 {
-  kla_username="$1"
-  kla_project_name="$2"
   local usr project_esc
-  usr=$(printf '%s' "$kla_username" | sed 's/\\/\\\\/g; s/"/\\"/g')
-  project_esc=$(printf '%s' "$kla_project_name" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  usr=$(printf '%s' "$KEILA_ADMIN_EMAIL_ADDRESS" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  project_esc=$(printf '%s' "$HOMESERVER_NAME" | sed 's/\\/\\\\/g; s/"/\\"/g')
   local elixir="import Ecto.Query
 admin = Keila.Auth.find_user_by_email(\"$usr\")
 unless admin, do: throw(:admin_not_found)
@@ -69347,6 +70459,31 @@ project = case project do
   %Keila.Projects.Project{} -> project
   nil -> {:ok, project} = Keila.Projects.create_project(admin.id, %{name: \"$project_esc\"}); project
 end
+sender = Keila.Repo.one(from s in Keila.Mailings.Sender, where: s.project_id == ^project.id)
+unless sender do
+  smtp_port = (System.get_env(\"MAILER_SMTP_PORT\") || \"587\") |> String.to_integer()
+  smtp_username = System.get_env(\"MAILER_SMTP_USER\")
+  smtp_password = System.get_env(\"MAILER_SMTP_PASSWORD\")
+  tls_mode = cond do
+    System.get_env(\"MAILER_ENABLE_STARTTLS\") in [\"1\", \"true\", \"TRUE\"] -> \"starttls\"
+    System.get_env(\"MAILER_ENABLE_SSL\") in [\"1\", \"true\", \"TRUE\"] -> \"tls\"
+    true -> \"\"
+  end
+  {:ok, _sender} = Keila.Mailings.create_sender(project.id, %{
+    name: project.name,
+    from_email: System.fetch_env!(\"MAILER_SMTP_FROM_EMAIL\"),
+    from_name: System.get_env(\"MAILER_SMTP_FROM_NAME\") || project.name,
+    config: %{
+      type: \"smtp\",
+      smtp_relay: System.fetch_env!(\"MAILER_SMTP_HOST\"),
+      smtp_port: smtp_port,
+      smtp_username: smtp_username,
+      smtp_password: smtp_password,
+      smtp_tls_mode: tls_mode,
+      smtp_auth_method: if smtp_username && smtp_password, do: \"password\", else: \"none\"
+    }
+  })
+end
 Keila.Repo.delete_all(
   from t in Keila.Auth.Token,
   where: t.user_id == ^admin.id and t.scope == \"api\" and
@@ -69354,7 +70491,8 @@ Keila.Repo.delete_all(
 )
 {:ok, key} = Keila.Auth.create_api_key(admin.id, project.id, \"$project_esc\")
 IO.puts(key.key)"
-  docker exec keila-app /opt/app/bin/keila rpc "$elixir" 2>/dev/null | grep -E '^[A-Za-z0-9_-]{43}$'
+  KEILA_ADMIN_API_KEY=$(docker exec keila-app /opt/app/bin/keila rpc "$elixir" 2>/dev/null | grep -E '^[A-Za-z0-9_-]{43}$')
+  updateConfigVar KEILA_ADMIN_API_KEY "$KEILA_ADMIN_API_KEY"
 }
 
 function performUpdateKeila()
@@ -70609,7 +71747,7 @@ function performWorkflowsIntegrationPaperless()
   jsonbody="{\"name\": \"$LDAP_PRIMARY_USER_GROUP_NAME\", \"permissions\": [\"view_logentry\",\"view_group\",\"view_user\",\"add_correspondent\",\"change_correspondent\",\"delete_correspondent\",\"view_correspondent\",\"add_document\",\"change_document\",\"delete_document\",\"view_document\",\"view_documenttype\",\"add_note\",\"change_note\",\"delete_note\",\"view_note\",\"add_savedview\",\"change_savedview\",\"delete_savedview\",\"view_savedview\",\"add_sharelink\",\"change_sharelink\",\"delete_sharelink\",\"view_sharelink\",\"add_tag\",\"change_tag\",\"delete_tag\",\"view_tag\",\"add_uisettings\",\"change_uisettings\",\"delete_uisettings\",\"view_uisettings\",\"view_workflow\",\"add_mailaccount\",\"change_mailaccount\",\"delete_mailaccount\",\"view_mailaccount\",\"add_mailrule\",\"change_mailrule\",\"delete_mailrule\",\"view_mailrule\",\"add_processedmail\",\"change_processedmail\",\"delete_processedmail\",\"view_processedmail\"]}"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   pap_doc_types=(
-    "Invoice" "Receipt" "Contract" "Bank Statement" "Taxes" "Form" "Policy" "Identification" "Medical Record" "Pay Stub" "Certificate" "Quote"
+    "Invoice" "Receipt" "Contract" "Bank Statement" "Taxes" "Policy" "Identification" "Medical Record" "Pay Stub" "Certificate" "Quote" "Form" "Report" "Other"
   )
   for cur_doc_type in "${pap_doc_types[@]}";
   do
@@ -70618,10 +71756,6 @@ function performWorkflowsIntegrationPaperless()
       -H "Content-Type: application/json" \
       -d "{\"name\": \"$cur_doc_type\", \"matching_algorithm\": 6, \"match\": \"\"}")
   done
-  report_doc_type=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
-      -H "Authorization: Token $PAPERLESS_API_TOKEN" \
-      -H "Content-Type: application/json" \
-      -d "{\"name\": \"Report\", \"matching_algorithm\": 6, \"match\": \"\"}" | jq -r '.id')
   manual_doc_type=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
       -H "Authorization: Token $PAPERLESS_API_TOKEN" \
       -H "Content-Type: application/json" \
@@ -70669,12 +71803,24 @@ function performWorkflowsIntegrationPaperless()
   fi
   jsonbody="{ \"name\": \"sharedconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/SharedConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 2, \"assign_owner\": $PAPERLESS_ADMIN_ID, \"assign_view_users\": [], \"assign_view_groups\": [ 1 ], \"assign_change_users\": [], \"assign_change_groups\": [ 1 ], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"admin_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/$NEXTCLOUD_ADMIN_USERNAME/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
+  jsonbody="{ \"name\": \"sharedemail\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 2, \"assign_owner\": null, \"assign_view_users\": [], \"assign_view_groups\": [ 1 ], \"assign_change_users\": [], \"assign_change_groups\": [ 1 ], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
+  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  jsonbody="{ \"name\": \"admin_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/$NEXTCLOUD_ADMIN_USERNAME/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{ \"name\": \"admin_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/$SPEAKR_ADMIN_USERNAME/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID, \"assign_document_type\": $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"assign_kb\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_has_any_document_types\": [$report_doc_type, $manual_doc_type, $research_doc_type, $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID] }, { \"type\": 3, \"filter_has_any_document_types\": [$report_doc_type, $manual_doc_type, $research_doc_type, $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID] } ], \"actions\": [ { \"type\": 1, \"assign_tags\": [ $PAPERLESS_KNOWLEDGEBASE_TAG_ID ] } ] }"
+  jsonbody="{ \"name\": \"assign_kb\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_has_any_document_types\": [$manual_doc_type, $research_doc_type, $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID] }, { \"type\": 3, \"filter_has_any_document_types\": [$manual_doc_type, $research_doc_type, $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID] } ], \"actions\": [ { \"type\": 1, \"assign_tags\": [ $PAPERLESS_KNOWLEDGEBASE_TAG_ID ] } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  jsonbody="{ \"name\": \"trigger_ai\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_filename\": null, \"matching_algorithm\": 0 } ], \"actions\": [ { \"type\": 4,\"order\": 0, \"webhook\": { \"url\": \"http://paperless-ai:3000/api/webhook/document\", \"as_json\": true, \"params\": { \"url\": \"{{doc_url}}\" }, \"headers\": { \"x-api-key\": \"$PAPERLESS_AI_API_KEY\" }, \"include_document\": false } } ] }"
+  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  jsonbody="{ \"name\": \"${EMAIL_JOINT_USERNAME} Email\", \"imap_server\": \"$SMTP_HOSTNAME\", \"imap_port\": 143, \"imap_security\": 3, \"username\": \"$EMAIL_JOINT_EMAIL_ADDRESS\", \"password\": \"$EMAIL_JOINT_PASSWORD\", \"account_type\": 1, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true }"
+  mail_account_id=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  if [ -n "$mail_account_id" ]; then
+    jsonbody="{ \"name\": \"${EMAIL_JOINT_USERNAME} Email Personal\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true, \"stop_processing\": false }"
+    curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+    jsonbody="{ \"name\": \"${EMAIL_JOINT_USERNAME} Email Work\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Work\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true, \"stop_processing\": false }"
+    curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  fi
 }
 
 function getPaperlessIDFromUsername()
@@ -94703,10 +95849,8 @@ function installBeszel()
     BESZEL_INIT_ENV=true
     updateConfigVar BESZEL_INIT_ENV $BESZEL_INIT_ENV
   fi
-  sendEmail -s "$FMLNAME_BESZEL_APP Install Instructions" -b "There is one extra action that you must perform manually to enable the Beszel agent on your local system. Here are the steps:\n\n\t1. Log in to the Beszel web UI using the admin credentials (https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN).\n\t2. Go to Settings (press the gear button on top right of window), then to Tokens & Fingerprints.\n\t3. Under the Universal token section, move the toggle button to the right. You should see a UUID for the token, i.e. something like 9df4ceb0-af96-413a-ab2b-7246cca7422c, etc.\n\t4. Select this generated value and copy it to the clipboard.\n\t5. Go to Portainer (https://$SUB_PORTAINER.$HOMESERVER_DOMAIN), and open up the beszel stack.\n\t6. Select the Editor tab, then in the docker-compose area scoll halfway down to the beszel-agent container.\n\t7. At the end of that block is an environment section with a single variable, TOKEN. It should be assigned to nothing, i.e. - TOKEN=. Paste the generated token from the clipboard on the RHS, i.e. it should then look like this: - TOKEN=9df4ceb0-af96-413a-ab2b-7246cca7422c\n\t8. After pasting the value, scroll down and press the Update the stack button. Your local system should now be connected to the hub. Go back to Beszel and refresh the page (click the word Beszel on top left corner of window to go to the home landing page)." -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
   sleep 3
   beszel_app_key=$(sudo ssh-keygen -y -f $HSHQ_STACKS_DIR/beszel/hubdata/id_ed25519)
-  #beszel_app_token=$(sqlite3 $HSHQ_STACKS_DIR/beszel/hubdata/data.db "select token from fingerprints limit 1;")
   updateStackEnv beszel modFunBeszelUpdateKeyToken > /dev/null 2>&1
   if [ -z "$FMLNAME_BESZEL_APP" ]; then
     set +e
@@ -94733,6 +95877,7 @@ function installBeszel()
     insertEnableSvcAll beszel "$FMLNAME_BESZEL_APP" $USERTYPE_BESZEL_APP "https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN" "beszel.png" "$(getHeimdallOrderFromSub $SUB_BESZEL_APP $USERTYPE_BESZEL_APP)"
     restartAllCaddyContainers
   fi
+  updateStackEnv beszel modFunBeszelUpdateAgentToken > /dev/null 2>&1
 }
 
 function outputConfigBeszel()
@@ -94781,8 +95926,6 @@ services:
       - v-beszel-agentdata:/var/lib/beszel-agent
       - v-beszel-socket:/beszel_socket
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:
-      - TOKEN=
 
 volumes:
   v-beszel-hubdata:
@@ -94823,12 +95966,39 @@ HUB_URL=http://127.0.0.1:8090
 USER_EMAIL=$BESZEL_ADMIN_EMAIL_ADDRESS
 USER_PASSWORD=$BESZEL_ADMIN_PASSWORD
 KEY=
+TOKEN=
 EOFMT
 }
 
 function modFunBeszelUpdateKeyToken()
 {
   sed -i "s|^KEY=.*|KEY=${beszel_app_key}|g" $HOME/beszel.env
+}
+
+function modFunBeszelUpdateAgentToken()
+{
+  curTries=1
+  maxTries=30
+  is_success=false
+  while [ $curTries -le $maxTries ]
+  do
+    if curl -sf "https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN/api/beszel/first-run" >/dev/null 2>&1; then
+      is_success=true
+      break
+    fi
+    sleep 3
+    ((curTries++))
+  done
+  if ! [ "$is_success" = "true" ]; then
+    echo "Failed to configure agent token, returning..."
+    return
+  fi
+  AUTH_TOKEN=$(curl -s -X POST "https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN/api/collections/users/auth-with-password" \
+    -H "Content-Type: application/json" \
+    -d "{\"identity\":\"$BESZEL_ADMIN_EMAIL_ADDRESS\",\"password\":\"$BESZEL_ADMIN_PASSWORD\"}" | jq -r '.token')
+  AGENT_TOKEN=$(curl -s "https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN/api/beszel/universal-token?enable=1&permanent=1" \
+    -H "Authorization: Bearer $AUTH_TOKEN" | jq -r '.token')
+  sed -i "s|^TOKEN=.*|TOKEN=${AGENT_TOKEN}|g" $HOME/beszel.env
 }
 
 function performUpdateBeszel()
@@ -94845,10 +96015,16 @@ function performUpdateBeszel()
       image_update_map[1]="mirror.gcr.io/henrygd/beszel-agent:0.13.2,mirror.gcr.io/henrygd/beszel-agent:0.17.0"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/henrygd/beszel:0.17.0,mirror.gcr.io/henrygd/beszel-agent:0.17.0
-      image_update_map[0]="mirror.gcr.io/henrygd/beszel:0.17.0,mirror.gcr.io/henrygd/beszel:0.17.0"
-      image_update_map[1]="mirror.gcr.io/henrygd/beszel-agent:0.17.0,mirror.gcr.io/henrygd/beszel-agent:0.17.0"
+      image_update_map[0]="mirror.gcr.io/henrygd/beszel:0.17.0,ghcr.io/henrygd/beszel/beszel:0.19.0"
+      image_update_map[1]="mirror.gcr.io/henrygd/beszel-agent:0.17.0,ghcr.io/henrygd/beszel/beszel-agent:0.19.0"
+    ;;
+    3)
+      newVer=v3
+      curImageList=ghcr.io/henrygd/beszel/beszel:0.19.0,ghcr.io/henrygd/beszel/beszel-agent:0.19.0
+      image_update_map[0]="ghcr.io/henrygd/beszel/beszel:0.19.0,ghcr.io/henrygd/beszel/beszel:0.19.0"
+      image_update_map[1]="ghcr.io/henrygd/beszel/beszel-agent:0.19.0,ghcr.io/henrygd/beszel/beszel-agent:0.19.0"
     ;;
     *)
       is_upgrade_error=true
@@ -114023,7 +115199,7 @@ general_settings:
 litellm_settings:
   turn_off_message_logging: False
   drop_params: True
-  callbacks: []
+  callbacks: ["llm_logs", "prometheus"]
   success_callback: []
   num_retries: 5
   request_timeout: 900
@@ -114041,12 +115217,19 @@ litellm_settings:
     port: os.environ/REDIS_PORT
     supported_call_types: []
 router_settings:
-  routing_strategy: usage-based-routing-v2 
+  routing_strategy: usage-based-routing-v2
   redis_host: os.environ/REDIS_HOST
   redis_password: os.environ/REDIS_PASSWORD
   redis_port: os.environ/REDIS_PORT
   enable_pre_call_checks: true
-  model_group_alias: {"my-special-fake-model-alias-name": "fake-openai-endpoint-3"} 
+  model_group_alias: {"my-special-fake-model-alias-name": "fake-openai-endpoint-3"}
+callback_settings:
+  llm_logs:
+    callback_type: generic_api
+    endpoint: http://alloy-web:3101/loki/api/v1/raw
+    log_format: ndjson
+    headers:
+      Authorization: "Bearer $ALLOY_ADMIN_PASSWORD"
 EOFMT
 }
 
@@ -116744,7 +117927,6 @@ function installEmailClassifierAI()
     echo "ERROR: Formal name is empty, returning..."
     return 1
   fi
-  addUserEmailClassifierAI "$EMAIL_ADMIN_EMAIL_ADDRESS" "$EMAIL_ADMIN_PASSWORD" "Consume" "Processed"
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_EMAILCLASSIFIERAI_APP.$HOMESERVER_DOMAIN {\n"
@@ -117699,6 +118881,15 @@ function performAutoKBInstallIntegrations()
   akbBody="${akbRes%$'\n'*}"
   [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Paperless source failed: $akbBody" >&2; return 1; }
   PAPERLESS_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
+  docker ps | grep paperless-app > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    AKB_WORKFLOW=$(curl -s https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN")
+    if ! [ -z "$AKB_WORKFLOW" ]; then
+      NEW_ACTION="{ \"type\": 4, \"order\": 99, \"webhook\": { \"url\": \"http://autokb-web/api/subscriptions/$PAPERLESS_SUB_ID/trigger\", \"headers\": { \"Authorization\": \"Bearer $AUTOKB_WEBHOOK_API_KEY\" }, \"include_document\": false } }"
+      UPDATED_WF=$(echo "$AKB_WORKFLOW" | jq --argjson action "$NEW_ACTION" '.actions += [$action]')
+      echo "$UPDATED_WF" | curl -X PUT https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @- > /dev/null 2>&1
+    fi
+  fi
   docker ps | grep -q openwebui-app > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     return
@@ -117766,6 +118957,12 @@ function addSharedPipelinesAutoKB()
   akbBody="${akbRes%$'\n'*}"
   [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Paperless source failed: $akbBody" >&2; return 1; }
   PAPERLESS_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
+  docker ps | grep paperless-app > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    jsonbody="{ \"name\": \"notify_akb\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_filename\": null, \"matching_algorithm\": 0 }, { \"type\": 3, \"filter_filename\": null, \"matching_algorithm\": 0 } ], \"actions\": [ { \"type\": 4,\"order\": 0, \"webhook\": { \"url\": \"http://autokb-web/api/subscriptions/$PAPERLESS_SUB_ID/trigger\", \"headers\": { \"Authorization\": \"Bearer $AUTOKB_WEBHOOK_API_KEY\" }, \"include_document\": false } } ] }"
+    PAPERLESS_AKB_WORKFLOW_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+    updateConfigVar PAPERLESS_AKB_WORKFLOW_ID "$PAPERLESS_AKB_WORKFLOW_ID"
+  fi
   echo "Creating Nextcloud/Twenty contact sync subscription..."
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
@@ -123192,7 +124389,7 @@ if [ -f \$HSHQ_NEW_LIB_SCRIPT ]; then
   fi
   performPreUpdateCheck
   if [ \$? -eq 0 ]; then
-    mv \$HSHQ_NEW_LIB_SCRIPT \$HSHQ_LIB_SCRIPT
+    sudo mv \$HSHQ_NEW_LIB_SCRIPT \$HSHQ_LIB_SCRIPT
     is_any_updated=true
   else
     performExitFunctions false
@@ -124522,8 +125719,8 @@ EOFSC
       "type": "text",
       "max_length": "64",
       "regex": {
-        "pattern": "^[a-z0-9][a-z0-9-]+\$",
-        "description": "Only lowercase letters, numbers, and/or hyphens"
+        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9-]+\$",
+        "description": "Only letters, numbers, and/or hyphens"
       },
       "ui": {
         "width_weight": 2,
@@ -124632,8 +125829,8 @@ EOFSC
       "type": "text",
       "max_length": "64",
       "regex": {
-        "pattern": "^[a-z0-9][a-z0-9-]+\$",
-        "description": "Only lowercase letters, numbers, and/or hyphens"
+        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9-]+\$",
+        "description": "Only letters, numbers, and/or hyphens"
       },
       "ui": {
         "width_weight": 2,
@@ -126044,6 +127241,208 @@ EOFSC
       "secure": false,
       "pass_as": "env_variable",
       "env_var": "mydisreason"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/transferVPN.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+read -r -s -p "$rs_cur_password_prompt" rs_cur_password
+if [ -z "\$rs_cur_password" ]; then
+  read -r -t 5 -s -p "" rs_cur_password
+fi
+if [ -z "\$rs_cur_password" ]; then
+  rs_cur_password=""
+  cat <<< "ERROR: Invalid RelayServer current password, please try again." 1>&2
+  exit 3
+fi
+echo "ok"
+read -r -s -p "$rs_new_password_prompt" rs_new_password
+if [ -z "\$rs_new_password" ]; then
+  read -r -t 5 -s -p "" rs_new_password
+fi
+if [ -z "\$rs_new_password" ]; then
+  rs_new_password=""
+  cat <<< "ERROR: Invalid RelayServer new password, please try again." 1>&2
+  exit 3
+fi
+echo "ok"
+echo "Obtaining networkchecks lock..."
+tgLock="\$(tryGetLock networkchecks Script-server-transferVPN)"
+if ! [ "\$tgLock" = "true" ]; then
+  checkRes="\$(getLockOpenMsg networkchecks)"
+  totLockAttempts=\$(getIncrementLockAttempts networkchecks)
+  strErr="Cannot obtain networkchecks lock(\$totLockAttempts): \$checkRes, exiting..."
+  exit
+fi
+setSystemState $SS_INSTALLING
+echo "Loading environment..."
+decryptConfigFileAndLoadEnvNoPrompts
+rs_cur_username=\$(getArgumentValue rs_cur_username "\$@")
+rs_external_ip=\$(getArgumentValue rs_external_ip "\$@")
+rs_cur_ssh_port=\$(getArgumentValue rs_cur_ssh_port "\$@")
+rs_new_ssh_port=\$(getArgumentValue rs_new_ssh_port "\$@")
+webTransferHostedVPN
+set +e
+performExitFunctions false
+setSystemState $SS_RUNNING
+releaseLock networkchecks "Script-server-transferVPN" false
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/transferVPN.json
+{
+  "name": "16 Transfer Hosted VPN",
+  "script_path": "conf/scripts/transferVPN.sh",
+  "description": "Transfer hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will transfer your RelayServer to another host. It will use the backup that was automatically created during original installation and synced with syncthing. Your username on the new host MUST match the username of the original installation. If you enter root, then that user will automatically be created for you.<br/><br/>The transfer proces takes around 7-8 minutes to complete. About halfway through, the RelayServer will be restarted, and you will be notified of a good time to update your DNS records to the IP address of this new server. For minimal downtime, ensure you are logged into to your domain name provider and ready to modify those records when the time comes.<br/><br/>When the RelayServer is fully prepped, you will be given a final prompt to either continue or cancel. Ensure to review the logs for any errors, and if everything looks fine, the enter continue to complete the process.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "group": "$group_id_mynetwork",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
+    },
+    {
+      "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
+    },
+    {
+      "name": "CURRENT Linux username",
+      "required": true,
+      "param": "-rs_cur_username=",
+      "same_arg_param": true,
+      "type": "text",
+      "max_length": "64",
+      "regex": {
+        "pattern": "^[a-z][a-z0-9_-]+\$",
+        "description": "Only letters, numbers, hyphens, underscores."
+      },
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": "root",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "RelayServer IP address",
+      "required": true,
+      "param": "-rs_external_ip=",
+      "same_arg_param": true,
+      "type": "ip4",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "CURRENT Linux password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "param": "-rs_cur_password=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$rs_cur_password_prompt"
+    },
+    {
+      "name": "NEW Linux password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex_w_min16",
+        "description": "$password_text_description_w_min16"
+      },
+      "required": true,
+      "param": "-rs_new_password=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "default": "",
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$rs_new_password_prompt"
+    },
+    {
+      "name": "CURRENT SSH port",
+      "required": true,
+      "param": "-rs_cur_ssh_port=",
+      "same_arg_param": true,
+      "type": "int",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": "22",
+      "min": "1",
+      "max": "65535",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "NEW SSH port",
+      "required": true,
+      "param": "-rs_new_ssh_port=",
+      "same_arg_param": true,
+      "type": "int",
+      "ui": {
+        "width_weight": 2
+      },
+      "default": "$SSH_PORT",
+      "min": "1024",
+      "max": "65535",
+      "secure": false,
+      "pass_as": "argument"
     }
   ]
 }
@@ -131711,8 +133110,28 @@ function outputCaddyHeaders()
   not remote_ip {\$CADDY_HSHQ_PRIVATE_IPS}
 }
 
+($CADDY_SNIPPET_LOG_TRUE) {
+  @aclog_filter {
+    remote_ip $DOCKER_NETWORK_RESERVED_RANGE
+  }
+  log_skip @aclog_filter
+  log {
+    output file /logs/{\$CADDY_STACK_NAME}-access.log {
+      roll_size 100MiB
+      roll_interval 168h
+      roll_keep 8
+      roll_keep_for 2160h
+      roll_local_time
+    }
+  }
+}
+
+($CADDY_SNIPPET_LOG_FALSE) {
+}
+
 ($CADDY_SNIPPET_RIP) {
   @subnet remote_ip {\$CADDY_HSHQ_CA_SUBNET}
+  import {\$ENABLE_LOGGING:$CADDY_SNIPPET_LOG_FALSE}
 }
 
 EOFCF
@@ -131797,6 +133216,7 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-Home:/config/CaddyfileBody
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/logs
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/scripts:/scripts:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
@@ -131865,6 +133285,8 @@ CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 $add_ri
 CADDY_HSHQ_PRIVATE_IPS=\${$priv_ip_net} $(getPrivateIPRangesCaddy $bind_ip)
 CADDY_HSHQ_CA_URL=$ca_url
 CADDY_HSHQ_BIND_IP=\${$ipVarName}
+ENABLE_LOGGING=$CADDY_SNIPPET_LOG_FALSE
+CADDY_STACK_NAME=$caddy_net_name
 EOFCE
       ;;
     primary)
@@ -131900,6 +133322,7 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-Primary:/config/CaddyfileBody
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/logs
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/scripts:/scripts:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
@@ -131995,6 +133418,7 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-Primary:/config/CaddyfileBody
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/logs
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/scripts:/scripts:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
@@ -132053,6 +133477,8 @@ CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
 CADDY_HSHQ_PRIVATE_IPS=
 CADDY_HSHQ_CA_URL=$ca_url
 CADDY_HSHQ_BIND_IP=$bind_ip
+ENABLE_LOGGING=$CADDY_SNIPPET_LOG_FALSE
+CADDY_STACK_NAME=$caddy_net_name
 EOFCE
       ;;
     other)
@@ -132085,6 +133511,7 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-$caddy_net_name:/config/CaddyfileBody
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/logs
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/lecerts:/lecerts:ro
@@ -132132,6 +133559,8 @@ CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
 CADDY_HSHQ_PRIVATE_IPS=
 CADDY_HSHQ_CA_URL=$ca_url
 CADDY_HSHQ_BIND_IP=$bind_ip
+ENABLE_LOGGING=$CADDY_SNIPPET_LOG_FALSE
+CADDY_STACK_NAME=$caddy_net_name
 EOFCE
       ;;
     *)

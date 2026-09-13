@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=25
+HSHQ_WRAPPER_SCRIPT_VERSION=26
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -331,7 +331,7 @@ EOF
     exit 1
   fi
   if ! [ -f $HSHQ_LIB_SCRIPT ]; then
-    mv $HSHQ_NEW_LIB_SCRIPT $HSHQ_LIB_SCRIPT
+    sudo mv $HSHQ_NEW_LIB_SCRIPT $HSHQ_LIB_SCRIPT
   elif [ "$is_download_lib" = "true" ] || [ "$is_apply_pending" = "true" ]; then
     source $HSHQ_NEW_LIB_SCRIPT lib
     for curSource in $HSHQ_SCRIPTS_DIR/source/*; do
@@ -380,7 +380,7 @@ EOF
         fi
         performPreUpdateCheck
         if [ $? -eq 0 ]; then
-          mv $HSHQ_NEW_LIB_SCRIPT $HSHQ_LIB_SCRIPT
+          sudo mv $HSHQ_NEW_LIB_SCRIPT $HSHQ_LIB_SCRIPT
           source $HSHQ_LIB_SCRIPT update
           showMessageBox "Update Complete" "All updates have been successfully applied."
           releaseAllLocks false
@@ -392,7 +392,7 @@ EOF
         fi
       fi
     else
-      mv $HSHQ_NEW_LIB_SCRIPT $HSHQ_LIB_SCRIPT
+      sudo mv $HSHQ_NEW_LIB_SCRIPT $HSHQ_LIB_SCRIPT
     fi
   fi
   if ! [ -f $HSHQ_LIB_SCRIPT ]; then
@@ -611,7 +611,7 @@ function checkDownloadLib()
   echo "Source code verified!"
   rm -f $HSHQ_NEW_LIB_SCRIPT
   chmod 644 $HSHQ_LIB_TMP
-  mv $HSHQ_LIB_TMP $HSHQ_NEW_LIB_SCRIPT
+  sudo mv $HSHQ_LIB_TMP $HSHQ_NEW_LIB_SCRIPT
   is_download_lib=true
 }
 
