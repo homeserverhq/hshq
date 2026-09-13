@@ -13887,6 +13887,7 @@ function releaseLock()
 }
 
 EOFUS
+  chmod 0444 $HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME
 }
 
 function getHSHQScriptOpenMsg()
@@ -24662,6 +24663,7 @@ function version239Update()
   set +e
   sudo chown -R $USERID:82 $HSHQ_STACKS_DIR/shared/KnowledgeBases
   sudo chown $USERID:82 $HSHQ_STACKS_DIR/shared
+  chmod 0444 $HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME
   CADDY_SNIPPET_LOG_TRUE=log_true
   CADDY_SNIPPET_LOG_FALSE=log_false
   sudo sqlite3 $HSHQ_DB "PRAGMA table_info(hsvpn_connections);" | grep -q "VPNRoutingTable" || sudo sqlite3 $HSHQ_DB "ALTER TABLE hsvpn_connections ADD COLUMN VPNRoutingTable integer;"
@@ -24714,7 +24716,6 @@ function version239Update()
   done
   performClearIPTables true
   checkUpdateAllIPTables versionUpdate
-  # Add logging mounts to caddy compose files
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo "========================================================================"
     echo "  Performing updates on RelayServer."
@@ -24788,8 +24789,8 @@ main "\\\$@"
 EOFPU
   sudo chmod 500 \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/wgupdown.sh
   sudo sed -i "s/^AllowedIPs =.*/AllowedIPs = 10.0.0.0\/8/" \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/clientdns/rsClientDNS.conf
-  #startStopStack clientdns stop
-  #startStopStack clientdns start
+  startStopStack clientdns stop
+  startStopStack clientdns start
   sudo iptables -t nat -D POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $PRIMARY_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE > /dev/null 2>&1
   echo "Updating RelayServer host, please wait..."
   sudo apt update > /dev/null 2>&1
@@ -24964,6 +24965,9 @@ function getStackID()
 {
   stackID="NA"
   stackName=\$1
+  if [ -z "\$PORTAINER_TOKEN" ]; then
+    setPortainerToken
+  fi
   qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":1} "Authorization: Bearer \$PORTAINER_TOKEN")
   for row in \$(echo "\${qry}" | jq -r '.[] | @base64'); do
     _jq()
@@ -24984,6 +24988,9 @@ function startStopStack()
 {
   stackName=\$1
   startStop=\$2
+  if [ -z "\$PORTAINER_TOKEN" ]; then
+    setPortainerToken
+  fi
   stackID=\$(getStackID \$stackName)
   http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop endpointId==1 "Authorization: Bearer \$PORTAINER_TOKEN" > /dev/null
 }
@@ -24993,6 +25000,9 @@ function startStopStackByID()
   stackID=\$1
   startStop=\$2
   set +e
+  if [ -z "\$PORTAINER_TOKEN" ]; then
+    setPortainerToken
+  fi
   sss_numTries=1
   sss_totalTries=5
   sss_retVal=1
@@ -25029,6 +25039,9 @@ function updateStackByID()
   update_stack_id=\$2
   update_compose_file=\$3
   update_env_file=\$4
+  if [ -z "\$PORTAINER_TOKEN" ]; then
+    setPortainerToken
+  fi
   echo "\$(createStackJson \$update_stack_name \$update_compose_file "\$update_env_file")" > \$HOME/\${update_stack_name}-json.tmp
   usid_numTries=1
   usid_totalTries=5
@@ -25057,6 +25070,9 @@ function installStack()
   envfile=\$4
   installLogNotify "Installing Stack (\$stack_name)"
   sudo -v
+  if [ -z "\$PORTAINER_TOKEN" ]; then
+    setPortainerToken
+  fi
   echo
   echo "Creating stack: \$stack_name"
   echo "\$(createStackJson \$stack_name \$HOME/\$stack_name-compose.yml "\$envfile")" > \$HOME/\$stack_name-json.tmp
