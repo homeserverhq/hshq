@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=240
+HSHQ_LIB_SCRIPT_VERSION=241
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -31747,8 +31747,7 @@ function loadPinnedDockerImages()
   IMG_POSTGRES=mirror.gcr.io/postgres:15.0-bullseye
   IMG_REDIS=mirror.gcr.io/valkey/valkey:alpine3.23
   IMG_ALPINE=mirror.gcr.io/alpine:3.22.1
-  IMG_MINIO=mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
-  IMG_MINIO_CLIENT=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+  IMG_MINIO=ghcr.io/homeserverhq/minio:v1.0
   IMG_MONGODB=mirror.gcr.io/mongo:8.0.13
   IMG_FRAPPE_BENCH=mirror.gcr.io/frappe/bench:v5.25.9
 
@@ -32259,7 +32258,7 @@ function getScriptStackVersion()
     adminer)
       echo "v2" ;;
     budibase)
-      echo "v2" ;;
+      echo "v3" ;;
     audiobookshelf)
       echo "v2" ;;
     standardnotes)
@@ -32271,7 +32270,7 @@ function getScriptStackVersion()
     wekan)
       echo "v2" ;;
     revolt)
-      echo "v2" ;;
+      echo "v3" ;;
     frappe-hr)
       echo "v1" ;;
     minthcm)
@@ -32279,19 +32278,19 @@ function getScriptStackVersion()
     cloudbeaver)
       echo "v2" ;;
     twenty)
-      echo "v5" ;;
+      echo "v6" ;;
     odoo)
       echo "v2" ;;
     calcom)
       echo "v2" ;;
     rallly)
-      echo "v3" ;;
+      echo "v4" ;;
     easyappointments)
       echo "v1" ;;
     openproject)
-      echo "v5" ;;
+      echo "v6" ;;
     zammad)
-      echo "v3" ;;
+      echo "v4" ;;
     zulip)
       echo "v2" ;;
     killbill)
@@ -32299,7 +32298,7 @@ function getScriptStackVersion()
     invoiceshelf)
       echo "v1" ;;
     invoiceninja)
-      echo "v3" ;;
+      echo "v4" ;;
     dolibarr)
       echo "v4" ;;
     n8n)
@@ -32365,11 +32364,11 @@ function getScriptStackVersion()
     khoj)
       echo "v1" ;;
     lobechat)
-      echo "v1" ;;
+      echo "v2" ;;
     invokeai)
       echo "v1" ;;
     ragflow)
-      echo "v3" ;;
+      echo "v4" ;;
     tabbyml)
       echo "v1" ;;
     deepwikiopen)
@@ -32377,19 +32376,19 @@ function getScriptStackVersion()
     docling)
       echo "v2" ;;
     dify)
-      echo "v1" ;;
+      echo "v2" ;;
     mindsdb)
       echo "v1" ;;
     watercrawl)
-      echo "v1" ;;
+      echo "v2" ;;
     flowise)
-      echo "v1" ;;
+      echo "v2" ;;
     surfsense)
       echo "v1" ;;
     nocodb)
-      echo "v1" ;;
+      echo "v2" ;;
     ente)
-      echo "v1" ;;
+      echo "v2" ;;
     morphic)
       echo "v1" ;;
     opennotebook)
@@ -32427,7 +32426,7 @@ function getScriptStackVersion()
     litellm)
       echo "v2" ;;
     langfuse)
-      echo "v2" ;;
+      echo "v3" ;;
     skyvern)
       echo "v1" ;;
     wger)
@@ -32946,7 +32945,6 @@ function pullCommonImages()
   pullImage $IMG_NGINX
   pullImage $IMG_ALPINE
   pullImage $IMG_MINIO
-  pullImage $IMG_MINIO_CLIENT
   pullImage $IMG_MONGODB
 }
 
@@ -43591,7 +43589,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_BUDIBASE_WORKER
       ;;
     "budibase-minio")
-      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      container_image=ghcr.io/homeserverhq/minio:v1.0
       ;;
     "budibase-proxy")
       container_image=$IMG_BUDIBASE_PROXY
@@ -43645,7 +43643,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/rabbitmq:4.1.4
       ;;
     "revolt-minio")
-      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+      container_image=ghcr.io/homeserverhq/minio:v1.0
       ;;
     "revolt-caddy")
       container_image=mirror.gcr.io/caddy:2.10.0
@@ -43708,7 +43706,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/valkey/valkey:alpine3.23
       ;;
     "twenty-minio")
-      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      container_image=ghcr.io/homeserverhq/minio:v1.0
       ;;
     "twenty-mcp")
       container_image=$IMG_TWENTY_MCP
@@ -43735,7 +43733,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_RALLLY_APP
       ;;
     "rallly-minio")
-      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      container_image=ghcr.io/homeserverhq/minio:v1.0
       ;;
     "easyappointments-db")
       container_image=mirror.gcr.io/mariadb:10.7.3
@@ -43762,7 +43760,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/memcached:1.6.45-alpine
       ;;
     "openproject-minio")
-      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      container_image=ghcr.io/homeserverhq/minio:v1.0
       ;;
     "openproject-mcp")
       container_image=$IMG_OPENPROJECT_MCP
@@ -43798,7 +43796,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/elasticsearch:9.2.2
       ;;
     "zammad-minio")
-      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      container_image=ghcr.io/homeserverhq/minio:v1.0
       ;;
     "zulip-db")
       container_image=$IMG_ZULIP_DB
@@ -43849,7 +43847,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/redis:8.4.0-bookworm
       ;;
     "invoiceninja-minio")
-      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      container_image=ghcr.io/homeserverhq/minio:v1.0
       ;;
     "dolibarr-db")
       container_image=mirror.gcr.io/mariadb:10.7.3
@@ -44098,7 +44096,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/valkey/valkey:alpine3.23
       ;;
     "lobechat-minio")
-      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      container_image=ghcr.io/homeserverhq/minio:v1.0
       ;;
     "invokeai-app")
       container_image=$IMG_INVOKEAI_APP
@@ -44116,7 +44114,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_RAGFLOW_SANDBOX
       ;;
     "ragflow-minio")
-      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      container_image=ghcr.io/homeserverhq/minio:v1.0
       ;;
     "ragflow-redis")
       container_image=mirror.gcr.io/valkey/valkey:alpine3.23
@@ -44173,7 +44171,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/nginx:1.29.4-trixie
       ;;
     "dify-minio")
-      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      container_image=ghcr.io/homeserverhq/minio:v1.0
       ;;
     "mindsdb-db")
       container_image=mirror.gcr.io/postgres:16.9-bookworm
@@ -44206,7 +44204,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/nginx:1.29.3-alpine
       ;;
     "watercrawl-minio")
-      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      container_image=ghcr.io/homeserverhq/minio:v1.0
       ;;
     "watercrawl-redis")
       container_image=mirror.gcr.io/valkey/valkey:alpine3.23
@@ -44227,7 +44225,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/valkey/valkey:alpine3.23
       ;;
     "flowise-minio")
-      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      container_image=ghcr.io/homeserverhq/minio:v1.0
       ;;
     "surfsense-app")
       container_image=$IMG_SURFSENSE_APP
@@ -44242,7 +44240,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/valkey/valkey:alpine3.23
       ;;
     "nocodb-minio")
-      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      container_image=ghcr.io/homeserverhq/minio:v1.0
       ;;
     "ente-db")
       container_image=mirror.gcr.io/postgres:16.9-bookworm
@@ -44254,7 +44252,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_ENTE_WEB
       ;;
     "ente-minio")
-      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      container_image=ghcr.io/homeserverhq/minio:v1.0
       ;;
     "morphic-db")
       container_image=mirror.gcr.io/supabase/postgres:15.14.1.071
@@ -44449,7 +44447,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/clickhouse/clickhouse-server:25.8.28.1-alpine
       ;;
     "langfuse-minio")
-      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+      container_image=ghcr.io/homeserverhq/minio:v1.0
       ;;
     "langfuse-redis")
       container_image=mirror.gcr.io/valkey/valkey:alpine3.23
@@ -82724,13 +82722,24 @@ function performUpdateBudibase()
       image_update_map[6]="mirror.gcr.io/mariadb:12.0.2-ubi10,mirror.gcr.io/mariadb:12.0.2-ubi10"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/budibase/apps:3.23.36,mirror.gcr.io/budibase/worker:3.23.36,mirror.gcr.io/budibase/proxy:3.23.36,mirror.gcr.io/budibase/couchdb:v3.3.3-sqs-v2.1.1,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/mariadb:12.0.2-ubi10
       image_update_map[0]="mirror.gcr.io/budibase/apps:3.23.36,mirror.gcr.io/budibase/apps:3.23.36"
       image_update_map[1]="mirror.gcr.io/budibase/worker:3.23.36,mirror.gcr.io/budibase/worker:3.23.36"
       image_update_map[2]="mirror.gcr.io/budibase/proxy:3.23.36,mirror.gcr.io/budibase/proxy:3.23.36"
       image_update_map[3]="mirror.gcr.io/budibase/couchdb:v3.3.3-sqs-v2.1.1,mirror.gcr.io/budibase/couchdb:v3.3.3-sqs-v2.1.1"
-      image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/minio:v1.0"
+      image_update_map[5]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
+      image_update_map[6]="mirror.gcr.io/mariadb:12.0.2-ubi10,mirror.gcr.io/mariadb:12.0.2-ubi10"
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/budibase/apps:3.23.36,mirror.gcr.io/budibase/worker:3.23.36,mirror.gcr.io/budibase/proxy:3.23.36,mirror.gcr.io/budibase/couchdb:v3.3.3-sqs-v2.1.1,ghcr.io/homeserverhq/minio:v1.0,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/mariadb:12.0.2-ubi10
+      image_update_map[0]="mirror.gcr.io/budibase/apps:3.23.36,mirror.gcr.io/budibase/apps:3.23.36"
+      image_update_map[1]="mirror.gcr.io/budibase/worker:3.23.36,mirror.gcr.io/budibase/worker:3.23.36"
+      image_update_map[2]="mirror.gcr.io/budibase/proxy:3.23.36,mirror.gcr.io/budibase/proxy:3.23.36"
+      image_update_map[3]="mirror.gcr.io/budibase/couchdb:v3.3.3-sqs-v2.1.1,mirror.gcr.io/budibase/couchdb:v3.3.3-sqs-v2.1.1"
+      image_update_map[4]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
       image_update_map[5]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
       image_update_map[6]="mirror.gcr.io/mariadb:12.0.2-ubi10,mirror.gcr.io/mariadb:12.0.2-ubi10"
     ;;
@@ -85088,12 +85097,28 @@ function performUpdateRevolt()
       return
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/mongo:8.0.13,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/rabbitmq:4.1.4,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/caddy:2.10.0,ghcr.io/revoltchat/server:20250807-1,ghcr.io/revoltchat/bonfire:20250807-1,ghcr.io/revoltchat/client:master,ghcr.io/revoltchat/autumn:20250807-1,ghcr.io/revoltchat/january:20250807-1,ghcr.io/revoltchat/crond:20250807-1,ghcr.io/revoltchat/pushd:20250807-1
       image_update_map[0]="mirror.gcr.io/mongo:8.0.13,mirror.gcr.io/mongo:8.0.13"
       image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
       image_update_map[2]="mirror.gcr.io/rabbitmq:4.1.4,mirror.gcr.io/rabbitmq:4.1.4"
-      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,ghcr.io/homeserverhq/minio:v1.0"
+      image_update_map[4]="mirror.gcr.io/caddy:2.10.0,mirror.gcr.io/caddy:2.10.0"
+      image_update_map[5]="ghcr.io/revoltchat/server:20250807-1,ghcr.io/revoltchat/server:20250807-1"
+      image_update_map[6]="ghcr.io/revoltchat/bonfire:20250807-1,ghcr.io/revoltchat/bonfire:20250807-1"
+      image_update_map[7]="ghcr.io/revoltchat/client:master,ghcr.io/revoltchat/client:master"
+      image_update_map[8]="ghcr.io/revoltchat/autumn:20250807-1,ghcr.io/revoltchat/autumn:20250807-1"
+      image_update_map[9]="ghcr.io/revoltchat/january:20250807-1,ghcr.io/revoltchat/january:20250807-1"
+      image_update_map[10]="ghcr.io/revoltchat/crond:20250807-1,ghcr.io/revoltchat/crond:20250807-1"
+      image_update_map[11]="ghcr.io/revoltchat/pushd:20250807-1,ghcr.io/revoltchat/pushd:20250807-1"
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/mongo:8.0.13,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/rabbitmq:4.1.4,ghcr.io/homeserverhq/minio:v1.0,mirror.gcr.io/caddy:2.10.0,ghcr.io/revoltchat/server:20250807-1,ghcr.io/revoltchat/bonfire:20250807-1,ghcr.io/revoltchat/client:master,ghcr.io/revoltchat/autumn:20250807-1,ghcr.io/revoltchat/january:20250807-1,ghcr.io/revoltchat/crond:20250807-1,ghcr.io/revoltchat/pushd:20250807-1
+      image_update_map[0]="mirror.gcr.io/mongo:8.0.13,mirror.gcr.io/mongo:8.0.13"
+      image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[2]="mirror.gcr.io/rabbitmq:4.1.4,mirror.gcr.io/rabbitmq:4.1.4"
+      image_update_map[3]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
       image_update_map[4]="mirror.gcr.io/caddy:2.10.0,mirror.gcr.io/caddy:2.10.0"
       image_update_map[5]="ghcr.io/revoltchat/server:20250807-1,ghcr.io/revoltchat/server:20250807-1"
       image_update_map[6]="ghcr.io/revoltchat/bonfire:20250807-1,ghcr.io/revoltchat/bonfire:20250807-1"
@@ -86774,12 +86799,21 @@ function performUpdateTwenty()
       return
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/twentycrm/twenty:v2.21.0,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/twenty-mcp:v2
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[2]="mirror.gcr.io/twentycrm/twenty:v2.21.0,mirror.gcr.io/twentycrm/twenty:v2.21.0"
-      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/minio:v1.0"
+      image_update_map[4]="ghcr.io/homeserverhq/twenty-mcp:v2,ghcr.io/homeserverhq/twenty-mcp:v2"
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/twentycrm/twenty:v2.21.0,ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/twenty-mcp:v2
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[2]="mirror.gcr.io/twentycrm/twenty:v2.21.0,mirror.gcr.io/twentycrm/twenty:v2.21.0"
+      image_update_map[3]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
       image_update_map[4]="ghcr.io/homeserverhq/twenty-mcp:v2,ghcr.io/homeserverhq/twenty-mcp:v2"
     ;;
     *)
@@ -88041,11 +88075,18 @@ function performUpdateRallly()
       return
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/lukevella/rallly:4.5.7,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
       image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
       image_update_map[1]="mirror.gcr.io/lukevella/rallly:4.5.7,mirror.gcr.io/lukevella/rallly:4.5.7"
-      image_update_map[2]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[2]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/minio:v1.0"
+    ;;
+    4)
+      newVer=v4
+      curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/lukevella/rallly:4.5.7,ghcr.io/homeserverhq/minio:v1.0
+      image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
+      image_update_map[1]="mirror.gcr.io/lukevella/rallly:4.5.7,mirror.gcr.io/lukevella/rallly:4.5.7"
+      image_update_map[2]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
     ;;
     *)
       is_upgrade_error=true
@@ -89528,12 +89569,21 @@ function performUpdateOpenProject()
       return
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/openproject/openproject:17.6.0-slim,mirror.gcr.io/memcached:1.6.45-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/openproject-mcp:v2
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="mirror.gcr.io/openproject/openproject:17.6.0-slim,mirror.gcr.io/openproject/openproject:17.6.0-slim"
       image_update_map[2]="mirror.gcr.io/memcached:1.6.45-alpine,mirror.gcr.io/memcached:1.6.45-alpine"
-      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/minio:v1.0"
+      image_update_map[4]="ghcr.io/homeserverhq/openproject-mcp:v2,ghcr.io/homeserverhq/openproject-mcp:v2"
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/openproject/openproject:17.6.0-slim,mirror.gcr.io/memcached:1.6.45-alpine,ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/openproject-mcp:v2
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/openproject/openproject:17.6.0-slim,mirror.gcr.io/openproject/openproject:17.6.0-slim"
+      image_update_map[2]="mirror.gcr.io/memcached:1.6.45-alpine,mirror.gcr.io/memcached:1.6.45-alpine"
+      image_update_map[3]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
       image_update_map[4]="ghcr.io/homeserverhq/openproject-mcp:v2,ghcr.io/homeserverhq/openproject-mcp:v2"
     ;;
     *)
@@ -90775,14 +90825,24 @@ function performUpdateZammad()
       return
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/zammad/zammad:6.5.2-49,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/elasticsearch:9.2.2,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="ghcr.io/zammad/zammad:6.5.2-49,ghcr.io/zammad/zammad:6.5.2-49"
       image_update_map[2]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
       image_update_map[3]="mirror.gcr.io/elasticsearch:9.2.2,mirror.gcr.io/elasticsearch:9.2.2"
       image_update_map[4]="mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/memcached:1.6.39-alpine"
-      image_update_map[5]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[5]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/minio:v1.0"
+    ;;
+    4)
+      newVer=v4
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/zammad/zammad:6.5.2-49,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/elasticsearch:9.2.2,mirror.gcr.io/memcached:1.6.39-alpine,ghcr.io/homeserverhq/minio:v1.0
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="ghcr.io/zammad/zammad:6.5.2-49,ghcr.io/zammad/zammad:6.5.2-49"
+      image_update_map[2]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
+      image_update_map[3]="mirror.gcr.io/elasticsearch:9.2.2,mirror.gcr.io/elasticsearch:9.2.2"
+      image_update_map[4]="mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/memcached:1.6.39-alpine"
+      image_update_map[5]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
     ;;
     *)
       is_upgrade_error=true
@@ -93652,13 +93712,22 @@ function performUpdateInvoiceNinja()
       return
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37,mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
       image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
       image_update_map[1]="mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37,mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37"
       image_update_map[2]="mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
       image_update_map[3]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
-      image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/minio:v1.0"
+    ;;
+    4)
+      newVer=v4
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37,mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/redis:8.4.0-bookworm,ghcr.io/homeserverhq/minio:v1.0
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37,mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12.37"
+      image_update_map[2]="mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
+      image_update_map[3]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
+      image_update_map[4]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
     ;;
     *)
       is_upgrade_error=true
@@ -102113,12 +102182,20 @@ function performUpdateLobeChat()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/lobehub/lobe-chat-database:1.143.3,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
       image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
       image_update_map[1]="mirror.gcr.io/lobehub/lobe-chat-database:1.143.3,mirror.gcr.io/lobehub/lobe-chat-database:1.143.3"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/minio:v1.0"
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/lobehub/lobe-chat-database:1.143.3,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/minio:v1.0
+      image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
+      image_update_map[1]="mirror.gcr.io/lobehub/lobe-chat-database:1.143.3,mirror.gcr.io/lobehub/lobe-chat-database:1.143.3"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[3]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
     ;;
     *)
       is_upgrade_error=true
@@ -102945,12 +103022,21 @@ function performUpdateRAGFlow()
       return
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,ghcr.io/homeserverhq/ragflow:v0.27.1,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/mariadb:11.4.12"
       image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3"
       image_update_map[2]="ghcr.io/homeserverhq/ragflow:v0.27.1,ghcr.io/homeserverhq/ragflow:v0.27.1"
-      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/minio:v1.0"
+      image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    4)
+      newVer=v4
+      curImageList=mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,ghcr.io/homeserverhq/ragflow:v0.27.1,ghcr.io/homeserverhq/minio:v1.0,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/mariadb:11.4.12"
+      image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3"
+      image_update_map[2]="ghcr.io/homeserverhq/ragflow:v0.27.1,ghcr.io/homeserverhq/ragflow:v0.27.1"
+      image_update_map[3]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
       image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
@@ -105423,7 +105509,7 @@ function performUpdateDify()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/langgenius/qdrant:v1.8.3,mirror.gcr.io/ubuntu/squid:latest,mirror.gcr.io/langgenius/dify-api:1.11.2,mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local,mirror.gcr.io/langgenius/dify-sandbox:0.2.12,mirror.gcr.io/langgenius/dify-web:1.11.2,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/nginx:1.29.4-trixie,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="mirror.gcr.io/langgenius/qdrant:v1.8.3,mirror.gcr.io/langgenius/qdrant:v1.8.3"
@@ -105434,7 +105520,21 @@ function performUpdateDify()
       image_update_map[6]="mirror.gcr.io/langgenius/dify-web:1.11.2,mirror.gcr.io/langgenius/dify-web:1.11.2"
       image_update_map[7]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[8]="mirror.gcr.io/nginx:1.29.4-trixie,mirror.gcr.io/nginx:1.29.4-trixie"
-      image_update_map[9]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[9]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/minio:v1.0"
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/langgenius/qdrant:v1.8.3,mirror.gcr.io/ubuntu/squid:latest,mirror.gcr.io/langgenius/dify-api:1.11.2,mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local,mirror.gcr.io/langgenius/dify-sandbox:0.2.12,mirror.gcr.io/langgenius/dify-web:1.11.2,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/nginx:1.29.4-trixie,ghcr.io/homeserverhq/minio:v1.0
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/langgenius/qdrant:v1.8.3,mirror.gcr.io/langgenius/qdrant:v1.8.3"
+      image_update_map[2]="mirror.gcr.io/ubuntu/squid:latest,mirror.gcr.io/ubuntu/squid:latest"
+      image_update_map[3]="mirror.gcr.io/langgenius/dify-api:1.11.2,mirror.gcr.io/langgenius/dify-api:1.11.2"
+      image_update_map[4]="mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local,mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local"
+      image_update_map[5]="mirror.gcr.io/langgenius/dify-sandbox:0.2.12,mirror.gcr.io/langgenius/dify-sandbox:0.2.12"
+      image_update_map[6]="mirror.gcr.io/langgenius/dify-web:1.11.2,mirror.gcr.io/langgenius/dify-web:1.11.2"
+      image_update_map[7]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[8]="mirror.gcr.io/nginx:1.29.4-trixie,mirror.gcr.io/nginx:1.29.4-trixie"
+      image_update_map[9]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
     ;;
     *)
       is_upgrade_error=true
@@ -106399,14 +106499,26 @@ function performUpdateWaterCrawl()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=mirror.gcr.io/postgres:17.5-bookworm,mirror.gcr.io/watercrawl/watercrawl:v0.12.1,mirror.gcr.io/watercrawl/watercrawl:v0.12.1,mirror.gcr.io/watercrawl/watercrawl:v0.12.1,mirror.gcr.io/watercrawl/playwright:1.2,mirror.gcr.io/watercrawl/frontend:v0.12.1,mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/watercrawl/mcp:v1.3.0
       image_update_map[0]="mirror.gcr.io/postgres:17.5-bookworm,mirror.gcr.io/postgres:17.5-bookworm"
       image_update_map[1]="mirror.gcr.io/watercrawl/watercrawl:v0.12.1,mirror.gcr.io/watercrawl/watercrawl:v0.12.1"
       image_update_map[2]="mirror.gcr.io/watercrawl/playwright:1.2,mirror.gcr.io/watercrawl/playwright:1.2"
       image_update_map[3]="mirror.gcr.io/watercrawl/frontend:v0.12.1,mirror.gcr.io/watercrawl/frontend:v0.12.1"
       image_update_map[4]="mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
-      image_update_map[5]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[5]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/minio:v1.0"
+      image_update_map[6]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[7]="mirror.gcr.io/watercrawl/mcp:v1.3.0,mirror.gcr.io/watercrawl/mcp:v1.3.0"
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/postgres:17.5-bookworm,mirror.gcr.io/watercrawl/watercrawl:v0.12.1,mirror.gcr.io/watercrawl/watercrawl:v0.12.1,mirror.gcr.io/watercrawl/watercrawl:v0.12.1,mirror.gcr.io/watercrawl/playwright:1.2,mirror.gcr.io/watercrawl/frontend:v0.12.1,mirror.gcr.io/nginx:1.29.3-alpine,ghcr.io/homeserverhq/minio:v1.0,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/watercrawl/mcp:v1.3.0
+      image_update_map[0]="mirror.gcr.io/postgres:17.5-bookworm,mirror.gcr.io/postgres:17.5-bookworm"
+      image_update_map[1]="mirror.gcr.io/watercrawl/watercrawl:v0.12.1,mirror.gcr.io/watercrawl/watercrawl:v0.12.1"
+      image_update_map[2]="mirror.gcr.io/watercrawl/playwright:1.2,mirror.gcr.io/watercrawl/playwright:1.2"
+      image_update_map[3]="mirror.gcr.io/watercrawl/frontend:v0.12.1,mirror.gcr.io/watercrawl/frontend:v0.12.1"
+      image_update_map[4]="mirror.gcr.io/nginx:1.29.3-alpine,mirror.gcr.io/nginx:1.29.3-alpine"
+      image_update_map[5]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
       image_update_map[6]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[7]="mirror.gcr.io/watercrawl/mcp:v1.3.0,mirror.gcr.io/watercrawl/mcp:v1.3.0"
     ;;
@@ -106772,13 +106884,22 @@ function performUpdateFlowise()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/flowiseai/flowise:3.0.12,mirror.gcr.io/flowiseai/flowise-worker:3.0.12,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
       image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
       image_update_map[1]="mirror.gcr.io/flowiseai/flowise:3.0.12,mirror.gcr.io/flowiseai/flowise:3.0.12"
       image_update_map[2]="mirror.gcr.io/flowiseai/flowise-worker:3.0.12,mirror.gcr.io/flowiseai/flowise-worker:3.0.12"
       image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/minio:v1.0"
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/flowiseai/flowise:3.0.12,mirror.gcr.io/flowiseai/flowise-worker:3.0.12,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/minio:v1.0
+      image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
+      image_update_map[1]="mirror.gcr.io/flowiseai/flowise:3.0.12,mirror.gcr.io/flowiseai/flowise:3.0.12"
+      image_update_map[2]="mirror.gcr.io/flowiseai/flowise-worker:3.0.12,mirror.gcr.io/flowiseai/flowise-worker:3.0.12"
+      image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[4]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
     ;;
     *)
       is_upgrade_error=true
@@ -107216,12 +107337,20 @@ function performUpdateNocoDB()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/nocodb/nocodb:0.265.1,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="mirror.gcr.io/nocodb/nocodb:0.265.1,mirror.gcr.io/nocodb/nocodb:0.265.1"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/minio:v1.0"
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/nocodb/nocodb:0.265.1,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/minio:v1.0
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/nocodb/nocodb:0.265.1,mirror.gcr.io/nocodb/nocodb:0.265.1"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[3]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
     ;;
     *)
       is_upgrade_error=true
@@ -107544,12 +107673,20 @@ function performUpdateEnte()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,hshq/ente-server:v1,ghcr.io/ente-io/web:460ee1671b08b119b894f0ddd71b4c906fb29647,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="hshq/ente-server:v1,hshq/ente-server:v1"
       image_update_map[2]="ghcr.io/ente-io/web:460ee1671b08b119b894f0ddd71b4c906fb29647,ghcr.io/ente-io/web:460ee1671b08b119b894f0ddd71b4c906fb29647"
-      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/minio:v1.0"
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,hshq/ente-server:v1,ghcr.io/ente-io/web:460ee1671b08b119b894f0ddd71b4c906fb29647,ghcr.io/homeserverhq/minio:v1.0
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="hshq/ente-server:v1,hshq/ente-server:v1"
+      image_update_map[2]="ghcr.io/ente-io/web:460ee1671b08b119b894f0ddd71b4c906fb29647,ghcr.io/ente-io/web:460ee1671b08b119b894f0ddd71b4c906fb29647"
+      image_update_map[3]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
     ;;
     *)
       is_upgrade_error=true
@@ -115769,13 +115906,23 @@ function performUpdateLangfuse()
       image_update_map[5]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/pgvector/pgvector:pg17,langfuse/langfuse-worker:3.213.0,mirror.gcr.io/langfuse/langfuse:3.213.0,mirror.gcr.io/clickhouse/clickhouse-server:25.8.28.1-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
       image_update_map[1]="langfuse/langfuse-worker:3.213.0,langfuse/langfuse-worker:3.213.0"
       image_update_map[2]="mirror.gcr.io/langfuse/langfuse:3.213.0,mirror.gcr.io/langfuse/langfuse:3.213.0"
       image_update_map[3]="mirror.gcr.io/clickhouse/clickhouse-server:25.8.28.1-alpine,mirror.gcr.io/clickhouse/clickhouse-server:25.8.28.1-alpine"
-      image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+      image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/minio:v1.0"
+      image_update_map[5]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/pgvector/pgvector:pg17,langfuse/langfuse-worker:3.213.0,mirror.gcr.io/langfuse/langfuse:3.213.0,mirror.gcr.io/clickhouse/clickhouse-server:25.8.28.1-alpine,ghcr.io/homeserverhq/minio:v1.0,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
+      image_update_map[1]="langfuse/langfuse-worker:3.213.0,langfuse/langfuse-worker:3.213.0"
+      image_update_map[2]="mirror.gcr.io/langfuse/langfuse:3.213.0,mirror.gcr.io/langfuse/langfuse:3.213.0"
+      image_update_map[3]="mirror.gcr.io/clickhouse/clickhouse-server:25.8.28.1-alpine,mirror.gcr.io/clickhouse/clickhouse-server:25.8.28.1-alpine"
+      image_update_map[4]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
       image_update_map[5]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
