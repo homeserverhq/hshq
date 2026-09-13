@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=241
+HSHQ_LIB_SCRIPT_VERSION=242
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -9044,10 +9044,10 @@ function installStack()
 
 function startWazuhAgent()
 {
-  curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
-  echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
-  sudo DEBIAN_FRONTEND=noninteractive apt update
-  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$WAZUH_AGENT_VERSION
+  curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg > /dev/null 2>&1
+  echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$WAZUH_AGENT_VERSION > /dev/null 2>&1
   sudo apt-mark hold wazuh-agent
   sudo systemctl daemon-reload
   set +e
@@ -21408,6 +21408,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=239
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 242 ]; then
+    echo "Updating to Version 242..."
+    version242Update
+    HSHQ_VERSION=242
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -24808,6 +24814,11 @@ EOFUR
       exit
     fi
   fi
+}
+
+function version242Update()
+{
+  outputCaddyHeaders
 }
 
 function getNextHSVPNRoutingTable()
@@ -31752,7 +31763,7 @@ function loadPinnedDockerImages()
   IMG_FRAPPE_BENCH=mirror.gcr.io/frappe/bench:v5.25.9
 
   # Stack specific images
-  IMG_ACTIVEPIECES_APP=ghcr.io/activepieces/activepieces:0.72.4
+  IMG_ACTIVEPIECES_APP=ghcr.io/activepieces/activepieces:0.90.4
   IMG_ADGUARD=mirror.gcr.io/adguard/adguardhome:v0.107.78
   IMG_ADMINER=mirror.gcr.io/adminer:5.4.1
   IMG_AISTACK_MINDSDB_APP=mirror.gcr.io/mindsdb/mindsdb:v25.7.4.0
@@ -32031,8 +32042,8 @@ function loadPinnedDockerImages()
   IMG_WATERCRAWL_PLAYWRIGHT=mirror.gcr.io/watercrawl/playwright:1.2
   IMG_WATERCRAWL_FRONTEND=mirror.gcr.io/watercrawl/frontend:v0.12.1
   IMG_WATERCRAWL_MCP=mirror.gcr.io/watercrawl/mcp:v1.3.0
-  IMG_FLOWISE_APP=mirror.gcr.io/flowiseai/flowise:3.0.12
-  IMG_FLOWISE_WORKER=mirror.gcr.io/flowiseai/flowise-worker:3.0.12
+  IMG_FLOWISE_APP=mirror.gcr.io/flowiseai/flowise:3.1.4
+  IMG_FLOWISE_WORKER=mirror.gcr.io/flowiseai/flowise-worker:3.1.4
   IMG_SURFSENSE_APP=ghcr.io/modsetter/surfsense:v1.0.92
   IMG_NOCODB_APP=mirror.gcr.io/nocodb/nocodb:0.265.1
   IMG_ENTE_SERVER=hshq/ente-server:v1
@@ -32306,7 +32317,7 @@ function getScriptStackVersion()
     automatisch)
       echo "v1" ;;
     activepieces)
-      echo "v2" ;;
+      echo "v3" ;;
     dbgate)
       echo "v2" ;;
     sqlpad)
@@ -95654,6 +95665,7 @@ function installActivePieces()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://activepieces-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -95727,6 +95739,7 @@ services:
       - int-activepieces-net
       - dock-ext-net
       - dock-internalmail-net
+      - dock-aipriv-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -95734,6 +95747,33 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/activepieces/cache:/usr/src/app/cache
+    environment:
+      - AP_CONTAINER_TYPE=APP
+
+  activepieces-worker:
+    image: $(getScriptImageByContainerName activepieces-worker)
+    container_name: activepieces-worker
+    hostname: activepieces-worker
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - activepieces-app
+    networks:
+      - int-activepieces-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/activepieces/cache:/usr/src/app/cache
+    environment:
+      - AP_CONTAINER_TYPE=WORKER
 
   activepieces-redis:
     image: $(getScriptImageByContainerName activepieces-redis)
@@ -95774,6 +95814,9 @@ networks:
     external: true
   dock-ldap-net:
     name: dock-ldap
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
     external: true
   int-activepieces-net:
     driver: bridge
@@ -95865,11 +95908,21 @@ function performUpdateActivePieces()
       image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/activepieces/activepieces:0.72.4,mirror.gcr.io/redis:8.4.0-bookworm
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
-      image_update_map[1]="ghcr.io/activepieces/activepieces:0.72.4,ghcr.io/activepieces/activepieces:0.72.4"
-      image_update_map[2]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
+      image_update_map[1]="ghcr.io/activepieces/activepieces:0.72.4,ghcr.io/activepieces/activepieces:0.90.4"
+      image_update_map[2]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/valkey/valkey:alpine3.23"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfActivePiecesUpdateV3
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/activepieces/activepieces:0.90.4,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="ghcr.io/activepieces/activepieces:0.90.4,ghcr.io/activepieces/activepieces:0.90.4"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
       is_upgrade_error=true
@@ -95879,6 +95932,152 @@ function performUpdateActivePieces()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfActivePiecesUpdateV3()
+{
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/activepieces/redis/*
+  cat <<EOFMT > $HOME/activepieces-compose.yml
+$STACK_VERSION_PREFIX activepieces v3
+
+services:
+  activepieces-db:
+    image: mirror.gcr.io/postgres:16.9-bookworm
+    container_name: activepieces-db
+    hostname: activepieces-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-activepieces-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/activepieces/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/activepieces/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.activepieces-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.activepieces-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.activepieces-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.activepieces-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.activepieces-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.activepieces-hourly-db.email-from=ActivePieces Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.activepieces-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.activepieces-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.activepieces-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.activepieces-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.activepieces-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.activepieces-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.activepieces-monthly-db.email-from=ActivePieces Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.activepieces-monthly-db.mail-only-on-error=false"
+
+  activepieces-app:
+    image: ghcr.io/activepieces/activepieces:0.90.4
+    container_name: activepieces-app
+    hostname: activepieces-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - activepieces-db
+      - activepieces-redis
+    networks:
+      - int-activepieces-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/activepieces/cache:/usr/src/app/cache
+    environment:
+      - AP_CONTAINER_TYPE=APP
+
+  activepieces-worker:
+    image: ghcr.io/activepieces/activepieces:0.90.4
+    container_name: activepieces-worker
+    hostname: activepieces-worker
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - activepieces-app
+    networks:
+      - int-activepieces-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/activepieces/cache:/usr/src/app/cache
+    environment:
+      - AP_CONTAINER_TYPE=WORKER
+
+  activepieces-redis:
+    image: mirror.gcr.io/valkey/valkey:alpine3.23
+    container_name: activepieces-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $ACTIVEPIECES_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-activepieces-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-activepieces-redis:/data
+
+volumes:
+  v-activepieces-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/activepieces/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-activepieces-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
 }
 
 # Beszel
@@ -106809,12 +107008,12 @@ DATABASE_NAME=$FLOWISE_DATABASE_NAME
 DATABASE_USER=$FLOWISE_DATABASE_USER
 DATABASE_PASSWORD=$FLOWISE_DATABASE_USER_PASSWORD
 SECRETKEY_STORAGE_TYPE=local
-SECRETKEY_PATH=/root/.flowise
-LOG_PATH=/root/.flowise/logs
+SECRETKEY_PATH=/home/node/.flowise
+LOG_PATH=/home/node/.flowise/logs
 MINIO_ROOT_USER=$FLOWISE_MINIO_KEY
 MINIO_ROOT_PASSWORD=$FLOWISE_MINIO_SECRET
 STORAGE_TYPE=s3
-BLOB_STORAGE_PATH=/root/.flowise/storage
+BLOB_STORAGE_PATH=/home/node/.flowise/storage
 S3_STORAGE_BUCKET_NAME=flowise
 S3_STORAGE_ACCESS_KEY_ID=$FLOWISE_MINIO_KEY
 S3_STORAGE_SECRET_ACCESS_KEY=$FLOWISE_MINIO_SECRET
@@ -106888,17 +107087,17 @@ function performUpdateFlowise()
       newVer=v2
       curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/flowiseai/flowise:3.0.12,mirror.gcr.io/flowiseai/flowise-worker:3.0.12,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
       image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
-      image_update_map[1]="mirror.gcr.io/flowiseai/flowise:3.0.12,mirror.gcr.io/flowiseai/flowise:3.0.12"
-      image_update_map[2]="mirror.gcr.io/flowiseai/flowise-worker:3.0.12,mirror.gcr.io/flowiseai/flowise-worker:3.0.12"
+      image_update_map[1]="mirror.gcr.io/flowiseai/flowise:3.0.12,mirror.gcr.io/flowiseai/flowise:3.1.4"
+      image_update_map[2]="mirror.gcr.io/flowiseai/flowise-worker:3.0.12,mirror.gcr.io/flowiseai/flowise-worker:3.1.4"
       image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/minio:v1.0"
     ;;
     2)
       newVer=v2
-      curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/flowiseai/flowise:3.0.12,mirror.gcr.io/flowiseai/flowise-worker:3.0.12,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/minio:v1.0
+      curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/flowiseai/flowise:3.1.4,mirror.gcr.io/flowiseai/flowise-worker:3.1.4,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/minio:v1.0
       image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
-      image_update_map[1]="mirror.gcr.io/flowiseai/flowise:3.0.12,mirror.gcr.io/flowiseai/flowise:3.0.12"
-      image_update_map[2]="mirror.gcr.io/flowiseai/flowise-worker:3.0.12,mirror.gcr.io/flowiseai/flowise-worker:3.0.12"
+      image_update_map[1]="mirror.gcr.io/flowiseai/flowise:3.1.4,mirror.gcr.io/flowiseai/flowise:3.1.4"
+      image_update_map[2]="mirror.gcr.io/flowiseai/flowise-worker:3.1.4,mirror.gcr.io/flowiseai/flowise-worker:3.1.4"
       image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[4]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
     ;;
@@ -121175,7 +121374,7 @@ WEBUI_TITLE=LightRAG Graph KB
 WEBUI_DESCRIPTION=Simple and Fast Graph-Based RAG System
 WORKERS=8
 TIMEOUT=150
-CORS_ORIGINS=https://$SUB_LIGHTRAG.$HOMESERVER_DOMAIN
+CORS_ORIGINS=https://$SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN
 SSL=false
 MAX_GRAPH_NODES=1000
 LOG_LEVEL=INFO
@@ -133194,7 +133393,7 @@ function outputCaddyHeaders()
 }
 
 ($CADDY_SNIPPET_RELAXEDCSP) {
-  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' registry.npmmirror.com; font-src 'self' registry.npmmirror.com; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com github.com cdn.anythingllm.com assets.appsmith.com www.authelia.com registry.npmmirror.com *.s3.amazonaws.com *.${HOMESERVER_DOMAIN} data: blob:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; media-src 'self' *.${HOMESERVER_DOMAIN} github.com data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} api.comfy.org huggingface.co cdn.anythingllm.com registry.npmmirror.com data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
+  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' registry.npmmirror.com; font-src 'self' registry.npmmirror.com; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com github.com cdn.anythingllm.com assets.appsmith.com www.authelia.com registry.npmmirror.com *.s3.amazonaws.com activepieces.com *.activepieces.com *.${HOMESERVER_DOMAIN} data: blob:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; media-src 'self' *.${HOMESERVER_DOMAIN} github.com data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} api.comfy.org huggingface.co cdn.anythingllm.com registry.npmmirror.com data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
 }
 
 # At some point we'll fix the svcs.snip and collapse these two
