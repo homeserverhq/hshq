@@ -70478,7 +70478,7 @@ unless sender do
       smtp_username: smtp_username,
       smtp_password: smtp_password,
       smtp_tls_mode: tls_mode,
-      smtp_auth_method: if smtp_username && smtp_password, do: \"password\", else: \"none\"
+      smtp_auth_method: (if smtp_username && smtp_password, do: \"password\", else: \"none\")
     }
   })
 end
