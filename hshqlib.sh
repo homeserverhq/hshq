@@ -70446,6 +70446,7 @@ EOFBA
 
 function performIntegrationKeila()
 {
+  set +e
   local usr project_esc
   usr=$(printf '%s' "$KEILA_ADMIN_EMAIL_ADDRESS" | sed 's/\\/\\\\/g; s/"/\\"/g')
   project_esc=$(printf '%s' "$HOMESERVER_NAME" | sed 's/\\/\\\\/g; s/"/\\"/g')
