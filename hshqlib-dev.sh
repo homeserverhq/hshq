@@ -32093,7 +32093,7 @@ function loadPinnedDockerImages()
   IMG_HERMES_APP=hshq/hermes-agent:v1
   IMG_HERMES_TERMINAL=hshq/hermes-terminal:v1
   IMG_HERMES_CAMOFOX=ghcr.io/jo-inc/camofox-browser:1.11.2
-  IMG_HERMES_WEBUI=ghcr.io/nesquena/hermes-webui:0.51.137
+  IMG_HERMES_WEBUI=ghcr.io/nesquena/hermes-webui:0.52.302
   IMG_AUTOKB_APP=ghcr.io/homeserverhq/autokb-app:v6
   IMG_AUTOKB_MCP=ghcr.io/homeserverhq/autokb-mcp:v6
   IMG_SUITECRM_APP=ghcr.io/homeserverhq/suitecrm-core:v8.10.1
@@ -41852,6 +41852,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENCODE_CODESERVER}-Admin" https://$SUB_OPENCODE_CODESERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENCODE_CODESERVER_USERNAME $OPENCODE_CODESERVER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_EMAILCLASSIFIERAI_APP}-Admin" https://$SUB_EMAILCLASSIFIERAI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $EMAILCLASSIFIERAI_ADMIN_USERNAME $EMAILCLASSIFIERAI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HERMES_AGENT_DASHBOARD}-Admin" https://$SUB_HERMES_AGENT_DASHBOARD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HERMES_AGENT_ADMIN_USERNAME $HERMES_AGENT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HERMES_AGENT_WEBUI}-Admin" https://$SUB_HERMES_AGENT_WEBUI.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HERMES_AGENT_ADMIN_USERNAME $HERMES_AGENT_WEBUI_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUTOKB_WEB}-Admin" https://$SUB_AUTOKB_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOKB_ADMIN_USERNAME $AUTOKB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SUITECRM_APP}-Admin" https://$SUB_SUITECRM_APP.$HOMESERVER_DOMAIN/#/Login $HOMESERVER_ABBREV $SUITECRM_ADMIN_USERNAME $SUITECRM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEDGEDOC_APP}-Admin" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEDGEDOC_ADMIN_USERNAME $HEDGEDOC_ADMIN_PASSWORD)"\n"
@@ -42063,6 +42064,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENCODE_CODESERVER}-Admin" https://$SUB_OPENCODE_CODESERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENCODE_CODESERVER_USERNAME $OPENCODE_CODESERVER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_EMAILCLASSIFIERAI_APP}-Admin" https://$SUB_EMAILCLASSIFIERAI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $EMAILCLASSIFIERAI_ADMIN_USERNAME $EMAILCLASSIFIERAI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HERMES_AGENT_DASHBOARD}-Admin" https://$SUB_HERMES_AGENT_DASHBOARD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HERMES_AGENT_ADMIN_USERNAME $HERMES_AGENT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HERMES_AGENT_WEBUI}-Admin" https://$SUB_HERMES_AGENT_WEBUI.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HERMES_AGENT_ADMIN_USERNAME $HERMES_AGENT_WEBUI_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUTOKB_WEB}-Admin" https://$SUB_AUTOKB_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOKB_ADMIN_USERNAME $AUTOKB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SUITECRM_APP}-Admin" https://$SUB_SUITECRM_APP.$HOMESERVER_DOMAIN/#/Login $HOMESERVER_ABBREV $SUITECRM_ADMIN_USERNAME $SUITECRM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HEDGEDOC_APP}-Admin" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEDGEDOC_ADMIN_USERNAME $HEDGEDOC_ADMIN_PASSWORD)"\n"
@@ -42847,7 +42849,7 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,opennotebook,appsmith,trilium,memos,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,wger,workoutcool,voicebox,opencode,emailclassifierai,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,opennotebook,appsmith,trilium,memos,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,wger,workoutcool,voicebox,opencode,emailclassifierai,hermes-agent,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
   DS_MEM_LOW=minimal
   DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
   DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
@@ -42861,7 +42863,7 @@ function initServiceDefaults()
   BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
 #INIT_SERVICE_DEFAULTS_END
   if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
-    HSHQ_OPTIONAL_STACKS=${HSHQ_OPTIONAL_STACKS},surfsense,ente,comfyui,perplexica,morphic,insanelyfastwhisper,ivbox,skyvern,openrag,openskills,hermes-agent,sillytavern
+    HSHQ_OPTIONAL_STACKS=${HSHQ_OPTIONAL_STACKS},surfsense,ente,comfyui,perplexica,morphic,insanelyfastwhisper,ivbox,skyvern,openrag,openskills,sillytavern
   fi
 }
 
@@ -44543,9 +44545,6 @@ function getScriptImageByContainerName()
       ;;
     "hermes-agent-webui")
       container_image=$IMG_HERMES_WEBUI
-      ;;
-    "hermes-agent-caddy")
-      container_image=mirror.gcr.io/caddy:2.11.3
       ;;
     "autokb-db")
       container_image=mirror.gcr.io/postgres:15.0-bullseye
@@ -118501,21 +118500,18 @@ function installHermesAgent()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  buildOrPullImage $(getScriptImageByContainerName hermes-agent-camofox)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
+  #buildOrPullImage $(getScriptImageByContainerName hermes-agent-camofox)
+  #if [ $? -ne 0 ]; then
+  #  return 1
+  #fi
   buildOrPullImage $(getScriptImageByContainerName hermes-agent-webui)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
-  buildOrPullImage $(getScriptImageByContainerName hermes-agent-caddy)
   if [ $? -ne 0 ]; then
     return 1
   fi
   set -e
   mkdir $HSHQ_STACKS_DIR/hermes-agent
   mkdir $HSHQ_STACKS_DIR/hermes-agent/data
+  mkdir $HSHQ_STACKS_DIR/hermes-agent/config
   mkdir $HSHQ_STACKS_DIR/hermes-agent/home
   mkdir $HSHQ_STACKS_DIR/hermes-agent/src
   mkdir $HSHQ_STACKS_DIR/hermes-agent/terminal
@@ -118530,7 +118526,6 @@ function installHermesAgent()
   set +e
   addUserMailu alias $HERMES_AGENT_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   HERMES_AGENT_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $HERMES_AGENT_ADMIN_PASSWORD | tr -d ':\n')
-  generateCert hermes-agent-caddy hermes-agent-caddy
   outputConfigHermesAgent
   installStack hermes-agent hermes-agent-gateway "" $HOME/hermes-agent.env
   retVal=$?
@@ -118556,7 +118551,7 @@ function installHermesAgent()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy https://hermes-agent-caddy {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://hermes-agent-dashboard:9119 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>>>header_up Host {upstream_hostport}\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -118618,6 +118613,7 @@ services:
     security_opt:
       - no-new-privileges:true
     command: ["gateway", "run"]
+    working_dir: /opt/data
     networks:
       - int-hermes-agent-net
       - dock-ailimit-net
@@ -118632,6 +118628,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/config/config.yaml:/opt/data/config.yaml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/config/term_ed25519:/run/secrets/term_ed25519:ro
       - v-hermes-agent-home:/opt/data
       - v-hermes-agent-src:/opt/hermes:ro
 
@@ -118644,14 +118642,19 @@ services:
     security_opt:
       - no-new-privileges:true
     command: ["dashboard", "--host", "0.0.0.0", "--insecure", "--no-open"]
+    working_dir: /opt/data
     networks:
       - int-hermes-agent-net
+      - dock-proxy-net
+      - dock-ailimit-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/config/config.yaml:/opt/data/config.yaml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/config/term_ed25519:/run/secrets/term_ed25519:ro
       - v-hermes-agent-home:/opt/data
 
   hermes-agent-terminal:
@@ -118660,10 +118663,11 @@ services:
     hostname: hermes-agent-terminal
     restart: unless-stopped
     env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
+    tty: true
+    stdin_open: true
     networks:
       - int-hermes-agent-net
+      - dock-ailimit-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -118671,7 +118675,7 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/terminal/home:/home/agent
-      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/terminal/workspace:/workspace
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/terminal/workspace:/opt/data
 
 #  Uncommenting this container will grant your agent access to the internet. Use with caution!
 #  hermes-agent-camofox:
@@ -118710,32 +118714,11 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-hermes-agent-home:/home/hermeswebui/.hermes
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/config/config.yaml:/opt/data/config.yaml:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/config/term_ed25519:/run/secrets/term_ed25519:ro
+      - v-hermes-agent-home:/opt/data
       - v-hermes-agent-src:/opt/hermes:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/webui/workspace:/workspace
-
-  hermes-agent-caddy:
-    image: $(getScriptImageByContainerName hermes-agent-caddy)
-    container_name: hermes-agent-caddy
-    hostname: hermes-agent-caddy
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - int-hermes-agent-net
-      - dock-proxy-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_SSL_DIR}/hermes-agent-caddy.crt:/certs/hermes-agent-caddy.crt
-      - \${PORTAINER_HSHQ_SSL_DIR}/hermes-agent-caddy.key:/certs/hermes-agent-caddy.key
-      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/caddy/Caddyfile:/etc/caddy/Caddyfile
-      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/caddy/data:/data
-      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/caddy/config:/config
 
 volumes:
   v-hermes-agent-home:
@@ -118771,17 +118754,21 @@ networks:
       driver: default
 
 EOFMT
+  ssh-keygen -t ed25519 -f $HSHQ_STACKS_DIR/hermes-agent/config/term_ed25519 -N "" -C "" > /dev/null 2>&1
   cat <<EOFMT > $HOME/hermes-agent.env
 TZ=\${PORTAINER_TZ}
 HERMES_UID=\${PORTAINER_UID}
 HERMES_GID=\${PORTAINER_GID}
+UID=\${PORTAINER_UID}
+GID=\${PORTAINER_GID}
 API_SERVER_HOST=0.0.0.0
 API_SERVER_KEY=$HERMES_AGENT_API_KEY
 GATEWAY_HEALTH_URL=http://hermes-agent-gateway:8642
 TERMINAL_ENV=ssh
 TERMINAL_SSH_HOST=hermes-agent-terminal
 TERMINAL_SSH_USER=agent
-SUDO_PASSWORD=$HERMES_AGENT_SUDO_PASSWORD
+TERMINAL_SSH_KEY=/run/secrets/term_ed25519
+TERMINAL_PUBLIC_KEY="$(cat $HSHQ_STACKS_DIR/hermes-agent/config/term_ed25519.pub)"
 CAMOFOX_URL=http://hermes-agent-camofox:9377
 CAMOFOX_PORT=9377
 STT_OPENAI_MODEL=distil-whisper/distil-large-v3.5
@@ -118789,25 +118776,33 @@ STT_OPENAI_BASE_URL=http://insanelyfastwhisper-api:8888/v1
 HERMES_WEBUI_PASSWORD=$HERMES_AGENT_WEBUI_PASSWORD
 HERMES_WEBUI_HOST=0.0.0.0
 HERMES_WEBUI_PORT=8787
+HERMES_HOME=/opt/data
 HERMES_WEBUI_STATE_DIR=/home/hermeswebui/.hermes/webui
 WANTED_UID=\${PORTAINER_UID}
 WANTED_GID=\${PORTAINER_GID}
 OPENAI_API_KEY=$LITELLM_MASTER_KEY
 OPENAI_BASE_URL=http://litellm-proxy:4000/v1
+HERMES_DASHBOARD_BASIC_AUTH_USERNAME=$HERMES_AGENT_ADMIN_USERNAME
+HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=$HERMES_AGENT_ADMIN_PASSWORD
+HERMES_MODEL_PROVIDER=custom
+HERMES_MODEL_BASE_URL=http://litellm-proxy:4000/v1
+HERMES_MODEL_DEFAULT=LongContext
+HERMES_MODEL_CONTEXT_LENGTH=100000
+HERMES_MODEL=LongContext
+HERMES_PROVIDER=custom
+CUSTOM_API_KEY=$LITELLM_MASTER_KEY
+TIRITH_ENABLED=false
 EOFMT
-  cat <<EOFSE > $HSHQ_STACKS_DIR/hermes-agent/caddy/Caddyfile
-{
-  admin off
-}
-
-https://hermes-agent-caddy {
-  tls /certs/hermes-agent-caddy.crt /certs/hermes-agent-caddy.key
-  basic_auth {
-    $HERMES_AGENT_ADMIN_USERNAME $HERMES_AGENT_ADMIN_PASSWORD_HASH
-  }
-  reverse_proxy http://hermes-agent-dashboard:9119
-}
-EOFSE
+  cat <<EOFMT > $HSHQ_STACKS_DIR/hermes-agent/config/config.yaml
+model:
+  provider: custom
+  base_url: "http://litellm-proxy:4000/v1"
+  default: "LongContext"
+  context_length: 100000
+  api_key: "$LITELLM_MASTER_KEY"
+security:
+  allow_lazy_installs: false
+EOFMT
 }
 
 function buildImageHermesAgentV1()
@@ -118819,7 +118814,7 @@ function buildImageHermesAgentV1()
   echo -e "========================================================================\n"
   sudo rm -fr $HSHQ_BUILD_DIR/hermes-agent
   cd $HSHQ_BUILD_DIR
-  git -c advice.detachedHead=false clone --depth 1 --branch v2026.5.16 https://github.com/NousResearch/hermes-agent.git
+  git -c advice.detachedHead=false clone --depth 1 --branch v2026.9.11 https://github.com/NousResearch/hermes-agent.git
   cd $HSHQ_BUILD_DIR/hermes-agent
   docker image build -t hshq/hermes-agent:v1 -f ./Dockerfile .
   rtval=$?
@@ -118838,25 +118833,44 @@ function buildImageHermesTerminalV1()
   sudo rm -fr $HSHQ_BUILD_DIR/hermes-terminal
   mkdir $HSHQ_BUILD_DIR/hermes-terminal
   cd $HSHQ_BUILD_DIR/hermes-terminal
-  cat <<EOFMT > startup.sh
+  cat <<'EOFMT' > startup.sh
 #!/bin/bash
-/usr/sbin/sshd
-exec sudo -u agent /bin/bash
+mkdir -p /home/agent/.ssh
+umask 077
+if [ -n "$TERMINAL_PUBLIC_KEY" ]; then
+  printf '%s\n' "$TERMINAL_PUBLIC_KEY" > /home/agent/.ssh/authorized_keys
+  chown agent:agent /home/agent/.ssh/authorized_keys
+fi
+chown -R agent:agent /home/agent /opt/data 2>/dev/null
+chmod 700 /home/agent/.ssh
+chmod 600 /home/agent/.ssh/authorized_keys
+exec /usr/sbin/sshd -D
 EOFMT
   cat <<EOFMT > Dockerfile
 FROM nikolaik/python-nodejs:python3.11-nodejs20
-RUN apt-get update && \
-    apt-get install -y openssh-server sudo && \
+RUN apt-get update && apt-get install -y openssh-server sudo && \
     mkdir -p /var/run/sshd && \
-    ssh-keygen -A && \
-    rm -rf /var/lib/apt/lists/*
-RUN useradd -m -s /bin/bash agent && \
-    echo "agent:$HERMES_AGENT_SUDO_PASSWORD" | chpasswd
-RUN usermod -aG sudo agent
-EXPOSE 22
+    sed -i 's/^#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config && \
+    sed -i 's/^PubkeyAuthentication no/PubkeyAuthentication yes/' /etc/ssh/sshd_config && \
+    echo "UsePAM no" >> /etc/ssh/sshd_config && \
+    echo "PasswordAuthentication no" >> /etc/ssh/sshd_config && \
+    ssh-keygen -A && rm -rf /var/lib/apt/lists/*
+RUN userdel pn && \
+    useradd -m -s /bin/bash -u 1000 agent && \
+    usermod -aG sudo agent && \
+    echo "agent:hermes" | chpasswd && \
+    mkdir -p /opt/hermes && \
+    chown agent:agent /opt/hermes && \
+    mkdir -p /opt/data && \
+    chown agent:agent /opt/data && \
+    mkdir -p /home/agent/.ssh && \
+    chmod 700 /home/agent/.ssh && chown -R agent:agent /home/agent/.ssh && \
+    echo "agent ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/agent && \
+    chmod 440 /etc/sudoers.d/agent
 COPY startup.sh /startup.sh
 RUN chmod +x /startup.sh
-CMD ["/startup.sh"] 
+EXPOSE 22
+CMD ["/startup.sh"]
 EOFMT
   docker image build -t hshq/hermes-terminal:v1 .
   rtval=$?
@@ -118874,12 +118888,11 @@ function performUpdateHermesAgent()
   case "$perform_stack_ver" in
     1)
       newVer=v1
-      curImageList=hshq/hermes-agent:v1,hshq/hermes-terminal:v1,ghcr.io/jo-inc/camofox-browser:1.11.2,ghcr.io/nesquena/hermes-webui:0.51.137,mirror.gcr.io/caddy:2.11.3
+      curImageList=hshq/hermes-agent:v1,hshq/hermes-terminal:v1,ghcr.io/jo-inc/camofox-browser:1.11.2,ghcr.io/nesquena/hermes-webui:0.52.302
       image_update_map[0]="hshq/hermes-agent:v1,hshq/hermes-agent:v1"
       image_update_map[1]="hshq/hermes-terminal:v1,hshq/hermes-terminal:v1"
       image_update_map[2]="ghcr.io/jo-inc/camofox-browser:1.11.2,ghcr.io/jo-inc/camofox-browser:1.11.2"
-      image_update_map[3]="ghcr.io/nesquena/hermes-webui:0.51.137,ghcr.io/nesquena/hermes-webui:0.51.137"
-      image_update_map[4]="mirror.gcr.io/caddy:2.11.3,mirror.gcr.io/caddy:2.11.3"
+      image_update_map[3]="ghcr.io/nesquena/hermes-webui:0.52.302,ghcr.io/nesquena/hermes-webui:0.52.302"
     ;;
     *)
       is_upgrade_error=true
