@@ -118630,6 +118630,7 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/config/config.yaml:/opt/data/config.yaml
       - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/config/term_ed25519:/run/secrets/term_ed25519:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/terminal/workspace:/opt/data/workspace
       - v-hermes-agent-home:/opt/data
       - v-hermes-agent-src:/opt/hermes:ro
 
@@ -118655,6 +118656,7 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/config/config.yaml:/opt/data/config.yaml
       - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/config/term_ed25519:/run/secrets/term_ed25519:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/terminal/workspace:/opt/data/workspace
       - v-hermes-agent-home:/opt/data
 
   hermes-agent-terminal:
