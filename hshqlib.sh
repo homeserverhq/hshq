@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=241
+HSHQ_LIB_SCRIPT_VERSION=242
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -9044,10 +9044,10 @@ function installStack()
 
 function startWazuhAgent()
 {
-  curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
-  echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
-  sudo DEBIAN_FRONTEND=noninteractive apt update
-  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$WAZUH_AGENT_VERSION
+  curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg > /dev/null 2>&1
+  echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$WAZUH_AGENT_VERSION > /dev/null 2>&1
   sudo apt-mark hold wazuh-agent
   sudo systemctl daemon-reload
   set +e
@@ -21408,6 +21408,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=239
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 242 ]; then
+    echo "Updating to Version 242..."
+    version242Update
+    HSHQ_VERSION=242
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -24808,6 +24814,11 @@ EOFUR
       exit
     fi
   fi
+}
+
+function version242Update()
+{
+  outputCaddyHeaders
 }
 
 function getNextHSVPNRoutingTable()
@@ -31752,7 +31763,7 @@ function loadPinnedDockerImages()
   IMG_FRAPPE_BENCH=mirror.gcr.io/frappe/bench:v5.25.9
 
   # Stack specific images
-  IMG_ACTIVEPIECES_APP=ghcr.io/activepieces/activepieces:0.72.4
+  IMG_ACTIVEPIECES_APP=ghcr.io/activepieces/activepieces:0.90.4
   IMG_ADGUARD=mirror.gcr.io/adguard/adguardhome:v0.107.78
   IMG_ADMINER=mirror.gcr.io/adminer:5.4.1
   IMG_AISTACK_MINDSDB_APP=mirror.gcr.io/mindsdb/mindsdb:v25.7.4.0
@@ -32031,8 +32042,8 @@ function loadPinnedDockerImages()
   IMG_WATERCRAWL_PLAYWRIGHT=mirror.gcr.io/watercrawl/playwright:1.2
   IMG_WATERCRAWL_FRONTEND=mirror.gcr.io/watercrawl/frontend:v0.12.1
   IMG_WATERCRAWL_MCP=mirror.gcr.io/watercrawl/mcp:v1.3.0
-  IMG_FLOWISE_APP=mirror.gcr.io/flowiseai/flowise:3.0.12
-  IMG_FLOWISE_WORKER=mirror.gcr.io/flowiseai/flowise-worker:3.0.12
+  IMG_FLOWISE_APP=mirror.gcr.io/flowiseai/flowise:3.1.4
+  IMG_FLOWISE_WORKER=mirror.gcr.io/flowiseai/flowise-worker:3.1.4
   IMG_SURFSENSE_APP=ghcr.io/modsetter/surfsense:v1.0.92
   IMG_NOCODB_APP=mirror.gcr.io/nocodb/nocodb:0.265.1
   IMG_ENTE_SERVER=hshq/ente-server:v1
@@ -32082,7 +32093,7 @@ function loadPinnedDockerImages()
   IMG_HERMES_APP=hshq/hermes-agent:v1
   IMG_HERMES_TERMINAL=hshq/hermes-terminal:v1
   IMG_HERMES_CAMOFOX=ghcr.io/jo-inc/camofox-browser:1.11.2
-  IMG_HERMES_WEBUI=ghcr.io/nesquena/hermes-webui:0.51.137
+  IMG_HERMES_WEBUI=ghcr.io/nesquena/hermes-webui:0.52.302
   IMG_AUTOKB_APP=ghcr.io/homeserverhq/autokb-app:v6
   IMG_AUTOKB_MCP=ghcr.io/homeserverhq/autokb-mcp:v6
   IMG_SUITECRM_APP=ghcr.io/homeserverhq/suitecrm-core:v8.10.1
@@ -32306,7 +32317,7 @@ function getScriptStackVersion()
     automatisch)
       echo "v1" ;;
     activepieces)
-      echo "v2" ;;
+      echo "v3" ;;
     dbgate)
       echo "v2" ;;
     sqlpad)
@@ -41841,6 +41852,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENCODE_CODESERVER}-Admin" https://$SUB_OPENCODE_CODESERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENCODE_CODESERVER_USERNAME $OPENCODE_CODESERVER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_EMAILCLASSIFIERAI_APP}-Admin" https://$SUB_EMAILCLASSIFIERAI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $EMAILCLASSIFIERAI_ADMIN_USERNAME $EMAILCLASSIFIERAI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HERMES_AGENT_DASHBOARD}-Admin" https://$SUB_HERMES_AGENT_DASHBOARD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HERMES_AGENT_ADMIN_USERNAME $HERMES_AGENT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HERMES_AGENT_WEBUI}-Admin" https://$SUB_HERMES_AGENT_WEBUI.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HERMES_AGENT_ADMIN_USERNAME $HERMES_AGENT_WEBUI_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUTOKB_WEB}-Admin" https://$SUB_AUTOKB_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOKB_ADMIN_USERNAME $AUTOKB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SUITECRM_APP}-Admin" https://$SUB_SUITECRM_APP.$HOMESERVER_DOMAIN/#/Login $HOMESERVER_ABBREV $SUITECRM_ADMIN_USERNAME $SUITECRM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEDGEDOC_APP}-Admin" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEDGEDOC_ADMIN_USERNAME $HEDGEDOC_ADMIN_PASSWORD)"\n"
@@ -42052,6 +42064,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENCODE_CODESERVER}-Admin" https://$SUB_OPENCODE_CODESERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENCODE_CODESERVER_USERNAME $OPENCODE_CODESERVER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_EMAILCLASSIFIERAI_APP}-Admin" https://$SUB_EMAILCLASSIFIERAI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $EMAILCLASSIFIERAI_ADMIN_USERNAME $EMAILCLASSIFIERAI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HERMES_AGENT_DASHBOARD}-Admin" https://$SUB_HERMES_AGENT_DASHBOARD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HERMES_AGENT_ADMIN_USERNAME $HERMES_AGENT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HERMES_AGENT_WEBUI}-Admin" https://$SUB_HERMES_AGENT_WEBUI.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HERMES_AGENT_ADMIN_USERNAME $HERMES_AGENT_WEBUI_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUTOKB_WEB}-Admin" https://$SUB_AUTOKB_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $AUTOKB_ADMIN_USERNAME $AUTOKB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SUITECRM_APP}-Admin" https://$SUB_SUITECRM_APP.$HOMESERVER_DOMAIN/#/Login $HOMESERVER_ABBREV $SUITECRM_ADMIN_USERNAME $SUITECRM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HEDGEDOC_APP}-Admin" https://$SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEDGEDOC_ADMIN_USERNAME $HEDGEDOC_ADMIN_PASSWORD)"\n"
@@ -42836,7 +42849,7 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,opennotebook,appsmith,trilium,memos,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,wger,workoutcool,voicebox,opencode,emailclassifierai,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,opennotebook,appsmith,trilium,memos,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,wger,workoutcool,voicebox,opencode,emailclassifierai,hermes-agent,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
   DS_MEM_LOW=minimal
   DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
   DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
@@ -42850,7 +42863,7 @@ function initServiceDefaults()
   BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
 #INIT_SERVICE_DEFAULTS_END
   if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
-    HSHQ_OPTIONAL_STACKS=${HSHQ_OPTIONAL_STACKS},surfsense,ente,comfyui,perplexica,morphic,insanelyfastwhisper,ivbox,skyvern,openrag,openskills,hermes-agent,sillytavern
+    HSHQ_OPTIONAL_STACKS=${HSHQ_OPTIONAL_STACKS},surfsense,ente,comfyui,perplexica,morphic,insanelyfastwhisper,ivbox,skyvern,openrag,openskills,sillytavern
   fi
 }
 
@@ -44532,9 +44545,6 @@ function getScriptImageByContainerName()
       ;;
     "hermes-agent-webui")
       container_image=$IMG_HERMES_WEBUI
-      ;;
-    "hermes-agent-caddy")
-      container_image=mirror.gcr.io/caddy:2.11.3
       ;;
     "autokb-db")
       container_image=mirror.gcr.io/postgres:15.0-bullseye
@@ -95654,6 +95664,7 @@ function installActivePieces()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://activepieces-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -95727,6 +95738,7 @@ services:
       - int-activepieces-net
       - dock-ext-net
       - dock-internalmail-net
+      - dock-aipriv-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -95734,6 +95746,33 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/activepieces/cache:/usr/src/app/cache
+    environment:
+      - AP_CONTAINER_TYPE=APP
+
+  activepieces-worker:
+    image: $(getScriptImageByContainerName activepieces-worker)
+    container_name: activepieces-worker
+    hostname: activepieces-worker
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - activepieces-app
+    networks:
+      - int-activepieces-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/activepieces/cache:/usr/src/app/cache
+    environment:
+      - AP_CONTAINER_TYPE=WORKER
 
   activepieces-redis:
     image: $(getScriptImageByContainerName activepieces-redis)
@@ -95774,6 +95813,9 @@ networks:
     external: true
   dock-ldap-net:
     name: dock-ldap
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
     external: true
   int-activepieces-net:
     driver: bridge
@@ -95865,11 +95907,21 @@ function performUpdateActivePieces()
       image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/activepieces/activepieces:0.72.4,mirror.gcr.io/redis:8.4.0-bookworm
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
-      image_update_map[1]="ghcr.io/activepieces/activepieces:0.72.4,ghcr.io/activepieces/activepieces:0.72.4"
-      image_update_map[2]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/redis:8.4.0-bookworm"
+      image_update_map[1]="ghcr.io/activepieces/activepieces:0.72.4,ghcr.io/activepieces/activepieces:0.90.4"
+      image_update_map[2]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/valkey/valkey:alpine3.23"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfActivePiecesUpdateV3
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/activepieces/activepieces:0.90.4,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="ghcr.io/activepieces/activepieces:0.90.4,ghcr.io/activepieces/activepieces:0.90.4"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
       is_upgrade_error=true
@@ -95879,6 +95931,152 @@ function performUpdateActivePieces()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfActivePiecesUpdateV3()
+{
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/activepieces/redis/*
+  cat <<EOFMT > $HOME/activepieces-compose.yml
+$STACK_VERSION_PREFIX activepieces v3
+
+services:
+  activepieces-db:
+    image: mirror.gcr.io/postgres:16.9-bookworm
+    container_name: activepieces-db
+    hostname: activepieces-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-activepieces-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/activepieces/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/activepieces/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.activepieces-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.activepieces-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.activepieces-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.activepieces-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.activepieces-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.activepieces-hourly-db.email-from=ActivePieces Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.activepieces-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.activepieces-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.activepieces-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.activepieces-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.activepieces-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.activepieces-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.activepieces-monthly-db.email-from=ActivePieces Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.activepieces-monthly-db.mail-only-on-error=false"
+
+  activepieces-app:
+    image: ghcr.io/activepieces/activepieces:0.90.4
+    container_name: activepieces-app
+    hostname: activepieces-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - activepieces-db
+      - activepieces-redis
+    networks:
+      - int-activepieces-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/activepieces/cache:/usr/src/app/cache
+    environment:
+      - AP_CONTAINER_TYPE=APP
+
+  activepieces-worker:
+    image: ghcr.io/activepieces/activepieces:0.90.4
+    container_name: activepieces-worker
+    hostname: activepieces-worker
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - activepieces-app
+    networks:
+      - int-activepieces-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/activepieces/cache:/usr/src/app/cache
+    environment:
+      - AP_CONTAINER_TYPE=WORKER
+
+  activepieces-redis:
+    image: mirror.gcr.io/valkey/valkey:alpine3.23
+    container_name: activepieces-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $ACTIVEPIECES_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-activepieces-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-activepieces-redis:/data
+
+volumes:
+  v-activepieces-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/activepieces/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-activepieces-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
 }
 
 # Beszel
@@ -106809,12 +107007,12 @@ DATABASE_NAME=$FLOWISE_DATABASE_NAME
 DATABASE_USER=$FLOWISE_DATABASE_USER
 DATABASE_PASSWORD=$FLOWISE_DATABASE_USER_PASSWORD
 SECRETKEY_STORAGE_TYPE=local
-SECRETKEY_PATH=/root/.flowise
-LOG_PATH=/root/.flowise/logs
+SECRETKEY_PATH=/home/node/.flowise
+LOG_PATH=/home/node/.flowise/logs
 MINIO_ROOT_USER=$FLOWISE_MINIO_KEY
 MINIO_ROOT_PASSWORD=$FLOWISE_MINIO_SECRET
 STORAGE_TYPE=s3
-BLOB_STORAGE_PATH=/root/.flowise/storage
+BLOB_STORAGE_PATH=/home/node/.flowise/storage
 S3_STORAGE_BUCKET_NAME=flowise
 S3_STORAGE_ACCESS_KEY_ID=$FLOWISE_MINIO_KEY
 S3_STORAGE_SECRET_ACCESS_KEY=$FLOWISE_MINIO_SECRET
@@ -106888,17 +107086,17 @@ function performUpdateFlowise()
       newVer=v2
       curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/flowiseai/flowise:3.0.12,mirror.gcr.io/flowiseai/flowise-worker:3.0.12,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
       image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
-      image_update_map[1]="mirror.gcr.io/flowiseai/flowise:3.0.12,mirror.gcr.io/flowiseai/flowise:3.0.12"
-      image_update_map[2]="mirror.gcr.io/flowiseai/flowise-worker:3.0.12,mirror.gcr.io/flowiseai/flowise-worker:3.0.12"
+      image_update_map[1]="mirror.gcr.io/flowiseai/flowise:3.0.12,mirror.gcr.io/flowiseai/flowise:3.1.4"
+      image_update_map[2]="mirror.gcr.io/flowiseai/flowise-worker:3.0.12,mirror.gcr.io/flowiseai/flowise-worker:3.1.4"
       image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z,ghcr.io/homeserverhq/minio:v1.0"
     ;;
     2)
       newVer=v2
-      curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/flowiseai/flowise:3.0.12,mirror.gcr.io/flowiseai/flowise-worker:3.0.12,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/minio:v1.0
+      curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/flowiseai/flowise:3.1.4,mirror.gcr.io/flowiseai/flowise-worker:3.1.4,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/minio:v1.0
       image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
-      image_update_map[1]="mirror.gcr.io/flowiseai/flowise:3.0.12,mirror.gcr.io/flowiseai/flowise:3.0.12"
-      image_update_map[2]="mirror.gcr.io/flowiseai/flowise-worker:3.0.12,mirror.gcr.io/flowiseai/flowise-worker:3.0.12"
+      image_update_map[1]="mirror.gcr.io/flowiseai/flowise:3.1.4,mirror.gcr.io/flowiseai/flowise:3.1.4"
+      image_update_map[2]="mirror.gcr.io/flowiseai/flowise-worker:3.1.4,mirror.gcr.io/flowiseai/flowise-worker:3.1.4"
       image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[4]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
     ;;
@@ -118302,21 +118500,18 @@ function installHermesAgent()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  buildOrPullImage $(getScriptImageByContainerName hermes-agent-camofox)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
+  #buildOrPullImage $(getScriptImageByContainerName hermes-agent-camofox)
+  #if [ $? -ne 0 ]; then
+  #  return 1
+  #fi
   buildOrPullImage $(getScriptImageByContainerName hermes-agent-webui)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
-  buildOrPullImage $(getScriptImageByContainerName hermes-agent-caddy)
   if [ $? -ne 0 ]; then
     return 1
   fi
   set -e
   mkdir $HSHQ_STACKS_DIR/hermes-agent
   mkdir $HSHQ_STACKS_DIR/hermes-agent/data
+  mkdir $HSHQ_STACKS_DIR/hermes-agent/config
   mkdir $HSHQ_STACKS_DIR/hermes-agent/home
   mkdir $HSHQ_STACKS_DIR/hermes-agent/src
   mkdir $HSHQ_STACKS_DIR/hermes-agent/terminal
@@ -118331,7 +118526,6 @@ function installHermesAgent()
   set +e
   addUserMailu alias $HERMES_AGENT_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   HERMES_AGENT_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $HERMES_AGENT_ADMIN_PASSWORD | tr -d ':\n')
-  generateCert hermes-agent-caddy hermes-agent-caddy
   outputConfigHermesAgent
   installStack hermes-agent hermes-agent-gateway "" $HOME/hermes-agent.env
   retVal=$?
@@ -118357,7 +118551,7 @@ function installHermesAgent()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy https://hermes-agent-caddy {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://hermes-agent-dashboard:9119 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>>>header_up Host {upstream_hostport}\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -118419,6 +118613,7 @@ services:
     security_opt:
       - no-new-privileges:true
     command: ["gateway", "run"]
+    working_dir: /opt/data
     networks:
       - int-hermes-agent-net
       - dock-ailimit-net
@@ -118433,6 +118628,9 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/config/config.yaml:/opt/data/config.yaml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/config/term_ed25519:/run/secrets/term_ed25519:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/terminal/workspace:/opt/data/workspace
       - v-hermes-agent-home:/opt/data
       - v-hermes-agent-src:/opt/hermes:ro
 
@@ -118445,14 +118643,20 @@ services:
     security_opt:
       - no-new-privileges:true
     command: ["dashboard", "--host", "0.0.0.0", "--insecure", "--no-open"]
+    working_dir: /opt/data
     networks:
       - int-hermes-agent-net
+      - dock-proxy-net
+      - dock-ailimit-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/config/config.yaml:/opt/data/config.yaml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/config/term_ed25519:/run/secrets/term_ed25519:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/terminal/workspace:/opt/data/workspace
       - v-hermes-agent-home:/opt/data
 
   hermes-agent-terminal:
@@ -118461,10 +118665,11 @@ services:
     hostname: hermes-agent-terminal
     restart: unless-stopped
     env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
+    tty: true
+    stdin_open: true
     networks:
       - int-hermes-agent-net
+      - dock-ailimit-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -118472,7 +118677,7 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/terminal/home:/home/agent
-      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/terminal/workspace:/workspace
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/terminal/workspace:/opt/data
 
 #  Uncommenting this container will grant your agent access to the internet. Use with caution!
 #  hermes-agent-camofox:
@@ -118511,32 +118716,11 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-hermes-agent-home:/home/hermeswebui/.hermes
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/config/config.yaml:/opt/data/config.yaml:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/config/term_ed25519:/run/secrets/term_ed25519:ro
+      - v-hermes-agent-home:/opt/data
       - v-hermes-agent-src:/opt/hermes:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/webui/workspace:/workspace
-
-  hermes-agent-caddy:
-    image: $(getScriptImageByContainerName hermes-agent-caddy)
-    container_name: hermes-agent-caddy
-    hostname: hermes-agent-caddy
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - int-hermes-agent-net
-      - dock-proxy-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_SSL_DIR}/hermes-agent-caddy.crt:/certs/hermes-agent-caddy.crt
-      - \${PORTAINER_HSHQ_SSL_DIR}/hermes-agent-caddy.key:/certs/hermes-agent-caddy.key
-      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/caddy/Caddyfile:/etc/caddy/Caddyfile
-      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/caddy/data:/data
-      - \${PORTAINER_HSHQ_STACKS_DIR}/hermes-agent/caddy/config:/config
 
 volumes:
   v-hermes-agent-home:
@@ -118572,17 +118756,21 @@ networks:
       driver: default
 
 EOFMT
+  ssh-keygen -t ed25519 -f $HSHQ_STACKS_DIR/hermes-agent/config/term_ed25519 -N "" -C "" > /dev/null 2>&1
   cat <<EOFMT > $HOME/hermes-agent.env
 TZ=\${PORTAINER_TZ}
 HERMES_UID=\${PORTAINER_UID}
 HERMES_GID=\${PORTAINER_GID}
+UID=\${PORTAINER_UID}
+GID=\${PORTAINER_GID}
 API_SERVER_HOST=0.0.0.0
 API_SERVER_KEY=$HERMES_AGENT_API_KEY
 GATEWAY_HEALTH_URL=http://hermes-agent-gateway:8642
 TERMINAL_ENV=ssh
 TERMINAL_SSH_HOST=hermes-agent-terminal
 TERMINAL_SSH_USER=agent
-SUDO_PASSWORD=$HERMES_AGENT_SUDO_PASSWORD
+TERMINAL_SSH_KEY=/run/secrets/term_ed25519
+TERMINAL_PUBLIC_KEY="$(cat $HSHQ_STACKS_DIR/hermes-agent/config/term_ed25519.pub)"
 CAMOFOX_URL=http://hermes-agent-camofox:9377
 CAMOFOX_PORT=9377
 STT_OPENAI_MODEL=distil-whisper/distil-large-v3.5
@@ -118590,25 +118778,33 @@ STT_OPENAI_BASE_URL=http://insanelyfastwhisper-api:8888/v1
 HERMES_WEBUI_PASSWORD=$HERMES_AGENT_WEBUI_PASSWORD
 HERMES_WEBUI_HOST=0.0.0.0
 HERMES_WEBUI_PORT=8787
+HERMES_HOME=/opt/data
 HERMES_WEBUI_STATE_DIR=/home/hermeswebui/.hermes/webui
 WANTED_UID=\${PORTAINER_UID}
 WANTED_GID=\${PORTAINER_GID}
 OPENAI_API_KEY=$LITELLM_MASTER_KEY
 OPENAI_BASE_URL=http://litellm-proxy:4000/v1
+HERMES_DASHBOARD_BASIC_AUTH_USERNAME=$HERMES_AGENT_ADMIN_USERNAME
+HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=$HERMES_AGENT_ADMIN_PASSWORD
+HERMES_MODEL_PROVIDER=custom
+HERMES_MODEL_BASE_URL=http://litellm-proxy:4000/v1
+HERMES_MODEL_DEFAULT=LongContext
+HERMES_MODEL_CONTEXT_LENGTH=100000
+HERMES_MODEL=LongContext
+HERMES_PROVIDER=custom
+CUSTOM_API_KEY=$LITELLM_MASTER_KEY
+TIRITH_ENABLED=false
 EOFMT
-  cat <<EOFSE > $HSHQ_STACKS_DIR/hermes-agent/caddy/Caddyfile
-{
-  admin off
-}
-
-https://hermes-agent-caddy {
-  tls /certs/hermes-agent-caddy.crt /certs/hermes-agent-caddy.key
-  basic_auth {
-    $HERMES_AGENT_ADMIN_USERNAME $HERMES_AGENT_ADMIN_PASSWORD_HASH
-  }
-  reverse_proxy http://hermes-agent-dashboard:9119
-}
-EOFSE
+  cat <<EOFMT > $HSHQ_STACKS_DIR/hermes-agent/config/config.yaml
+model:
+  provider: custom
+  base_url: "http://litellm-proxy:4000/v1"
+  default: "LongContext"
+  context_length: 100000
+  api_key: "$LITELLM_MASTER_KEY"
+security:
+  allow_lazy_installs: false
+EOFMT
 }
 
 function buildImageHermesAgentV1()
@@ -118620,7 +118816,7 @@ function buildImageHermesAgentV1()
   echo -e "========================================================================\n"
   sudo rm -fr $HSHQ_BUILD_DIR/hermes-agent
   cd $HSHQ_BUILD_DIR
-  git -c advice.detachedHead=false clone --depth 1 --branch v2026.5.16 https://github.com/NousResearch/hermes-agent.git
+  git -c advice.detachedHead=false clone --depth 1 --branch v2026.9.11 https://github.com/NousResearch/hermes-agent.git
   cd $HSHQ_BUILD_DIR/hermes-agent
   docker image build -t hshq/hermes-agent:v1 -f ./Dockerfile .
   rtval=$?
@@ -118639,25 +118835,44 @@ function buildImageHermesTerminalV1()
   sudo rm -fr $HSHQ_BUILD_DIR/hermes-terminal
   mkdir $HSHQ_BUILD_DIR/hermes-terminal
   cd $HSHQ_BUILD_DIR/hermes-terminal
-  cat <<EOFMT > startup.sh
+  cat <<'EOFMT' > startup.sh
 #!/bin/bash
-/usr/sbin/sshd
-exec sudo -u agent /bin/bash
+mkdir -p /home/agent/.ssh
+umask 077
+if [ -n "$TERMINAL_PUBLIC_KEY" ]; then
+  printf '%s\n' "$TERMINAL_PUBLIC_KEY" > /home/agent/.ssh/authorized_keys
+  chown agent:agent /home/agent/.ssh/authorized_keys
+fi
+chown -R agent:agent /home/agent /opt/data 2>/dev/null
+chmod 700 /home/agent/.ssh
+chmod 600 /home/agent/.ssh/authorized_keys
+exec /usr/sbin/sshd -D
 EOFMT
   cat <<EOFMT > Dockerfile
 FROM nikolaik/python-nodejs:python3.11-nodejs20
-RUN apt-get update && \
-    apt-get install -y openssh-server sudo && \
+RUN apt-get update && apt-get install -y openssh-server sudo && \
     mkdir -p /var/run/sshd && \
-    ssh-keygen -A && \
-    rm -rf /var/lib/apt/lists/*
-RUN useradd -m -s /bin/bash agent && \
-    echo "agent:$HERMES_AGENT_SUDO_PASSWORD" | chpasswd
-RUN usermod -aG sudo agent
-EXPOSE 22
+    sed -i 's/^#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config && \
+    sed -i 's/^PubkeyAuthentication no/PubkeyAuthentication yes/' /etc/ssh/sshd_config && \
+    echo "UsePAM no" >> /etc/ssh/sshd_config && \
+    echo "PasswordAuthentication no" >> /etc/ssh/sshd_config && \
+    ssh-keygen -A && rm -rf /var/lib/apt/lists/*
+RUN userdel pn && \
+    useradd -m -s /bin/bash -u 1000 agent && \
+    usermod -aG sudo agent && \
+    echo "agent:hermes" | chpasswd && \
+    mkdir -p /opt/hermes && \
+    chown agent:agent /opt/hermes && \
+    mkdir -p /opt/data && \
+    chown agent:agent /opt/data && \
+    mkdir -p /home/agent/.ssh && \
+    chmod 700 /home/agent/.ssh && chown -R agent:agent /home/agent/.ssh && \
+    echo "agent ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/agent && \
+    chmod 440 /etc/sudoers.d/agent
 COPY startup.sh /startup.sh
 RUN chmod +x /startup.sh
-CMD ["/startup.sh"] 
+EXPOSE 22
+CMD ["/startup.sh"]
 EOFMT
   docker image build -t hshq/hermes-terminal:v1 .
   rtval=$?
@@ -118675,12 +118890,11 @@ function performUpdateHermesAgent()
   case "$perform_stack_ver" in
     1)
       newVer=v1
-      curImageList=hshq/hermes-agent:v1,hshq/hermes-terminal:v1,ghcr.io/jo-inc/camofox-browser:1.11.2,ghcr.io/nesquena/hermes-webui:0.51.137,mirror.gcr.io/caddy:2.11.3
+      curImageList=hshq/hermes-agent:v1,hshq/hermes-terminal:v1,ghcr.io/jo-inc/camofox-browser:1.11.2,ghcr.io/nesquena/hermes-webui:0.52.302
       image_update_map[0]="hshq/hermes-agent:v1,hshq/hermes-agent:v1"
       image_update_map[1]="hshq/hermes-terminal:v1,hshq/hermes-terminal:v1"
       image_update_map[2]="ghcr.io/jo-inc/camofox-browser:1.11.2,ghcr.io/jo-inc/camofox-browser:1.11.2"
-      image_update_map[3]="ghcr.io/nesquena/hermes-webui:0.51.137,ghcr.io/nesquena/hermes-webui:0.51.137"
-      image_update_map[4]="mirror.gcr.io/caddy:2.11.3,mirror.gcr.io/caddy:2.11.3"
+      image_update_map[3]="ghcr.io/nesquena/hermes-webui:0.52.302,ghcr.io/nesquena/hermes-webui:0.52.302"
     ;;
     *)
       is_upgrade_error=true
@@ -121175,7 +121389,7 @@ WEBUI_TITLE=LightRAG Graph KB
 WEBUI_DESCRIPTION=Simple and Fast Graph-Based RAG System
 WORKERS=8
 TIMEOUT=150
-CORS_ORIGINS=https://$SUB_LIGHTRAG.$HOMESERVER_DOMAIN
+CORS_ORIGINS=https://$SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN
 SSL=false
 MAX_GRAPH_NODES=1000
 LOG_LEVEL=INFO
@@ -133194,7 +133408,7 @@ function outputCaddyHeaders()
 }
 
 ($CADDY_SNIPPET_RELAXEDCSP) {
-  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' registry.npmmirror.com; font-src 'self' registry.npmmirror.com; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com github.com cdn.anythingllm.com assets.appsmith.com www.authelia.com registry.npmmirror.com *.s3.amazonaws.com *.${HOMESERVER_DOMAIN} data: blob:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; media-src 'self' *.${HOMESERVER_DOMAIN} github.com data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} api.comfy.org huggingface.co cdn.anythingllm.com registry.npmmirror.com data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
+  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' registry.npmmirror.com; font-src 'self' registry.npmmirror.com; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com github.com cdn.anythingllm.com assets.appsmith.com www.authelia.com registry.npmmirror.com *.s3.amazonaws.com activepieces.com *.activepieces.com *.${HOMESERVER_DOMAIN} data: blob:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; media-src 'self' *.${HOMESERVER_DOMAIN} github.com data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} api.comfy.org huggingface.co cdn.anythingllm.com registry.npmmirror.com data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
 }
 
 # At some point we'll fix the svcs.snip and collapse these two
