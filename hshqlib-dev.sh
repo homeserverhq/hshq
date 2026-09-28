@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=242
+HSHQ_LIB_SCRIPT_VERSION=243
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -51518,7 +51518,6 @@ networks:
     ipam:
       driver: default
 EOFWZ
-
   cat <<EOFWZ > $HOME/wazuh.env
 TZ=\${PORTAINER_TZ}
 UID=$USERID
@@ -51537,7 +51536,6 @@ WAZUH_API_URL=https://wazuh.manager
 DASHBOARD_USERNAME=$WAZUH_USERS_DASHBOARD_USERNAME
 DASHBOARD_PASSWORD=$WAZUH_USERS_DASHBOARD_PASSWORD
 EOFWZ
-
   cat <<EOFWZ > $HSHQ_STACKS_DIR/wazuh/wazuh-cluster/wazuh_manager.conf
 <ossec_config>
   <global>
@@ -51856,7 +51854,6 @@ EOFWZ
 </ossec_config>
 
 EOFWZ
-
   cat <<EOFWZ > $HSHQ_STACKS_DIR/wazuh/wazuh-indexer/wazuh_indexer.yml
 network.host: "0.0.0.0"
 node.name: "wazuh.indexer"
@@ -51887,7 +51884,6 @@ plugins.security.system_indices.indices: [".opendistro-alerting-config", ".opend
 plugins.security.allow_default_init_securityindex: true
 cluster.routing.allocation.disk.threshold_enabled: false
 EOFWZ
-
   WAZUH_USERS_ADMIN_PASSWORD_HASH=$(htpasswd -B -n -b $WAZUH_USERS_ADMIN_USERNAME $WAZUH_USERS_ADMIN_PASSWORD | cut -d":" -f2-)
   WAZUH_USERS_DASHBOARD_PASSWORD_HASH=$(htpasswd -B -n -b kibanaserver $WAZUH_USERS_DASHBOARD_PASSWORD | cut -d":" -f2-)
   WAZUH_USERS_KIBANARO_PASSWORD_HASH=$(htpasswd -B -n -b kibanaro $WAZUH_USERS_KIBANARO_PASSWORD | cut -d":" -f2-)
@@ -52041,18 +52037,18 @@ function performUpdateWazuh()
     7)
       newVer=v7
       curImageList=wazuh/wazuh-manager:4.11.2,wazuh/wazuh-indexer:4.11.2,wazuh/wazuh-dashboard:4.11.2
-      image_update_map[0]="wazuh/wazuh-manager:4.11.2,mirror.gcr.io/wazuh/wazuh-manager:4.14.1"
-      image_update_map[1]="wazuh/wazuh-indexer:4.11.2,mirror.gcr.io/wazuh/wazuh-indexer:4.14.1"
-      image_update_map[2]="wazuh/wazuh-dashboard:4.11.2,mirror.gcr.io/wazuh/wazuh-dashboard:4.14.1"
-      updateWazuhAgents "4.14.1-1"
+      image_update_map[0]="wazuh/wazuh-manager:4.11.2,mirror.gcr.io/wazuh/wazuh-manager:4.14.7"
+      image_update_map[1]="wazuh/wazuh-indexer:4.11.2,mirror.gcr.io/wazuh/wazuh-indexer:4.14.7"
+      image_update_map[2]="wazuh/wazuh-dashboard:4.11.2,mirror.gcr.io/wazuh/wazuh-dashboard:4.14.7"
+      updateWazuhAgents "4.14.7-1"
     ;;
     8)
       newVer=v8
-      curImageList=mirror.gcr.io/wazuh/wazuh-manager:4.14.1,mirror.gcr.io/wazuh/wazuh-indexer:4.14.1,mirror.gcr.io/wazuh/wazuh-dashboard:4.14.1
-      image_update_map[0]="mirror.gcr.io/wazuh/wazuh-manager:4.14.1,mirror.gcr.io/wazuh/wazuh-manager:4.14.1"
-      image_update_map[1]="mirror.gcr.io/wazuh/wazuh-indexer:4.14.1,mirror.gcr.io/wazuh/wazuh-indexer:4.14.1"
-      image_update_map[2]="mirror.gcr.io/wazuh/wazuh-dashboard:4.14.1,mirror.gcr.io/wazuh/wazuh-dashboard:4.14.1"
-      updateWazuhAgents "4.14.1-1"
+      curImageList=mirror.gcr.io/wazuh/wazuh-manager:4.14.7,mirror.gcr.io/wazuh/wazuh-indexer:4.14.7,mirror.gcr.io/wazuh/wazuh-dashboard:4.14.7
+      image_update_map[0]="mirror.gcr.io/wazuh/wazuh-manager:4.14.7,mirror.gcr.io/wazuh/wazuh-manager:4.14.7"
+      image_update_map[1]="mirror.gcr.io/wazuh/wazuh-indexer:4.14.7,mirror.gcr.io/wazuh/wazuh-indexer:4.14.7"
+      image_update_map[2]="mirror.gcr.io/wazuh/wazuh-dashboard:4.14.7,mirror.gcr.io/wazuh/wazuh-dashboard:4.14.7"
+      updateWazuhAgents "4.14.7-1"
     ;;
     *)
       is_upgrade_error=true
@@ -60171,6 +60167,7 @@ function installWordPress()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>@insecureadmin {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_NOTHOMESUBNET\n"
@@ -64657,7 +64654,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-proxy-net
+      - dock-ext-net
       - int-excalidraw-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -64736,6 +64733,9 @@ networks:
   dock-proxy-net:
     name: dock-proxy
     external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
   dock-aipriv-net:
     name: dock-aipriv
     external: true
@@ -64754,7 +64754,7 @@ function outputJSONConfigExcalidraw()
 {
   "VITE_APP_WS_SERVER_URL": "https://$SUB_EXCALIDRAW_SERVER.$HOMESERVER_DOMAIN",
   "VITE_APP_STORAGE_BACKEND": "http",
-  "VITE_APP_HTTP_STORAGE_BACKEND_URL": "https://excalidraw-storage.the-jedi-academy.com/api/v2",
+  "VITE_APP_HTTP_STORAGE_BACKEND_URL": "https://$SUB_EXCALIDRAW_STORAGE.$HOMESERVER_DOMAIN/api/v2",
   "VITE_APP_BACKEND_V2_GET_URL": "https://$SUB_EXCALIDRAW_STORAGE.$HOMESERVER_DOMAIN/api/v2/scenes",
   "VITE_APP_BACKEND_V2_POST_URL": "https://$SUB_EXCALIDRAW_STORAGE.$HOMESERVER_DOMAIN/api/v2/scenes",
   "VITE_APP_INTERNAL_STORAGE_URL": "http://excalidraw-storage:8080/api/v2"
@@ -112354,6 +112354,9 @@ function buildImageInsanelyFastWhisperV1()
   git -c advice.detachedHead=false clone --depth 1 https://github.com/beecave-homelab/insanely-fast-whisper-rocm.git
   cd $HSHQ_BUILD_DIR/insanely-fast-whisper-rocm
   sed -i "s/^ENV HSA_OVERRIDE_GFX_VERSION=.*/ENV HSA_OVERRIDE_GFX_VERSION=11.0.0/" Dockerfile.dev
+  sed -i 's/visible=False, interactive=False/visible=True, interactive=False/g' insanely_fast_whisper_rocm/webui/ui.py
+  sed -i 's/visible=False, value=None, interactive=False/value=None, interactive=False/g' insanely_fast_whisper_rocm/webui/handlers.py
+  sed -i '/^[[:space:]]*visible=True,$/d' insanely_fast_whisper_rocm/webui/handlers.py
   docker image build -t hshq/insanelyfastwhisper:v1 -f Dockerfile.dev .
   rtval=$?
   cd
@@ -115074,7 +115077,7 @@ function installChatterbox()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://chatterbox-app:8004 {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://chatterbox-app:8000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>}\n"
@@ -115099,17 +115102,17 @@ function installChatterbox()
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>handle @auth_bearer {\n"
-  inner_block=$inner_block">>>>>>>>reverse_proxy http://chatterbox-app:8004 {\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://chatterbox-app:8000 {\n"
   inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>>>}\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>>>handle @auth_query {\n"
-  inner_block=$inner_block">>>>>>>>reverse_proxy http://chatterbox-app:8004 {\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://chatterbox-app:8000 {\n"
   inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>>>}\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>>>handle @auth_header {\n"
-  inner_block=$inner_block">>>>>>>>reverse_proxy http://chatterbox-app:8004 {\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://chatterbox-app:8000 {\n"
   inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>>>}\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -115196,7 +115199,7 @@ EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/chatterbox/config/config.yaml
 server:
   host: 0.0.0.0
-  port: 8004
+  port: 8000
   use_ngrok: false
   use_auth: false
   auth_username: user
@@ -133408,7 +133411,7 @@ function outputCaddyHeaders()
 }
 
 ($CADDY_SNIPPET_RELAXEDCSP) {
-  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' registry.npmmirror.com; font-src 'self' registry.npmmirror.com; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com github.com cdn.anythingllm.com assets.appsmith.com www.authelia.com registry.npmmirror.com *.s3.amazonaws.com activepieces.com *.activepieces.com *.${HOMESERVER_DOMAIN} data: blob:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; media-src 'self' *.${HOMESERVER_DOMAIN} github.com data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} api.comfy.org huggingface.co cdn.anythingllm.com registry.npmmirror.com data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
+  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' registry.npmmirror.com; font-src 'self' registry.npmmirror.com excalidraw.nyc3.cdn.digitaloceanspaces.com esm.sh; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com github.com cdn.anythingllm.com assets.appsmith.com www.authelia.com registry.npmmirror.com *.s3.amazonaws.com activepieces.com *.activepieces.com ts.w.org *.${HOMESERVER_DOMAIN} data: blob:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; media-src 'self' *.${HOMESERVER_DOMAIN} github.com data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} api.comfy.org huggingface.co cdn.anythingllm.com registry.npmmirror.com data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
 }
 
 # At some point we'll fix the svcs.snip and collapse these two
@@ -133616,13 +133619,17 @@ import /snippets/head.snip
   }
 }
 EOFCF
+      is_commented_line="#"
+      if [ "$HSHQ_APP_TYPE" = "business" ]; then
+        is_commented_line=""
+      fi
       cat <<EOFCF >> $HSHQ_STACKS_DIR/$caddy_net_name/Caddyfile
 ($CADDY_SNIPPET_FWDAUTH) {
   # Uncomment the following block in order to employ Authelia on your home network
-  #forward_auth https://authelia:9091 {
-  #  uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN
-  #  copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
-  #}
+  ${is_commented_line}forward_auth https://authelia:9091 {
+  ${is_commented_line}  uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN
+  ${is_commented_line}  copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+  ${is_commented_line}}
 }
 EOFCF
       cat <<EOFCF >> $HSHQ_STACKS_DIR/$caddy_net_name/Caddyfile
