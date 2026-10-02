@@ -24166,7 +24166,7 @@ function version219Update()
 {
   sudo mkdir -p $HSHQ_SCRIPTS_DIR/source
   sudo chmod 700 $HSHQ_SCRIPTS_DIR/source
-  sudo chown -R ${USERID}:${USERID} $HSHQ_SCRIPTS_DIR/source
+  sudo chown -R ${USERID}:${GROUPID} $HSHQ_SCRIPTS_DIR/source
 }
 
 function version220Update()
@@ -32109,6 +32109,8 @@ function loadPinnedDockerImages()
   IMG_COGNEE_MCP=ghcr.io/homeserverhq/cognee-mcp:v1.4.2
   IMG_LIGHTRAG_APP=ghcr.io/hkuds/lightrag:v1.5.6
   IMG_OPENSERP_APP=mirror.gcr.io/karust/openserp:0.8
+  IMG_SURICATA_APP=mirror.gcr.io/jasonish/suricata:8.0.7
+  IMG_SURICATA_WEB=mirror.gcr.io/jasonish/evebox:0.29.0
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -32472,6 +32474,8 @@ function getScriptStackVersion()
       echo "v1" ;;
     openserp)
       echo "v1" ;;
+    suricata)
+      echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
 }
@@ -32805,6 +32809,8 @@ function pullDockerImages()
   buildOrPullImage $IMG_COGNEE_MCP
   buildOrPullImage $IMG_LIGHTRAG_APP
   buildOrPullImage $IMG_OPENSERP_APP
+  buildOrPullImage $IMG_SURICATA_APP
+  buildOrPullImage $IMG_SURICATA_WEB
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -34999,6 +35005,12 @@ LIGHTRAG_MEMGRAPH_PASSWORD=
 # OpenSERP (Service Details) BEGIN
 OPENSERP_INIT_ENV=true
 # OpenSERP (Service Details) END
+
+# Suricata (Service Details) BEGIN
+SURICATA_INIT_ENV=true
+SURICATA_ADMIN_USERNAME=
+SURICATA_ADMIN_PASSWORD=
+# Suricata (Service Details) END
 
 # Service Details END
 EOFCF
@@ -40079,6 +40091,14 @@ function initServicesCredentials()
     LIGHTRAG_MEMGRAPH_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar LIGHTRAG_MEMGRAPH_PASSWORD $LIGHTRAG_MEMGRAPH_PASSWORD
   fi
+  if [ -z "$SURICATA_ADMIN_USERNAME" ]; then
+    SURICATA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_suricata"
+    updateConfigVar SURICATA_ADMIN_USERNAME $SURICATA_ADMIN_USERNAME
+  fi
+  if [ -z "$SURICATA_ADMIN_PASSWORD" ]; then
+    SURICATA_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar SURICATA_ADMIN_PASSWORD $SURICATA_ADMIN_PASSWORD
+  fi
 #ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
   if [ -z "$CLIENTDNS_USER1_ADMIN_USERNAME" ]; then
@@ -40669,6 +40689,7 @@ function initServiceVars()
   checkAddSvc "SVCD_LIGHTRAG_APP=lightrag,lightrag,primary,admin,LightRAG,lightrag,hshq"
   checkAddSvc "SVCD_LIGHTRAG_QDRANT=lightrag,lightrag-qdrant,primary,admin,Qdrant (LightRAG),lightrag-qdrant,hshq"
   checkAddSvc "SVCD_OPENSERP_APP=openserp,openserp,primary,user,OpenSERP,openserp,hshq"
+  checkAddSvc "SVCD_SURICATA_APP=suricata,suricata,primary,admin,Suricata,suricata,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -41031,6 +41052,8 @@ function installStackByName()
       installLightRAG $is_integrate ;;
     openserp)
       installOpenSERP $is_integrate ;;
+    suricata)
+      installSuricata $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -41407,6 +41430,8 @@ function performUpdateStackByName()
       performUpdateLightRAG ;;
     openserp)
       performUpdateOpenSERP ;;
+    suricata)
+      performUpdateSuricata ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -41679,6 +41704,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ALLOY.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SURICATA_APP.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_ADMIN_HERE
   retval="${retval}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -41862,6 +41888,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_COGNEE_FRONTEND}-Admin" https://$SUB_COGNEE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $COGNEE_ADMIN_USERNAME $COGNEE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LIGHTRAG_APP}-Admin" https://$SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN/webui/#/login $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_USERNAME $LIGHTRAG_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LIGHTRAG_QDRANT}-Admin" https://$SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_EMAIL_ADDRESS $LIGHTRAG_QDRANT_API_KEY)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SURICATA_APP}-Admin" https://$SUB_SURICATA_APP.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $SURICATA_ADMIN_USERNAME $SURICATA_ADMIN_PASSWORD)"\n"
 #ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
@@ -42074,6 +42101,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_COGNEE_FRONTEND}-Admin" https://$SUB_COGNEE_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $COGNEE_ADMIN_USERNAME $COGNEE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LIGHTRAG_APP}-Admin" https://$SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN/webui/#/login $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_USERNAME $LIGHTRAG_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LIGHTRAG_QDRANT}-Admin" https://$SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_EMAIL_ADDRESS $LIGHTRAG_QDRANT_API_KEY)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SURICATA_APP}-Admin" https://$SUB_SURICATA_APP.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $SURICATA_ADMIN_USERNAME $SURICATA_ADMIN_PASSWORD)"\n"
 #ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
@@ -42799,6 +42827,9 @@ function getHeimdallOrderFromSub()
     "$SUB_OPENSERP_APP")
       order_num=205
       ;;
+    "$SUB_SURICATA_APP")
+      order_num=206
+      ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=900
@@ -42849,18 +42880,18 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,opennotebook,appsmith,trilium,memos,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,wger,workoutcool,voicebox,opencode,emailclassifierai,hermes-agent,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,opennotebook,appsmith,trilium,memos,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,wger,workoutcool,voicebox,opencode,emailclassifierai,hermes-agent,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
-  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
-  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
-  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
+  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
+  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
+  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
 #INIT_SERVICE_DEFAULTS_END
   if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
     HSHQ_OPTIONAL_STACKS=${HSHQ_OPTIONAL_STACKS},surfsense,ente,comfyui,perplexica,morphic,insanelyfastwhisper,ivbox,skyvern,openrag,openskills,sillytavern
@@ -44633,6 +44664,12 @@ function getScriptImageByContainerName()
     "openserp-app")
       container_image=$IMG_OPENSERP_APP
       ;;
+    "suricata-app")
+      container_image=$IMG_SURICATA_APP
+      ;;
+    "suricata-web")
+      container_image=$IMG_SURICATA_WEB
+      ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
@@ -44789,6 +44826,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Cognee" "COGNEE_INIT_ENV=false,COGNEE_ADMIN_USERNAME=,COGNEE_ADMIN_EMAIL_ADDRESS=,COGNEE_ADMIN_PASSWORD=,COGNEE_DATABASE_NAME=,COGNEE_DATABASE_USER=,COGNEE_DATABASE_USER_PASSWORD=,COGNEE_DATABASE_READONLYUSER=,COGNEE_DATABASE_READONLYUSER_PASSWORD=,COGNEE_REDIS_PASSWORD=,COGNEE_JWT_SECRET=,COGNEE_VERIFICATION_TOKEN_SECRET=,COGNEE_RESET_PASSWORD_TOKEN_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "LightRAG" "LIGHTRAG_INIT_ENV=false,LIGHTRAG_ADMIN_USERNAME=,LIGHTRAG_ADMIN_EMAIL_ADDRESS=,LIGHTRAG_ADMIN_PASSWORD=,LIGHTRAG_DATABASE_NAME=,LIGHTRAG_DATABASE_USER=,LIGHTRAG_DATABASE_USER_PASSWORD=,LIGHTRAG_DATABASE_READONLYUSER=,LIGHTRAG_DATABASE_READONLYUSER_PASSWORD=,LIGHTRAG_TOKEN_SECRET=,LIGHTRAG_API_KEY=,LIGHTRAG_QDRANT_API_KEY=,LIGHTRAG_MEMGRAPH_DATABASE=,LIGHTRAG_MEMGRAPH_USER=,LIGHTRAG_MEMGRAPH_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "OpenSERP" "OPENSERP_INIT_ENV=false" $CONFIG_FILE false
+  checkAddServiceToConfig "Suricata" "SURICATA_INIT_ENV=false,SURICATA_ADMIN_USERNAME=,SURICATA_ADMIN_PASSWORD=" $CONFIG_FILE false
 #ADD_NEW_ADD_SVC_CONFIG_HERE
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -51362,6 +51400,7 @@ services:
       - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.manager.crt:/etc/ssl/filebeat.pem
       - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.manager.key:/etc/ssl/filebeat.key
       - \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/wazuh-cluster/wazuh_manager.conf:/wazuh-config-mount/etc/ossec.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/local_internal_options.conf:/var/ossec/etc/local_internal_options.conf
       - v-wazuh-api-configuration:/var/ossec/api/configuration
       - v-wazuh-etc:/var/ossec/etc
       - v-wazuh-logs:/var/ossec/logs
@@ -51787,6 +51826,11 @@ EOFWZ
     <frequency>360</frequency>
   </localfile>
 
+  <localfile>
+    <location>/var/log/suricata/eve.json</location>
+    <log_format>json</log_format>
+  </localfile>
+
   <ruleset>
     <!-- Default ruleset -->
     <decoder_dir>ruleset/decoders</decoder_dir>
@@ -51884,13 +51928,15 @@ plugins.security.system_indices.indices: [".opendistro-alerting-config", ".opend
 plugins.security.allow_default_init_securityindex: true
 cluster.routing.allocation.disk.threshold_enabled: false
 EOFWZ
+  cat <<EOFWZ > $HSHQ_STACKS_DIR/wazuh/local_internal_options.conf
+analysisd.decoder_order_size=1024
+EOFWZ
   WAZUH_USERS_ADMIN_PASSWORD_HASH=$(htpasswd -B -n -b $WAZUH_USERS_ADMIN_USERNAME $WAZUH_USERS_ADMIN_PASSWORD | cut -d":" -f2-)
   WAZUH_USERS_DASHBOARD_PASSWORD_HASH=$(htpasswd -B -n -b kibanaserver $WAZUH_USERS_DASHBOARD_PASSWORD | cut -d":" -f2-)
   WAZUH_USERS_KIBANARO_PASSWORD_HASH=$(htpasswd -B -n -b kibanaro $WAZUH_USERS_KIBANARO_PASSWORD | cut -d":" -f2-)
   WAZUH_USERS_LOGSTASH_PASSWORD_HASH=$(htpasswd -B -n -b logstash $WAZUH_USERS_LOGSTASH_PASSWORD | cut -d":" -f2-)
   WAZUH_USERS_READALL_PASSWORD_HASH=$(htpasswd -B -n -b readall $WAZUH_USERS_READALL_PASSWORD | cut -d":" -f2-)
   WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD_HASH=$(htpasswd -B -n -b snapshotrestore $WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD | cut -d":" -f2-)
-
   cat <<EOFWZ > $HSHQ_STACKS_DIR/wazuh/wazuh-indexer/internal_users.yml
 ---
 # This is the internal user database
@@ -51949,7 +51995,6 @@ snapshotrestore:
   - "snapshotrestore"
   description: "Demo snapshotrestore user"
 EOFWZ
-
   outputWazuhDashboardConfig
   touch $HSHQ_STACKS_DIR/wazuh/wazuh-dashboard/wazuh.yml
 }
@@ -52048,7 +52093,6 @@ function performUpdateWazuh()
       image_update_map[0]="mirror.gcr.io/wazuh/wazuh-manager:4.14.7,mirror.gcr.io/wazuh/wazuh-manager:4.14.7"
       image_update_map[1]="mirror.gcr.io/wazuh/wazuh-indexer:4.14.7,mirror.gcr.io/wazuh/wazuh-indexer:4.14.7"
       image_update_map[2]="mirror.gcr.io/wazuh/wazuh-dashboard:4.14.7,mirror.gcr.io/wazuh/wazuh-dashboard:4.14.7"
-      updateWazuhAgents "4.14.7-1"
     ;;
     *)
       is_upgrade_error=true
@@ -121694,6 +121738,212 @@ function performUpdateOpenSERP()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# Suricata
+function installSuricata()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory suricata "Suricata"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName suricata-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName suricata-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/suricata
+  mkdir $HSHQ_STACKS_DIR/suricata/config
+  mkdir $HSHQ_STACKS_DIR/suricata/web
+  mkdir $HSHQ_STACKS_DIR/suricata/rules
+  sudo mkdir -p /var/log/suricata
+  sudo chown -R ${USERID}:${GROUPID} /var/log/suricata
+  initServicesCredentials
+  set +e
+  SURICATA_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $SURICATA_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/')
+  outputConfigSuricata
+  installStack suricata suricata-web "Starting server on" $HOME/suricata.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$SURICATA_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_SURICATA_APP Admin Login Info" -b "$FMLNAME_SURICATA_APP Admin Username: $SURICATA_ADMIN_USERNAME\n$FMLNAME_SURICATA_APP Admin Password: $SURICATA_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    SURICATA_INIT_ENV=true
+    updateConfigVar SURICATA_INIT_ENV $SURICATA_INIT_ENV
+  fi
+  sleep 3
+  startStopStack suricata stop
+  if [ -f $HSHQ_STACKS_DIR/suricata/web/config.sqlite ]; then
+    sudo sqlite3 $HSHQ_STACKS_DIR/suricata/web/config.sqlite "update users set username='$SURICATA_ADMIN_USERNAME', password='$SURICATA_ADMIN_PASSWORD_HASH' where username='admin';"
+  fi
+  sudo chown -R $USERID:$GROUPID $HSHQ_STACKS_DIR/suricata/*
+  cat <<EOFMT > $HSHQ_STACKS_DIR/suricata/config/disable.conf
+# Disable ET INFO External IP Address Lookup Domain
+2047703
+# Disable ET INFO Observed DNS Over HTTPS Domain
+2048911
+EOFMT
+  startStopStack suricata start
+  sleep 3
+  waitForContainerLogString suricata-app 3 60 "Engine started"
+  echo "Updating suricata rules, this could take a little bit..."
+  timeout 300 docker exec suricata-app suricata-update   
+  echo "Suricata update complete!"
+  if [ -z "$FMLNAME_SURICATA_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is empty, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_SURICATA_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy https://suricata-web:5636 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>>>transport http {\n"
+  inner_block=$inner_block">>>>>>>>>>tls_insecure_skip_verify\n"
+  inner_block=$inner_block">>>>>>>>}\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_SURICATA_APP $MANAGETLS_SURICATA_APP "$is_integrate_hshq" $NETDEFAULT_SURICATA_APP "$inner_block"
+  insertSubAuthelia $SUB_SURICATA_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll suricata "$FMLNAME_SURICATA_APP" $USERTYPE_SURICATA_APP "https://$SUB_SURICATA_APP.$HOMESERVER_DOMAIN" "suricata.png" "$(getHeimdallOrderFromSub $SUB_SURICATA_APP $USERTYPE_SURICATA_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigSuricata()
+{
+  cat <<EOFMT > $HOME/suricata-compose.yml
+$STACK_VERSION_PREFIX suricata $(getScriptStackVersion suricata)
+
+services:
+  suricata-app:
+    image: $(getScriptImageByContainerName suricata-app)
+    container_name: suricata-app
+    hostname: suricata-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_NICE
+    entrypoint: ["/entrypoint.sh"]
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/log/suricata:/var/log/suricata
+      - v-suricata-config:/etc/suricata
+      - v-suricata-rules:/var/lib/suricata
+      - \${PORTAINER_HSHQ_STACKS_DIR}/suricata/entrypoint.sh:/entrypoint.sh
+
+  suricata-web:
+    image: $(getScriptImageByContainerName suricata-web)
+    container_name: suricata-web
+    hostname: suricata-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: evebox server -D /db --datastore sqlite --input /data/eve.json
+    networks:
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/log/suricata:/data:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/suricata/web:/db
+
+volumes:
+  v-suricata-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/suricata/config
+  v-suricata-rules:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/suricata/rules
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/suricata.env
+TZ=\${PORTAINER_TZ}
+PUID=$USERID
+PGID=$GROUPID
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/suricata/entrypoint.sh
+#!/bin/bash
+set -eu
+
+args=()
+for i in /sys/class/net/*; do
+  n=\$(basename "\$i")
+  case "\$n" in
+    eth*|en*|wlan*|vpn-*|ext-*) ;;
+    *) continue ;;
+  esac
+  [ -z "\$(cat "\$i/operstate" 2>/dev/null)" ] && continue
+  args+=(-i "\$n")
+done
+
+exec /usr/bin/suricata "\${args[@]}" "\$@"
+EOFMT
+  chmod 755 $HSHQ_STACKS_DIR/suricata/entrypoint.sh
+}
+
+function performUpdateSuricata()
+{
+  perform_stack_name=suricata
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/jasonish/suricata:8.0.7,mirror.gcr.io/jasonish/evebox:0.29.0
+      image_update_map[0]="mirror.gcr.io/jasonish/suricata:8.0.7,mirror.gcr.io/jasonish/suricata:8.0.7"
+      image_update_map[1]="mirror.gcr.io/jasonish/evebox:0.29.0,mirror.gcr.io/jasonish/evebox:0.29.0"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 #ADD_NEW_SERVICE_FUNCTIONS_HERE
 
 # ExampleService
@@ -133411,7 +133661,7 @@ function outputCaddyHeaders()
 }
 
 ($CADDY_SNIPPET_RELAXEDCSP) {
-  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' registry.npmmirror.com; font-src 'self' registry.npmmirror.com excalidraw.nyc3.cdn.digitaloceanspaces.com esm.sh; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com github.com cdn.anythingllm.com assets.appsmith.com www.authelia.com registry.npmmirror.com *.s3.amazonaws.com activepieces.com *.activepieces.com ts.w.org *.${HOMESERVER_DOMAIN} data: blob:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; media-src 'self' *.${HOMESERVER_DOMAIN} github.com data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} api.comfy.org huggingface.co cdn.anythingllm.com registry.npmmirror.com data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
+  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' registry.npmmirror.com; font-src 'self' registry.npmmirror.com excalidraw.nyc3.cdn.digitaloceanspaces.com esm.sh; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com github.com cdn.anythingllm.com assets.appsmith.com www.authelia.com registry.npmmirror.com *.s3.amazonaws.com activepieces.com *.activepieces.com ts.w.org *.${HOMESERVER_DOMAIN} data: blob:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; media-src 'self' *.${HOMESERVER_DOMAIN} github.com data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} api.comfy.org huggingface.co cdn.anythingllm.com registry.npmmirror.com libraries.excalidraw.com data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
 }
 
 # At some point we'll fix the svcs.snip and collapse these two
