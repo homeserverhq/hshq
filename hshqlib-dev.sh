@@ -161,7 +161,7 @@ function init()
   WAZUH_PORT_3=514
   WAZUH_PORT_4=55000
   WAZUH_PORT_5=9200
-  WAZUH_AGENT_VERSION=4.11.2-1
+  WAZUH_AGENT_VERSION=4.14.7-1
   PAPERLESS_ADMIN_ID=2
   DEFAULT_UNFOUND_IP_ADDRESS=169.254.84.48
   DEFAULT_UNFOUND_IP_SUBNET=169.254.0.0/16
@@ -4718,7 +4718,6 @@ EOF
       showMessageBox "Invalid Number" "The value is not a valid number."
     fi
   done
-
   tmp_pw1=""
   tmp_pw2=""
   while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
@@ -4875,7 +4874,7 @@ EOF
       },
       {
         "Filter": "",
-        "Name": "--ignore-advisory-locking",
+        "Name": "ignore-advisory-locking",
         "Value": "true",
         "Argument": null
       }
@@ -31964,9 +31963,9 @@ function loadPinnedDockerImages()
   IMG_VAULTWARDEN_APP=mirror.gcr.io/vaultwarden/server:1.37.1-alpine
   IMG_VAULTWARDEN_LDAP=mirror.gcr.io/vividboarder/vaultwarden_ldap:2.2.1
   IMG_WALLABAG=mirror.gcr.io/wallabag/wallabag:2.6.14
-  IMG_WAZUH_MANAGER=wazuh/wazuh-manager:4.11.2
-  IMG_WAZUH_INDEXER=wazuh/wazuh-indexer:4.11.2
-  IMG_WAZUH_DASHBOARD=wazuh/wazuh-dashboard:4.11.2
+  IMG_WAZUH_MANAGER=wazuh/wazuh-manager:4.14.7
+  IMG_WAZUH_INDEXER=wazuh/wazuh-indexer:4.14.7
+  IMG_WAZUH_DASHBOARD=wazuh/wazuh-dashboard:4.14.7
   IMG_WEKAN_APP=ghcr.io/wekan/wekan:v8.17
   IMG_WGPORTAL=wgportal/wg-portal:1.0.19
   IMG_WIKIJS_APP=mirror.gcr.io/requarks/wiki:2.5.314
@@ -32129,7 +32128,7 @@ function getScriptStackVersion()
     mailu)
       echo "v8" ;;
     wazuh)
-      echo "v7" ;;
+      echo "v8" ;;
     collabora)
       echo "v9" ;;
     nextcloud)
@@ -51284,14 +51283,12 @@ function installWazuh()
   mkdir $HSHQ_NONBACKUP_DIR/wazuh/volumes/queue
   mkdir $HSHQ_NONBACKUP_DIR/wazuh/volumes/logs
   mkdir $HSHQ_NONBACKUP_DIR/wazuh/volumes/indexer-data
-
   initServicesCredentials
   outputConfigWazuh
   generateCert wazuh.manager "wazuh.manager"
   generateCert wazuh.indexer "wazuh.indexer"
   generateCert wazuh.admin "wazuh.admin"
   generateCert wazuh.dashboard "wazuh.dashboard"
-
   installStack wazuh wazuh.manager " " $HOME/wazuh.env
   retval=$?
   if [ $retval -ne 0 ]; then
@@ -51332,15 +51329,27 @@ function installWazuh()
 </group>
 
 EOFRU
-
   sudo tee $HSHQ_STACKS_DIR/wazuh/volumes/etc/authd.pass >/dev/null <<EOFWZ
 $WAZUH_MANAGER_AUTH_PASSWORD
 EOFWZ
   sudo chmod 640 $HSHQ_STACKS_DIR/wazuh/volumes/etc/authd.pass
   sudo chown root:999 $HSHQ_STACKS_DIR/wazuh/volumes/etc/authd.pass
+  maxACount=300
+  curACount=1
+  set +e
+  while [ $curACount -lt $maxACount ]
+  do
+    if grep -q "run_as" $HSHQ_STACKS_DIR/wazuh/wazuh-dashboard/wazuh.yml; then
+      break
+    fi
+    echo "Waiting for dashboard..."
+    sleep 3
+    ((curACount++))
+  done
   sudo sed -i "s/<use_password>no<\/use_password>/<use_password>yes<\/use_password>/" $HSHQ_STACKS_DIR/wazuh/wazuh-cluster/wazuh_manager.conf
-
+  sudo sed -i "s/run_as: true/run_as: false/" $HSHQ_STACKS_DIR/wazuh/wazuh-dashboard/wazuh.yml
   docker container restart wazuh.manager > /dev/null 2>&1
+  docker container restart wazuh.dashboard > /dev/null 2>&1
   installWazuhAgent
   set -e
   inner_block=""
@@ -51401,6 +51410,7 @@ services:
       - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.manager.key:/etc/ssl/filebeat.key
       - \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/wazuh-cluster/wazuh_manager.conf:/wazuh-config-mount/etc/ossec.conf
       - \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/local_internal_options.conf:/var/ossec/etc/local_internal_options.conf
+      #- \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/manager_api.yaml:/var/ossec/api/configuration/api.yaml:ro
       - v-wazuh-api-configuration:/var/ossec/api/configuration
       - v-wazuh-etc:/var/ossec/etc
       - v-wazuh-logs:/var/ossec/logs
@@ -51436,13 +51446,13 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/usr/share/wazuh-indexer/certs/root-ca.pem:ro
-      - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.indexer.crt:/usr/share/wazuh-indexer/certs/wazuh.indexer.pem
-      - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.indexer.key:/usr/share/wazuh-indexer/certs/wazuh.indexer.key
-      - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.admin.crt:/usr/share/wazuh-indexer/certs/admin.pem
-      - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.admin.key:/usr/share/wazuh-indexer/certs/admin-key.pem
-      - \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/wazuh-indexer/wazuh_indexer.yml:/usr/share/wazuh-indexer/opensearch.yml
-      - \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/wazuh-indexer/internal_users.yml:/usr/share/wazuh-indexer/opensearch-security/internal_users.yml
+      - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/usr/share/wazuh-indexer/config/certs/root-ca.pem:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.indexer.crt:/usr/share/wazuh-indexer/config/certs/wazuh.indexer.pem
+      - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.indexer.key:/usr/share/wazuh-indexer/config/certs/wazuh.indexer.key
+      - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.admin.crt:/usr/share/wazuh-indexer/config/certs/admin.pem
+      - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.admin.key:/usr/share/wazuh-indexer/config/certs/admin-key.pem
+      - \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/wazuh-indexer/wazuh_indexer.yml:/usr/share/wazuh-indexer/config/opensearch.yml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/wazuh-indexer/internal_users.yml:/usr/share/wazuh-indexer/config/opensearch-security/internal_users.yml
       - v-wazuh-indexer-data:/var/lib/wazuh-indexer
 
   wazuh.dashboard:
@@ -51574,6 +51584,7 @@ OPENSEARCH_JAVA_OPTS=-Xms4g -Xmx4g
 WAZUH_API_URL=https://wazuh.manager
 DASHBOARD_USERNAME=$WAZUH_USERS_DASHBOARD_USERNAME
 DASHBOARD_PASSWORD=$WAZUH_USERS_DASHBOARD_PASSWORD
+WAZUH_ALLOW_RUN_AS=false
 EOFWZ
   cat <<EOFWZ > $HSHQ_STACKS_DIR/wazuh/wazuh-cluster/wazuh_manager.conf
 <ossec_config>
@@ -51858,7 +51869,7 @@ EOFWZ
     <port>$WAZUH_PORT_2</port>
     <use_source_ip>no</use_source_ip>
     <purge>yes</purge>
-    <use_password>no</use_password>
+    <use_password>yes</use_password>
     <ciphers>HIGH:!ADH:!EXP:!MD5:!RC4:!3DES:!CAMELLIA:@STRENGTH</ciphers>
     <!-- <ssl_agent_ca></ssl_agent_ca> -->
     <ssl_verify_host>no</ssl_verify_host>
@@ -51905,12 +51916,12 @@ path.data: /var/lib/wazuh-indexer
 path.logs: /var/log/wazuh-indexer
 discovery.type: single-node
 compatibility.override_main_response_version: true
-plugins.security.ssl.http.pemcert_filepath: \${OPENSEARCH_PATH_CONF}/certs/wazuh.indexer.pem
-plugins.security.ssl.http.pemkey_filepath: \${OPENSEARCH_PATH_CONF}/certs/wazuh.indexer.key
-plugins.security.ssl.http.pemtrustedcas_filepath: \${OPENSEARCH_PATH_CONF}/certs/root-ca.pem
-plugins.security.ssl.transport.pemcert_filepath: \${OPENSEARCH_PATH_CONF}/certs/wazuh.indexer.pem
-plugins.security.ssl.transport.pemkey_filepath: \${OPENSEARCH_PATH_CONF}/certs/wazuh.indexer.key
-plugins.security.ssl.transport.pemtrustedcas_filepath: \${OPENSEARCH_PATH_CONF}/certs/root-ca.pem
+plugins.security.ssl.http.pemcert_filepath: /usr/share/wazuh-indexer/config/certs/wazuh.indexer.pem
+plugins.security.ssl.http.pemkey_filepath: /usr/share/wazuh-indexer/config/certs/wazuh.indexer.key
+plugins.security.ssl.http.pemtrustedcas_filepath: /usr/share/wazuh-indexer/config/certs/root-ca.pem
+plugins.security.ssl.transport.pemcert_filepath: /usr/share/wazuh-indexer/config/certs/wazuh.indexer.pem
+plugins.security.ssl.transport.pemkey_filepath: /usr/share/wazuh-indexer/config/certs/wazuh.indexer.key
+plugins.security.ssl.transport.pemtrustedcas_filepath: /usr/share/wazuh-indexer/config/certs/root-ca.pem
 plugins.security.ssl.http.enabled: true
 plugins.security.ssl.transport.enforce_hostname_verification: false
 plugins.security.ssl.transport.resolve_hostname: false
@@ -51919,7 +51930,7 @@ plugins.security.authcz.admin_dn:
 plugins.security.check_snapshot_restore_write_privileges: true
 plugins.security.enable_snapshot_restore_privilege: true
 plugins.security.nodes_dn:
-- "CN=wazuh.indexer,OU=$CERTS_INTERNAL_OU_NAME,O=$CERTS_INTERNAL_OU_NAME,L=$CERTS_INTERNAL_LOCALITY,ST=$CERTS_INTERNAL_STATE,C=$CERTS_INTERNAL_COUNTRY"
+- "CN=wazuh.manager,OU=$CERTS_INTERNAL_OU_NAME,O=$CERTS_INTERNAL_OU_NAME,L=$CERTS_INTERNAL_LOCALITY,ST=$CERTS_INTERNAL_STATE,C=$CERTS_INTERNAL_COUNTRY"
 plugins.security.restapi.roles_enabled:
 - "all_access"
 - "security_rest_api_access"
@@ -51930,6 +51941,11 @@ cluster.routing.allocation.disk.threshold_enabled: false
 EOFWZ
   cat <<EOFWZ > $HSHQ_STACKS_DIR/wazuh/local_internal_options.conf
 analysisd.decoder_order_size=1024
+EOFWZ
+  cat <<EOFWZ > $HSHQ_STACKS_DIR/wazuh/manager_api.yaml
+users:
+  wazuh-wui:
+    allow_run_as: true
 EOFWZ
   WAZUH_USERS_ADMIN_PASSWORD_HASH=$(htpasswd -B -n -b $WAZUH_USERS_ADMIN_USERNAME $WAZUH_USERS_ADMIN_PASSWORD | cut -d":" -f2-)
   WAZUH_USERS_DASHBOARD_PASSWORD_HASH=$(htpasswd -B -n -b kibanaserver $WAZUH_USERS_DASHBOARD_PASSWORD | cut -d":" -f2-)
@@ -51955,12 +51971,12 @@ $WAZUH_USERS_ADMIN_USERNAME:
   reserved: true
   backend_roles:
   - "admin"
-  description: "Demo admin user"
+  description: "Admin user"
 
 kibanaserver:
   hash: "$WAZUH_USERS_DASHBOARD_PASSWORD_HASH"
   reserved: true
-  description: "Demo kibanaserver user"
+  description: "KibanaServer user"
 
 kibanaro:
   hash: "$WAZUH_USERS_KIBANARO_PASSWORD_HASH"
@@ -51972,28 +51988,28 @@ kibanaro:
     attribute1: "value1"
     attribute2: "value2"
     attribute3: "value3"
-  description: "Demo kibanaro user"
+  description: "Kibanaro user"
 
 logstash:
   hash: "$WAZUH_USERS_LOGSTASH_PASSWORD_HASH"
   reserved: false
   backend_roles:
   - "logstash"
-  description: "Demo logstash user"
+  description: "Logstash user"
 
 readall:
   hash: "$WAZUH_USERS_READALL_PASSWORD_HASH"
   reserved: false
   backend_roles:
   - "readall"
-  description: "Demo readall user"
+  description: "Readall user"
 
 snapshotrestore:
   hash: "$WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD_HASH"
   reserved: false
   backend_roles:
   - "snapshotrestore"
-  description: "Demo snapshotrestore user"
+  description: "Snapshotrestore user"
 EOFWZ
   outputWazuhDashboardConfig
   touch $HSHQ_STACKS_DIR/wazuh/wazuh-dashboard/wazuh.yml
