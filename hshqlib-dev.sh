@@ -21413,6 +21413,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=242
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 243 ]; then
+    echo "Updating to Version 243..."
+    version243Update
+    HSHQ_VERSION=243
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -24355,6 +24361,7 @@ function version233Update()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://authelia:9091 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -24375,6 +24382,7 @@ function version233Update()
   inner_block=$inner_block">>>>@is_js path *.js\n"
   inner_block=$inner_block">>>>header @is_js Content-Type \"application/javascript\"\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://collabora:9980 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -24390,6 +24398,7 @@ function version233Update()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://excalidraw-server {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -24405,6 +24414,7 @@ function version233Update()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>route /standalone-signaling/* {\n"
   inner_block=$inner_block">>>>>>>>uri strip_prefix /standalone-signaling\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-talkhpb:8081 {\n"
@@ -24424,6 +24434,7 @@ function version233Update()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://nextcloud-talkrecord:1234 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -24442,6 +24453,7 @@ function version233Update()
   inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' *.$HOMESERVER_DOMAIN data:; frame-src 'self' *.$HOMESERVER_DOMAIN www.youtube-nocookie.com www.youtube.com data: blob:; connect-src 'self' *.$HOMESERVER_DOMAIN data:; object-src 'none'; frame-ancestors 'self' *.$HOMESERVER_DOMAIN; upgrade-insecure-requests;\"\n"
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://openwebui-app:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -24459,6 +24471,7 @@ function version233Update()
   inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com cdn.tailwindcss.com unpkg.com cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com unpkg.com; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.tailwindcss.com unpkg.com; img-src 'self' *.${HOMESERVER_DOMAIN} data:; font-src 'self' cdnjs.cloudflare.com data:; frame-src 'self' *.${HOMESERVER_DOMAIN} data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} data: api.github.com; object-src 'none'; upgrade-insecure-requests; frame-ancestors 'self' *.${HOMESERVER_DOMAIN};\"\n"
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://paperless-ai:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -24818,6 +24831,25 @@ EOFUR
 function version242Update()
 {
   outputCaddyHeaders
+}
+
+function version243Update()
+{
+  set +e
+  CADDY_SNIPPET_INTERNAL_GUARD=internal_guard
+  sudo mkdir -p /var/log/caddy
+  outputCaddyHeaders
+  grep -q "internal_guard" $HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip
+  if [ $? -ne 0 ]; then
+    sed -i '/    handle @subnet {/s/$/\n      import internal_guard/' $HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip
+    sed -i '/respond "\/\.well-known\/matrix\/server" 200 {/s/^/      import internal_guard\n/' $HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip
+    sed -i '/    respond "Good"/s/^/    import internal_guard\n/' $HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip
+  fi
+  caddy_arr=($(docker ps -a --filter name=caddy- --format "{{.Names}}"))
+  for curCH in "${caddy_arr[@]}"
+  do
+    updateStackEnv $curCH modFunCaddyAddCrowdSec
+  done
 }
 
 function getNextHSVPNRoutingTable()
@@ -25602,6 +25634,23 @@ function modFunCaddyAddLogMount()
   if [ $? -ne 0 ]; then
     echo "ENABLE_LOGGING=$CADDY_SNIPPET_LOG_FALSE" >> $HOME/${updateStackName}.env
     echo "CADDY_STACK_NAME=$updateStackName" >> $HOME/${updateStackName}.env
+  fi
+}
+
+function modFunCaddyAddCrowdSec()
+{
+  set +e
+  grep -q "crowdsec_global" $HSHQ_STACKS_DIR/${updateStackName}/Caddyfile > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sed -i 's|\(renew_interval {\$CERT_RENEW_INTERVAL}\)|\1\n  import /snippets/crowdsec_global_{\$ENABLE_CROWDSEC_BOUNCER:false}.snip|g' $HSHQ_STACKS_DIR/${updateStackName}/Caddyfile
+  fi
+  sed -i 's|- \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/logs|- /var/log/caddy:/logs|g' $HOME/${updateStackName}-compose.yml
+  sed -i 's|ENABLE_LOGGING=.*|ENABLE_ACCESS_LOGGING=false|g' $HOME/${updateStackName}.env
+  grep -q "CROWDSEC_API_KEY" $HOME/${updateStackName}.env > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "CROWDSEC_API_KEY=$CROWDSEC_API_KEY" >> $HOME/${updateStackName}.env
+    echo "ENABLE_CROWDSEC_BOUNCER=false" >> $HOME/${updateStackName}.env
+    echo "ENABLE_CROWDSEC_APPSEC=false" >> $HOME/${updateStackName}.env
   fi
 }
 
@@ -31781,7 +31830,7 @@ function loadPinnedDockerImages()
   IMG_BUDIBASE_WORKER=mirror.gcr.io/budibase/worker:3.23.36
   IMG_BUDIBASE_PROXY=mirror.gcr.io/budibase/proxy:3.23.36
   IMG_BUDIBASE_COUCHDB=mirror.gcr.io/budibase/couchdb:v3.3.3-sqs-v2.1.1
-  IMG_CADDY=mirror.gcr.io/caddy:2.11.4
+  IMG_CADDY=ghcr.io/homeserverhq/caddy-crowdsec:2.11.7
   IMG_CALCOM=mirror.gcr.io/calcom/cal.com:v5.9.8
   IMG_CALIBRE_SERVER=mirror.gcr.io/linuxserver/calibre:v8.15.0-ls373
   IMG_CALIBRE_WEB=mirror.gcr.io/linuxserver/calibre-web:0.6.25-ls359
@@ -32110,6 +32159,8 @@ function loadPinnedDockerImages()
   IMG_OPENSERP_APP=mirror.gcr.io/karust/openserp:0.8
   IMG_SURICATA_APP=mirror.gcr.io/jasonish/suricata:8.0.7
   IMG_SURICATA_WEB=mirror.gcr.io/jasonish/evebox:0.29.0
+  IMG_CROWDSEC_APP=ghcr.io/crowdsecurity/crowdsec:v1.8.1
+  IMG_CROWDSEC_WEB=ghcr.io/theduffman85/crowdsec-web-ui:2026.10.3
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -32326,7 +32377,7 @@ function getScriptStackVersion()
     ofelia)
       echo "v6" ;;
     caddy-*)
-      echo "v7" ;;
+      echo "v8" ;;
     clientdns-*)
       echo "v4" ;;
     uptimekuma)
@@ -32474,6 +32525,8 @@ function getScriptStackVersion()
     openserp)
       echo "v1" ;;
     suricata)
+      echo "v1" ;;
+    crowdsec)
       echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
@@ -32810,6 +32863,8 @@ function pullDockerImages()
   buildOrPullImage $IMG_OPENSERP_APP
   buildOrPullImage $IMG_SURICATA_APP
   buildOrPullImage $IMG_SURICATA_WEB
+  buildOrPullImage $IMG_CROWDSEC_APP
+  buildOrPullImage $IMG_CROWDSEC_WEB
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -33464,6 +33519,7 @@ CADDY_SNIPPET_DEFAULTCSP=default-csp
 CADDY_SNIPPET_RELAXEDCSP=relaxed-csp
 CADDY_SNIPPET_LOG_TRUE=log_true
 CADDY_SNIPPET_LOG_FALSE=log_false
+CADDY_SNIPPET_INTERNAL_GUARD=internal_guard
 # Caddy (Service Details) END
 
 # Calibre (Service Details) BEGIN
@@ -35010,6 +35066,15 @@ SURICATA_INIT_ENV=true
 SURICATA_ADMIN_USERNAME=
 SURICATA_ADMIN_PASSWORD=
 # Suricata (Service Details) END
+
+# CrowdSec (Service Details) BEGIN
+CROWDSEC_INIT_ENV=true
+CROWDSEC_ADMIN_USERNAME=
+CROWDSEC_ADMIN_PASSWORD=
+CROWDSEC_LAPI_USERNAME=
+CROWDSEC_LAPI_PASSWORD=
+CROWDSEC_API_KEY=
+# CrowdSec (Service Details) END
 
 # Service Details END
 EOFCF
@@ -40098,6 +40163,26 @@ function initServicesCredentials()
     SURICATA_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar SURICATA_ADMIN_PASSWORD $SURICATA_ADMIN_PASSWORD
   fi
+  if [ -z "$CROWDSEC_ADMIN_USERNAME" ]; then
+    CROWDSEC_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_crowdsec"
+    updateConfigVar CROWDSEC_ADMIN_USERNAME $CROWDSEC_ADMIN_USERNAME
+  fi
+  if [ -z "$CROWDSEC_ADMIN_PASSWORD" ]; then
+    CROWDSEC_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar CROWDSEC_ADMIN_PASSWORD $CROWDSEC_ADMIN_PASSWORD
+  fi
+  if [ -z "$CROWDSEC_LAPI_USERNAME" ]; then
+    CROWDSEC_LAPI_USERNAME=$ADMIN_USERNAME_BASE"_crowdsec_lapi"
+    updateConfigVar CROWDSEC_LAPI_USERNAME $CROWDSEC_LAPI_USERNAME
+  fi
+  if [ -z "$CROWDSEC_LAPI_PASSWORD" ]; then
+    CROWDSEC_LAPI_PASSWORD=$(openssl rand -hex 16)
+    updateConfigVar CROWDSEC_LAPI_PASSWORD $CROWDSEC_LAPI_PASSWORD
+  fi
+  if [ -z "$CROWDSEC_API_KEY" ]; then
+    CROWDSEC_API_KEY=$(openssl rand -hex 16)
+    updateConfigVar CROWDSEC_API_KEY $CROWDSEC_API_KEY
+  fi
 #ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
   if [ -z "$CLIENTDNS_USER1_ADMIN_USERNAME" ]; then
@@ -40689,6 +40774,7 @@ function initServiceVars()
   checkAddSvc "SVCD_LIGHTRAG_QDRANT=lightrag,lightrag-qdrant,primary,admin,Qdrant (LightRAG),lightrag-qdrant,hshq"
   checkAddSvc "SVCD_OPENSERP_APP=openserp,openserp,primary,user,OpenSERP,openserp,hshq"
   checkAddSvc "SVCD_SURICATA_APP=suricata,suricata,primary,admin,Suricata,suricata,hshq"
+  checkAddSvc "SVCD_CROWDSEC_WEB=crowdsec,crowdsec,primary,admin,CrowdSec Web UI,crowdsec,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -41053,6 +41139,8 @@ function installStackByName()
       installOpenSERP $is_integrate ;;
     suricata)
       installSuricata $is_integrate ;;
+    crowdsec)
+      installCrowdSec $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -41431,6 +41519,8 @@ function performUpdateStackByName()
       performUpdateOpenSERP ;;
     suricata)
       performUpdateSuricata ;;
+    crowdsec)
+      performUpdateCrowdSec ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -41704,6 +41794,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ALLOY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SURICATA_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_CROWDSEC_WEB.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_ADMIN_HERE
   retval="${retval}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -41888,6 +41979,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LIGHTRAG_APP}-Admin" https://$SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN/webui/#/login $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_USERNAME $LIGHTRAG_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LIGHTRAG_QDRANT}-Admin" https://$SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_EMAIL_ADDRESS $LIGHTRAG_QDRANT_API_KEY)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SURICATA_APP}-Admin" https://$SUB_SURICATA_APP.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $SURICATA_ADMIN_USERNAME $SURICATA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CROWDSEC_WEB}-Admin" https://$SUB_CROWDSEC_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CROWDSEC_ADMIN_USERNAME $CROWDSEC_ADMIN_PASSWORD)"\n"
 #ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
@@ -42101,6 +42193,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LIGHTRAG_APP}-Admin" https://$SUB_LIGHTRAG_APP.$HOMESERVER_DOMAIN/webui/#/login $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_USERNAME $LIGHTRAG_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LIGHTRAG_QDRANT}-Admin" https://$SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_EMAIL_ADDRESS $LIGHTRAG_QDRANT_API_KEY)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SURICATA_APP}-Admin" https://$SUB_SURICATA_APP.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $SURICATA_ADMIN_USERNAME $SURICATA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CROWDSEC_WEB}-Admin" https://$SUB_CROWDSEC_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CROWDSEC_ADMIN_USERNAME $CROWDSEC_ADMIN_PASSWORD)"\n"
 #ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
@@ -42829,6 +42922,9 @@ function getHeimdallOrderFromSub()
     "$SUB_SURICATA_APP")
       order_num=206
       ;;
+    "$SUB_CROWDSEC_WEB")
+      order_num=207
+      ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=900
@@ -42879,18 +42975,18 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,opennotebook,appsmith,trilium,memos,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,wger,workoutcool,voicebox,opencode,emailclassifierai,hermes-agent,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,opennotebook,appsmith,trilium,memos,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,wger,workoutcool,voicebox,opencode,emailclassifierai,hermes-agent,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
-  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
-  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
-  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
+  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
+  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
+  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
 #INIT_SERVICE_DEFAULTS_END
   if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
     HSHQ_OPTIONAL_STACKS=${HSHQ_OPTIONAL_STACKS},surfsense,ente,comfyui,perplexica,morphic,insanelyfastwhisper,ivbox,skyvern,openrag,openskills,sillytavern
@@ -44669,6 +44765,12 @@ function getScriptImageByContainerName()
     "suricata-web")
       container_image=$IMG_SURICATA_WEB
       ;;
+    "crowdsec-app")
+      container_image=$IMG_CROWDSEC_APP
+      ;;
+    "crowdsec-web")
+      container_image=$IMG_CROWDSEC_WEB
+      ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
@@ -44826,6 +44928,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "LightRAG" "LIGHTRAG_INIT_ENV=false,LIGHTRAG_ADMIN_USERNAME=,LIGHTRAG_ADMIN_EMAIL_ADDRESS=,LIGHTRAG_ADMIN_PASSWORD=,LIGHTRAG_DATABASE_NAME=,LIGHTRAG_DATABASE_USER=,LIGHTRAG_DATABASE_USER_PASSWORD=,LIGHTRAG_DATABASE_READONLYUSER=,LIGHTRAG_DATABASE_READONLYUSER_PASSWORD=,LIGHTRAG_TOKEN_SECRET=,LIGHTRAG_API_KEY=,LIGHTRAG_QDRANT_API_KEY=,LIGHTRAG_MEMGRAPH_DATABASE=,LIGHTRAG_MEMGRAPH_USER=,LIGHTRAG_MEMGRAPH_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "OpenSERP" "OPENSERP_INIT_ENV=false" $CONFIG_FILE false
   checkAddServiceToConfig "Suricata" "SURICATA_INIT_ENV=false,SURICATA_ADMIN_USERNAME=,SURICATA_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "CrowdSec" "CROWDSEC_INIT_ENV=false,CROWDSEC_ADMIN_USERNAME=,CROWDSEC_ADMIN_PASSWORD=,CROWDSEC_LAPI_USERNAME=,CROWDSEC_LAPI_PASSWORD=,CROWDSEC_API_KEY=" $CONFIG_FILE false
 #ADD_NEW_ADD_SVC_CONFIG_HERE
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -44865,7 +44968,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Dolibarr" "DOLIBARR_INSTANCE_UNIQUE_ID=,DOLIBARR_API_KEY=,DOLIBARR_MCP_API_KEY=,DOLIBARR_MCP_REDIS_PASSWORD=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_TOKEN_ENCRYPTION_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Immich" "IMMICH_API_KEY=" $CONFIG_FILE false
-  checkAddVarsToServiceConfig "Caddy" "CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED=safe-header-cors-automated,CADDY_SNIPPET_BASEHEADER=base-header,CADDY_SNIPPET_DEFAULTCSP=default-csp,CADDY_SNIPPET_RELAXEDCSP=relaxed-csp,CADDY_SNIPPET_LOG_TRUE=log_true,CADDY_SNIPPET_LOG_FALSE=log_false" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Caddy" "CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED=safe-header-cors-automated,CADDY_SNIPPET_BASEHEADER=base-header,CADDY_SNIPPET_DEFAULTCSP=default-csp,CADDY_SNIPPET_RELAXEDCSP=relaxed-csp,CADDY_SNIPPET_LOG_TRUE=log_true,CADDY_SNIPPET_LOG_FALSE=log_false,CADDY_SNIPPET_INTERNAL_GUARD=internal_guard,CROWDSEC_API_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "OpenProject" "OPENPROJECT_SECRET_KEY_BASE=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Twenty" "TWENTY_APP_SECRET=,TWENTY_ENCRYPTION_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Paperless" "PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=,PAPERLESS_KNOWLEDGEBASE_TAG_NAME=,PAPERLESS_KNOWLEDGEBASE_TAG_ID=,PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME=,PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=,PAPERLESS_AKB_WORKFLOW_ID=" $CONFIG_FILE false
@@ -45218,6 +45321,7 @@ function installPortainer()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://portainer:9443 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -45531,6 +45635,7 @@ function installAdGuard()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://adguard {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -46121,6 +46226,7 @@ function installSysUtils()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://grafana:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -46135,6 +46241,7 @@ function installSysUtils()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://prometheus:9090 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -46149,6 +46256,7 @@ function installSysUtils()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://influxdb:8086 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -46162,6 +46270,7 @@ function installSysUtils()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
   inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
   inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
@@ -46186,7 +46295,6 @@ function installSysUtils()
 function outputConfigSysUtils()
 {
   cat <<EOFGF > $HOME/sysutils-compose-tmp.yml
-
 services:
   grafana:
     image: $(getScriptImageByContainerName grafana)
@@ -46338,7 +46446,6 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/log:/var/log:ro
-      - ${HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
       - ${HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
       - ${HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
     environment:
@@ -46545,7 +46652,6 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/log:/var/log:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
 
@@ -48978,19 +49084,26 @@ loki.source.file "docker_logs" {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// Caddy access logs → /caddylogs/caddy-*-access.log (JSON lines)
-// Set ENABLE_LOGGING=log_true in caddy stack env to ingest access logs
+// Caddy access logs → /var/log/caddy/caddy-*-access.log (JSON lines)
+// Set ENABLE_ACCESS_LOGGING=log_true in caddy stack env to ingest access logs
 // ────────────────────────────────────────────────────────────────────
 
 loki.source.file "caddy" {
   targets = [
-    { __path__ = "/caddylogs/caddy-*-access.log" },
+    { __path__ = "/var/log/caddy/caddy-*-access.log" },
   ]
   forward_to = [loki.relabel.caddy_instance.receiver]
   file_match {
     enabled     = true
     sync_period = "10s"
   }
+}
+
+local.file_match "crowdsec_logs" {
+  path_targets = [
+    { "__path__" = "/var/log/crowdsec/crowdsec.log", "job" = "crowdsec", "type" = "engine" },
+    { "__path__" = "/var/log/crowdsec/crowdsec_alerts.json", "job" = "crowdsec", "type" = "alerts" }
+  ]
 }
 
 loki.relabel "caddy_instance" {
@@ -49005,6 +49118,11 @@ loki.relabel "caddy_instance" {
     target_label = "log_source"
     replacement  = "caddy_access"
   }
+}
+
+loki.source.file "crowdsec" {
+  targets    = local.file_match.crowdsec_logs.targets
+  forward_to = [loki.write.local.receiver]
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -49154,6 +49272,9 @@ scrape_configs:
     authorization:
       type: Bearer
       credentials: "$LITELLM_MASTER_KEY"
+  - job_name: 'crowdsec'
+    static_configs:
+      - targets: ['crowdsec-app:6060']
 EOFPM
 }
 
@@ -49295,6 +49416,7 @@ function mfAddPrometheusWeb()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://prometheus:9090 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -49455,6 +49577,7 @@ function mfUpdateSysUtilsV11()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
   inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
   inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
@@ -49604,7 +49727,6 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/log:/var/log:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/caddylogs:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/devices:/etc/alloy/devices:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/alloy/config.alloy:/etc/alloy/config.alloy:ro
 
@@ -49761,6 +49883,7 @@ function installOpenLDAP()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://ldapphp {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -49775,6 +49898,7 @@ function installOpenLDAP()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://ldapmanager {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -50165,6 +50289,7 @@ function installMailu()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://$SMTP_HOSTNAME {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -51359,6 +51484,7 @@ EOFWZ
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://wazuh.dashboard:5601 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -52323,6 +52449,7 @@ function installCollabora()
   inner_block=$inner_block">>>>@is_js path *.js\n"
   inner_block=$inner_block">>>>header @is_js Content-Type \"application/javascript\"\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://collabora:9980 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -52806,6 +52933,7 @@ function installNextcloud()
   inner_block=$inner_block">>>>rewrite /.well-known/webfinger /index.php/.well-known/webfinger\n"
   inner_block=$inner_block">>>>rewrite /.well-known/nodeinfo /index.php/.well-known/nodeinfo\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>route /push/* {\n"
   inner_block=$inner_block">>>>>>>>uri strip_prefix /push\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-push:$NEXTCLOUD_PUSH_PORT\n"
@@ -52829,6 +52957,7 @@ function installNextcloud()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>route /standalone-signaling/* {\n"
   inner_block=$inner_block">>>>>>>>uri strip_prefix /standalone-signaling\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-talkhpb:8081 {\n"
@@ -52849,6 +52978,7 @@ function installNextcloud()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://nextcloud-talkrecord:1234 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -54259,6 +54389,7 @@ function mfNextcloudAddTalkHPB()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>route /standalone-signaling/* {\n"
   inner_block=$inner_block">>>>>>>>uri strip_prefix /standalone-signaling\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-talkhpb:8081 {\n"
@@ -54279,6 +54410,7 @@ function mfNextcloudAddTalkHPB()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://nextcloud-talkrecord:1234 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -54314,6 +54446,7 @@ function mfNextcloudV11AddHaRP()
   inner_block=$inner_block">>>>rewrite /.well-known/webfinger /index.php/.well-known/webfinger\n"
   inner_block=$inner_block">>>>rewrite /.well-known/nodeinfo /index.php/.well-known/nodeinfo\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>route /push/* {\n"
   inner_block=$inner_block">>>>>>>>uri strip_prefix /push\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-push:$NEXTCLOUD_PUSH_PORT\n"
@@ -54729,6 +54862,7 @@ EOFNC
   inner_block=$inner_block">>>>rewrite /.well-known/webfinger /index.php/.well-known/webfinger\n"
   inner_block=$inner_block">>>>rewrite /.well-known/nodeinfo /index.php/.well-known/nodeinfo\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>route /push/* {\n"
   inner_block=$inner_block">>>>>>>>uri strip_prefix /push\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-push:$NEXTCLOUD_PUSH_PORT\n"
@@ -55202,6 +55336,7 @@ function installJitsi()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://jitsi-web {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -55490,6 +55625,7 @@ function installMatrix()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED\n"
   inner_block=$inner_block">>>>encode zstd gzip\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy \"/_matrix/*\" https://matrix-synapse:8448 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -55508,6 +55644,7 @@ function installMatrix()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>encode zstd gzip\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://matrix-element-private {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -55523,6 +55660,7 @@ function installMatrix()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>encode zstd gzip\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://matrix-element-public {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -56136,6 +56274,7 @@ function installWikijs()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://wikijs-web:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -56576,6 +56715,7 @@ EOFDP
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://duplicati:8200 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -56818,6 +56958,7 @@ function installMastodon()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://mastodon-web {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -57764,6 +57905,7 @@ function installDozzle()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://dozzle:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -57925,6 +58067,7 @@ function installSearxNG()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://searxng-caddy {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>>>header_up Host {upstream_hostport}\n"
@@ -58522,6 +58665,7 @@ function mfSearxngUpdateV11()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://searxng-caddy {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>>>header_up Host {upstream_hostport}\n"
@@ -58579,6 +58723,7 @@ function installJellyfin()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://jellyfin:8096 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -58782,6 +58927,7 @@ function installFileBrowser()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://filebrowser {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -58999,6 +59145,7 @@ function installPhotoPrism()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://photoprism-app:2342 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -59381,6 +59528,7 @@ function installGuacamole()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>@notGuac {\n"
   inner_block=$inner_block">>>>>>>>not path \"/guacamole/*\"\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -59646,6 +59794,7 @@ function installAuthelia()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://authelia:9091 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -60229,6 +60378,7 @@ function installWordPress()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>@insecureadmin {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_NOTHOMESUBNET\n"
   inner_block=$inner_block">>>>>>>>path /wp-login.php*\n"
@@ -60622,6 +60772,7 @@ function installGhost()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>@insecureadmin {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_NOTHOMESUBNET\n"
   inner_block=$inner_block">>>>>>>>path /ghost/*\n"
@@ -60890,6 +61041,7 @@ function installPeerTube()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://peertube-app:9000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -61280,6 +61432,7 @@ function installHomeAssistant()
   inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com; img-src 'self' cdnjs.cloudflare.com *.githubusercontent.com *.$HOMESERVER_DOMAIN data:; frame-src 'self' *.$HOMESERVER_DOMAIN data: blob:; connect-src 'self' catalogue.nodered.org api.github.com cdnjs.cloudflare.com *.$HOMESERVER_DOMAIN wss://*.$HOMESERVER_DOMAIN data:; object-src 'none'; frame-ancestors 'self' *.$HOMESERVER_DOMAIN; upgrade-insecure-requests; font-src 'self' cdnjs.cloudflare.com data:;\"\n"
   inner_block=$inner_block"}>>>>\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://host.docker.internal:$HOMEASSISTANT_LOCALHOST_PORT {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -61298,6 +61451,7 @@ function installHomeAssistant()
   inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com; img-src 'self' cdnjs.cloudflare.com *.githubusercontent.com *.$HOMESERVER_DOMAIN data:; frame-src 'self' *.$HOMESERVER_DOMAIN data: blob:; connect-src 'self' catalogue.nodered.org api.github.com cdnjs.cloudflare.com *.$HOMESERVER_DOMAIN wss://*.$HOMESERVER_DOMAIN data:; object-src 'none'; frame-ancestors 'self' *.$HOMESERVER_DOMAIN; upgrade-insecure-requests; font-src 'self' cdnjs.cloudflare.com data:;\"\n"
   inner_block=$inner_block"}>>>>\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://homeassistant-configurator {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -61313,6 +61467,7 @@ function installHomeAssistant()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://homeassistant-nodered {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -61331,6 +61486,7 @@ function installHomeAssistant()
   inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com; img-src 'self' cdnjs.cloudflare.com *.githubusercontent.com *.$HOMESERVER_DOMAIN data:; frame-src 'self' *.$HOMESERVER_DOMAIN data: blob:; connect-src 'self' catalogue.nodered.org api.github.com cdnjs.cloudflare.com *.$HOMESERVER_DOMAIN wss://*.$HOMESERVER_DOMAIN data:; object-src 'none'; frame-ancestors 'self' *.$HOMESERVER_DOMAIN; upgrade-insecure-requests; font-src 'self' cdnjs.cloudflare.com data:;\"\n"
   inner_block=$inner_block"}>>>>\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://homeassistant-tasmoadmin {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -62092,6 +62248,7 @@ EOFHA
   inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com; img-src 'self' cdnjs.cloudflare.com *.githubusercontent.com *.$HOMESERVER_DOMAIN data:; frame-src 'self' *.$HOMESERVER_DOMAIN data: blob:; connect-src 'self' catalogue.nodered.org api.github.com cdnjs.cloudflare.com *.$HOMESERVER_DOMAIN wss://*.$HOMESERVER_DOMAIN data:; object-src 'none'; frame-ancestors 'self' *.$HOMESERVER_DOMAIN; upgrade-insecure-requests; font-src 'self' cdnjs.cloudflare.com data:;\"\n"
   inner_block=$inner_block"}>>>>\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://host.docker.internal:$HOMEASSISTANT_LOCALHOST_PORT {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -62110,6 +62267,7 @@ EOFHA
   inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com; img-src 'self' cdnjs.cloudflare.com *.githubusercontent.com *.$HOMESERVER_DOMAIN data:; frame-src 'self' *.$HOMESERVER_DOMAIN data: blob:; connect-src 'self' catalogue.nodered.org api.github.com cdnjs.cloudflare.com *.$HOMESERVER_DOMAIN wss://*.$HOMESERVER_DOMAIN data:; object-src 'none'; frame-ancestors 'self' *.$HOMESERVER_DOMAIN; upgrade-insecure-requests; font-src 'self' cdnjs.cloudflare.com data:;\"\n"
   inner_block=$inner_block"}>>>>\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://homeassistant-configurator {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -62128,6 +62286,7 @@ EOFHA
   inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com; img-src 'self' cdnjs.cloudflare.com *.githubusercontent.com *.$HOMESERVER_DOMAIN data:; frame-src 'self' *.$HOMESERVER_DOMAIN data: blob:; connect-src 'self' catalogue.nodered.org api.github.com cdnjs.cloudflare.com *.$HOMESERVER_DOMAIN wss://*.$HOMESERVER_DOMAIN data:; object-src 'none'; frame-ancestors 'self' *.$HOMESERVER_DOMAIN; upgrade-insecure-requests; font-src 'self' cdnjs.cloudflare.com data:;\"\n"
   inner_block=$inner_block"}>>>>\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://homeassistant-tasmoadmin {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -62223,6 +62382,7 @@ function installGitlab()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://gitlab-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -62595,6 +62755,7 @@ function installVaultwarden()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>@insecureadmin {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_NOTHOMESUBNET\n"
   inner_block=$inner_block">>>>>>>>path /admin*\n"
@@ -62933,6 +63094,7 @@ function installDiscourse()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://discourse-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -63255,6 +63417,7 @@ function installSyncthing()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://syncthing:$SYNCTHING_LOCAL_WEB_PORT {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -63456,6 +63619,7 @@ function installCodeServer()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://codeserver:3443 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -63704,6 +63868,7 @@ function installShlink()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://shlink-web:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -63718,6 +63883,7 @@ function installShlink()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://shlink-app:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -64001,6 +64167,7 @@ function mfUpdateShlinkInternalWebUIPort()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://shlink-web:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -64103,6 +64270,7 @@ function installFirefly()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://firefly-app:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -64117,6 +64285,7 @@ function installFirefly()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://firefly-importer:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -64132,6 +64301,7 @@ function installFirefly()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://firefly-fints-importer:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -64490,6 +64660,7 @@ function mfFireflyAddImporterAndCron()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://firefly-importer:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -64522,6 +64693,7 @@ function mfFireflyAdd2ndImporter()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://firefly-fints-importer:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -64590,6 +64762,7 @@ function installExcalidraw()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://excalidraw-web {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -64606,6 +64779,7 @@ function installExcalidraw()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://excalidraw-server {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -64621,6 +64795,7 @@ function installExcalidraw()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://excalidraw-storage:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -64636,6 +64811,7 @@ function installExcalidraw()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
   inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
   inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
@@ -65150,6 +65326,7 @@ function mfPerformUpdateV5()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
   inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
   inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
@@ -65217,6 +65394,7 @@ function installDrawIO()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://drawio-web:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -65231,6 +65409,7 @@ function installDrawIO()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://drawio-nextai:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -65566,6 +65745,7 @@ EOFDI
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://drawio-nextai:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -65631,6 +65811,7 @@ function installInvidious()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://invidious-web:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -66085,6 +66266,7 @@ function installGitea()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://gitea-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -66349,6 +66531,7 @@ function installMealie()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://mealie-app:9000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -66857,6 +67040,7 @@ function installKasm()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://kasm {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>>>transport http {\n"
@@ -66875,6 +67059,7 @@ function installKasm()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://kasm:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>>>transport http {\n"
@@ -67024,6 +67209,7 @@ function installNTFY()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://ntfy {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -67527,6 +67713,7 @@ function installITTools()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://ittools {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -67637,6 +67824,7 @@ function installRemotely()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://remotely:5000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -67797,6 +67985,7 @@ function installCalibre()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://calibre-server:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -67812,6 +68001,7 @@ function installCalibre()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://calibre-web:8083 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -68016,6 +68206,7 @@ function installNetdata()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://netdata:19999 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -68210,6 +68401,7 @@ function installLinkwarden()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://linkwarden-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -68931,6 +69123,7 @@ function installStirlingPDF()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://stirlingpdf:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -69103,6 +69296,7 @@ function installBarAssistant()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://bar-assistant-web:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -70066,6 +70260,7 @@ function installFreshRSS()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://freshrss-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -70356,6 +70551,7 @@ function installKeila()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://keila-app:4000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -70834,6 +71030,7 @@ function installWallabag()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://wallabag-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -71099,6 +71296,7 @@ function installJupyter()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://jupyter:8888 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -71295,6 +71493,7 @@ function installPaperless()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://paperless-app:8000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -71313,6 +71512,7 @@ function installPaperless()
   inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com cdn.tailwindcss.com unpkg.com cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com unpkg.com; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.tailwindcss.com unpkg.com; img-src 'self' *.${HOMESERVER_DOMAIN} data:; font-src 'self' cdnjs.cloudflare.com data:; frame-src 'self' *.${HOMESERVER_DOMAIN} data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} data: api.github.com; object-src 'none'; upgrade-insecure-requests; frame-ancestors 'self' *.${HOMESERVER_DOMAIN};\"\n"
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://paperless-ai:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -71327,6 +71527,7 @@ function installPaperless()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
   inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
   inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
@@ -72181,6 +72382,7 @@ function mfPaperlessV7AddAI()
   inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com cdn.tailwindcss.com unpkg.com cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com unpkg.com; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.tailwindcss.com unpkg.com; img-src 'self' *.${HOMESERVER_DOMAIN} data:; font-src 'self' cdnjs.cloudflare.com data:; frame-src 'self' *.${HOMESERVER_DOMAIN} data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} data: api.github.com; object-src 'none'; upgrade-insecure-requests; frame-ancestors 'self' *.${HOMESERVER_DOMAIN};\""
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://paperless-ai:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -72927,6 +73129,7 @@ function mfPaperlessV8AddGPT()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
   inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
   inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
@@ -73451,6 +73654,7 @@ function installSpeedtestTrackerLocal()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://speedtest-tracker-local-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -73720,6 +73924,7 @@ function installSpeedtestTrackerVPN()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://speedtest-tracker-vpn-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -73995,6 +74200,7 @@ function installChangeDetection()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://changedetection-app:5000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -74219,6 +74425,7 @@ function installHuginn()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://huginn-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -74667,6 +74874,7 @@ function installFileDrop()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://filedrop:5000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -74825,6 +75033,7 @@ function installPiped()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://piped-web {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -74841,6 +75050,7 @@ function installPiped()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>uri replace \"&ump=1\" \"\"\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://piped-web {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -74858,6 +75068,7 @@ function installPiped()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://piped-web {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -75283,6 +75494,7 @@ function installGrampsWeb()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://grampsweb-app:5000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -75614,6 +75826,7 @@ function installPenpot()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://penpot-frontend:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -75899,6 +76112,7 @@ function mfPenpotFixPort()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://penpot-frontend:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -75970,6 +76184,7 @@ function installEspoCRM()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy /ws espocrm-websocket:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -76293,6 +76508,7 @@ function installImmich()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://immich-app:2283 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -77221,6 +77437,7 @@ function installHomarr()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://homarr-app:7575 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -77414,6 +77631,7 @@ function installMatomo()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://matomo-web {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -77719,6 +77937,7 @@ function installPastefy()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://pastefy-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -77913,6 +78132,7 @@ function installSnippetBox()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://snippetbox:5000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -78099,6 +78319,7 @@ function installAIStack()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://aistack-mindsdb-app:47334 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -78115,6 +78336,7 @@ function installAIStack()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://aistack-langfuse:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -78744,6 +78966,7 @@ function installPixelfed()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://pixelfed-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -80229,6 +80452,7 @@ function installYamtrack()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://yamtrack-app:8000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -80847,6 +81071,7 @@ EOFCF
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://servarr-sonarr:8989 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -80863,6 +81088,7 @@ EOFCF
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://servarr-radarr:7878 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -80879,6 +81105,7 @@ EOFCF
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://servarr-lidarr:8686 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -80895,6 +81122,7 @@ EOFCF
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://servarr-readarr:8787 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -80911,6 +81139,7 @@ EOFCF
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://servarr-bazarr:6767 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -80927,6 +81156,7 @@ EOFCF
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://servarr-mylar3:8090 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -80943,6 +81173,7 @@ EOFCF
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://servarr-prowlarr:9696 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -81320,6 +81551,7 @@ EOFSZ
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://sabnzbd:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -81486,6 +81718,7 @@ EOFPY
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://qbittorrent:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -81621,6 +81854,7 @@ function installOmbi()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://ombi-app:3579 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -81834,6 +82068,7 @@ function installMeshCentral()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://meshcentral-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>>>transport http {\n"
@@ -82136,6 +82371,7 @@ function installNavidrome()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://navidrome-app:4533 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -82268,6 +82504,7 @@ function installAdminer()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://adminer-app:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -82504,6 +82741,7 @@ function installBudibase()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://budibase-proxy:10000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -82893,6 +83131,7 @@ function installAudioBookshelf()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://audiobookshelf-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -83066,6 +83305,7 @@ function installStandardNotes()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://standardnotes-server:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -83081,6 +83321,7 @@ function installStandardNotes()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://standardnotes-server:3104 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -83097,6 +83338,7 @@ function installStandardNotes()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://standardnotes-web {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -83604,6 +83846,7 @@ EOFWZ
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://metabase-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -83937,6 +84180,7 @@ function installKanboard()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://kanboard-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -84194,6 +84438,7 @@ function installWekan()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://wekan-app:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -84472,6 +84717,7 @@ function installRevolt()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://revolt-caddy {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -85582,6 +85828,7 @@ function installFrappeHR()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>@socketio {\n"
   inner_block=$inner_block">>>>>>>>path /socket.io*\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -85844,6 +86091,7 @@ function installMintHCM()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://minthcm-web {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -86100,6 +86348,7 @@ function installCloudBeaver()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://cloudbeaver-app:8978 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -86251,6 +86500,7 @@ function installTwenty()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://twenty-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -87380,6 +87630,7 @@ function installOdoo()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://odoo-app:8069 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -87638,6 +87889,7 @@ function installCalcom()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://calcom-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -87653,6 +87905,7 @@ function installCalcom()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://calcom-studio:5555 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -87922,6 +88175,7 @@ function installRallly()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://rallly-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -88352,6 +88606,7 @@ function installEasyAppointments()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://easyappointments-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -89232,6 +89487,7 @@ function installOpenProject()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://openproject-web:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>>>header_up X-Forwarded-Proto https\n"
@@ -90301,6 +90557,7 @@ function installZammad()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://zammad-nginx:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>>>header_up X-Forwarded-Proto https\n"
@@ -91310,6 +91567,7 @@ function installZulip()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://zulip-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -92561,6 +92819,7 @@ function installKillBill()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://killbill-app:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -92576,6 +92835,7 @@ function installKillBill()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://killbill-web:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -92841,6 +93101,7 @@ function installInvoiceShelf()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://invoiceshelf-app:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -93432,6 +93693,7 @@ function installInvoiceNinja()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://invoiceninja-web {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -94077,6 +94339,7 @@ function installDolibarr()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://dolibarr-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -95110,6 +95373,7 @@ function installn8n()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://n8n-app:5678 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>>>flush_interval -1\n"
@@ -95434,6 +95698,7 @@ function installAutomatisch()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://automatisch-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -95726,6 +95991,7 @@ function installActivePieces()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://activepieces-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -96193,6 +96459,7 @@ function installBeszel()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://beszel-app:8090 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -96453,6 +96720,7 @@ function installTaiga()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://taiga-gateway {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -96919,6 +97187,7 @@ function installOpenSign()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>handle_path /api/* {\n"
   inner_block=$inner_block">>>>>>>>rewrite * {uri}\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://opensign-server:8080 {\n"
@@ -97158,6 +97427,7 @@ function installDocuSeal()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://docuseal-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -97423,6 +97693,7 @@ function installControlR()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://controlr-app:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -97438,6 +97709,7 @@ function installControlR()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://controlr-aspire:18888 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -97686,6 +97958,7 @@ function installAkaunting()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://akaunting-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -97900,6 +98173,7 @@ function installAxelor()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://axelor-app:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -97915,6 +98189,7 @@ function installAxelor()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://axelor-goovee:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -98155,6 +98430,7 @@ function installConvertX()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://convertx-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -98283,6 +98559,7 @@ function installKopia()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://kopia-app:51515 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -98458,6 +98735,7 @@ function installLocalAI()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://localai-server:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -98473,6 +98751,7 @@ function installLocalAI()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://localai-recall:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -98488,6 +98767,7 @@ function installLocalAI()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://localai-agi:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -98806,6 +99086,7 @@ function installComfyUI()
   inner_block=$inner_block">>>>>>header X-API-Key $COMFYUI_API_KEY\n"
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>handle @auth_bearer {\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://comfyui-app:8188 {\n"
   inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -98837,6 +99118,7 @@ function installComfyUI()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://comfyui-app:8188 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -99017,6 +99299,7 @@ function installLangflow()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://langflow-app:7860 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -99229,6 +99512,7 @@ function installAnythingLLM()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://anythingllm-app:3001 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -99375,6 +99659,7 @@ function installPerplexica()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://perplexica-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -99535,6 +99820,7 @@ function installFirecrawl()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://firecrawl-api:3002 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -100062,6 +100348,7 @@ function installLibreChat()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://librechat-app:3080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -100495,6 +100782,7 @@ function installCrawl4AI()
   inner_block=$inner_block">>>>>>Content-Security-Policy \"default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com cdn.tailwindcss.com; font-src 'self' fonts.gstatic.com; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' cdnjs.cloudflare.com fonts.googleapis.com; img-src 'self' *.$HOMESERVER_DOMAIN img.shields.io data:; frame-src 'self' *.$HOMESERVER_DOMAIN data: blob:; connect-src 'self' *.$HOMESERVER_DOMAIN data:; object-src 'none'; frame-ancestors 'self' *.$HOMESERVER_DOMAIN; upgrade-insecure-requests;\"\n"
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://crawl4ai-app:11235 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -100669,6 +100957,7 @@ function installOllama()
   inner_block=$inner_block">>>>>>header X-API-Key $OLLAMA_API_KEY\n"
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>handle @auth_bearer {\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://ollama-server:11434 {\n"
   inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -100878,6 +101167,7 @@ function installOpenWebUI()
   inner_block=$inner_block">>>>#OWUI_FILES_REPLACE_LINE_2\n"
   inner_block=$inner_block">>>>#OWUI_FILES_REPLACE_LINE_3\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://openwebui-app:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -100897,6 +101187,7 @@ function installOpenWebUI()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://openwebui-qdrant:6333 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -101613,6 +101904,7 @@ EOFOW
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://openwebui-qdrant:6333 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -101937,6 +102229,7 @@ function installKhoj()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://khoj-server:42110 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -102216,6 +102509,7 @@ function installLobeChat()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://lobechat-app:3210 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -102507,6 +102801,7 @@ function installInvokeAI()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://invokeai-app:9090 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -102708,6 +103003,7 @@ function installRAGFlow()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://ragflow-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -102723,6 +103019,7 @@ function installRAGFlow()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://ragflow-app:9380 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -102738,6 +103035,7 @@ function installRAGFlow()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://ragflow-app:9382 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -102753,6 +103051,7 @@ function installRAGFlow()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://ragflow-minio:9001 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -103912,6 +104211,7 @@ function installTabbyML()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://tabbyml-app:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -104071,6 +104371,7 @@ function installDeepWikiOpen()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://deepwikiopen-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -104087,6 +104388,7 @@ function installDeepWikiOpen()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://deepwikiopen-app:8001 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -104284,6 +104586,7 @@ function installDocling()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://docling-app:5001 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -104580,6 +104883,7 @@ function installDify()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://dify-nginx {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -105884,6 +106188,7 @@ EOFWZ
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://mindsdb-app:47334 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -106320,6 +106625,7 @@ function installWaterCrawl()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://watercrawl-nginx {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -106861,6 +107167,7 @@ function installFlowise()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://flowise-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -107216,6 +107523,7 @@ function installSurfSense()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://surfsense-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -107231,6 +107539,7 @@ function installSurfSense()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://surfsense-app:8000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -107391,6 +107700,7 @@ function installNocoDB()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://nocodb-app:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -107688,6 +107998,7 @@ function installEnte()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://ente-server:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -107703,6 +108014,7 @@ function installEnte()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://ente-web:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -108084,6 +108396,7 @@ function installMorphic()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://morphic-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -108099,6 +108412,7 @@ function installMorphic()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://morphic-supabase-kong:8000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -109875,6 +110189,7 @@ function installOpenNotebook()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://opennotebook-app:8502 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -110338,6 +110653,7 @@ function installAppsmith()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://appsmith-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -110469,6 +110785,7 @@ function installTrilium()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://trilium-app:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -110645,6 +110962,7 @@ function installDocsGPT()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://docsgpt-frontend:5173 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -110660,6 +110978,7 @@ function installDocsGPT()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://docsgpt-backend:7091 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -110995,6 +111314,7 @@ function installMemos()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://memos-app:5230 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -111232,6 +111552,7 @@ function installSillyTavern()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
   inner_block=$inner_block">>>>>>>>uri /api/authz/forward-auth?authelia_url=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/\n"
   inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Email Remote-Name\n"
@@ -111383,6 +111704,7 @@ function installLemonade()
   inner_block=$inner_block">>>>>>header X-API-Key $LEMONADE_API_KEY\n"
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>handle @auth_bearer {\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://lemonade-server:8000 {\n"
   inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -111413,6 +111735,7 @@ function installLemonade()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
   inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
   inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
@@ -111592,6 +111915,7 @@ function installSpeakr()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://speakr-app:8899 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -112190,6 +112514,7 @@ function installInsanelyFastWhisper()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://insanelyfastwhisper-app:7860 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -112214,6 +112539,7 @@ function installInsanelyFastWhisper()
   inner_block=$inner_block">>>>>>header X-API-Key $INSANELYFASTWHISPER_API_KEY\n"
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>handle @auth_bearer {\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://insanelyfastwhisper-api:8888 {\n"
   inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -112478,6 +112804,7 @@ function installIVBox()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://ivbox-app:8000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -112494,6 +112821,7 @@ function installIVBox()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://ivbox-app:8188 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -112518,6 +112846,7 @@ function installIVBox()
   inner_block=$inner_block">>>>>>header X-API-Key $COMFYUI_API_KEY\n"
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>handle @auth_bearer {\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://ivbox-app:8188 {\n"
   inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -112773,6 +113102,7 @@ function installMonica()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://monica-web {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -113173,6 +113503,7 @@ function installAFFiNE()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy /graphql http://affine-app:3010 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>>>header_up Content-Type application/json\n"
@@ -113535,6 +113866,7 @@ function installJoplin()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://joplin-app:22300 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -113550,6 +113882,7 @@ function installJoplin()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://joplin-transcribe-app:4567 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -113877,6 +114210,7 @@ function installSuperset()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://superset-web {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -114880,6 +115214,7 @@ function installKokoro()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://kokoro-web:7860 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -114904,6 +115239,7 @@ function installKokoro()
   inner_block=$inner_block">>>>>>header X-API-Key $KOKORO_API_KEY\n"
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>handle @auth_bearer {\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://kokoro-tts:8880 {\n"
   inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -115137,6 +115473,7 @@ function installChatterbox()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://chatterbox-app:8000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -115161,6 +115498,7 @@ function installChatterbox()
   inner_block=$inner_block">>>>>>header X-API-Key $CHATTERBOX_API_KEY\n"
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>handle @auth_bearer {\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://chatterbox-app:8000 {\n"
   inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -115445,6 +115783,7 @@ function installLiteLLM()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://litellm-proxy:4000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -115784,6 +116123,7 @@ function installLangfuse()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://langfuse-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -115803,6 +116143,7 @@ function installLangfuse()
   inner_block=$inner_block">>>>header @js Content-Type application/javascript\n"
   inner_block=$inner_block">>>>header @css Content-Type text/css\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://langfuse-clickhouse:8123 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -115818,6 +116159,7 @@ function installLangfuse()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://langfuse-minio:9001 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -116259,6 +116601,7 @@ function installSkyvern()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://skyvern-web:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -116274,6 +116617,7 @@ function installSkyvern()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://skyvern-api:8000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -116289,6 +116633,7 @@ function installSkyvern()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://skyvern-web:9090 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -116304,6 +116649,7 @@ function installSkyvern()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://skyvern-api:9222 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -116566,6 +116912,7 @@ EOFWZ
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://wger-nginx {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -117052,6 +117399,7 @@ function installWorkoutCool()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://workoutcool-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -117287,6 +117635,7 @@ function installOpenRag()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://openrag-frontend:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -117302,6 +117651,7 @@ function installOpenRag()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://openrag-opensearch-dashboard:5601 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -117317,6 +117667,7 @@ function installOpenRag()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://openrag-langflow:7860 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -117642,6 +117993,7 @@ function installVoicebox()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://voicebox-app:17493 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -117815,6 +118167,7 @@ function installOpenCode()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://opencode-app:4096 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -117830,6 +118183,7 @@ function installOpenCode()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://opencode-app:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -118177,6 +118531,7 @@ function installOpenSkills()
   inner_block=$inner_block">>>>>>header X-API-Key $OPENSKILLS_API_KEY\n"
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>handle @auth_bearer {\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://openskills-app {\n"
   inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -118344,6 +118699,7 @@ function installEmailClassifierAI()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://emailclassifierai-app:5000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -118614,6 +118970,7 @@ function installHermesAgent()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://hermes-agent-dashboard:9119 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>>>header_up Host {upstream_hostport}\n"
@@ -118630,6 +118987,7 @@ function installHermesAgent()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://hermes-agent-gateway:8642 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -118645,6 +119003,7 @@ function installHermesAgent()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://hermes-agent-webui:8787 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -119034,6 +119393,7 @@ function installAutoKB()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://autokb-web {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -119528,6 +119888,7 @@ function installSuiteCRM()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://suitecrm-web {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -120086,6 +120447,7 @@ function installHedgeDoc()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>header /media/* Content-Disposition inline\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>@hedgedoc-backend {\n"
   inner_block=$inner_block">>>>>>>>path /realtime /api/* /public/* /uploads/* /apidoc/* /media/*\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -120465,6 +120827,7 @@ function installPresenton()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://presenton-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -120654,6 +121017,7 @@ function installBasicMemory()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://basicmemory-app:8000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -120876,6 +121240,7 @@ function installCognee()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://cognee-app:8000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -120891,6 +121256,7 @@ function installCognee()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>handle /api/v1/* {\n"
   inner_block=$inner_block">>>>>>>>reverse_proxy http://cognee-app:8000 {\n"
   inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -121268,6 +121634,7 @@ function installLightRAG()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://lightrag-app:9621 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -121283,6 +121650,7 @@ function installLightRAG()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://lightrag-qdrant:6333 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -121824,6 +122192,7 @@ EOFMT
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://suricata-web:5636 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>>>transport http {\n"
@@ -121960,6 +122329,775 @@ function performUpdateSuricata()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# CrowdSec
+function installCrowdSec()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory crowdsec "CrowdSec"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName crowdsec-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName crowdsec-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/crowdsec
+  mkdir $HSHQ_STACKS_DIR/crowdsec/config
+  mkdir $HSHQ_STACKS_DIR/crowdsec/data
+  mkdir $HSHQ_STACKS_DIR/crowdsec/acquis.d
+  mkdir $HSHQ_STACKS_DIR/crowdsec/notifications
+  mkdir $HSHQ_STACKS_DIR/crowdsec/web
+  sudo mkdir -p /var/log/crowdsec
+  sudo mkdir -p /var/log/suricata
+  sudo chown -R ${USERID}:${GROUPID} /var/log/suricata
+  initServicesCredentials
+  set +e
+  outputConfigCrowdSec
+  CROWDSEC_ADMIN_PASSWORD_HASH="$(
+CROWDSEC_ADMIN_PASSWORD="$CROWDSEC_ADMIN_PASSWORD" python3 <<'PYEOF'
+import os, hashlib, base64, secrets
+password = os.environ["CROWDSEC_ADMIN_PASSWORD"].encode("utf-8")
+n, r, p = 16384, 8, 1
+salt = secrets.token_bytes(16)
+dk = hashlib.scrypt(password, salt=salt, n=n, r=r, p=p, dklen=64)
+salt_b64 = base64.urlsafe_b64encode(salt).decode().rstrip("=")
+hash_b64 = base64.urlsafe_b64encode(dk).decode().rstrip("=")
+print(f"scrypt${n}${r}${p}${salt_b64}${hash_b64}")
+PYEOF
+)"
+  installStack crowdsec crowdsec-app "Successfully registered to Central" $HOME/crowdsec.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$CROWDSEC_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_CROWDSEC_WEB Admin Login Info" -b "$FMLNAME_CROWDSEC_WEB Admin Username: $CROWDSEC_ADMIN_USERNAME\n$FMLNAME_CROWDSEC_WEB Admin Password: $CROWDSEC_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    CROWDSEC_INIT_ENV=true
+    updateConfigVar CROWDSEC_INIT_ENV $CROWDSEC_INIT_ENV
+  fi
+  sleep 3
+  docker exec crowdsec-app cscli machines add $CROWDSEC_LAPI_USERNAME --password $CROWDSEC_LAPI_PASSWORD -f /dev/null
+  docker exec crowdsec-app cscli bouncers add caddy-bouncer -k $CROWDSEC_API_KEY > /dev/null 2>&1
+  docker exec crowdsec-app cscli allowlists create local_internal -d "internal docker network" > /dev/null 2>&1
+  docker exec crowdsec-app cscli allowlists add local_internal 172.16.0.0/14 > /dev/null 2>&1
+  sudo sqlite3 $HSHQ_STACKS_DIR/crowdsec/web/crowdsec.db "insert into auth_users(username,password_hash,role,created_at,updated_at) values ('$CROWDSEC_ADMIN_USERNAME','$CROWDSEC_ADMIN_PASSWORD_HASH','admin',strftime('%Y-%m-%dT%H:%M:%f', 'now') || 'Z',strftime('%Y-%m-%dT%H:%M:%f', 'now') || 'Z');" > /dev/null 2>&1
+  docker container restart crowdsec-web > /dev/null 2>&1
+  if [ -z "$FMLNAME_CROWDSEC_WEB" ]; then
+    set +e
+    echo "ERROR: Formal name is empty, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_CROWDSEC_WEB.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://crowdsec-web:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_CROWDSEC_WEB $MANAGETLS_CROWDSEC_WEB "$is_integrate_hshq" $NETDEFAULT_CROWDSEC_WEB "$inner_block"
+  insertSubAuthelia $SUB_CROWDSEC_WEB.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll crowdsec "$FMLNAME_CROWDSEC_WEB" $USERTYPE_CROWDSEC_WEB "https://$SUB_CROWDSEC_WEB.$HOMESERVER_DOMAIN" "crowdsec-web-ui.png" "$(getHeimdallOrderFromSub $SUB_CROWDSEC_WEB $USERTYPE_CROWDSEC_WEB)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigCrowdSec()
+{
+  cat <<EOFMT > $HOME/crowdsec-compose.yml
+$STACK_VERSION_PREFIX crowdsec $(getScriptStackVersion crowdsec)
+
+services:
+  crowdsec-app:
+    image: $(getScriptImageByContainerName crowdsec-app)
+    container_name: crowdsec-app
+    hostname: crowdsec-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-ext-net
+      - dock-proxy-net
+      - dock-internalmail-net
+      - int-crowdsec-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/log/crowdsec:/var/log/crowdsec
+      - /var/log/caddy:/var/log/caddy:ro
+      - /var/log/suricata:/var/log/suricata:ro
+      - v-crowdsec-config:/etc/crowdsec
+      - v-crowdsec-data:/var/lib/crowdsec/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/hshq-appsec.yaml:/etc/crowdsec/appsec-configs/hshq-appsec.yaml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/hshq-config.conf:/var/lib/crowdsec/data/crs-plugins/hshq/hshq-config.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/hshq-behavior.yaml:/etc/crowdsec/parsers/s02-enrich/hshq-behavior.yaml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/hshq-crs-alert.yaml:/etc/crowdsec/appsec-rules/hshq-crs-alert.yaml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/acquis.d:/etc/crowdsec/acquis.d
+      - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/profiles.yaml:/etc/crowdsec/profiles.yaml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/notifications:/etc/crowdsec/notifications
+
+  crowdsec-web:
+    image: $(getScriptImageByContainerName crowdsec-web)
+    container_name: crowdsec-web
+    hostname: crowdsec-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-ext-net
+      - dock-proxy-net
+      - dock-internalmail-net
+      - int-crowdsec-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/web:/app/data
+
+volumes:
+  v-crowdsec-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/config
+  v-crowdsec-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  int-crowdsec-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/crowdsec.env
+TZ=\${PORTAINER_TZ}
+UID=$USERID
+GID=$GROUPID
+COLLECTIONS=crowdsecurity/caddy crowdsecurity/http-cve crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules crowdsecurity/appsec-crs crowdsecurity/suricata crowdsecurity/appsec-crs-inband
+DISABLE_PARSERS=crowdsecurity/whitelists
+CONFIG_CROWDSEC_LAPI_URL=http://crowdsec-app:8080
+CONFIG_INSTANCE_LAPI_AUTH_USERNAME=$CROWDSEC_LAPI_USERNAME
+CONFIG_INSTANCE_LAPI_AUTH_PASSWORD=$CROWDSEC_LAPI_PASSWORD
+CONFIG_INSTANCE_METRICS_URL=http://crowdsec-app:6060/metrics
+EOFMT
+  touch $HSHQ_STACKS_DIR/crowdsec/acquis.yaml
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/acquis.d/caddy-log.yaml
+filenames:
+  - /var/log/caddy/*-access.log
+labels:
+  type: caddy
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/acquis.d/suricata.yaml
+filename: /var/log/suricata/eve.json
+labels:
+  type: suricata-evelogs
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/acquis.d/caddy-appsec.yaml
+name: caddy-appsec
+source: appsec
+appsec_config_path: /etc/crowdsec/appsec-configs/hshq-appsec.yaml
+log_level: warning
+labels:
+  type: appsec
+listen_addr: 0.0.0.0:7422
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-appsec.yaml
+name: hshq/appsec
+default_remediation: ban
+inband_rules:
+  - crowdsecurity/base-config
+  - crowdsecurity/vpatch-*
+  - crowdsecurity/generic-*
+  - crowdsecurity/crs
+outofband_rules:
+  - crowdsecurity/crs
+  - hshq/crs-alert
+  - crowdsecurity/experimental-*
+  - crowdsecurity/appsec-generic-test
+on_match:
+  - filter: IsOutBand == true
+    apply:
+      - SendAlert()
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-config.conf
+# =====================================================================
+# HSHQ CRS / AppSec overrides
+#
+# Loaded by the appsec rule \`crowdsecurity/crs\` through the glob
+#   crs-plugins/*/*-config.conf
+# i.e. it is installed as
+#   /var/lib/crowdsec/data/crs-plugins/hshq/hshq-config.conf
+#
+# Everything here is evaluated BEFORE the CRS rules, so a
+# \`ctl:ruleRemoveById\` disables the listed rule(s) for the current
+# request only.  Nothing is removed globally.
+#
+# Scoping: every per-service block matches on SERVER_NAME (the request
+# Host), so a rule is relaxed only for that service's own hostname.
+#
+# Attack-family ranges (OWASP CRS v4.0.0):
+#   911000-911999  method enforcement
+#   913000-913999  scanner user-agent
+#   920000-920999  protocol enforcement
+#   921000-921999  protocol attack / request smuggling
+#   930000-930999  LFI
+#   931000-931999  RFI
+#   932000-932999  RCE
+#   933000-933999  PHP injection
+#   934000-934999  generic / SSRF
+#   941000-941999  XSS
+#   942000-942999  SQLi
+#   943000-943999  session fixation
+#   944000-944999  Java
+#
+# Trade-off: for LAN-only self-hosted services we relax whole attack
+# families on that service's host so that legitimate application
+# content (SQL, code, HTML, base64, WebDAV, git, gRPC, ...) does not
+# get the user banned.  CrowdSec virtual-patch / generic appsec rules
+# and the HTTP behavioural scenarios still apply.
+# =====================================================================
+
+# ---------------------------------------------------------------------
+# 1. Global method allow-list
+#    WebDAV + REST verbs used by Nextcloud, Joplin, PhotoPrism, Kopia,
+#    Guacamole, OpenProject, Matrix federation, ...
+# ---------------------------------------------------------------------
+SecAction "id:900001,phase:1,pass,nolog,t:none,setvar:'tx.allowed_methods=GET HEAD POST OPTIONS PUT PATCH DELETE PROPFIND PROPPATCH MKCOL COPY MOVE LOCK UNLOCK REPORT SEARCH'"
+
+# ---------------------------------------------------------------------
+# 2. Global request Content-Type allow-list
+#    Adds binary / streaming / federation / git / gRPC / DNS types that
+#    CRS does not parse anyway, so no body inspection is lost.
+# ---------------------------------------------------------------------
+SecAction "id:900002,phase:1,pass,nolog,t:none,setvar:'tx.allowed_request_content_type=|application/x-www-form-urlencoded| |multipart/form-data| |multipart/related| |multipart/byteranges| |text/xml| |application/xml| |application/soap+xml| |application/json| |application/cloudevents+json| |application/cloudevents-batch+json| |text/plain| |application/octet-stream| |application/dns-message| |application/x-protobuf| |application/grpc| |application/grpc+proto| |application/grpc-web| |application/grpc-web+proto| |application/grpc-web-text| |application/x-ndjson| |application/ndjson| |application/activity+json| |application/ld+json| |application/x-git-upload-pack-request| |application/x-git-receive-pack-request| |application/x-git-upload-pack-result| |application/x-git-receive-pack-result| |application/vnd.git-lfs+json| |application/pdf| |application/graphql| |application/graphql-response+json| |application/csp-report| |application/reports+json| |text/event-stream| |image/jpeg| |image/png| |image/webp| |image/gif| |image/svg+xml| |image/avif| |image/bmp| |image/tiff|'"
+
+# ---------------------------------------------------------------------
+# 3. Global data-URI exclusion
+#    Any argument that is a \`data:\` URI (base64 image/attachment) must
+#    not be treated as RCE / XSS.  Applies on every host.
+# ---------------------------------------------------------------------
+SecRule ARGS "@rx ^data:" "id:900010,phase:2,pass,nolog,ctl:ruleRemoveById=932235,ctl:ruleRemoveById=934170,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941130,ctl:ruleRemoveById=941170"
+
+# ---------------------------------------------------------------------
+# 3b. Global empty-Accept exclusion
+#    An empty \`Accept\` header is a benign client quirk (common with API
+#    clients), but it trips CRS 920310 (score 2) and 920600
+#    ("Illegal Accept header: charset parameter", CRITICAL = score 5),
+#    which blocks and bans.  Ignore the empty-Accept case entirely.
+# ---------------------------------------------------------------------
+SecRule REQUEST_HEADERS:Accept "@rx ^\$" "id:900020,phase:1,pass,nolog,ctl:ruleRemoveById=920310,ctl:ruleRemoveById=920311,ctl:ruleRemoveById=920600"
+
+# =====================================================================
+# 4. Per-service, host-scoped exclusions
+# =====================================================================
+
+# --- 4.1  Dashboards / query engines / SQL clients -------------------
+#   Grafana, Prometheus, InfluxDB, OpenTelemetry/Alloy, Netdata,
+#   Metabase, Superset, SQLPad, CloudBeaver, DbGate, Adminer, n8n,
+#   Appsmith, Budibase, NocoDB, Firefly III, Matomo, Wazuh.
+#   Legitimate PromQL / InfluxQL / SQL / Flux / GraphQL is sent as
+#   request data and trips the SQLi, RCE and param-pollution rules.
+SecRule SERVER_NAME "@rx ^(grafana|prometheus|influxdb|otel|otelcol|alloy|netdata|metabase|superset|sqlpad|cloudbeaver|dbgate|adminer|n8n|appsmith|budibase|nocodb|firefly|fireflyiii|matomo|wazuh)\." "id:7000001,phase:1,pass,nolog,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=934000-934999,ctl:ruleRemoveById=930000-930999,ctl:ruleRemoveById=921170,ctl:ruleRemoveById=921110,ctl:ruleRemoveById=920420"
+
+# --- 4.2  Code editors / notebooks ----------------------------------
+#   code-server, opencode code-server, Jupyter / JupyterLab.
+#   Arbitrary file/cell content (SQL, HTML, shell, PHP, Java, base64)
+#   is saved through the browser.
+SecRule SERVER_NAME "@rx ^(codeserver|code-server|opencode-codeserver|jupyter|jupyterlab)\." "id:7000002,phase:1,pass,nolog,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=933000-933999,ctl:ruleRemoveById=944000-944999,ctl:ruleRemoveById=930000-930999,ctl:ruleRemoveById=934000-934999,ctl:ruleRemoveById=911100,ctl:ruleRemoveById=920420,ctl:ruleRemoveById=921110"
+
+# --- 4.3  Chat / LLM / AI services ----------------------------------
+#   Open WebUI, LibreChat, LobeChat, AnythingLLM, Ollama, LiteLLM,
+#   LocalAI, Tabby/TabbyML, InvokeAI, ComfyUI, Dify, Langflow,
+#   Flowise, RAGFlow, LightRAG, Khoj, Open Notebook, AutoKB,
+#   Presenton, Speakr, Docling, Crawl4AI, Firecrawl, WaterCrawl,
+#   EmailClassifierAI, Hermes.
+#   Prompts, code, HTML and base64 image data-URIs are normal input.
+SecRule SERVER_NAME "@rx ^(openwebui|open-webui|librechat|lobechat|anythingllm|ollama|litellm|localai|tabby|tabbyml|invokeai|comfyui|dify|langflow|flowise|ragflow|lightrag|khoj|opennotebook|open-notebook|autokb|presenton|speakr|docling|crawl4ai|firecrawl|watercrawl|emailclassifierai|hermes)\." "id:7000003,phase:1,pass,nolog,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=933000-933999,ctl:ruleRemoveById=944000-944999,ctl:ruleRemoveById=934000-934999,ctl:ruleRemoveById=920420,ctl:ruleRemoveById=921110"
+
+# --- 4.4  Wikis / docs / notes / office / CRM / ERP / invoicing -----
+#   Wiki.js, HedgeDoc, Memos, Trilium, Joplin, AFFiNE, Excalidraw,
+#   draw.io, Penpot, Collabora, Kanboard, WeKan, OpenProject, Taiga,
+#   Twenty, EspoCRM, SuiteCRM, MintHCM, Dolibarr, Odoo, Invoice
+#   Ninja, InvoiceShelf, WordPress, Ghost, Discourse, Zammad, Keila,
+#   Mealie, Rallly, Cal.com, Easy!Appointments, Wger, WorkoutCool,
+#   Yamtrack, Bar Assistant, Gramps Web, Linkwarden, wallabag,
+#   FreshRSS, Monica.
+#   Rich text / markdown / HTML / code in pages, tickets, notes.
+SecRule SERVER_NAME "@rx ^(wikijs|wiki|hedgedoc|memos|trilium|joplin|affine|excalidraw|drawio|penpot|collabora|kanboard|wekan|openproject|taiga|twenty|espocrm|suitecrm|minthcm|dolibarr|odoo|invoiceninja|invoiceshelf|wordpress|ghost|discourse|zammad|keila|mealie|rallly|calcom|easyappointments|wger|workoutcool|yamtrack|barassistant|bar-assistant|gramps|genealogy|ancestry|linkwarden|wallabag|freshrss|monica)\." "id:7000004,phase:1,pass,nolog,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=933000-933999,ctl:ruleRemoveById=930000-930999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=920420"
+
+# --- 4.5  Social / federation / media feeds -------------------------
+#   Mastodon, Pixelfed, Matrix/Synapse/Element, Revolt, Chatterbox,
+#   Zulip, PeerTube, Invidious, Piped.
+#   ActivityPub \`application/activity+json\`, Matrix PUT federation,
+#   base64 signatures, media uploads.
+SecRule SERVER_NAME "@rx ^(mastodon|pixelfed|matrix|synapse|element|revolt|chatterbox|zulip|peertube|invidious|piped)\." "id:7000005,phase:1,pass,nolog,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=933000-933999,ctl:ruleRemoveById=944000-944999,ctl:ruleRemoveById=911100,ctl:ruleRemoveById=920420,ctl:ruleRemoveById=921110"
+
+# --- 4.6  File sync / storage / media / document handling -----------
+#   Nextcloud, Syncthing, Immich, PhotoPrism, File Browser, filedrop,
+#   Paperless-ngx (+AI/GPT), Stirling-PDF, DocuSeal, OpenSign,
+#   Audiobookshelf, Calibre, Calibre-Web, Navidrome, Jellyfin, Kopia,
+#   Duplicati, SearXNG, Pastefy, SnippetBox.
+#   WebDAV methods, octet-stream uploads, binary bodies, restricted
+#   extensions (.log/.db/.sql/.history/...), and the Jellyfin
+#   \`/web/node_modules.history.bundle.js\` restricted-file match.
+SecRule SERVER_NAME "@rx ^(nextcloud|syncthing|immich|photoprism|filebrowser|file-browser|filedrop|paperless|paperless-ngx|paperless-ai|paperless-gpt|stirlingpdf|stirling-pdf|docuseal|opensign|audiobookshelf|calibre|calibre-web|navidrome|jellyfin|kopia|duplicati|searxng|pastefy|snippetbox)\." "id:7000006,phase:1,pass,nolog,ctl:ruleRemoveById=911100,ctl:ruleRemoveById=920420,ctl:ruleRemoveById=921110,ctl:ruleRemoveById=920440,ctl:ruleRemoveById=930100-930130,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=942000-942999"
+
+# --- 4.7  Infrastructure / admin / remote access --------------------
+#   Portainer, Proxmox, Home Assistant, Uptime Kuma, Beszel, Homarr,
+#   Heimdall, Dozzle, MeshCentral, Guacamole, Kasm, Remotely,
+#   ControlR, WG Portal, Change Detection, AdGuard Home, NTFY,
+#   Shlink, Speedtest Tracker, OpenLDAP, phpLDAPAdmin, LDAP User
+#   Manager, Docker, Jitsi, CrowdSec UI.
+#   WebSocket/console tokens, binary configs, Host-is-IP (920350),
+#   YAML/JSON with shell-looking content.
+SecRule SERVER_NAME "@rx ^(portainer|proxmox|homeassistant|home-assistant|uptimekuma|uptime-kuma|beszel|homarr|heimdall|dozzle|meshcentral|guacamole|kasm|remotely|controlr|wgportal|wg-portal|changedetection|change-detection|adguard|ntfy|shlink|speedtest|openldap|phpldapadmin|ldapmanager|ldap-user-manager|docker|jitsi|crowdsec)\." "id:7000007,phase:1,pass,nolog,ctl:ruleRemoveById=911100,ctl:ruleRemoveById=920420,ctl:ruleRemoveById=920350,ctl:ruleRemoveById=930000-930999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=921110"
+
+# --- 4.8  *arr / download stack -------------------------------------
+#   Sonarr, Radarr, Lidarr, Readarr, Prowlarr, Mylar3, SABnzbd,
+#   qBittorrent, Ombi, Bazarr, Jellyseerr/Overseerr.
+#   Indexer/manual search queries contain apostrophes, brackets,
+#   parentheses, \`#\`, \`+\` that libinjection flags as SQLi.
+SecRule SERVER_NAME "@rx ^(sonarr|radarr|lidarr|readarr|prowlarr|mylar|mylar3|sabnzbd|qbittorrent|ombi|bazarr|jellyseerr|overseerr)\." "id:7000008,phase:1,pass,nolog,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=921110,ctl:ruleRemoveById=921170"
+
+# --- 4.9  Mail / webmail --------------------------------------------
+#   Mailu front, Roundcube, Postfix, Rspamd, Keila.
+#   HTML mail bodies, Sieve scripts, vCard imports, search terms.
+SecRule SERVER_NAME "@rx ^(mailu|mailu-front|roundcube|postfix|rspamd|keila)\." "id:7000009,phase:1,pass,nolog,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=933000-933999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=920420,ctl:ruleRemoveById=921110"
+
+# --- 4.10  Git hosting ----------------------------------------------
+#   GitLab, Gitea, Forgejo.
+#   Git smart-HTTP pack bodies, LFS, GraphQL, repo file/markdown.
+SecRule SERVER_NAME "@rx ^(gitlab|gitea|forgejo)\." "id:7000010,phase:1,pass,nolog,ctl:ruleRemoveById=920420,ctl:ruleRemoveById=921110,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=934000-934999"
+
+# --- 4.11  Auth / secrets / password managers -----------------------
+#   Vaultwarden, Authelia, Standard Notes, OpenLDAP (admin).
+#   Encrypted blobs, Argon2 admin token, OAuth hashes, WebAuthn
+#   base64, LDIF/DN/filter content.
+SecRule SERVER_NAME "@rx ^(vaultwarden|authelia|standardnotes|standard-notes)\." "id:7000011,phase:1,pass,nolog,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=933000-933999,ctl:ruleRemoveById=944000-944999,ctl:ruleRemoveById=921110,ctl:ruleRemoveById=920420"
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-behavior.yaml
+# =====================================================================
+# HSHQ CrowdSec behavioural-scenario whitelist
+#
+# What it does: filters events out before the log-based scenarios
+# (crowdsecurity/http-probing, http-crawl-non_statics, http-generic-bf,
+# LePresidente/http-generic-401-bf, LePresidente/http-generic-403-bf, ...)
+# so that normal use of the self-hosted services does not ban the user.
+# It does NOT touch CRS/AppSec rules, and it keeps POST login brute-force
+# and scan detection intact.
+# =====================================================================
+name: hshq/behavior
+description: "Suppress behavioural-scenario false positives from legitimate LAN self-hosted services behind Caddy"
+whitelist:
+  reason: "legitimate media/thumbnail 404s, GET Basic-auth retries, and successful API polling"
+  expression:
+    # 1) Benign cover / thumbnail / avatar / preview 404s.  The http-logs
+    #    enricher only marks known static extensions as static; extensionless
+    #    API cover URLs (Sonarr/Radarr MediaCover, Navidrome covers, Immich
+    #    thumbnails, ...) still count as "non-static" and trip http-probing.
+    #    Anything that looks like traversal / OS-file access is NOT whitelisted.
+    - >-
+      evt.Meta.service == 'http' &&
+      evt.Meta.http_status in ['404', '403', '400'] &&
+      evt.Parsed.verb in ['GET', 'HEAD'] &&
+      evt.Meta.http_path matches '(?i)/(cover|coverart|thumb|thumbnail|poster|artwork|art|avatar|icon|preview|backdrop|sprite|placeholder|logo|photo|image|img|media|asset)' &&
+      !(evt.Meta.http_path contains '..') &&
+      !(evt.Meta.http_path matches '(?i)(%2e|%252e|/etc/|/proc/|/sys/|passwd|shadow|/[.]git)')
+    # 2) Legitimate OPDS / API clients that use HTTP Basic auth and retry on GET
+    #    (Calibre-Web, Portainer, AdGuard, apps behind Authelia, ...).  Only
+    #    GET/HEAD is whitelisted, so POST login brute force is still detected.
+    - >-
+      evt.Meta.service == 'http' &&
+      evt.Parsed.verb in ['GET', 'HEAD'] &&
+      evt.Meta.sub_type == 'auth_fail'
+    # 3) Successful API / SPA polling bursts that trip http-crawl-non_statics.
+    #    Only 200 responses on well-known API prefixes are whitelisted;
+    #    scan-style traffic (404/403/400) is untouched.
+    - >-
+      evt.Meta.service == 'http' &&
+      evt.Meta.http_status == '200' &&
+      evt.Parsed.verb in ['GET', 'HEAD'] &&
+      evt.Meta.http_path matches '(?i)^/(api|rest|graphql|gql|socket[.]io|notifications|_matrix|ocs|remote[.]php|public[.]php|[.]well-known)'
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-crs-alert.yaml
+name: hshq/crs-alert
+description: "Out-of-band CRS alert threshold: lower the inbound anomaly threshold to 1 so that ANY CRS rule match raises an alert (questionable behaviour). Loaded only in the out-of-band band, so in-band blocking keeps the default threshold of 5."
+seclang_rules:
+  - SecAction "id:8000001,phase:1,pass,nolog,t:none,setvar:'tx.inbound_anomaly_score_threshold=1'"
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/notifications/email.yaml
+type: email
+name: email_alert
+log_level: info
+
+format: |
+  <html>
+  <body style="font-family: Arial, sans-serif; font-size: 14px;">
+  <h2 style="color: #d32f2f;">CrowdSec WAF Alert</h2>
+  {{range . -}}
+    {{\$alert := . -}}
+    <table style="border-collapse: collapse; width: 100%;">
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Alert ID</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.UUID}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Time</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.StartAt}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Source IP</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.Source.Value}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Country</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.Source.Cn}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">ASN</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.Source.AsName}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Message</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.Message | HTMLEscape}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Scenario</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.Scenario}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Events Count</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.EventsCount}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Remediation</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.Remediation}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Simulated</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.Simulated}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Host</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.MachineID}}</td>
+    </tr>
+    {{if .Decisions}}
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Decision</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{range .Decisions}}{{.Type}} {{.Value}} for {{.Duration}} ({{.Scenario}}) {{end}}</td>
+    </tr>
+    {{end}}
+    </table>
+    {{range .Events -}}
+      {{\$ev := . -}}
+      {{\$rule := ""}}
+      {{\$msg := ""}}
+      {{\$target := ""}}
+      {{\$uri := ""}}
+      {{\$zones := ""}}
+      {{\$data := ""}}
+      {{range \$ev.Meta -}}
+        {{if eq .Key "rule_name"}}{{\$rule = .Value}}{{end}}
+        {{if eq .Key "message"}}{{\$msg = .Value}}{{end}}
+        {{if eq .Key "target_fqdn"}}{{\$target = .Value}}{{end}}
+        {{if eq .Key "uri"}}{{\$uri = .Value}}{{end}}
+        {{if eq .Key "matched_zones"}}{{\$zones = .Value}}{{end}}
+        {{if eq .Key "data"}}{{\$data = .Value}}{{end}}
+      {{end -}}
+      {{if and \$rule (not (contains "901340" \$rule)) (not (contains "949110" \$rule)) (not (contains "980170" \$rule))}}
+      <h3 style="color: #333; margin-top: 16px;">{{\$rule}} — {{\$msg}}</h3>
+      <table style="border-collapse: collapse; width: 100%;">
+        <tr>
+          <td style="padding: 6px; border-bottom: 1px solid #eee; font-weight: bold;">URL</td>
+          <td style="padding: 6px; border-bottom: 1px solid #eee;">{{\$target}}{{\$uri}}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px; border-bottom: 1px solid #eee; font-weight: bold;">Matched On</td>
+          <td style="padding: 6px; border-bottom: 1px solid #eee;">{{\$zones}}</td>
+        </tr>
+        {{if \$data}}
+        <tr>
+          <td style="padding: 6px; border-bottom: 1px solid #eee; font-weight: bold;">Data</td>
+          <td style="padding: 6px; border-bottom: 1px solid #eee;">{{\$data}}</td>
+        </tr>
+        {{end}}
+      </table>
+      {{end}}
+    {{end}}
+  {{end -}}
+  </body>
+  </html>
+
+smtp_host: $SMTP_HOSTNAME
+smtp_port: $SMTP_HOSTPORT
+auth_type: none
+sender_name: "HSHQ CrowdSec Alerts"
+sender_email: $EMAIL_ADMIN_EMAIL_ADDRESS
+email_subject: "HSHQ CrowdSec Alert"
+receiver_emails:
+  - $EMAIL_ADMIN_EMAIL_ADDRESS
+
+encryption_type: none
+timeout: 20s
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/notifications/email_action.yaml
+type: email
+name: email_action
+log_level: info
+
+format: |
+  <html>
+  <body style="font-family: Arial, sans-serif; font-size: 14px;">
+  <h2 style="color: #b71c1c;">CrowdSec WAF Action Taken</h2>
+  {{range . -}}
+    {{\$alert := . -}}
+    <table style="border-collapse: collapse; width: 100%;">
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Alert ID</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.UUID}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Time</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.StartAt}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Source IP</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.Source.Value}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Country</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.Source.Cn}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">ASN</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.Source.AsName}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Message</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.Message | HTMLEscape}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Scenario</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.Scenario}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Events Count</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.EventsCount}}</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Host</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.MachineID}}</td>
+    </tr>
+    {{range .Decisions}}
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Decision</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.Type}} {{.Value}} for {{.Duration}} ({{.Scenario}})</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd; font-weight: bold;">Origin</td>
+      <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{.Origin}}</td>
+    </tr>
+    {{end}}
+    </table>
+    {{range .Events -}}
+      {{\$ev := . -}}
+      {{\$rule := ""}}
+      {{\$msg := ""}}
+      {{\$target := ""}}
+      {{\$uri := ""}}
+      {{\$zones := ""}}
+      {{\$data := ""}}
+      {{\$method := ""}}
+      {{\$ua := ""}}
+      {{range \$ev.Meta -}}
+        {{if eq .Key "rule_name"}}{{\$rule = .Value}}{{end}}
+        {{if eq .Key "message"}}{{\$msg = .Value}}{{end}}
+        {{if eq .Key "target_fqdn"}}{{\$target = .Value}}{{end}}
+        {{if eq .Key "uri"}}{{\$uri = .Value}}{{end}}
+        {{if eq .Key "matched_zones"}}{{\$zones = .Value}}{{end}}
+        {{if eq .Key "data"}}{{\$data = .Value}}{{end}}
+        {{if eq .Key "method"}}{{\$method = .Value}}{{end}}
+        {{if eq .Key "user_agent"}}{{\$ua = .Value}}{{end}}
+      {{end -}}
+      {{if and \$rule (not (contains "901340" \$rule)) (not (contains "949110" \$rule)) (not (contains "980170" \$rule))}}
+      <h3 style="color: #333; margin-top: 16px;">{{\$rule}} — {{\$msg}}</h3>
+      <table style="border-collapse: collapse; width: 100%;">
+        <tr>
+          <td style="padding: 6px; border-bottom: 1px solid #eee; font-weight: bold;">URL</td>
+          <td style="padding: 6px; border-bottom: 1px solid #eee;">{{\$target}}{{\$uri}}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px; border-bottom: 1px solid #eee; font-weight: bold;">Method</td>
+          <td style="padding: 6px; border-bottom: 1px solid #eee;">{{\$method}}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px; border-bottom: 1px solid #eee; font-weight: bold;">User Agent</td>
+          <td style="padding: 6px; border-bottom: 1px solid #eee;">{{\$ua}}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px; border-bottom: 1px solid #eee; font-weight: bold;">Matched On</td>
+          <td style="padding: 6px; border-bottom: 1px solid #eee;">{{\$zones}}</td>
+        </tr>
+        {{if \$data}}
+        <tr>
+          <td style="padding: 6px; border-bottom: 1px solid #eee; font-weight: bold;">Data</td>
+          <td style="padding: 6px; border-bottom: 1px solid #eee;">{{\$data}}</td>
+        </tr>
+        {{end}}
+      </table>
+      {{end}}
+    {{end}}
+  {{end -}}
+  </body>
+  </html>
+
+smtp_host: $SMTP_HOSTNAME
+smtp_port: $SMTP_HOSTPORT
+auth_type: none
+sender_name: "HSHQ CrowdSec Actions"
+sender_email: $EMAIL_ADMIN_EMAIL_ADDRESS
+email_subject: "HSHQ CrowdSec Action Taken"
+receiver_emails:
+  - $EMAIL_ADMIN_EMAIL_ADDRESS
+
+encryption_type: none
+timeout: 20s
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/profiles.yaml
+name: appsec_alert
+filters:
+  - Alert.Message startsWith "WAF out-of-band match"
+notifications:
+  - email_alert
+---
+
+name: appsec_block_ban
+filters:
+  - Alert.Message startsWith "WAF block" && Alert.GetScope() == "Ip"
+decisions:
+  - type: ban
+    duration: 168h
+notifications:
+  - email_action
+on_success: break
+---
+
+name: appsec_scenario_suppress
+filters:
+  - Alert.Scenario startsWith "crowdsecurity/appsec-vpatch" || Alert.Scenario startsWith "crowdsecurity/appsec-native" || Alert.Scenario == "crowdsecurity/crowdsec-appsec-outofband"
+on_success: break
+---
+
+name: default_ip_remediation
+filters:
+  - Alert.Remediation == true && Alert.GetScope() == "Ip"
+decisions:
+  - type: ban
+    duration: 168h
+notifications:
+  - email_action
+on_success: break
+
+---
+
+name: default_range_remediation
+filters:
+  - Alert.Remediation == true && Alert.GetScope() == "Range"
+decisions:
+  - type: ban
+    duration: 168h
+notifications:
+  - email_action
+on_success: break
+
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/web/config.yaml
+ui:
+  timeZone: $TZ
+instances:
+  -
+    id: "0"
+    name: Instance 0
+    icon: 🛡️
+    lapi:
+      url: http://crowdsec-app:8080
+      auth:
+        type: password
+        username:
+          env: CONFIG_INSTANCE_LAPI_AUTH_USERNAME
+        password:
+          env: CONFIG_INSTANCE_LAPI_AUTH_PASSWORD
+    metrics:
+      - id: "0"
+        name: Metrics 0
+        icon: 📊
+        url: http://crowdsec-app:6060/metrics
+        requestTimeout: 5s
+EOFMT
+}
+
+function performUpdateCrowdSec()
+{
+  perform_stack_name=crowdsec
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=ghcr.io/crowdsecurity/crowdsec:v1.8.1,ghcr.io/theduffman85/crowdsec-web-ui:2026.10.3
+      image_update_map[0]="ghcr.io/crowdsecurity/crowdsec:v1.8.1,ghcr.io/crowdsecurity/crowdsec:v1.8.1"
+      image_update_map[1]="ghcr.io/theduffman85/crowdsec-web-ui:2026.10.3,ghcr.io/theduffman85/crowdsec-web-ui:2026.10.3"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 #ADD_NEW_SERVICE_FUNCTIONS_HERE
 
 # ExampleService
@@ -122016,6 +123154,7 @@ function installExampleService()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://exampleservice-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -122338,6 +123477,7 @@ function installScriptServer()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://host.docker.internal:$SCRIPTSERVER_LOCALHOST_PORT {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -131102,6 +132242,7 @@ function installDbGate()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://dbgate-app:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -131948,6 +133089,7 @@ function installSQLPad()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://sqlpad:3000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -132993,6 +134135,7 @@ function installHeimdall()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://heimdall {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -133561,6 +134704,7 @@ function initCaddyCommon()
       Content-Type application/json
     }
     route {
+      import internal_guard
       respond "/.well-known/matrix/server" 200 {
         body "{ \"m.server\": \"$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN:443\" }"
         close
@@ -133637,6 +134781,7 @@ function initCaddyCommon()
 (sn-sub-${SUB_HSHQSTATUS}) {
   https://$SUB_HSHQSTATUS.$HOMESERVER_DOMAIN {
     import $CADDY_SNIPPET_TLS_HSHQ
+    import internal_guard
     respond "Good"
   }
 }
@@ -133658,6 +134803,15 @@ EOFCF
 
 function outputCaddyHeaders()
 {
+  cat <<EOFCF > $HSHQ_STACKS_DIR/caddy-common/snippets/crowdsec_global_true.snip
+crowdsec {
+  api_url http://crowdsec-app:8080
+  api_key {env.CROWDSEC_API_KEY}
+  appsec_url http://crowdsec-app:7422
+  ticker_interval 15s
+}
+EOFCF
+  touch $HSHQ_STACKS_DIR/caddy-common/snippets/crowdsec_global_false.snip
   cat <<EOFCF > $HSHQ_STACKS_DIR/caddy-common/snippets/head.snip
 ($CADDY_SNIPPET_BASEHEADER) {
   header {
@@ -133713,25 +134867,6 @@ function outputCaddyHeaders()
   header @trusted_origin Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
 }
 
-# This header will also be removed due to replacement by CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED
-($CADDY_SNIPPET_SAFEHEADERCORS) {
-  @origin{args[0]} header Origin {args[0]}
-  header @origin{args[0]} {
-    Access-Control-Allow-Origin "{args[0]}"
-    Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-    Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
-    Referrer-Policy "strict-origin-when-cross-origin"
-    Strict-Transport-Security "max-age=31536000;"
-    X-XSS-Protection "1; mode=block"
-    X-Content-Type-Options "nosniff"
-    X-Robots-Tag "noindex, nofollow"
-    -Server
-    Cross-Origin-Opener-Policy "same-origin"
-    Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.${HOMESERVER_DOMAIN} data:; frame-src 'self' https://*.${HOMESERVER_DOMAIN} data: blob:; connect-src 'self' https://*.${HOMESERVER_DOMAIN} data:; object-src 'none'; upgrade-insecure-requests; frame-ancestors 'self' https://*.${HOMESERVER_DOMAIN};"
-    Permissions-Policy "camera=(self), microphone=(self), geolocation=(self), payment=(), usb=()"
-  }
-}
-
 ($CADDY_SNIPPET_TRUSTEDPROXIES) {
   trusted_proxies $TRUSTED_PROXIES
   header_up Host {hostport}
@@ -133741,9 +134876,9 @@ function outputCaddyHeaders()
   not remote_ip {\$CADDY_HSHQ_PRIVATE_IPS}
 }
 
-($CADDY_SNIPPET_LOG_TRUE) {
-  @aclog_filter {
-    remote_ip $DOCKER_NETWORK_RESERVED_RANGE
+(log_true) {
+  @aclog_filter { 
+    remote_ip 172.16.0.0/14 
   }
   log_skip @aclog_filter
   log {
@@ -133754,15 +134889,47 @@ function outputCaddyHeaders()
       roll_keep_for 2160h
       roll_local_time
     }
+    format json
   }
 }
 
-($CADDY_SNIPPET_LOG_FALSE) {
+(log_false) {
+}
+
+(log_bridge_true) {
+  import log_true
+}
+
+(log_bridge_false) {
+  import log_{\$ENABLE_ACCESS_LOGGING:false}
+}
+
+(bouncer_true) {
+  route {
+    crowdsec
+  }
+}
+
+(bouncer_false) {
+}
+
+(appsec_true) {
+  route {
+    appsec
+  }
+}
+
+(appsec_false) {
 }
 
 ($CADDY_SNIPPET_RIP) {
   @subnet remote_ip {\$CADDY_HSHQ_CA_SUBNET}
-  import {\$ENABLE_LOGGING:$CADDY_SNIPPET_LOG_FALSE}
+  import log_bridge_{\$ENABLE_CROWDSEC_BOUNCER:false}
+}
+
+($CADDY_SNIPPET_INTERNAL_GUARD) {
+  import bouncer_{\$ENABLE_CROWDSEC_BOUNCER:false}
+  import appsec_{\$ENABLE_CROWDSEC_APPSEC:false}
 }
 
 EOFCF
@@ -133841,13 +135008,13 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/log/caddy:/logs
       - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/data/caddy/pki/authorities/$ca_name/root.crt:ro
       - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.key:/data/caddy/pki/authorities/$ca_name/root.key:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/Caddyfile:/etc/caddy/Caddyfile
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-Home:/config/CaddyfileBody
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
-      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/logs
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/scripts:/scripts:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
@@ -133866,6 +135033,7 @@ EOFCF
 {
   email $EMAIL_ADMIN_EMAIL_ADDRESS
   renew_interval {\$CERT_RENEW_INTERVAL}
+  import /snippets/crowdsec_global_{\$ENABLE_CROWDSEC_BOUNCER:false}.snip
   pki {
     ca {\$CADDY_HSHQ_CA_NAME} {
       intermediate_cn "$CERTS_INTERNAL_INTERMEDIATE_CN"
@@ -133884,6 +135052,7 @@ import /snippets/head.snip
     }
   }
 }
+
 EOFCF
       is_commented_line="#"
       if [ "$HSHQ_APP_TYPE" = "business" ]; then
@@ -133897,6 +135066,7 @@ EOFCF
   ${is_commented_line}  copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
   ${is_commented_line}}
 }
+
 EOFCF
       cat <<EOFCF >> $HSHQ_STACKS_DIR/$caddy_net_name/Caddyfile
 https://$SUB_CADDY.$HOMESERVER_DOMAIN {
@@ -133920,7 +135090,9 @@ CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 $add_ri
 CADDY_HSHQ_PRIVATE_IPS=\${$priv_ip_net} $(getPrivateIPRangesCaddy $bind_ip)
 CADDY_HSHQ_CA_URL=$ca_url
 CADDY_HSHQ_BIND_IP=\${$ipVarName}
-ENABLE_LOGGING=$CADDY_SNIPPET_LOG_FALSE
+ENABLE_ACCESS_LOGGING=false
+ENABLE_CROWDSEC_BOUNCER=false
+ENABLE_CROWDSEC_APPSEC=false
 CADDY_STACK_NAME=$caddy_net_name
 EOFCE
       ;;
@@ -133951,13 +135123,13 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/log/caddy:/logs
       - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/data/caddy/pki/authorities/$ca_name/root.crt:ro
       - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.key:/data/caddy/pki/authorities/$ca_name/root.key:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/Caddyfile:/etc/caddy/Caddyfile
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-Primary:/config/CaddyfileBody
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
-      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/logs
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/scripts:/scripts:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
@@ -133982,6 +135154,7 @@ EOFCF
   email $EMAIL_ADMIN_EMAIL_ADDRESS
   acme_ca https://acme-v02.api.letsencrypt.org/directory
   renew_interval {\$CERT_RENEW_INTERVAL}
+  import /snippets/crowdsec_global_{\$ENABLE_CROWDSEC_BOUNCER:false}.snip
   pki {
     ca {\$CADDY_HSHQ_CA_NAME} {
       intermediate_cn "$CERTS_INTERNAL_INTERMEDIATE_CN"
@@ -134047,13 +135220,13 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/log/caddy:/logs
       - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/data/caddy/pki/authorities/$ca_name/root.crt:ro
       - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.key:/data/caddy/pki/authorities/$ca_name/root.key:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/Caddyfile:/etc/caddy/Caddyfile
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-Primary:/config/CaddyfileBody
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
-      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/logs
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/scripts:/scripts:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
@@ -134078,6 +135251,7 @@ EOFCF
   email $EMAIL_ADMIN_EMAIL_ADDRESS
   acme_ca https://acme-v02.api.letsencrypt.org/directory
   renew_interval {\$CERT_RENEW_INTERVAL}
+  import /snippets/crowdsec_global_{\$ENABLE_CROWDSEC_BOUNCER:false}.snip
 }
 
 import /snippets/head.snip
@@ -134112,7 +135286,9 @@ CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
 CADDY_HSHQ_PRIVATE_IPS=
 CADDY_HSHQ_CA_URL=$ca_url
 CADDY_HSHQ_BIND_IP=$bind_ip
-ENABLE_LOGGING=$CADDY_SNIPPET_LOG_FALSE
+ENABLE_ACCESS_LOGGING=false
+ENABLE_CROWDSEC_BOUNCER=false
+ENABLE_CROWDSEC_APPSEC=false
 CADDY_STACK_NAME=$caddy_net_name
 EOFCE
       ;;
@@ -134142,11 +135318,11 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /var/log/caddy:/logs
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/Caddyfile:/etc/caddy/Caddyfile
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-$caddy_net_name:/config/CaddyfileBody
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
-      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/caddylogs:/logs
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/lecerts:/lecerts:ro
@@ -134165,6 +135341,7 @@ EOFCF
 {
   email $EMAIL_ADMIN_EMAIL_ADDRESS
   renew_interval {\$CERT_RENEW_INTERVAL}
+  import /snippets/crowdsec_global_{\$ENABLE_CROWDSEC_BOUNCER:false}.snip
 }
 
 import /snippets/head.snip
@@ -134194,7 +135371,9 @@ CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
 CADDY_HSHQ_PRIVATE_IPS=
 CADDY_HSHQ_CA_URL=$ca_url
 CADDY_HSHQ_BIND_IP=$bind_ip
-ENABLE_LOGGING=$CADDY_SNIPPET_LOG_FALSE
+ENABLE_ACCESS_LOGGING=false
+ENABLE_CROWDSEC_BOUNCER=false
+ENABLE_CROWDSEC_APPSEC=false
 CADDY_STACK_NAME=$caddy_net_name
 EOFCE
       ;;
@@ -134234,19 +135413,24 @@ function performUpdateCaddy()
       image_update_map[0]="caddy:2.9.1,mirror.gcr.io/caddy:2.11.4"
     ;;
     5)
-      newVer=v7
+      newVer=v8
       curImageList=mirror.gcr.io/caddy:2.10.0
-      image_update_map[0]="mirror.gcr.io/caddy:2.10.0,mirror.gcr.io/caddy:2.11.4"
+      image_update_map[0]="mirror.gcr.io/caddy:2.10.0,ghcr.io/homeserverhq/caddy-crowdsec:2.11.7"
     ;;
     6)
-      newVer=v7
+      newVer=v8
       curImageList=mirror.gcr.io/caddy:2.10.2
-      image_update_map[0]="mirror.gcr.io/caddy:2.10.2,mirror.gcr.io/caddy:2.11.4"
+      image_update_map[0]="mirror.gcr.io/caddy:2.10.2,ghcr.io/homeserverhq/caddy-crowdsec:2.11.7"
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=mirror.gcr.io/caddy:2.11.4
-      image_update_map[0]="mirror.gcr.io/caddy:2.11.4,mirror.gcr.io/caddy:2.11.4"
+      image_update_map[0]="mirror.gcr.io/caddy:2.11.4,ghcr.io/homeserverhq/caddy-crowdsec:2.11.7"
+    ;;
+    8)
+      newVer=v8
+      curImageList=ghcr.io/homeserverhq/caddy-crowdsec:2.11.7
+      image_update_map[0]="ghcr.io/homeserverhq/caddy-crowdsec:2.11.7,ghcr.io/homeserverhq/caddy-crowdsec:2.11.7"
     ;;
     *)
       is_upgrade_error=true
@@ -134431,6 +135615,7 @@ function addRPSubdomain()
   fi
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy $rpdest {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -134524,6 +135709,7 @@ function installClientDNS()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://clientdns-${cdns_stack_name}-dnsmasq:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -134729,6 +135915,7 @@ function installUptimeKuma()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://uptimekuma:3001 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
