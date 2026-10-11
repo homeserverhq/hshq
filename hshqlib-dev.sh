@@ -122383,7 +122383,7 @@ PYEOF
     updateConfigVar CROWDSEC_INIT_ENV $CROWDSEC_INIT_ENV
   fi
   sleep 3
-  docker exec crowdsec-app cscli machines add $CROWDSEC_LAPI_USERNAME --password $CROWDSEC_LAPI_PASSWORD -f /dev/null
+  docker exec crowdsec-app cscli machines add $CROWDSEC_LAPI_USERNAME --password $CROWDSEC_LAPI_PASSWORD -f /dev/null > /dev/null 2>&1
   docker exec crowdsec-app cscli bouncers add caddy-bouncer -k $CROWDSEC_API_KEY > /dev/null 2>&1
   docker exec crowdsec-app cscli allowlists create local_internal -d "internal docker network" > /dev/null 2>&1
   docker exec crowdsec-app cscli allowlists add local_internal 172.16.0.0/14 > /dev/null 2>&1
