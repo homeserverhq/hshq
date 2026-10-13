@@ -49102,7 +49102,7 @@ loki.source.file "caddy" {
 local.file_match "crowdsec_logs" {
   path_targets = [
     { "__path__" = "/var/log/crowdsec/crowdsec.log", "job" = "crowdsec", "type" = "engine" },
-    { "__path__" = "/var/log/crowdsec/crowdsec_alerts.json", "job" = "crowdsec", "type" = "alerts" }
+    { "__path__" = "/var/log/crowdsec/crowdsec_alerts.json", "job" = "crowdsec", "type" = "alerts" },
   ]
 }
 
@@ -49275,6 +49275,399 @@ scrape_configs:
   - job_name: 'crowdsec'
     static_configs:
       - targets: ['crowdsec-app:6060']
+EOFPM
+  # Temporary
+  cat <<EOFPM > $HSHQ_STACKS_DIR/sysutils/alloy/config.alloy
+// =====================================================================
+// HSHQ Alloy configuration — PHASE 1 (baseline data gathering)
+//
+// Destination in container:
+//   /etc/alloy/config.alloy
+//
+// Streams shipped to Loki:
+//   * Docker container logs (containers labelled loki.ship=true)
+//   * Caddy access logs        -> /var/log/caddy/caddy-*-access.log   {log_source="caddy_access"}
+//   * CrowdSec AppSec alerts   -> /var/log/crowdsec/baseline-alerts.json {log_source="crowdsec_alerts"}
+//   * Suricata EVE JSON        -> /var/log/suricata/eve.json          {log_source="suricata"}
+//   * Host logs                -> /var/log/{syslog,auth.log,hshq.log} {log_source="host"}
+//   * LiteLLM                  -> HTTP API on :3101                   {log_source="litellm"}
+//
+// NOTE: this config reads the Caddy logs from /var/log/caddy (the directory
+// Caddy now writes to). Alloy mounts the host /var/log, so no separate
+// /caddylogs mount is required. If you prefer a dedicated mount, change the
+// \`loki.source.file "caddy"\` path accordingly.
+//
+// Cardinality rules:
+//   * low-cardinality values  -> stage.labels
+//   * high-cardinality values -> stage.structured_metadata
+// =====================================================================
+
+// ────────────────────────────────────────────────────────────────────
+// Docker containers → syslog files in /var/log/docker
+// Docker socket is used for METADATA ONLY
+// Just add loki.ship: "true" label to any container to ingest logs
+// ────────────────────────────────────────────────────────────────────
+
+discovery.docker "engine" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.engine.targets
+  rule {
+    source_labels = ["__meta_docker_container_label_loki_ship"]
+    action        = "keep"
+    regex         = "true"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "__path__"
+    replacement   = "/var/log/docker/\$1.log"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "project"
+  }
+  rule {
+    target_label = "log_source"
+    replacement  = "docker"
+  }
+}
+
+loki.source.file "docker_logs" {
+  targets    = discovery.relabel.containers.output
+  forward_to = [loki.write.local.receiver]
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Caddy access logs → /var/log/caddy/caddy-*-access.log (JSON lines)
+// ────────────────────────────────────────────────────────────────────
+
+loki.source.file "caddy" {
+  targets = [
+    { __path__ = "/var/log/caddy/caddy-*-access.log" },
+  ]
+  forward_to = [loki.relabel.caddy_instance.receiver]
+  file_match {
+    enabled     = true
+    sync_period = "10s"
+  }
+}
+
+loki.relabel "caddy_instance" {
+  forward_to = [loki.process.caddy_parse.receiver]
+  rule {
+    source_labels = ["filename"]
+    regex         = ".*/(caddy-.+)-access\\\\.log"
+    replacement   = "\$1-access"
+    target_label  = "job"
+  }
+  rule {
+    target_label = "log_source"
+    replacement  = "caddy_access"
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Device-name enrichment (Caddy access logs only)
+// ────────────────────────────────────────────────────────────────────
+
+discovery.file "devices" {
+  files            = ["/etc/alloy/devices/devices.json"]
+  refresh_interval = "30s"
+}
+
+// PHASE 1: extract host/method/status (labels) and
+// uri/content_type/user_agent/accept (structured metadata) from the
+// Caddy JSON access line, in addition to the client_ip label.
+//
+// NOTE: Caddy header keys contain a hyphen. If the expression parser
+// rejects \`request.headers.Content-Type[0]\`, use the quoted form:
+//   content_type = "request.headers.\"Content-Type\"[0]"
+loki.process "caddy_parse" {
+  stage.json {
+    expressions = {
+      host         = "request.host",
+      method       = "request.method",
+      status       = "status",
+      uri          = "request.uri",
+      content_type = "request.headers.Content-Type[0]",
+      user_agent   = "request.headers.User-Agent[0]",
+      accept       = "request.headers.Accept[0]",
+      client_ip    = "request.client_ip",
+    }
+  }
+  stage.labels {
+    values = { client_ip = "", host = "", method = "", status = "" }
+  }
+  stage.structured_metadata {
+    values = { uri = "", content_type = "", user_agent = "", accept = "" }
+  }
+  forward_to = [loki.enrich.devices.receiver]
+}
+
+loki.enrich "devices" {
+  targets            = discovery.file.devices.targets
+  target_match_label = "__address__"
+  logs_match_label   = "client_ip"
+  labels_to_copy     = ["device_name"]
+  forward_to         = [loki.process.caddy_default.receiver]
+}
+
+loki.process "caddy_default" {
+  stage.match {
+    selector = \`{device_name=""}\`
+    stage.static_labels {
+      values = { device_name = "UNKNOWN" }
+    }
+  }
+  forward_to = [loki.write.local.receiver]
+}
+
+// ────────────────────────────────────────────────────────────────────
+// CrowdSec AppSec baseline alerts
+//
+// The \`notification-file\` plugin inside crowdsec-app appends one JSON
+// object per alert to /var/log/crowdsec/baseline-alerts.json. Because
+// crowdsec-app bind-mounts /var/log/crowdsec to the host, and Alloy
+// mounts the host /var/log, this file is visible here.
+//
+// Line shape (one JSON object per line):
+//   {"t":"...","src":"1.2.3.4","uuid":"...","alert":{<full alert json>}}
+// ────────────────────────────────────────────────────────────────────
+
+loki.source.file "crowdsec_alerts" {
+  targets = [
+    { __path__ = "/var/log/crowdsec/baseline-alerts.json" },
+  ]
+  forward_to = [loki.process.crowdsec_alerts.receiver]
+  file_match {
+    enabled     = true
+    sync_period = "10s"
+  }
+}
+
+loki.process "crowdsec_alerts" {
+  stage.static_labels {
+    values = {
+      job        = "crowdsec_alerts",
+      log_source = "crowdsec_alerts",
+    }
+  }
+  stage.json {
+    expressions = {
+      host     = "host",
+      rule     = "rule",
+      zones    = "zones",
+      uri      = "uri",
+      src      = "src",
+      data     = "data",
+      t        = "t",
+      scenario = "scenario",
+    }
+  }
+  stage.labels {
+    values = { host = "" }          // low cardinality -> label
+  }
+  stage.structured_metadata {
+    values = { rule = "", zones = "", uri = "", src = "", scenario = "" }
+  }
+  forward_to = [loki.write.local.receiver]
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Suricata EVE JSON → /var/log/suricata/eve.json (one JSON object/line)
+//
+// Each line has \`event_type\` (alert, anomaly, dns, http, tls, flow,
+// fileinfo, stats, ...). We ship ALL event types by default so you can
+// filter in Loki with \`{log_source="suricata", event_type="alert"}\`.
+//
+// If the volume is too high (eve.json is large and mostly flow/dns/stats),
+// uncomment the \`stage.match\` block below to keep only security-relevant
+// event types.
+// ────────────────────────────────────────────────────────────────────
+
+loki.source.file "suricata" {
+  targets = [
+    { __path__ = "/var/log/suricata/eve.json" },
+  ]
+  forward_to = [loki.process.suricata.receiver]
+  file_match {
+    enabled     = true
+    sync_period = "10s"
+  }
+}
+
+loki.process "suricata" {
+  stage.static_labels {
+    values = {
+      job        = "suricata",
+      log_source = "suricata",
+    }
+  }
+  stage.json {
+    expressions = {
+      event_type = "event_type",
+      src_ip     = "src_ip",
+      dest_ip    = "dest_ip",
+      proto      = "proto",
+      app_proto  = "app_proto",
+      signature  = "alert.signature",
+      category   = "alert.category",
+      severity   = "alert.severity",
+    }
+  }
+  // Optional: drop the high-volume, low-value event types.
+  // stage.match {
+  //   selector = \`{job="suricata"} | event_type!~"alert|anomaly|fileinfo"\`
+  //   action   = "drop"
+  // }
+  stage.labels {
+    values = { event_type = "" }          // low cardinality -> label
+  }
+  stage.structured_metadata {
+    values = {
+      src_ip    = "",
+      dest_ip   = "",
+      proto     = "",
+      app_proto = "",
+      signature = "",
+      category  = "",
+      severity  = "",
+    }
+  }
+  forward_to = [loki.write.local.receiver]
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Host logs → /var/log/* (one file = one service)
+// ────────────────────────────────────────────────────────────────────
+loki.source.file "host" {
+  targets = [
+    { __path__ = "/var/log/syslog" },
+    { __path__ = "/var/log/auth.log" },
+    { __path__ = "/var/log/hshq.log" },
+  ]
+  forward_to = [loki.relabel.host_instance.receiver]
+}
+
+loki.relabel "host_instance" {
+  forward_to = [loki.write.local.receiver]
+  rule {
+    source_labels = ["filename"]
+    regex         = ".*/(.+)"
+    replacement   = "\$1"
+    target_label  = "job"
+  }
+  rule {
+    target_label = "log_source"
+    replacement  = "host"
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────
+// LiteLLM request/response records → /loki/api/v1/raw (NDJSON)
+// ────────────────────────────────────────────────────────────────────
+loki.source.api "litellm" {
+  http {
+    listen_address = "0.0.0.0"
+    listen_port    = 3101
+  }
+  forward_to = [loki.process.llm.receiver]
+}
+
+loki.process "llm" {
+  stage.static_labels {
+    values = {
+      job        = "litellm",
+      log_source = "litellm",
+    }
+  }
+  forward_to = [loki.write.local.receiver]
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Output
+// ────────────────────────────────────────────────────────────────────
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+EOFPM
+  cat <<EOFPM > $HSHQ_STACKS_DIR/sysutils/loki/config.yml
+# =====================================================================
+# HSHQ Loki configuration — PHASE 1 (baseline data gathering)
+#
+# Destination in container:
+#   /etc/loki/config.yml
+#
+# Changes vs the stock HSHQ Loki config:
+#   * \`max_query_lookback\` raised 168h -> 336h so the full 7-day baseline
+#     window stays queryable at the end of collection.
+#   * ingestion limits raised (the stock 4 MB/s was being exceeded:
+#     "ingestion rate limit exceeded" in the Loki log), so nothing is
+#     silently dropped while the baseline streams are high volume.
+#
+# \`retention_period: 744h\` (31d) already exceeds the collection window.
+# =====================================================================
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  volume_enabled: true
+  max_query_lookback: 336h          # PHASE 1: was 168h; keeps the full baseline window queryable
+  retention_period: 744h
+  # PHASE 1: raise the default 4 MB/s ingestion limits (they were being exceeded).
+  ingestion_rate_mb: 32
+  ingestion_burst_size_mb: 64
+  per_stream_rate_limit: 16MB
+  per_stream_rate_limit_burst: 32MB
+  max_global_streams_per_user: 0    # 0 = unlimited
+  discover_log_levels: true
+  discover_service_name:
+    - service_name
+    - job
+    - container
+    - service
+    - host
+
+pattern_ingester:
+  enabled: true
 EOFPM
 }
 
@@ -122354,7 +122747,9 @@ function installCrowdSec()
   mkdir $HSHQ_STACKS_DIR/crowdsec/acquis.d
   mkdir $HSHQ_STACKS_DIR/crowdsec/notifications
   mkdir $HSHQ_STACKS_DIR/crowdsec/web
+  mkdir -p $HSHQ_STACKS_DIR/crowdsec/modes/{monitor,enforce}
   sudo mkdir -p /var/log/crowdsec
+  sudo chown -R 65534:65534 /var/log/crowdsec
   sudo mkdir -p /var/log/suricata
   sudo chown -R ${USERID}:${GROUPID} /var/log/suricata
   initServicesCredentials
@@ -122448,12 +122843,11 @@ services:
       - v-crowdsec-config:/etc/crowdsec
       - v-crowdsec-data:/var/lib/crowdsec/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml
-      - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/hshq-appsec.yaml:/etc/crowdsec/appsec-configs/hshq-appsec.yaml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/modes/\${WAF_MODE:-monitor}/hshq-appsec.yaml:/etc/crowdsec/appsec-configs/hshq-appsec.yaml
       - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/hshq-config.conf:/var/lib/crowdsec/data/crs-plugins/hshq/hshq-config.conf
-      - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/hshq-behavior.yaml:/etc/crowdsec/parsers/s02-enrich/hshq-behavior.yaml
       - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/hshq-crs-alert.yaml:/etc/crowdsec/appsec-rules/hshq-crs-alert.yaml
       - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/acquis.d:/etc/crowdsec/acquis.d
-      - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/profiles.yaml:/etc/crowdsec/profiles.yaml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/modes/\${WAF_MODE:-monitor}/profiles.yaml:/etc/crowdsec/profiles.yaml
       - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/notifications:/etc/crowdsec/notifications
 
   crowdsec-web:
@@ -122518,20 +122912,17 @@ CONFIG_CROWDSEC_LAPI_URL=http://crowdsec-app:8080
 CONFIG_INSTANCE_LAPI_AUTH_USERNAME=$CROWDSEC_LAPI_USERNAME
 CONFIG_INSTANCE_LAPI_AUTH_PASSWORD=$CROWDSEC_LAPI_PASSWORD
 CONFIG_INSTANCE_METRICS_URL=http://crowdsec-app:6060/metrics
+WAF_MODE=monitor
 EOFMT
   touch $HSHQ_STACKS_DIR/crowdsec/acquis.yaml
-  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/acquis.d/caddy-log.yaml
-filenames:
-  - /var/log/caddy/*-access.log
-labels:
-  type: caddy
-EOFMT
-  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/acquis.d/suricata.yaml
-filename: /var/log/suricata/eve.json
-labels:
-  type: suricata-evelogs
-EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/acquis.d/caddy-appsec.yaml
+# =====================================================================
+# AppSec acquisition source — Caddy forwards requests here
+#
+# The Caddy bouncer/AppSec handler POSTs each request to this listener
+# (crowdsec-app:7422) with X-Crowdsec-Appsec-* headers. \`log_level:
+# warning\` suppresses the per-request "skipping WAF processing" noise.
+# =====================================================================
 name: caddy-appsec
 source: appsec
 appsec_config_path: /etc/crowdsec/appsec-configs/hshq-appsec.yaml
@@ -122540,7 +122931,102 @@ labels:
   type: appsec
 listen_addr: 0.0.0.0:7422
 EOFMT
-  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-appsec.yaml
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/acquis.d/caddy-log.yaml
+# =====================================================================
+# Caddy access-log acquisition source
+#
+# Caddy writes JSON access logs to /logs/<stack>-access.log, which the
+# CrowdSec container sees at /var/log/caddy/*-access.log. These drive the
+# behavioural scenarios (http-probing, http-crawl-non_statics, ...).
+# =====================================================================
+filenames:
+  - /var/log/caddy/*-access.log
+labels:
+  type: caddy
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/acquis.d/suricata.yaml
+# =====================================================================
+# Suricata EVE-log acquisition source
+# =====================================================================
+filename: /var/log/suricata/eve.json
+labels:
+  type: suricata-evelogs
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/modes/monitor/hshq-appsec.yaml
+# =====================================================================
+# HSHQ AppSec configuration — MONITOR MODE (WAF_MODE=monitor)
+#
+# Destination in container:
+#   /etc/crowdsec/appsec-configs/hshq-appsec.yaml
+#
+# Selected by the compose bind mount:
+#   .../modes/\${WAF_MODE:-monitor}/hshq-appsec.yaml -> the path above
+#
+# NON-BLOCKING. The in-band engine is intentionally empty, so nothing can
+# block (and, with the monitor profiles, nothing can ban). Every rule
+# collection is loaded into the OUT-OF-BAND engine, whose anomaly
+# threshold is lowered to 1 by hshq/crs-alert, so ANY match raises an
+# alert. Those alerts drive the monitor-mode email (email_alert) and the
+# baseline_file audit stream.
+#
+# on_load raises the max inspectable body size to 100 MiB and switches the
+# oversized-body action to partial, so large legitimate uploads (e.g.
+# Nextcloud DAV) are inspected up to the limit instead of being dropped.
+#
+# The enforcing counterpart is modes/enforce/hshq-appsec.yaml; the only
+# runtime difference is which two files WAF_MODE selects.
+# =====================================================================
+name: hshq/appsec
+default_remediation: ban
+inband_rules: []
+outofband_rules:
+  - crowdsecurity/base-config
+  - crowdsecurity/vpatch-*
+  - crowdsecurity/generic-*
+  - crowdsecurity/crs
+  - hshq/crs-alert
+  - crowdsecurity/experimental-*
+  - crowdsecurity/appsec-generic-test
+on_load:
+  - apply:
+      - SetMaxBodySize(104857600)
+      - SetBodySizeExceededAction("partial")
+on_match:
+  - filter: IsOutBand == true
+    apply:
+      - SendAlert()
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/modes/enforce/hshq-appsec.yaml
+# =====================================================================
+# HSHQ AppSec configuration — ENFORCE MODE (WAF_MODE=enforce)
+#
+# Destination in container:
+#   /etc/crowdsec/appsec-configs/hshq-appsec.yaml
+#
+# Selected by the compose bind mount:
+#   .../modes/\${WAF_MODE:-monitor}/hshq-appsec.yaml -> the path above
+#
+# MIRROR OF MONITOR MODE. The rule set is IDENTICAL to the monitor
+# out-of-band set, but here it runs in the IN-BAND band with the anomaly
+# threshold lowered to 1 by hshq/crs-alert. A single match therefore
+# blocks the request (HTTP 403), and the enforce profiles turn the
+# resulting "WAF block" alert into a 168h ban.
+#
+# The out-of-band engine is intentionally EMPTY: keeping the same rules
+# there too would emit a second, non-banning "WAF out-of-band match" alert
+# for every blocked request, which is exactly the email-without-ban case
+# we are eliminating. With an empty out-of-band list there is exactly one
+# alert per match, and it bans.
+#
+# on_load raises the max inspectable body size to 100 MiB and switches the
+# oversized-body action to partial, so large legitimate uploads (e.g.
+# Nextcloud DAV) are inspected up to the limit instead of being dropped.
+#
+# Flipping WAF_MODE from monitor to enforce is the ONLY change required
+# to enable blocking and banning — Caddy is left untouched.
+#
+# The non-blocking counterpart is modes/monitor/hshq-appsec.yaml.
+# =====================================================================
 name: hshq/appsec
 default_remediation: ban
 inband_rules:
@@ -122548,221 +123034,183 @@ inband_rules:
   - crowdsecurity/vpatch-*
   - crowdsecurity/generic-*
   - crowdsecurity/crs
-outofband_rules:
-  - crowdsecurity/crs
   - hshq/crs-alert
   - crowdsecurity/experimental-*
   - crowdsecurity/appsec-generic-test
+outofband_rules: []
+on_load:
+  - apply:
+      - SetMaxBodySize(104857600)
+      - SetBodySizeExceededAction("partial")
 on_match:
   - filter: IsOutBand == true
     apply:
       - SendAlert()
 EOFMT
-  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-config.conf
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/modes/monitor/profiles.yaml
 # =====================================================================
-# HSHQ CRS / AppSec overrides
+# HSHQ CrowdSec profiles — MONITOR MODE (WAF_MODE=monitor)
 #
-# Loaded by the appsec rule \`crowdsecurity/crs\` through the glob
-#   crs-plugins/*/*-config.conf
-# i.e. it is installed as
-#   /var/lib/crowdsec/data/crs-plugins/hshq/hshq-config.conf
+# Destination in container:
+#   /etc/crowdsec/profiles.yaml
 #
-# Everything here is evaluated BEFORE the CRS rules, so a
-# \`ctl:ruleRemoveById\` disables the listed rule(s) for the current
-# request only.  Nothing is removed globally.
+# Selected by the compose bind mount:
+#   .../modes/\${WAF_MODE:-monitor}/profiles.yaml -> the path above
 #
-# Scoping: every per-service block matches on SERVER_NAME (the request
-# Host), so a rule is relaxed only for that service's own hostname.
+# There are NO ban decisions. A single catch-all profile routes EVERY
+# alert — AppSec/CRS matches AND behavioural-scenario alerts — to the
+# email_alert notification and the baseline_file audit stream.
 #
-# Attack-family ranges (OWASP CRS v4.0.0):
-#   911000-911999  method enforcement
-#   913000-913999  scanner user-agent
-#   920000-920999  protocol enforcement
-#   921000-921999  protocol attack / request smuggling
-#   930000-930999  LFI
-#   931000-931999  RFI
-#   932000-932999  RCE
-#   933000-933999  PHP injection
-#   934000-934999  generic / SSRF
-#   941000-941999  XSS
-#   942000-942999  SQLi
-#   943000-943999  session fixation
-#   944000-944999  Java
+# The catch-all filter is always true (Remediation is a boolean). This
+# replaces the earlier AppSec-only filter so scenario alerts are emailed
+# too, and replaces the earlier scenario-suppress profile so nothing is
+# silently dropped.
 #
-# Trade-off: for LAN-only self-hosted services we relax whole attack
-# families on that service's host so that legitimate application
-# content (SQL, code, HTML, base64, WebDAV, git, gRPC, ...) does not
-# get the user banned.  CrowdSec virtual-patch / generic appsec rules
-# and the HTTP behavioural scenarios still apply.
+# The banning counterpart is modes/enforce/profiles.yaml.
 # =====================================================================
+name: monitor_all
+filters:
+  - Alert.Remediation == true || Alert.Remediation == false
+notifications:
+  - email_alert
+  - baseline_file
+on_success: break
 
-# ---------------------------------------------------------------------
-# 1. Global method allow-list
-#    WebDAV + REST verbs used by Nextcloud, Joplin, PhotoPrism, Kopia,
-#    Guacamole, OpenProject, Matrix federation, ...
-# ---------------------------------------------------------------------
-SecAction "id:900001,phase:1,pass,nolog,t:none,setvar:'tx.allowed_methods=GET HEAD POST OPTIONS PUT PATCH DELETE PROPFIND PROPPATCH MKCOL COPY MOVE LOCK UNLOCK REPORT SEARCH'"
-
-# ---------------------------------------------------------------------
-# 2. Global request Content-Type allow-list
-#    Adds binary / streaming / federation / git / gRPC / DNS types that
-#    CRS does not parse anyway, so no body inspection is lost.
-# ---------------------------------------------------------------------
-SecAction "id:900002,phase:1,pass,nolog,t:none,setvar:'tx.allowed_request_content_type=|application/x-www-form-urlencoded| |multipart/form-data| |multipart/related| |multipart/byteranges| |text/xml| |application/xml| |application/soap+xml| |application/json| |application/cloudevents+json| |application/cloudevents-batch+json| |text/plain| |application/octet-stream| |application/dns-message| |application/x-protobuf| |application/grpc| |application/grpc+proto| |application/grpc-web| |application/grpc-web+proto| |application/grpc-web-text| |application/x-ndjson| |application/ndjson| |application/activity+json| |application/ld+json| |application/x-git-upload-pack-request| |application/x-git-receive-pack-request| |application/x-git-upload-pack-result| |application/x-git-receive-pack-result| |application/vnd.git-lfs+json| |application/pdf| |application/graphql| |application/graphql-response+json| |application/csp-report| |application/reports+json| |text/event-stream| |image/jpeg| |image/png| |image/webp| |image/gif| |image/svg+xml| |image/avif| |image/bmp| |image/tiff|'"
-
-# ---------------------------------------------------------------------
-# 3. Global data-URI exclusion
-#    Any argument that is a \`data:\` URI (base64 image/attachment) must
-#    not be treated as RCE / XSS.  Applies on every host.
-# ---------------------------------------------------------------------
-SecRule ARGS "@rx ^data:" "id:900010,phase:2,pass,nolog,ctl:ruleRemoveById=932235,ctl:ruleRemoveById=934170,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941130,ctl:ruleRemoveById=941170"
-
-# ---------------------------------------------------------------------
-# 3b. Global empty-Accept exclusion
-#    An empty \`Accept\` header is a benign client quirk (common with API
-#    clients), but it trips CRS 920310 (score 2) and 920600
-#    ("Illegal Accept header: charset parameter", CRITICAL = score 5),
-#    which blocks and bans.  Ignore the empty-Accept case entirely.
-# ---------------------------------------------------------------------
-SecRule REQUEST_HEADERS:Accept "@rx ^\$" "id:900020,phase:1,pass,nolog,ctl:ruleRemoveById=920310,ctl:ruleRemoveById=920311,ctl:ruleRemoveById=920600"
-
-# =====================================================================
-# 4. Per-service, host-scoped exclusions
-# =====================================================================
-
-# --- 4.1  Dashboards / query engines / SQL clients -------------------
-#   Grafana, Prometheus, InfluxDB, OpenTelemetry/Alloy, Netdata,
-#   Metabase, Superset, SQLPad, CloudBeaver, DbGate, Adminer, n8n,
-#   Appsmith, Budibase, NocoDB, Firefly III, Matomo, Wazuh.
-#   Legitimate PromQL / InfluxQL / SQL / Flux / GraphQL is sent as
-#   request data and trips the SQLi, RCE and param-pollution rules.
-SecRule SERVER_NAME "@rx ^(grafana|prometheus|influxdb|otel|otelcol|alloy|netdata|metabase|superset|sqlpad|cloudbeaver|dbgate|adminer|n8n|appsmith|budibase|nocodb|firefly|fireflyiii|matomo|wazuh)\." "id:7000001,phase:1,pass,nolog,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=934000-934999,ctl:ruleRemoveById=930000-930999,ctl:ruleRemoveById=921170,ctl:ruleRemoveById=921110,ctl:ruleRemoveById=920420"
-
-# --- 4.2  Code editors / notebooks ----------------------------------
-#   code-server, opencode code-server, Jupyter / JupyterLab.
-#   Arbitrary file/cell content (SQL, HTML, shell, PHP, Java, base64)
-#   is saved through the browser.
-SecRule SERVER_NAME "@rx ^(codeserver|code-server|opencode-codeserver|jupyter|jupyterlab)\." "id:7000002,phase:1,pass,nolog,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=933000-933999,ctl:ruleRemoveById=944000-944999,ctl:ruleRemoveById=930000-930999,ctl:ruleRemoveById=934000-934999,ctl:ruleRemoveById=911100,ctl:ruleRemoveById=920420,ctl:ruleRemoveById=921110"
-
-# --- 4.3  Chat / LLM / AI services ----------------------------------
-#   Open WebUI, LibreChat, LobeChat, AnythingLLM, Ollama, LiteLLM,
-#   LocalAI, Tabby/TabbyML, InvokeAI, ComfyUI, Dify, Langflow,
-#   Flowise, RAGFlow, LightRAG, Khoj, Open Notebook, AutoKB,
-#   Presenton, Speakr, Docling, Crawl4AI, Firecrawl, WaterCrawl,
-#   EmailClassifierAI, Hermes.
-#   Prompts, code, HTML and base64 image data-URIs are normal input.
-SecRule SERVER_NAME "@rx ^(openwebui|open-webui|librechat|lobechat|anythingllm|ollama|litellm|localai|tabby|tabbyml|invokeai|comfyui|dify|langflow|flowise|ragflow|lightrag|khoj|opennotebook|open-notebook|autokb|presenton|speakr|docling|crawl4ai|firecrawl|watercrawl|emailclassifierai|hermes)\." "id:7000003,phase:1,pass,nolog,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=933000-933999,ctl:ruleRemoveById=944000-944999,ctl:ruleRemoveById=934000-934999,ctl:ruleRemoveById=920420,ctl:ruleRemoveById=921110"
-
-# --- 4.4  Wikis / docs / notes / office / CRM / ERP / invoicing -----
-#   Wiki.js, HedgeDoc, Memos, Trilium, Joplin, AFFiNE, Excalidraw,
-#   draw.io, Penpot, Collabora, Kanboard, WeKan, OpenProject, Taiga,
-#   Twenty, EspoCRM, SuiteCRM, MintHCM, Dolibarr, Odoo, Invoice
-#   Ninja, InvoiceShelf, WordPress, Ghost, Discourse, Zammad, Keila,
-#   Mealie, Rallly, Cal.com, Easy!Appointments, Wger, WorkoutCool,
-#   Yamtrack, Bar Assistant, Gramps Web, Linkwarden, wallabag,
-#   FreshRSS, Monica.
-#   Rich text / markdown / HTML / code in pages, tickets, notes.
-SecRule SERVER_NAME "@rx ^(wikijs|wiki|hedgedoc|memos|trilium|joplin|affine|excalidraw|drawio|penpot|collabora|kanboard|wekan|openproject|taiga|twenty|espocrm|suitecrm|minthcm|dolibarr|odoo|invoiceninja|invoiceshelf|wordpress|ghost|discourse|zammad|keila|mealie|rallly|calcom|easyappointments|wger|workoutcool|yamtrack|barassistant|bar-assistant|gramps|genealogy|ancestry|linkwarden|wallabag|freshrss|monica)\." "id:7000004,phase:1,pass,nolog,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=933000-933999,ctl:ruleRemoveById=930000-930999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=920420"
-
-# --- 4.5  Social / federation / media feeds -------------------------
-#   Mastodon, Pixelfed, Matrix/Synapse/Element, Revolt, Chatterbox,
-#   Zulip, PeerTube, Invidious, Piped.
-#   ActivityPub \`application/activity+json\`, Matrix PUT federation,
-#   base64 signatures, media uploads.
-SecRule SERVER_NAME "@rx ^(mastodon|pixelfed|matrix|synapse|element|revolt|chatterbox|zulip|peertube|invidious|piped)\." "id:7000005,phase:1,pass,nolog,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=933000-933999,ctl:ruleRemoveById=944000-944999,ctl:ruleRemoveById=911100,ctl:ruleRemoveById=920420,ctl:ruleRemoveById=921110"
-
-# --- 4.6  File sync / storage / media / document handling -----------
-#   Nextcloud, Syncthing, Immich, PhotoPrism, File Browser, filedrop,
-#   Paperless-ngx (+AI/GPT), Stirling-PDF, DocuSeal, OpenSign,
-#   Audiobookshelf, Calibre, Calibre-Web, Navidrome, Jellyfin, Kopia,
-#   Duplicati, SearXNG, Pastefy, SnippetBox.
-#   WebDAV methods, octet-stream uploads, binary bodies, restricted
-#   extensions (.log/.db/.sql/.history/...), and the Jellyfin
-#   \`/web/node_modules.history.bundle.js\` restricted-file match.
-SecRule SERVER_NAME "@rx ^(nextcloud|syncthing|immich|photoprism|filebrowser|file-browser|filedrop|paperless|paperless-ngx|paperless-ai|paperless-gpt|stirlingpdf|stirling-pdf|docuseal|opensign|audiobookshelf|calibre|calibre-web|navidrome|jellyfin|kopia|duplicati|searxng|pastefy|snippetbox)\." "id:7000006,phase:1,pass,nolog,ctl:ruleRemoveById=911100,ctl:ruleRemoveById=920420,ctl:ruleRemoveById=921110,ctl:ruleRemoveById=920440,ctl:ruleRemoveById=930100-930130,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=942000-942999"
-
-# --- 4.7  Infrastructure / admin / remote access --------------------
-#   Portainer, Proxmox, Home Assistant, Uptime Kuma, Beszel, Homarr,
-#   Heimdall, Dozzle, MeshCentral, Guacamole, Kasm, Remotely,
-#   ControlR, WG Portal, Change Detection, AdGuard Home, NTFY,
-#   Shlink, Speedtest Tracker, OpenLDAP, phpLDAPAdmin, LDAP User
-#   Manager, Docker, Jitsi, CrowdSec UI.
-#   WebSocket/console tokens, binary configs, Host-is-IP (920350),
-#   YAML/JSON with shell-looking content.
-SecRule SERVER_NAME "@rx ^(portainer|proxmox|homeassistant|home-assistant|uptimekuma|uptime-kuma|beszel|homarr|heimdall|dozzle|meshcentral|guacamole|kasm|remotely|controlr|wgportal|wg-portal|changedetection|change-detection|adguard|ntfy|shlink|speedtest|openldap|phpldapadmin|ldapmanager|ldap-user-manager|docker|jitsi|crowdsec)\." "id:7000007,phase:1,pass,nolog,ctl:ruleRemoveById=911100,ctl:ruleRemoveById=920420,ctl:ruleRemoveById=920350,ctl:ruleRemoveById=930000-930999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=921110"
-
-# --- 4.8  *arr / download stack -------------------------------------
-#   Sonarr, Radarr, Lidarr, Readarr, Prowlarr, Mylar3, SABnzbd,
-#   qBittorrent, Ombi, Bazarr, Jellyseerr/Overseerr.
-#   Indexer/manual search queries contain apostrophes, brackets,
-#   parentheses, \`#\`, \`+\` that libinjection flags as SQLi.
-SecRule SERVER_NAME "@rx ^(sonarr|radarr|lidarr|readarr|prowlarr|mylar|mylar3|sabnzbd|qbittorrent|ombi|bazarr|jellyseerr|overseerr)\." "id:7000008,phase:1,pass,nolog,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=921110,ctl:ruleRemoveById=921170"
-
-# --- 4.9  Mail / webmail --------------------------------------------
-#   Mailu front, Roundcube, Postfix, Rspamd, Keila.
-#   HTML mail bodies, Sieve scripts, vCard imports, search terms.
-SecRule SERVER_NAME "@rx ^(mailu|mailu-front|roundcube|postfix|rspamd|keila)\." "id:7000009,phase:1,pass,nolog,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=933000-933999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=920420,ctl:ruleRemoveById=921110"
-
-# --- 4.10  Git hosting ----------------------------------------------
-#   GitLab, Gitea, Forgejo.
-#   Git smart-HTTP pack bodies, LFS, GraphQL, repo file/markdown.
-SecRule SERVER_NAME "@rx ^(gitlab|gitea|forgejo)\." "id:7000010,phase:1,pass,nolog,ctl:ruleRemoveById=920420,ctl:ruleRemoveById=921110,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=934000-934999"
-
-# --- 4.11  Auth / secrets / password managers -----------------------
-#   Vaultwarden, Authelia, Standard Notes, OpenLDAP (admin).
-#   Encrypted blobs, Argon2 admin token, OAuth hashes, WebAuthn
-#   base64, LDIF/DN/filter content.
-SecRule SERVER_NAME "@rx ^(vaultwarden|authelia|standardnotes|standard-notes)\." "id:7000011,phase:1,pass,nolog,ctl:ruleRemoveById=941000-941999,ctl:ruleRemoveById=942000-942999,ctl:ruleRemoveById=932000-932999,ctl:ruleRemoveById=933000-933999,ctl:ruleRemoveById=944000-944999,ctl:ruleRemoveById=921110,ctl:ruleRemoveById=920420"
 EOFMT
-  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-behavior.yaml
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/modes/enforce/profiles.yaml
 # =====================================================================
-# HSHQ CrowdSec behavioural-scenario whitelist
+# HSHQ CrowdSec profiles — ENFORCE MODE (WAF_MODE=enforce)
 #
-# What it does: filters events out before the log-based scenarios
-# (crowdsecurity/http-probing, http-crawl-non_statics, http-generic-bf,
-# LePresidente/http-generic-401-bf, LePresidente/http-generic-403-bf, ...)
-# so that normal use of the self-hosted services does not ban the user.
-# It does NOT touch CRS/AppSec rules, and it keeps POST login brute-force
-# and scan detection intact.
+# Destination in container:
+#   /etc/crowdsec/profiles.yaml
+#
+# Selected by the compose bind mount:
+#   .../modes/\${WAF_MODE:-monitor}/profiles.yaml -> the path above
+#
+# INVARIANT: anything that emails in monitor mode must ban here. Because
+# the enforce rule set runs entirely in-band (see hshq-appsec.yaml), every
+# AppSec match is a "WAF block" alert, which appsec_block_ban turns into a
+# 168h ban + email_action. Behavioural scenarios (Remediation true) are
+# banned by the default_*_remediation profiles.
+#
+# There is deliberately NO appsec_alert profile: in enforce mode there are
+# no out-of-band alerts, so the email-without-ban path does not exist.
+#
+# appsec_scenario_suppress stops the aggregated appsec scenarios
+# (appsec-vpatch / appsec-native, which are only produced by in-band
+# blocks, plus crowdsec-appsec-outofband) from creating a SECOND ban for a
+# request that the per-request block alert already banned. These scenarios
+# never fire in monitor mode (they require an appsec-block log event), so
+# suppressing them does not hide anything that monitor mode would email.
+#
+# baseline_file is attached alongside the emails so this mode also
+# produces the machine-readable audit stream.
+#
+# The non-banning counterpart is modes/monitor/profiles.yaml.
 # =====================================================================
-name: hshq/behavior
-description: "Suppress behavioural-scenario false positives from legitimate LAN self-hosted services behind Caddy"
-whitelist:
-  reason: "legitimate media/thumbnail 404s, GET Basic-auth retries, and successful API polling"
-  expression:
-    # 1) Benign cover / thumbnail / avatar / preview 404s.  The http-logs
-    #    enricher only marks known static extensions as static; extensionless
-    #    API cover URLs (Sonarr/Radarr MediaCover, Navidrome covers, Immich
-    #    thumbnails, ...) still count as "non-static" and trip http-probing.
-    #    Anything that looks like traversal / OS-file access is NOT whitelisted.
-    - >-
-      evt.Meta.service == 'http' &&
-      evt.Meta.http_status in ['404', '403', '400'] &&
-      evt.Parsed.verb in ['GET', 'HEAD'] &&
-      evt.Meta.http_path matches '(?i)/(cover|coverart|thumb|thumbnail|poster|artwork|art|avatar|icon|preview|backdrop|sprite|placeholder|logo|photo|image|img|media|asset)' &&
-      !(evt.Meta.http_path contains '..') &&
-      !(evt.Meta.http_path matches '(?i)(%2e|%252e|/etc/|/proc/|/sys/|passwd|shadow|/[.]git)')
-    # 2) Legitimate OPDS / API clients that use HTTP Basic auth and retry on GET
-    #    (Calibre-Web, Portainer, AdGuard, apps behind Authelia, ...).  Only
-    #    GET/HEAD is whitelisted, so POST login brute force is still detected.
-    - >-
-      evt.Meta.service == 'http' &&
-      evt.Parsed.verb in ['GET', 'HEAD'] &&
-      evt.Meta.sub_type == 'auth_fail'
-    # 3) Successful API / SPA polling bursts that trip http-crawl-non_statics.
-    #    Only 200 responses on well-known API prefixes are whitelisted;
-    #    scan-style traffic (404/403/400) is untouched.
-    - >-
-      evt.Meta.service == 'http' &&
-      evt.Meta.http_status == '200' &&
-      evt.Parsed.verb in ['GET', 'HEAD'] &&
-      evt.Meta.http_path matches '(?i)^/(api|rest|graphql|gql|socket[.]io|notifications|_matrix|ocs|remote[.]php|public[.]php|[.]well-known)'
+name: appsec_block_ban
+filters:
+  - Alert.Message startsWith "WAF block" && Alert.GetScope() == "Ip"
+decisions:
+  - type: ban
+    duration: 168h
+notifications:
+  - email_action
+  - baseline_file
+on_success: break
+---
+
+name: appsec_scenario_suppress
+filters:
+  - Alert.Scenario startsWith "crowdsecurity/appsec-vpatch" || Alert.Scenario startsWith "crowdsecurity/appsec-native" || Alert.Scenario == "crowdsecurity/crowdsec-appsec-outofband"
+on_success: break
+---
+
+name: default_ip_remediation
+filters:
+  - Alert.Remediation == true && Alert.GetScope() == "Ip"
+decisions:
+  - type: ban
+    duration: 168h
+notifications:
+  - email_action
+  - baseline_file
+on_success: break
+
+---
+
+name: default_range_remediation
+filters:
+  - Alert.Remediation == true && Alert.GetScope() == "Range"
+decisions:
+  - type: ban
+    duration: 168h
+notifications:
+  - email_action
+  - baseline_file
+on_success: break
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-crs-alert.yaml
 name: hshq/crs-alert
-description: "Out-of-band CRS alert threshold: lower the inbound anomaly threshold to 1 so that ANY CRS rule match raises an alert (questionable behaviour). Loaded only in the out-of-band band, so in-band blocking keeps the default threshold of 5."
+description: "Lowers the CRS inbound anomaly threshold to 1 so ANY CRS rule match alerts (out-of-band) and, when listed in the in-band rules as well, blocks and bans on a single match. Listed in the out-of-band rules in both modes, and additionally in the in-band rules in enforce mode."
 seclang_rules:
   - SecAction "id:8000001,phase:1,pass,nolog,t:none,setvar:'tx.inbound_anomaly_score_threshold=1'"
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-config.conf
+# =====================================================================
+# HSHQ CRS / AppSec overrides — WAF exceptions (single file)
+#
+# Loaded by the \`crowdsecurity/crs\` appsec rule through the glob
+# crs-plugins/*/*-config.conf, in BOTH the in-band and out-of-band
+# engines, BEFORE the CRS rules. Everything below runs for the current
+# request only (ctl:...) — nothing is removed globally.
+#
+# Global section: extend the CRS method / content-type allow-lists,
+# exempt \`data:\` URIs and empty Accept headers, and drop two universally
+# benign protocol rules (920180 WARNING, 920340 NOTICE).
+#
+# Per-host section: FIELD-SCOPED exceptions. \`ctl:ruleRemoveTargetById\`
+# keeps the CRS rule active for the host and exempts only the request
+# variables where legitimate application content trips it. Where the
+# matching variable has a dynamic name (JSON arrays, request-scoped ids),
+# the whole ARGS collection is exempted for that specific rule id.
+# Scoped by SERVER_NAME (the request Host).
+#
+# PROBE BEFORE TRUSTING: confirm \`ruleRemoveTargetById\` matching for the
+# nested-JSON targets against a live engine, and re-run test-waf.sh to
+# confirm real payloads still fire on the un-exempted variables.
+# =====================================================================
+
+SecAction "id:900001,phase:1,pass,nolog,t:none,setvar:'tx.allowed_methods=GET HEAD POST OPTIONS PUT PATCH DELETE PROPFIND PROPPATCH MKCOL COPY MOVE LOCK UNLOCK REPORT SEARCH'"
+
+SecAction "id:900002,phase:1,pass,nolog,t:none,setvar:'tx.allowed_request_content_type=|application/x-www-form-urlencoded| |multipart/form-data| |multipart/related| |multipart/byteranges| |text/xml| |application/xml| |application/soap+xml| |application/json| |application/cloudevents+json| |application/cloudevents-batch+json| |text/plain| |application/octet-stream| |application/offset+octet-stream| |application/dns-message| |application/x-protobuf| |application/grpc| |application/grpc+proto| |application/grpc-web| |application/grpc-web+proto| |application/grpc-web-text| |application/x-ndjson| |application/ndjson| |application/activity+json| |application/ld+json| |application/x-git-upload-pack-request| |application/x-git-receive-pack-request| |application/x-git-upload-pack-result| |application/x-git-receive-pack-result| |application/vnd.git-lfs+json| |application/pdf| |application/graphql| |application/graphql-response+json| |application/csp-report| |application/reports+json| |text/event-stream| |image/jpeg| |image/png| |image/webp| |image/gif| |image/svg+xml| |image/avif| |image/bmp| |image/tiff|'"
+
+SecRule ARGS "@rx ^data:" "id:900010,phase:2,pass,nolog,ctl:ruleRemoveById=932235,ctl:ruleRemoveById=934170,ctl:ruleRemoveById=941100,ctl:ruleRemoveById=941130,ctl:ruleRemoveById=941170"
+
+SecRule REQUEST_HEADERS:Accept "@rx ^\$" "id:900020,phase:1,pass,nolog,ctl:ruleRemoveById=920310,ctl:ruleRemoveById=920311,ctl:ruleRemoveById=920600"
+
+SecAction "id:900030,phase:1,pass,nolog,t:none,ctl:ruleRemoveById=920180,ctl:ruleRemoveById=920340"
+
+SecRule SERVER_NAME "@rx ^$SUB_TWENTY\." "id:9101001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=932230;ARGS:json.query,ctl:ruleRemoveTargetById=932235;ARGS:json.query,ctl:ruleRemoveTargetById=932260;ARGS:json.query,ctl:ruleRemoveTargetById=932370;ARGS:json.query,ctl:ruleRemoveTargetById=932115;ARGS:json.query,ctl:ruleRemoveTargetById=932125;ARGS:json.query,ctl:ruleRemoveTargetById=942290;ARGS:json.query"
+
+SecRule SERVER_NAME "@rx ^$SUB_WIKIJS\." "id:9101002,phase:1,pass,nolog,ctl:ruleRemoveTargetById=932230;ARGS:json.0.query,ctl:ruleRemoveTargetById=932235;ARGS:json.0.query,ctl:ruleRemoveTargetById=932115;ARGS:json.0.query,ctl:ruleRemoveTargetById=932160;ARGS:json.0.query"
+
+SecRule SERVER_NAME "@rx ^$SUB_BESZEL_APP\." "id:9101003,phase:1,pass,nolog,ctl:ruleRemoveTargetById=942100;ARGS"
+
+SecRule SERVER_NAME "@rx ^$SUB_GRAFANA\." "id:9101004,phase:1,pass,nolog,ctl:ruleRemoveTargetById=942100;ARGS"
+
+SecRule SERVER_NAME "@rx ^$SUB_WAZUH\." "id:9101005,phase:1,pass,nolog,ctl:ruleRemoveTargetById=930120;ARGS:json.attributes.fields,ctl:ruleRemoveTargetById=934100;ARGS:json.attributes.fields"
+
+SecRule SERVER_NAME "@rx ^$SUB_PORTAINER\." "id:9101006,phase:1,pass,nolog,ctl:ruleRemoveTargetById=930120;ARGS:filters"
+
+SecRule SERVER_NAME "@rx ^$SUB_DOCLING_APP\." "id:9101007,phase:1,pass,nolog,ctl:ruleRemoveTargetById=930120;ARGS"
+
+SecRule SERVER_NAME "@rx ^($SUB_IVBOX_COMFYUI_API|$SUB_IVBOX_COMFYUI_WEB)\." "id:9101008,phase:1,pass,nolog,ctl:ruleRemoveTargetById=942151;ARGS"
+
+SecRule SERVER_NAME "@rx ^$SUB_DUPLICATI\." "id:9101009,phase:1,pass,nolog,ctl:ruleRemoveTargetById=933120;ARGS:json.--send-mail-url"
+
+SecRule SERVER_NAME "@rx ^$SUB_NEXTCLOUD\." "id:9101100,phase:1,pass,nolog,t:none,chain,ctl:requestBodyAccess=Off"
+    SecRule REQUEST_URI "@rx ^/remote\.php/dav/"
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/notifications/email.yaml
 type: email
@@ -123002,53 +123450,56 @@ receiver_emails:
 encryption_type: none
 timeout: 20s
 EOFMT
-  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/profiles.yaml
-name: appsec_alert
-filters:
-  - Alert.Message startsWith "WAF out-of-band match"
-notifications:
-  - email_alert
----
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/notifications/baseline_file.yaml
+# =====================================================================
+# HSHQ Phase 1 baseline notification — writes every AppSec alert as NDJSON
+#
+# Destination in container:
+#   /etc/crowdsec/notifications/baseline_file.yaml
+#
+# Uses CrowdSec's built-in \`notification-file\` plugin (present in the image
+# at /usr/local/lib/crowdsec/plugins/notification-file). It renders the
+# template below once per batch of alerts and appends the result to
+# \`log_path\`.
+#
+# The output path /var/log/crowdsec is bind-mounted to the host at
+# /var/log/crowdsec, which Alloy reads (Alloy mounts the host's /var/log).
+# Alloy ships these lines to Loki (see phase1/alloy/config.alloy).
+#
+# Each output line carries BOTH:
+#   * flat top-level fields (host/rule/zones/uri/data/scenario) so that
+#     \`phase1/alloy/config.alloy\` can attach Loki labels/structured-metadata, and
+#   * the FULL alert object (via \`toJson\`, the plugin's canonical form), which
+#     preserves PER-EVENT pairing: alert.events[].meta[] = [{key,value}, ...]
+#     with keys such as rule_name, matched_zones, data, target_fqdn, uri.
+#
+# The flat fields are JOINED across the alert's events (so they lose the
+# rule<->zone pairing); they exist only for Loki labelling. The authoritative,
+# pairing-preserving source is the \`alert\` object, which \`../analyze-alerts.py\`
+# parses (e.g. to scope an exclusion to a specific field: 942100 -> ARGS:query).
+#
+# NOTE: CrowdSec's DB retention (db_config.flush: max_items 5000 / max_age 7d)
+# will discard most alerts from the live database, so THIS FILE is the
+# authoritative baseline capture — see ../README.md section 7.
+# =====================================================================
+type: file
+name: baseline_file
+log_level: info
+format: |
+  {{range . -}}
+  {"t":"{{.StopAt}}","src":"{{.Source.Value}}","uuid":"{{.UUID}}","host":{{GetMeta . "target_fqdn" | join "," | toJson}},"rule":{{GetMeta . "rule_name" | join "," | toJson}},"zones":{{GetMeta . "matched_zones" | join "," | toJson}},"uri":{{GetMeta . "uri" | join "," | toJson}},"data":{{GetMeta . "data" | join " || " | toJson}},"scenario":{{.Scenario | toJson}},"alert":{{. | toJson}}}
+  {{end -}}
 
-name: appsec_block_ban
-filters:
-  - Alert.Message startsWith "WAF block" && Alert.GetScope() == "Ip"
-decisions:
-  - type: ban
-    duration: 168h
-notifications:
-  - email_action
-on_success: break
----
-
-name: appsec_scenario_suppress
-filters:
-  - Alert.Scenario startsWith "crowdsecurity/appsec-vpatch" || Alert.Scenario startsWith "crowdsecurity/appsec-native" || Alert.Scenario == "crowdsecurity/crowdsec-appsec-outofband"
-on_success: break
----
-
-name: default_ip_remediation
-filters:
-  - Alert.Remediation == true && Alert.GetScope() == "Ip"
-decisions:
-  - type: ban
-    duration: 168h
-notifications:
-  - email_action
-on_success: break
-
----
-
-name: default_range_remediation
-filters:
-  - Alert.Remediation == true && Alert.GetScope() == "Range"
-decisions:
-  - type: ban
-    duration: 168h
-notifications:
-  - email_action
-on_success: break
-
+# Rotation is hardened so a busy week cannot rotate the baseline away.
+# The plugin deletes rotations by BOTH count (max_files) and age (max_age),
+# so max_age must exceed the collection window (7 days) with margin.
+log_path: "/var/log/crowdsec/baseline-alerts.json"
+rotate:
+  enabled: true
+  max_size: 500     # megabytes
+  max_files: 30
+  max_age: 14       # days (must exceed the 7-day window)
+  compress: true
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/web/config.yaml
 ui:
@@ -123056,7 +123507,7 @@ ui:
 instances:
   -
     id: "0"
-    name: Instance 0
+    name: HSHQ CrowdSec
     icon: 🛡️
     lapi:
       url: http://crowdsec-app:8080
