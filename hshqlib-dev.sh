@@ -32062,7 +32062,7 @@ function loadPinnedDockerImages()
   IMG_CRAWL4AI_APP=mirror.gcr.io/unclecode/crawl4ai:0.8.6
   IMG_CRAWL4AI_PROXY=ghcr.io/lennyerik/crawl4ai-proxy:latest
   IMG_OLLAMA_SERVER=mirror.gcr.io/ollama/ollama:0.20.5
-  IMG_OPENWEBUI_APP=ghcr.io/homeserverhq/open-webui:v0.11.0
+  IMG_OPENWEBUI_APP=ghcr.io/homeserverhq/open-webui:v0.12.0
   IMG_OPENWEBUI_OPENTERMINAL=ghcr.io/open-webui/open-terminal:0.11.34
   IMG_OPENWEBUI_MCPO=ghcr.io/open-webui/mcpo:main
   IMG_OPENWEBUI_PIPELINES=ghcr.io/open-webui/pipelines:main
@@ -32423,7 +32423,7 @@ function getScriptStackVersion()
     ollama)
       echo "v2" ;;
     openwebui)
-      echo "v5" ;;
+      echo "v6" ;;
     khoj)
       echo "v1" ;;
     lobechat)
@@ -68474,14 +68474,12 @@ networks:
     external: true
 
 EOFNT
-
   cat <<EOFNT > $HOME/calibre.env
 TZ=\${PORTAINER_TZ}
 PUID=$USERID
 PGID=$GROUPID
 CALIBRE_LDAP_AUTO_CREATE=true
 EOFNT
-
   cat <<EOFPY > $HSHQ_STACKS_DIR/calibre/web/getencpw.py
 from cryptography.fernet import Fernet
 import cryptography.exceptions
@@ -68494,7 +68492,6 @@ configpw = "$LDAP_READONLY_USER_PASSWORD"
 configpw_e=crypter.encrypt(configpw.encode())
 print(configpw_e)
 EOFPY
-
 }
 
 function performUpdateCalibre()
@@ -101988,10 +101985,22 @@ function performUpdateOpenWebUI()
       image_update_map[7]="hshq/openwebui-mcp:v1,hshq/openwebui-mcp:v1"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/open-webui:v0.11.0,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,ghcr.io/open-webui/open-terminal:0.11.34,ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/pipelines:main,hshq/openwebui-mcp:v1
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
-      image_update_map[1]="ghcr.io/homeserverhq/open-webui:v0.11.0,ghcr.io/homeserverhq/open-webui:v0.11.0"
+      image_update_map[1]="ghcr.io/homeserverhq/open-webui:v0.11.0,ghcr.io/homeserverhq/open-webui:v0.12.0"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[3]="mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged"
+      image_update_map[4]="ghcr.io/open-webui/open-terminal:0.11.34,ghcr.io/open-webui/open-terminal:0.11.34"
+      image_update_map[5]="ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/mcpo:main"
+      image_update_map[6]="ghcr.io/open-webui/pipelines:main,ghcr.io/open-webui/pipelines:main"
+      image_update_map[7]="hshq/openwebui-mcp:v1,hshq/openwebui-mcp:v1"
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/open-webui:v0.12.0,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,ghcr.io/open-webui/open-terminal:0.11.34,ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/pipelines:main,hshq/openwebui-mcp:v1
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="ghcr.io/homeserverhq/open-webui:v0.12.0,ghcr.io/homeserverhq/open-webui:v0.12.0"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[3]="mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged"
       image_update_map[4]="ghcr.io/open-webui/open-terminal:0.11.34,ghcr.io/open-webui/open-terminal:0.11.34"
@@ -122846,6 +122855,7 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/modes/\${WAF_MODE:-monitor}/hshq-appsec.yaml:/etc/crowdsec/appsec-configs/hshq-appsec.yaml
       - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/hshq-config.conf:/var/lib/crowdsec/data/crs-plugins/hshq/hshq-config.conf
       - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/hshq-crs-alert.yaml:/etc/crowdsec/appsec-rules/hshq-crs-alert.yaml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/hshq-behavior.yaml:/etc/crowdsec/parsers/s02-enrich/hshq-behavior.yaml
       - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/acquis.d:/etc/crowdsec/acquis.d
       - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/modes/\${WAF_MODE:-monitor}/profiles.yaml:/etc/crowdsec/profiles.yaml
       - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/notifications:/etc/crowdsec/notifications
@@ -123211,6 +123221,38 @@ SecRule SERVER_NAME "@rx ^$SUB_DUPLICATI\." "id:9101009,phase:1,pass,nolog,ctl:r
 
 SecRule SERVER_NAME "@rx ^$SUB_NEXTCLOUD\." "id:9101100,phase:1,pass,nolog,t:none,chain,ctl:requestBodyAccess=Off"
     SecRule REQUEST_URI "@rx ^/remote\.php/dav/"
+
+SecRule SERVER_NAME "@rx ^$SUB_OPENWEBUI_APP\." "id:9101200,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-behavior.yaml
+# =====================================================================
+# HSHQ behavioural-scenario whitelist
+#
+# Destination in container:
+#   /etc/crowdsec/parsers/s02-enrich/hshq-behavior.yaml
+#
+# SCOPE: LOG SCENARIOS ONLY. A parser-stage whitelist that drops events
+# before the log-based scenarios run (http-crawl-non_statics, http-probing,
+# brute-force, ...). It does NOT touch the WAF (CRS/AppSec), which lives
+# in hshq-config.conf.
+#
+# Only one expression is enabled: successful API / SPA polling bursts that
+# trip crowdsecurity/http-crawl-non_statics (e.g. the Syncthing web UI
+# polling /rest/*). 200 GET/HEAD on the well-known API prefixes only;
+# scan-style traffic (400/403/404) and POST login brute force are left
+# intact. The previously-considered media-404 and Basic-auth-retry
+# whitelists are intentionally NOT included.
+# =====================================================================
+name: hshq/behavior
+description: "Whitelist benign successful API/SPA polling so it does not trip the behavioural scenarios"
+whitelist:
+  reason: "successful API/SPA polling (200 GET/HEAD) on known API prefixes"
+  expression:
+    - >-
+      evt.Meta.service == 'http' &&
+      evt.Meta.http_status == '200' &&
+      evt.Parsed.verb in ['GET', 'HEAD'] &&
+      evt.Meta.http_path matches '(?i)^/(api|rest|graphql|gql|socket[.]io|notifications|_matrix|ocs|remote[.]php|public[.]php|[.]well-known)'
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/notifications/email.yaml
 type: email
