@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=243
+HSHQ_LIB_SCRIPT_VERSION=244
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -9509,7 +9509,6 @@ function installMailRelay()
   mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/rspamd
   mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/rspamd/conf
   mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/rspamd/var
-  mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/redis
   mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/clamav
   mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/unbound
   pw_hash=\$(docker run --rm $IMG_MAIL_RELAY_RSPAMD rspamadm pw -p $RELAYSERVER_RSPAMD_ADMIN_PASSWORD)
@@ -9644,13 +9643,12 @@ services:
     security_opt:
       - no-new-privileges:true
     command: redis-server
-      --appendonly yes
+      --appendonly no
     networks:
       - dock-mailrelay-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mail-relay-redis:/data
 
 volumes:
   caddy-certs:
@@ -9673,12 +9671,6 @@ volumes:
 #      type: none
 #      o: bind
 #      device: \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/clamav
-  v-mail-relay-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/redis
 
 networks:
   dock-ext-net:
@@ -21640,13 +21632,12 @@ services:
     security_opt:
       - no-new-privileges:true
     command: redis-server
-      --appendonly yes
+      --appendonly no
     networks:
       - dock-mailu-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mailu-redis:/data
 
   admin:
     image: $IMG_MAILU_ADMIN
@@ -21812,14 +21803,6 @@ $is_antivirus_commented_out      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/filter:/d
       - /etc/timezone:/etc/timezone:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/webmail:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/roundcube:/overrides:ro
-
-volumes:
-  v-mailu-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/mailu/redis
 
 networks:
   dock-internalmail-net:
@@ -40290,27 +40273,10 @@ function checkCreateNonbackupDirByStack()
       mkdir -p $HSHQ_NONBACKUP_DIR/duplicati/restore
       ;;
     "mastodon")
-      mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/redis
       mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/static
-      ;;
-    "searxng")
-      mkdir -p $HSHQ_NONBACKUP_DIR/searxng/redis
       ;;
     "peertube")
       mkdir -p $HSHQ_NONBACKUP_DIR/peertube/assets
-      mkdir -p $HSHQ_NONBACKUP_DIR/peertube/redis
-      ;;
-    "gitlab")
-      mkdir -p $HSHQ_NONBACKUP_DIR/gitlab/redis
-      ;;
-    "discourse")
-      mkdir -p $HSHQ_NONBACKUP_DIR/discourse/redis
-      ;;
-    "shlink")
-      mkdir -p $HSHQ_NONBACKUP_DIR/shlink/redis
-      ;;
-    "firefly")
-      mkdir -p $HSHQ_NONBACKUP_DIR/firefly/redis
       ;;
     "kasm")
       mkdir -p $HSHQ_NONBACKUP_DIR/kasm/data
@@ -40322,72 +40288,11 @@ function checkCreateNonbackupDirByStack()
       mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/logs
       mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/traindata
       ;;
-    "bar-assistant")
-      mkdir -p $HSHQ_NONBACKUP_DIR/bar-assistant/redis
-      ;;
-    "wallabag")
-      mkdir -p $HSHQ_NONBACKUP_DIR/wallabag/redis
-      ;;
-    "paperless")
-      mkdir -p $HSHQ_NONBACKUP_DIR/paperless/redis
-      ;;
     "piped")
       mkdir -p $HSHQ_NONBACKUP_DIR/piped/proxy
       ;;
-    "penpot")
-      mkdir -p $HSHQ_NONBACKUP_DIR/penpot/redis
-      ;;
     "immich")
-      mkdir -p $HSHQ_NONBACKUP_DIR/immich/redis
       mkdir -p $HSHQ_NONBACKUP_DIR/immich/cache
-      ;;
-    "aistack")
-      mkdir -p $HSHQ_NONBACKUP_DIR/aistack/redis
-      ;;
-    "pixelfed")
-      mkdir -p $HSHQ_NONBACKUP_DIR/pixelfed/redis
-      ;;
-    "yamtrack")
-      mkdir -p $HSHQ_NONBACKUP_DIR/yamtrack/redis
-      ;;
-    "budibase")
-      mkdir -p $HSHQ_NONBACKUP_DIR/budibase/redis
-      ;;
-    "standardnotes")
-      mkdir -p $HSHQ_NONBACKUP_DIR/standardnotes/redis
-      ;;
-    "revolt")
-      mkdir -p $HSHQ_NONBACKUP_DIR/revolt/redis
-      ;;
-    "twenty")
-      mkdir -p $HSHQ_NONBACKUP_DIR/twenty/redis
-      ;;
-    "zammad")
-      mkdir -p $HSHQ_NONBACKUP_DIR/zammad/redis
-      ;;
-    "zulip")
-      mkdir -p $HSHQ_NONBACKUP_DIR/zulip/redis
-      ;;
-    "killbill")
-      mkdir -p $HSHQ_NONBACKUP_DIR/killbill/redis
-      ;;
-    "invoiceninja")
-      mkdir -p $HSHQ_NONBACKUP_DIR/invoiceninja/redis
-      ;;
-    "dolibarr")
-      mkdir -p $HSHQ_NONBACKUP_DIR/dolibarr/redis
-      ;;
-    "n8n")
-      mkdir -p $HSHQ_NONBACKUP_DIR/n8n/redis
-      ;;
-    "automatisch")
-      mkdir -p $HSHQ_NONBACKUP_DIR/automatisch/redis
-      ;;
-    "activepieces")
-      mkdir -p $HSHQ_NONBACKUP_DIR/activepieces/redis
-      ;;
-    "akaunting")
-      mkdir -p $HSHQ_NONBACKUP_DIR/akaunting/redis
       ;;
     "kopia")
       mkdir -p $HSHQ_NONBACKUP_DIR/kopia/snapshots
@@ -40402,27 +40307,6 @@ function checkCreateNonbackupDirByStack()
       mkdir -p $HSHQ_AIMODELS_DIR/comfyui
       mkdir -p $HSHQ_NONBACKUP_DIR/comfyui/cache
       ;;
-    "firecrawl")
-      mkdir -p $HSHQ_NONBACKUP_DIR/firecrawl/redis
-      ;;
-    "librechat")
-      mkdir -p $HSHQ_NONBACKUP_DIR/librechat/redis
-      ;;
-    "openwebui")
-      mkdir -p $HSHQ_NONBACKUP_DIR/openwebui/redis
-      ;;
-    "lobechat")
-      mkdir -p $HSHQ_NONBACKUP_DIR/lobechat/redis
-      ;;
-    "ragflow")
-      mkdir -p $HSHQ_NONBACKUP_DIR/ragflow/redis
-      ;;
-    "docling")
-      mkdir -p $HSHQ_NONBACKUP_DIR/docling/redis
-      ;;
-    "dify")
-      mkdir -p $HSHQ_NONBACKUP_DIR/dify/redis
-      ;;
     "khoj")
       mkdir -p $HSHQ_AIMODELS_DIR/khoj
       ;;
@@ -40430,53 +40314,8 @@ function checkCreateNonbackupDirByStack()
       mkdir -p $HSHQ_AIMODELS_DIR/invokeai/models
       mkdir -p $HSHQ_AIMODELS_DIR/invokeai/cache/{download,convert}
       ;;
-    "mindsdb")
-      mkdir -p $HSHQ_NONBACKUP_DIR/mindsdb/redis
-      ;;
-    "watercrawl")
-      mkdir -p $HSHQ_NONBACKUP_DIR/watercrawl/redis
-      ;;
-    "flowise")
-      mkdir -p $HSHQ_NONBACKUP_DIR/flowise/redis
-      ;;
-    "nocodb")
-      mkdir -p $HSHQ_NONBACKUP_DIR/nocodb/redis
-      ;;
     "morphic")
       mkdir -p $HSHQ_NONBACKUP_DIR/morphic/redis
-      ;;
-    "docsgpt")
-      mkdir -p $HSHQ_NONBACKUP_DIR/docsgpt/redis
-      ;;
-    "monica")
-      mkdir -p $HSHQ_NONBACKUP_DIR/monica/redis
-      ;;
-    "affine")
-      mkdir -p $HSHQ_NONBACKUP_DIR/affine/redis
-      ;;
-    "superset")
-      mkdir -p $HSHQ_NONBACKUP_DIR/superset/redis
-      ;;
-    "litellm")
-      mkdir -p $HSHQ_NONBACKUP_DIR/litellm/redis
-      ;;
-    "langfuse")
-      mkdir -p $HSHQ_NONBACKUP_DIR/langfuse/redis
-      ;;
-    "wger")
-      mkdir -p $HSHQ_NONBACKUP_DIR/wger/redis
-      ;;
-    "emailclassifierai")
-      mkdir -p $HSHQ_NONBACKUP_DIR/emailclassifierai/redis
-      ;;
-    "autokb")
-      mkdir -p $HSHQ_NONBACKUP_DIR/autokb/redis
-      ;;
-    "suitecrm")
-      mkdir -p $HSHQ_NONBACKUP_DIR/suitecrm/redis
-      ;;
-    "cognee")
-      mkdir -p $HSHQ_NONBACKUP_DIR/cognee/redis
       ;;
 #ADD_NEW_NONBACKUP_DIRS_HERE
     *)
@@ -50615,7 +50454,6 @@ function installMailu()
   set -e
   mkdir $HSHQ_STACKS_DIR/mailu
   mkdir $HSHQ_STACKS_DIR/mailu/certs
-  mkdir $HSHQ_STACKS_DIR/mailu/redis
   mkdir $HSHQ_STACKS_DIR/mailu/clamav
   mkdir $HSHQ_STACKS_DIR/mailu/initconfig
   sudo chown 1000:1000 $HSHQ_STACKS_DIR/mailu/clamav
@@ -50887,13 +50725,12 @@ services:
     security_opt:
       - no-new-privileges:true
     command: redis-server
-      --appendonly yes
+      --appendonly no
     networks:
       - dock-mailu-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mailu-redis:/data
 
   admin:
     image: $(getScriptImageByContainerName mailu-admin)
@@ -51062,14 +50899,6 @@ $is_antivirus_commented_out      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/clamav:/v
       - /etc/timezone:/etc/timezone:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/webmail:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/roundcube:/overrides:ro
-
-volumes:
-  v-mailu-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/mailu/redis
 
 networks:
   dock-internalmail-net:
@@ -51147,13 +50976,12 @@ services:
     security_opt:
       - no-new-privileges:true
     command: redis-server
-      --appendonly yes
+      --appendonly no
     networks:
       - dock-mailu-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mailu-redis:/data
 
   admin:
     image: $(getScriptImageByContainerName mailu-admin)
@@ -51320,14 +51148,6 @@ $is_antivirus_commented_out      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/clamav:/v
       - /etc/timezone:/etc/timezone:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/webmail:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/roundcube:/overrides:ro
-
-volumes:
-  v-mailu-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/mailu/redis
 
 networks:
   dock-internalmail-net:
@@ -51690,13 +51510,12 @@ function mfMailuFixRedisCompose()
   replaceText=$replaceText">>>>security_opt:\n"
   replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
   replaceText=$replaceText">>>>command: redis-server\n"
-  replaceText=$replaceText">>>>>>--appendonly yes\n"
+  replaceText=$replaceText">>>>>>--appendonly no\n"
   replaceText=$replaceText">>>>networks:\n"
   replaceText=$replaceText">>>>>>- dock-mailu-ext-net\n"
   replaceText=$replaceText">>>>volumes:\n"
   replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
   replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
-  replaceText=$replaceText">>>>>>- v-mailu-redis:/data\n"
   replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/mailu-compose.yml false ">"
   cat -s $HOME/mailu-compose.yml > $HOME/ac.tmp
   mv $HOME/ac.tmp $HOME/mailu-compose.yml
@@ -57290,7 +57109,6 @@ function installMastodon()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/mastodon
   mkdir $HSHQ_STACKS_DIR/mastodon/db
   mkdir $HSHQ_STACKS_DIR/mastodon/dbexport
@@ -57300,7 +57118,6 @@ function installMastodon()
   sudo chown 991:991 $HSHQ_STACKS_DIR/mastodon/system
   chmod 777 $HSHQ_STACKS_DIR/mastodon/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/mastodon
-  mkdir $HSHQ_NONBACKUP_DIR/mastodon/redis
   mkdir $HSHQ_NONBACKUP_DIR/mastodon/static
   MASTODON_SECRET_KEY_BASE=$(openssl rand -hex 64)
   MASTODON_OTP_SECRET=$(openssl rand -hex 64)
@@ -57621,13 +57438,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $MASTODON_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-mastodon-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mastodon-redis:/data
 
   mastodon-redis-cache:
     image: $(getScriptImageByContainerName mastodon-redis-cache)
@@ -57797,12 +57613,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/mastodon/static
-  v-mastodon-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/mastodon/redis
 
 networks:
   dock-proxy-net:
@@ -58008,13 +57818,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $MASTODON_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-mastodon-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mastodon-redis:/data
 
   mastodon-redis-cache:
     image: $mastodon_redis_image
@@ -58067,12 +57876,6 @@ volumes:
       type: none
       o: bind
       device: ${HSHQ_NONBACKUP_DIR}/mastodon/static
-  v-mastodon-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${HSHQ_NONBACKUP_DIR}/mastodon/redis
 
 networks:
   dock-ldap-net:
@@ -58193,13 +57996,12 @@ function mfMastodonFixRedisCompose()
   replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
   replaceText=$replaceText">>>>command: redis-server\n"
   replaceText=$replaceText">>>>>>--requirepass $rpass\n"
-  replaceText=$replaceText">>>>>>--appendonly yes\n"
+  replaceText=$replaceText">>>>>>--appendonly no\n"
   replaceText=$replaceText">>>>networks:\n"
   replaceText=$replaceText">>>>>>- int-mastodon-net\n"
   replaceText=$replaceText">>>>volumes:\n"
   replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
-  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
-  replaceText=$replaceText">>>>>>- v-mastodon-redis:/data\n\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n\n"
   replaceText=$replaceText">>mastodon-redis-cache:\n"
   replaceText=$replaceText">>>>image: mirror.gcr.io/redis:8.2.0-bookworm\n"
   replaceText=$replaceText">>>>container_name: mastodon-redis-cache\n"
@@ -58434,8 +58236,6 @@ function installSearxNG()
   mkdir $HSHQ_STACKS_DIR/searxng
   mkdir $HSHQ_STACKS_DIR/searxng/caddy
   mkdir $HSHQ_STACKS_DIR/searxng/web
-  mkdir $HSHQ_NONBACKUP_DIR/searxng
-  mkdir $HSHQ_NONBACKUP_DIR/searxng/redis
   if [ -z "$SEARXNG_REDIS_PASSWORD" ]; then
     SEARXNG_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar SEARXNG_REDIS_PASSWORD $SEARXNG_REDIS_PASSWORD
@@ -58558,21 +58358,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $SEARXNG_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-searxng-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-searxng-redis:/data
-
-volumes:
-  v-searxng-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/searxng/redis
 
 networks:
   dock-proxy-net:
@@ -59005,21 +58796,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $SEARXNG_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-searxng-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-searxng-redis:/data
-
-volumes:
-  v-searxng-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/searxng/redis
 
 networks:
   dock-proxy-net:
@@ -61395,7 +61177,6 @@ function installPeerTube()
   chmod 777 $HSHQ_STACKS_DIR/peertube/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/peertube
   mkdir $HSHQ_NONBACKUP_DIR/peertube/assets
-  mkdir $HSHQ_NONBACKUP_DIR/peertube/redis
   initServicesCredentials
   pt_secret=$(openssl rand -hex 32)
   set +e
@@ -61527,13 +61308,12 @@ services:
     security_opt:
       - no-new-privileges:true
     command: redis-server
-      --appendonly yes
+      --appendonly no
     networks:
       - int-peertube-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-peertube-redis:/data
 
 volumes:
   v-peertube-assets:
@@ -61542,12 +61322,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/peertube/assets
-  v-peertube-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/peertube/redis
 
 networks:
   dock-proxy-net:
@@ -61704,13 +61478,12 @@ function mfPeerTubeFixRedisCompose()
   replaceText=$replaceText">>>>security_opt:\n"
   replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
   replaceText=$replaceText">>>>command: redis-server\n"
-  replaceText=$replaceText">>>>>>--appendonly yes\n"
+  replaceText=$replaceText">>>>>>--appendonly no\n"
   replaceText=$replaceText">>>>networks:\n"
   replaceText=$replaceText">>>>>>- int-peertube-net\n"
   replaceText=$replaceText">>>>volumes:\n"
   replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
-  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
-  replaceText=$replaceText">>>>>>- v-peertube-redis:/data\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n\n"
   replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/peertube-compose.yml false ">"
   cat -s $HOME/peertube-compose.yml > $HOME/ac.tmp
   mv $HOME/ac.tmp $HOME/peertube-compose.yml
@@ -62721,8 +62494,6 @@ function installGitlab()
   mkdir $HSHQ_STACKS_DIR/gitlab/db
   mkdir $HSHQ_STACKS_DIR/gitlab/dbexport
   chmod 777 $HSHQ_STACKS_DIR/gitlab/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/gitlab
-  mkdir $HSHQ_NONBACKUP_DIR/gitlab/redis
   initServicesCredentials
   if [ -z "$GITLAB_ROOT_PASSWORD" ]; then
     GITLAB_ROOT_PASSWORD=$(pwgen -c -n 32 1)
@@ -62869,21 +62640,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $GITLAB_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-gitlab-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-gitlab-redis:/data
-
-volumes:
-  v-gitlab-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/gitlab/redis
 
 networks:
   dock-proxy-net:
@@ -63452,14 +63214,11 @@ function installDiscourse()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/discourse
   mkdir $HSHQ_STACKS_DIR/discourse/db
   mkdir $HSHQ_STACKS_DIR/discourse/dbexport
   mkdir $HSHQ_STACKS_DIR/discourse/app
   chmod 777 $HSHQ_STACKS_DIR/discourse/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/discourse
-  mkdir $HSHQ_NONBACKUP_DIR/discourse/redis
   initServicesCredentials
   if [ -z "$DISCOURSE_DATABASE_USER_PASSWORD" ]; then
     DISCOURSE_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
@@ -63595,21 +63354,14 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $DISCOURSE_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-discourse-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-discourse-redis:/data
 
 volumes:
-  v-discourse-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/discourse/redis
   v-discourse-data:
     driver: local
     driver_opts:
@@ -64229,14 +63981,11 @@ function installShlink()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/shlink
   mkdir $HSHQ_STACKS_DIR/shlink/db
   mkdir $HSHQ_STACKS_DIR/shlink/dbexport
   mkdir $HSHQ_STACKS_DIR/shlink/web
   chmod 777 $HSHQ_STACKS_DIR/shlink/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/shlink
-  mkdir $HSHQ_NONBACKUP_DIR/shlink/redis
   initServicesCredentials
   if [ -z "$SHLINK_REDIS_PASSWORD" ]; then
     SHLINK_REDIS_PASSWORD=$(pwgen -c -n 32 1)
@@ -64379,21 +64128,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $SHLINK_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-shlink-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-shlink-redis:/data
-
-volumes:
-  v-shlink-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/shlink/redis
 
 networks:
   dock-proxy-net:
@@ -64637,8 +64377,6 @@ function installFirefly()
   mkdir $HSHQ_STACKS_DIR/firefly/dbexport
   mkdir $HSHQ_STACKS_DIR/firefly/data
   chmod 777 $HSHQ_STACKS_DIR/firefly/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/firefly
-  mkdir $HSHQ_NONBACKUP_DIR/firefly/redis
   initServicesCredentials
   if [ -z "$FIREFLY_REDIS_PASSWORD" ]; then
     FIREFLY_REDIS_PASSWORD=$(pwgen -c -n 32 1)
@@ -64886,13 +64624,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $FIREFLY_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-firefly-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-firefly-redis:/data
 
 volumes:
   v-firefly-db:
@@ -64907,12 +64644,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/firefly/data
-  v-firefly-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/firefly/redis
 
 networks:
   dock-proxy-net:
@@ -69667,8 +69398,6 @@ function installBarAssistant()
   mkdir $HSHQ_STACKS_DIR/bar-assistant/app
   mkdir $HSHQ_STACKS_DIR/bar-assistant/meilisearch
   mkdir $HSHQ_STACKS_DIR/bar-assistant/web
-  mkdir $HSHQ_NONBACKUP_DIR/bar-assistant
-  mkdir $HSHQ_NONBACKUP_DIR/bar-assistant/redis
   initServicesCredentials
   outputConfigBarAssistant
   installStack bar-assistant bar-assistant-app "ready to handle connections" $HOME/bar-assistant.env 10
@@ -69834,14 +69563,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $BARASSISTANT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-bar-assistant-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-bar-assistant-redis:/data
 
   bar-assistant-saltrim:
     image: $(getScriptImageByContainerName bar-assistant-saltrim)
@@ -69920,12 +69648,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/bar-assistant/meilisearch
-  v-bar-assistant-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/bar-assistant/redis
 
 networks:
   dock-proxy-net:
@@ -70270,14 +69992,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $BARASSISTANT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-bar-assistant-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-bar-assistant-redis:/data
 
 volumes:
   v-bar-assistant-app:
@@ -70292,12 +70013,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/bar-assistant/meilisearch
-  v-bar-assistant-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/bar-assistant/redis
 
 networks:
   dock-proxy-net:
@@ -70445,14 +70160,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $BARASSISTANT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-bar-assistant-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-bar-assistant-redis:/data
 
   bar-assistant-saltrim:
     image: mirror.gcr.io/barassistant/salt-rim:4.15.0
@@ -70531,12 +70245,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/bar-assistant/meilisearch
-  v-bar-assistant-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/bar-assistant/redis
 
 networks:
   dock-proxy-net:
@@ -71372,14 +71080,11 @@ function installWallabag()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/wallabag
   mkdir $HSHQ_STACKS_DIR/wallabag/db
   mkdir $HSHQ_STACKS_DIR/wallabag/dbexport
   mkdir $HSHQ_STACKS_DIR/wallabag/images
   chmod 777 $HSHQ_STACKS_DIR/wallabag/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/wallabag
-  mkdir $HSHQ_NONBACKUP_DIR/wallabag/redis
   initServicesCredentials
   if [ -z "$WALLABAG_ENV_SECRET" ]; then
     WALLABAG_ENV_SECRET=$(pwgen -c -n 30 1)
@@ -71487,13 +71192,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $WALLABAG_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-wallabag-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-wallabag-redis:/data
 
   wallabag-app:
     image: $(getScriptImageByContainerName wallabag-app)
@@ -71517,14 +71221,6 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/wallabag/images:/var/www/wallabag/web/assets/images
-
-volumes:
-  v-wallabag-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/wallabag/redis
 
 networks:
   dock-proxy-net:
@@ -71838,8 +71534,6 @@ function installPaperless()
   mkdir $HSHQ_STACKS_DIR/paperless/gpt/pdf
   mkdir $HSHQ_STACKS_DIR/paperless/public_objects
   chmod 777 $HSHQ_STACKS_DIR/paperless/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/paperless
-  mkdir $HSHQ_NONBACKUP_DIR/paperless/redis
   initServicesCredentials
   if [ -z "$PAPERLESS_SECRET_KEY" ]; then
     PAPERLESS_SECRET_KEY=$(pwgen -c -n 64 1)
@@ -72251,14 +71945,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $PAPERLESS_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-paperless-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-paperless-redis:/data
 
 volumes:
   v-paperless-data:
@@ -72273,12 +71966,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/paperless/media
-  v-paperless-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/paperless/redis
   v-paperless-ai:
     driver: local
     driver_opts:
@@ -72926,14 +72613,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $PAPERLESS_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-paperless-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-paperless-redis:/data
 
 volumes:
   v-paperless-data:
@@ -72948,12 +72634,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/paperless/media
-  v-paperless-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/paperless/redis
   v-paperless-ai:
     driver: local
     driver_opts:
@@ -73153,14 +72833,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $PAPERLESS_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-paperless-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-paperless-redis:/data
 
 volumes:
   v-paperless-data:
@@ -73175,12 +72854,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/paperless/media
-  v-paperless-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/paperless/redis
   v-paperless-ai:
     driver: local
     driver_opts:
@@ -73401,14 +73074,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $PAPERLESS_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-paperless-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-paperless-redis:/data
 
 volumes:
   v-paperless-data:
@@ -73423,12 +73095,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/paperless/media
-  v-paperless-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/paperless/redis
   v-paperless-ai:
     driver: local
     driver_opts:
@@ -73901,14 +73567,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $PAPERLESS_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-paperless-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-paperless-redis:/data
 
 volumes:
   v-paperless-data:
@@ -73923,12 +73588,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/paperless/media
-  v-paperless-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/paperless/redis
   v-paperless-ai:
     driver: local
     driver_opts:
@@ -76187,8 +75846,6 @@ function installPenpot()
   mkdir $HSHQ_STACKS_DIR/penpot/ssl
   mkdir $HSHQ_STACKS_DIR/penpot/assets
   chmod 777 $HSHQ_STACKS_DIR/penpot/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/penpot
-  mkdir $HSHQ_NONBACKUP_DIR/penpot/redis
   initServicesCredentials
   set +e
   docker run --rm --name=tomcat -v $HSHQ_STACKS_DIR/penpot/ssl:/certsexport -v /usr/local/share/ca-certificates:/usr/local/share/ca-certificates $IMG_TOMCAT bash -c "keytool -importcert -file /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt -alias ${CERTS_ROOT_CA_NAME}.crt -cacerts -storepass changeit -noprompt; cp /opt/java/openjdk/lib/security/cacerts /certsexport/"
@@ -76346,13 +76003,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $PENPOT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-penpot-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-penpot-redis:/data
 
 volumes:
   v-penpot-db:
@@ -76367,12 +76023,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/penpot/assets
-  v-penpot-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/penpot/redis
 
 networks:
   dock-proxy-net:
@@ -76862,8 +76512,6 @@ function installImmich()
   mkdir $HSHQ_STACKS_DIR/immich/app
   mkdir $HSHQ_STACKS_DIR/immich/config
   chmod 777 $HSHQ_STACKS_DIR/immich/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/immich
-  mkdir $HSHQ_NONBACKUP_DIR/immich/redis
   mkdir $HSHQ_NONBACKUP_DIR/immich/cache
   initServicesCredentials
   set +e
@@ -77070,14 +76718,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $IMMICH_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-immich-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-immich-redis:/data
 
 volumes:
   v-immich-cache:
@@ -77086,12 +76733,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/immich/cache
-  v-immich-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/immich/redis
 
 networks:
   dock-proxy-net:
@@ -77644,14 +77285,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $IMMICH_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-immich-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-immich-redis:/data
 
 volumes:
   v-immich-cache:
@@ -77660,12 +77300,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/immich/cache
-  v-immich-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/immich/redis
 
 networks:
   dock-proxy-net:
@@ -78644,8 +78278,6 @@ function installAIStack()
   mkdir $HSHQ_STACKS_DIR/aistack/mindsdb/dbexport
   mkdir $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport
   mkdir $HSHQ_STACKS_DIR/aistack/otel
-  mkdir $HSHQ_NONBACKUP_DIR/aistack
-  mkdir $HSHQ_NONBACKUP_DIR/aistack/redis
   chmod 777 $HSHQ_STACKS_DIR/aistack/mindsdb/dbexport
   initServicesCredentials
   set +e
@@ -78849,13 +78481,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $AISTACK_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-aistack-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-aistack-redis:/data
 
 volumes:
   v-aistack-mindsdb-app:
@@ -78864,12 +78495,6 @@ volumes:
       type: none
       o: bind
       device: ${HSHQ_STACKS_DIR}/aistack/mindsdb/app
-  v-aistack-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${HSHQ_NONBACKUP_DIR}/aistack/redis
 
 networks:
   dock-proxy-net:
@@ -79015,13 +78640,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $AISTACK_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-aistack-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-aistack-redis:/data
 
 volumes:
   v-aistack-mindsdb-app:
@@ -79030,12 +78654,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/aistack/mindsdb/app
-  v-aistack-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/aistack/redis
 
 networks:
   dock-proxy-net:
@@ -79325,8 +78943,6 @@ function installPixelfed()
   mkdir $HSHQ_STACKS_DIR/pixelfed/dbexport
   mkdir $HSHQ_STACKS_DIR/pixelfed/appstorage
   mkdir $HSHQ_STACKS_DIR/pixelfed/appbootstrapcache
-  mkdir $HSHQ_NONBACKUP_DIR/pixelfed
-  mkdir $HSHQ_NONBACKUP_DIR/pixelfed/redis
   chmod 777 $HSHQ_STACKS_DIR/pixelfed/dbexport
   initServicesCredentials
   set +e
@@ -79481,13 +79097,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $PIXELFED_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-pixelfed-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-pixelfed-redis:/data
 
 volumes:
   v-pixelfed-appstorage:
@@ -79508,12 +79123,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/pixelfed/appbootstrapcache
-  v-pixelfed-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/pixelfed/redis
 
 networks:
   dock-proxy-net:
@@ -80811,8 +80420,6 @@ function installYamtrack()
   mkdir $HSHQ_STACKS_DIR/yamtrack
   mkdir $HSHQ_STACKS_DIR/yamtrack/db
   mkdir $HSHQ_STACKS_DIR/yamtrack/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/yamtrack
-  mkdir $HSHQ_NONBACKUP_DIR/yamtrack/redis
   chmod 777 $HSHQ_STACKS_DIR/yamtrack/dbexport
   initServicesCredentials
   set +e
@@ -80930,13 +80537,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $YAMTRACK_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-yamtrack-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-yamtrack-redis:/data
 
 volumes:
   v-yamtrack-db:
@@ -80945,12 +80551,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/yamtrack/db
-  v-yamtrack-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/yamtrack/redis
 
 networks:
   dock-proxy-net:
@@ -83105,7 +82705,6 @@ function installBudibase()
   mkdir $HSHQ_STACKS_DIR/budibase/plugins
   mkdir $HSHQ_STACKS_DIR/budibase/couchdb
   mkdir $HSHQ_STACKS_DIR/budibase/minio
-  mkdir -p $HSHQ_NONBACKUP_DIR/budibase/redis
   chmod 777 $HSHQ_STACKS_DIR/budibase/dbexport
   initServicesCredentials
   set +e
@@ -83303,13 +82902,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $BUDIBASE_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-budibase-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-budibase-redis:/data
 
 volumes:
   v-budibase-db:
@@ -83324,12 +82922,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/budibase/couchdb
-  v-budibase-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/budibase/redis
 
 networks:
   dock-proxy-net:
@@ -83673,8 +83265,6 @@ function installStandardNotes()
   set -e
   mkdir $HSHQ_STACKS_DIR/standardnotes
   mkdir $HSHQ_STACKS_DIR/standardnotes/{db,dbexport,config,localstack,logs,uploads}
-  mkdir $HSHQ_NONBACKUP_DIR/standardnotes
-  mkdir $HSHQ_NONBACKUP_DIR/standardnotes/redis
   chmod 777 $HSHQ_STACKS_DIR/standardnotes/dbexport
   initServicesCredentials
   set +e
@@ -83856,13 +83446,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $STANDARDNOTES_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-standardnotes-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-standardnotes-redis:/data
 
 volumes:
   v-standardnotes-db:
@@ -83871,12 +83460,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/standardnotes/db
-  v-standardnotes-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/standardnotes/redis
 
 networks:
   dock-proxy-net:
@@ -85087,8 +84670,6 @@ function installRevolt()
   mkdir $HSHQ_STACKS_DIR/revolt/caddy
   mkdir $HSHQ_STACKS_DIR/revolt/caddy/data
   mkdir $HSHQ_STACKS_DIR/revolt/caddy/config
-  mkdir $HSHQ_NONBACKUP_DIR/revolt
-  mkdir $HSHQ_NONBACKUP_DIR/revolt/redis
   initServicesCredentials
   set +e
   outputConfigRevolt
@@ -85155,13 +84736,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $REVOLT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-revolt-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-revolt-redis:/data
 
   revolt-rabbitmq:
     image: $(getScriptImageByContainerName revolt-rabbitmq)
@@ -85412,12 +84992,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/revolt/dbexport
-  v-revolt-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/revolt/redis
 
 networks:
   dock-proxy-net:
@@ -85878,13 +85452,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $REVOLT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-revolt-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-revolt-redis:/data
 
   revolt-rabbitmq:
     image: mirror.gcr.io/rabbitmq:4.1.4
@@ -86135,12 +85708,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/revolt/dbexport
-  v-revolt-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/revolt/redis
 
 networks:
   dock-proxy-net:
@@ -86860,8 +86427,6 @@ function installTwenty()
   mkdir $HSHQ_STACKS_DIR/twenty
   mkdir $HSHQ_STACKS_DIR/twenty/data
   mkdir $HSHQ_STACKS_DIR/twenty/minio
-  mkdir $HSHQ_NONBACKUP_DIR/twenty
-  mkdir $HSHQ_NONBACKUP_DIR/twenty/redis
   mkdir $HSHQ_STACKS_DIR/twenty/db
   mkdir $HSHQ_STACKS_DIR/twenty/dbexport
   chmod 777 $HSHQ_STACKS_DIR/twenty/dbexport
@@ -87061,14 +86626,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $TWENTY_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
       --maxmemory-policy noeviction
     networks:
       - int-twenty-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-twenty-redis:/data
 
 volumes:
   v-twenty-data:
@@ -87077,12 +86641,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/twenty/data
-  v-twenty-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/twenty/redis
 
 networks:
   dock-proxy-net:
@@ -87639,14 +87197,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $TWENTY_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
       --maxmemory-policy noeviction
     networks:
       - int-twenty-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-twenty-redis:/data
 
   twenty-minio:
     image: mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
@@ -87689,12 +87246,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/twenty/data
-  v-twenty-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/twenty/redis
 
 networks:
   dock-proxy-net:
@@ -87877,14 +87428,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $TWENTY_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
       --maxmemory-policy noeviction
     networks:
       - int-twenty-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-twenty-redis:/data
 
 volumes:
   v-twenty-data:
@@ -87893,12 +87443,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/twenty/data
-  v-twenty-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/twenty/redis
 
 networks:
   dock-proxy-net:
@@ -90908,8 +90452,6 @@ function installZammad()
   mkdir $HSHQ_STACKS_DIR/zammad/minio
   mkdir $HSHQ_STACKS_DIR/zammad/db
   mkdir $HSHQ_STACKS_DIR/zammad/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/zammad
-  mkdir $HSHQ_NONBACKUP_DIR/zammad/redis
   chmod 777 $HSHQ_STACKS_DIR/zammad/dbexport
   initServicesCredentials
   set +e
@@ -91330,13 +90872,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $ZAMMAD_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-zammad-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-zammad-redis:/data
 
 #  zammad-es:
 #    image: $(getScriptImageByContainerName zammad-es)
@@ -91410,12 +90951,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/zammad/es
-  v-zammad-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/zammad/redis
 
 networks:
   dock-proxy-net:
@@ -91777,13 +91312,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $ZAMMAD_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-zammad-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-zammad-redis:/data
 
 #  zammad-es:
 #    image: mirror.gcr.io/elasticsearch:9.2.2
@@ -91857,12 +91391,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/zammad/es
-  v-zammad-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/zammad/redis
 
 networks:
   dock-proxy-net:
@@ -91926,8 +91454,6 @@ function installZulip()
   mkdir $HSHQ_STACKS_DIR/zulip/rabbitmq
   mkdir $HSHQ_STACKS_DIR/zulip/db
   mkdir $HSHQ_STACKS_DIR/zulip/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/zulip
-  mkdir $HSHQ_NONBACKUP_DIR/zulip/redis
   chmod 777 $HSHQ_STACKS_DIR/zulip/dbexport
   initServicesCredentials
   set +e
@@ -92093,13 +91619,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $ZULIP_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-zulip-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-zulip-redis:/data
 
 volumes:
   v-zulip-data:
@@ -92114,12 +91639,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/zulip/rabbitmq
-  v-zulip-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/zulip/redis
 
 networks:
   dock-proxy-net:
@@ -93180,8 +92699,6 @@ function installKillBill()
   mkdir $HSHQ_STACKS_DIR/killbill
   mkdir $HSHQ_STACKS_DIR/killbill/db
   mkdir $HSHQ_STACKS_DIR/killbill/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/killbill
-  mkdir $HSHQ_NONBACKUP_DIR/killbill/redis
   chmod 777 $HSHQ_STACKS_DIR/killbill/dbexport
   initServicesCredentials
   set +e
@@ -93334,13 +92851,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $KILLBILL_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-killbill-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-killbill-redis:/data
 
 volumes:
   v-killbill-db:
@@ -93349,12 +92865,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/killbill/db
-  v-killbill-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/killbill/redis
 
 networks:
   dock-proxy-net:
@@ -94050,8 +93560,6 @@ function installInvoiceNinja()
   mkdir $HSHQ_STACKS_DIR/invoiceninja/nginx
   mkdir $HSHQ_STACKS_DIR/invoiceninja/public
   mkdir $HSHQ_STACKS_DIR/invoiceninja/minio
-  mkdir $HSHQ_NONBACKUP_DIR/invoiceninja
-  mkdir $HSHQ_NONBACKUP_DIR/invoiceninja/redis
   mkdir $HSHQ_STACKS_DIR/invoiceninja/storage
   mkdir $HSHQ_STACKS_DIR/invoiceninja/storage/logs
   touch $HSHQ_STACKS_DIR/invoiceninja/storage/logs/invoiceninja.log
@@ -94198,13 +93706,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $INVOICENINJA_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-invoiceninja-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-invoiceninja-redis:/data
 
 #  To enable, set FILESYSTEM_DRIVER=s3 in environment. However,
 #  this feature is inop at the moment.
@@ -94262,12 +93769,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/storage
-  v-invoiceninja-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/invoiceninja/redis
 
 networks:
   dock-proxy-net:
@@ -94562,13 +94063,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $INVOICENINJA_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-invoiceninja-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-invoiceninja-redis:/data
 
 #  To enable, set FILESYSTEM_DRIVER=s3 in environment. However,
 #  this feature is inop at the moment.
@@ -94626,12 +94126,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/storage
-  v-invoiceninja-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/invoiceninja/redis
 
 networks:
   dock-proxy-net:
@@ -94690,9 +94184,6 @@ function installDolibarr()
   mkdir $HSHQ_STACKS_DIR/dolibarr/mcp
   mkdir $HSHQ_STACKS_DIR/dolibarr/mcp/config
   mkdir $HSHQ_STACKS_DIR/dolibarr/mcp/plugins
-  mkdir $HSHQ_NONBACKUP_DIR/dolibarr
-  mkdir $HSHQ_NONBACKUP_DIR/dolibarr/redis
-  mkdir $HSHQ_NONBACKUP_DIR/dolibarr/mcpredis
   chmod 777 $HSHQ_STACKS_DIR/dolibarr/dbexport
   initServicesCredentials
   set +e
@@ -95011,14 +94502,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $DOLIBARR_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-dolibarr-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-dolibarr-redis:/data
 
   dolibarr-mcp:
     image: $(getScriptImageByContainerName dolibarr-mcp)
@@ -95059,18 +94549,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/dolibarr/documents
-  v-dolibarr-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/dolibarr/redis
-  v-dolibarr-mcp-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/dolibarr/mcpredis
 
 networks:
   dock-proxy-net:
@@ -95207,14 +94685,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $DOLIBARR_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-dolibarr-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-dolibarr-redis:/data
 
   dolibarr-mcp:
     image: hshq/dolibarr-mcp:v1
@@ -95246,14 +94723,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $DOLIBARR_MCP_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-dolibarr-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-dolibarr-mcp-redis:/data
 
 volumes:
   v-dolibarr-db:
@@ -95274,18 +94750,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/dolibarr/documents
-  v-dolibarr-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/dolibarr/redis
-  v-dolibarr-mcp-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/dolibarr/mcpredis
 
 networks:
   dock-proxy-net:
@@ -95569,14 +95033,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $DOLIBARR_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-dolibarr-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-dolibarr-redis:/data
 
   dolibarr-mcp:
     image: ghcr.io/homeserverhq/dolibarr-mcp:v2
@@ -95617,18 +95080,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/dolibarr/documents
-  v-dolibarr-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/dolibarr/redis
-  v-dolibarr-mcp-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/dolibarr/mcpredis
 
 networks:
   dock-proxy-net:
@@ -95732,8 +95183,6 @@ function installn8n()
   mkdir $HSHQ_STACKS_DIR/n8n/files
   mkdir $HSHQ_STACKS_DIR/n8n/db
   mkdir $HSHQ_STACKS_DIR/n8n/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/n8n
-  mkdir $HSHQ_NONBACKUP_DIR/n8n/redis
   chmod 777 $HSHQ_STACKS_DIR/n8n/dbexport
   initServicesCredentials
   set +e
@@ -95878,13 +95327,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $N8N_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-n8n-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-n8n-redis:/data
 
 volumes:
   v-n8n-data:
@@ -95893,12 +95341,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/n8n/data
-  v-n8n-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/n8n/redis
 
 networks:
   dock-proxy-net:
@@ -96053,8 +95495,6 @@ function installAutomatisch()
   mkdir $HSHQ_STACKS_DIR/automatisch/db
   mkdir $HSHQ_STACKS_DIR/automatisch/dbexport
   mkdir $HSHQ_STACKS_DIR/automatisch/storage
-  mkdir $HSHQ_NONBACKUP_DIR/automatisch
-  mkdir $HSHQ_NONBACKUP_DIR/automatisch/redis
   chmod 777 $HSHQ_STACKS_DIR/automatisch/dbexport
   initServicesCredentials
   set +e
@@ -96203,13 +95643,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $AUTOMATISCH_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-automatisch-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-automatisch-redis:/data
 
 volumes:
   v-automatisch-storage:
@@ -96218,12 +95657,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/automatisch/storage
-  v-automatisch-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/automatisch/redis
 
 networks:
   dock-proxy-net:
@@ -96344,8 +95777,6 @@ function installActivePieces()
   mkdir $HSHQ_STACKS_DIR/activepieces/db
   mkdir $HSHQ_STACKS_DIR/activepieces/dbexport
   mkdir $HSHQ_STACKS_DIR/activepieces/cache
-  mkdir $HSHQ_NONBACKUP_DIR/activepieces
-  mkdir $HSHQ_NONBACKUP_DIR/activepieces/redis
   chmod 777 $HSHQ_STACKS_DIR/activepieces/dbexport
   initServicesCredentials
   set +e
@@ -96498,21 +95929,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $ACTIVEPIECES_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-activepieces-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-activepieces-redis:/data
-
-volumes:
-  v-activepieces-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/activepieces/redis
 
 networks:
   dock-proxy-net:
@@ -96751,21 +96173,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $ACTIVEPIECES_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-activepieces-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-activepieces-redis:/data
-
-volumes:
-  v-activepieces-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/activepieces/redis
 
 networks:
   dock-proxy-net:
@@ -100700,8 +100113,6 @@ function installLibreChat()
   mkdir $HSHQ_STACKS_DIR/librechat/db
   mkdir $HSHQ_STACKS_DIR/librechat/dbexport
   chmod 777 $HSHQ_STACKS_DIR/librechat/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/librechat
-  mkdir $HSHQ_NONBACKUP_DIR/librechat/redis
   initServicesCredentials
   set +e
   addUserMailu alias $LIBRECHAT_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -100894,13 +100305,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $LIBRECHAT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-librechat-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-librechat-redis:/data
 
 volumes:
   v-librechat-mongodata:
@@ -100915,12 +100325,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/librechat/mongoexport
-  v-librechat-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/librechat/redis
 
 networks:
   dock-proxy-net:
@@ -101513,8 +100917,6 @@ function installOpenWebUI()
   mkdir $HSHQ_STACKS_DIR/openwebui/mcpo
   mkdir $HSHQ_STACKS_DIR/openwebui/pipelines
   chmod 777 $HSHQ_STACKS_DIR/openwebui/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/openwebui
-  mkdir $HSHQ_NONBACKUP_DIR/openwebui/redis
   initServicesCredentials
   set +e
   addUserMailu alias $OPENWEBUI_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -101798,22 +101200,15 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $OPENWEBUI_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-openwebui-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-openwebui-redis:/data
 
 volumes:
-  v-openwebui-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/openwebui/redis
   v-openwebui-openterminal:
     driver: local
     driver_opts:
@@ -101896,7 +101291,7 @@ QDRANT__SERVICE__API_KEY=$OPENWEBUI_QDRANT_API_KEY
 QDRANT__SERVICE__ENABLE_API_KEY_AUTHORIZATION=true
 ENABLE_API_KEYS=true
 USER_PERMISSIONS_FEATURES_API_KEYS=true
-RAG_SYSTEM_CONTEXT=True
+RAG_SYSTEM_CONTEXT=False
 ENABLE_RAG_LOCAL_WEB_FETCH=True
 VECTOR_DB=qdrant
 QDRANT_URI=http://openwebui-qdrant:6333
@@ -102186,22 +101581,15 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $OPENWEBUI_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-openwebui-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-openwebui-redis:/data
 
 volumes:
-  v-openwebui-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/openwebui/redis
   v-openwebui-openterminal:
     driver: local
     driver_opts:
@@ -102275,7 +101663,7 @@ function mfOpenWebUIUpdateV2()
     echo "QDRANT__SERVICE__ENABLE_API_KEY_AUTHORIZATION=true" >> $HOME/openwebui.env
     echo "ENABLE_API_KEYS=true" >> $HOME/openwebui.env
     echo "USER_PERMISSIONS_FEATURES_API_KEYS=true" >> $HOME/openwebui.env
-    echo "RAG_SYSTEM_CONTEXT=True" >> $HOME/openwebui.env
+    echo "RAG_SYSTEM_CONTEXT=False" >> $HOME/openwebui.env
     echo "ENABLE_RAG_LOCAL_WEB_FETCH=True" >> $HOME/openwebui.env
     echo "VECTOR_DB=qdrant" >> $HOME/openwebui.env
     echo "QDRANT_URI=http://openwebui-qdrant:6333" >> $HOME/openwebui.env
@@ -102876,8 +102264,6 @@ function installLobeChat()
   mkdir $HSHQ_STACKS_DIR/lobechat/db
   mkdir $HSHQ_STACKS_DIR/lobechat/dbexport
   chmod 777 $HSHQ_STACKS_DIR/lobechat/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/lobechat
-  mkdir $HSHQ_NONBACKUP_DIR/lobechat/redis
   initServicesCredentials
   set +e
   addUserMailu alias $LOBECHAT_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -103007,13 +102393,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $LOBECHAT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-lobechat-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-lobechat-redis:/data
 
   lobechat-minio:
     image: $(getScriptImageByContainerName lobechat-minio)
@@ -103042,14 +102427,6 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/lobechat/minio:/data:/data
-
-volumes:
-  v-lobechat-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/lobechat/redis
 
 networks:
   dock-proxy-net:
@@ -103345,7 +102722,6 @@ function installRAGFlow()
   mkdir $HSHQ_STACKS_DIR/ragflow/dbexport
   mkdir $HSHQ_STACKS_DIR/ragflow/misc
   chmod 777 $HSHQ_STACKS_DIR/ragflow/dbexport
-  mkdir -p $HSHQ_NONBACKUP_DIR/ragflow/redis
   initServicesCredentials
   set +e
   addUserMailu alias $RAGFLOW_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -103882,7 +103258,7 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $RAGFLOW_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
       --maxmemory 128mb
       --maxmemory-policy allkeys-lru
     networks:
@@ -103890,7 +103266,6 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-ragflow-redis:/data
 
 volumes:
   v-ragflow-config:
@@ -103911,12 +103286,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/infinity
-  v-ragflow-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/ragflow/redis
 
 networks:
   dock-proxy-net:
@@ -104963,8 +104332,6 @@ function installDocling()
   mkdir $HSHQ_STACKS_DIR/docling
   mkdir $HSHQ_STACKS_DIR/docling/config
   mkdir $HSHQ_STACKS_DIR/docling/data
-  mkdir $HSHQ_NONBACKUP_DIR/docling
-  mkdir $HSHQ_NONBACKUP_DIR/docling/redis
   initServicesCredentials
   set +e
   outputConfigDocling
@@ -105036,21 +104403,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $DOCLING_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-docling-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-docling-redis:/data
-
-volumes:
-  v-docling-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/docling/redis
 
 networks:
   dock-proxy-net:
@@ -105211,8 +104569,6 @@ function installDify()
   mkdir $HSHQ_STACKS_DIR/dify/db
   mkdir $HSHQ_STACKS_DIR/dify/dbexport
   chmod 777 $HSHQ_STACKS_DIR/dify/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/dify
-  mkdir $HSHQ_NONBACKUP_DIR/dify/redis
   initServicesCredentials
   set +e
   addUserMailu alias $DIFY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -105648,13 +105004,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $DIFY_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-dify-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-dify-redis:/data
 
   dify-nginx:
     image: $(getScriptImageByContainerName dify-nginx)
@@ -105723,14 +105078,6 @@ services:
 #      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
 #      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 #      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/minio:/data
-
-volumes:
-  v-dify-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/dify/redis
 
 networks:
   dock-proxy-net:
@@ -106540,8 +105887,6 @@ function installMindsDB()
   mkdir $HSHQ_STACKS_DIR/mindsdb/dbimport
   mkdir $HSHQ_STACKS_DIR/mindsdb/dbexport
   chmod 777 $HSHQ_STACKS_DIR/mindsdb/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/mindsdb
-  mkdir $HSHQ_NONBACKUP_DIR/mindsdb/redis
   initServicesCredentials
   set +e
   addUserMailu alias $MINDSDB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -106793,7 +106138,7 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $MINDSDB_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-mindsdb-net
     volumes:
@@ -106808,12 +106153,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/mindsdb/data
-  v-mindsdb-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/mindsdb/redis
 
 networks:
   dock-proxy-net:
@@ -106996,8 +106335,6 @@ function installWaterCrawl()
   mkdir $HSHQ_STACKS_DIR/watercrawl/db
   mkdir $HSHQ_STACKS_DIR/watercrawl/dbexport
   chmod 777 $HSHQ_STACKS_DIR/watercrawl/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/watercrawl
-  mkdir $HSHQ_NONBACKUP_DIR/watercrawl/redis
   initServicesCredentials
   set +e
   addUserMailu alias $WATERCRAWL_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -107254,13 +106591,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $WATERCRAWL_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-watercrawl-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-watercrawl-redis:/data
 
   watercrawl-mcp:
     image: $(getScriptImageByContainerName watercrawl-mcp)
@@ -107283,14 +106619,6 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-
-volumes:
-  v-watercrawl-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/watercrawl/redis
 
 networks:
   dock-proxy-net:
@@ -107536,8 +106864,6 @@ function installFlowise()
   mkdir $HSHQ_STACKS_DIR/flowise/db
   mkdir $HSHQ_STACKS_DIR/flowise/dbexport
   chmod 777 $HSHQ_STACKS_DIR/flowise/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/flowise
-  mkdir $HSHQ_NONBACKUP_DIR/flowise/redis
   initServicesCredentials
   set +e
   addUserMailu alias $FLOWISE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -107693,13 +107019,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $FLOWISE_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-flowise-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-flowise-redis:/data
 
   flowise-minio:
     image: $(getScriptImageByContainerName flowise-minio)
@@ -107732,14 +107057,6 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/flowise/minio:/data
-
-volumes:
-  v-flowise-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/flowise/redis
 
 networks:
   dock-proxy-net:
@@ -108070,8 +107387,6 @@ function installNocoDB()
   mkdir $HSHQ_STACKS_DIR/nocodb/db
   mkdir $HSHQ_STACKS_DIR/nocodb/dbexport
   chmod 777 $HSHQ_STACKS_DIR/nocodb/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/nocodb
-  mkdir $HSHQ_NONBACKUP_DIR/nocodb/redis
   initServicesCredentials
   set +e
   addUserMailu alias $NOCODB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -108190,13 +107505,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $NOCODB_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-nocodb-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-nocodb-redis:/data
 
   nocodb-minio:
     image: $(getScriptImageByContainerName nocodb-minio)
@@ -108240,12 +107554,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/nocodb/data
-  v-nocodb-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/nocodb/redis
 
 networks:
   dock-proxy-net:
@@ -111332,8 +110640,6 @@ function installDocsGPT()
   mkdir $HSHQ_STACKS_DIR/docsgpt/db
   mkdir $HSHQ_STACKS_DIR/docsgpt/dbexport
   chmod 777 $HSHQ_STACKS_DIR/docsgpt/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/docsgpt
-  mkdir $HSHQ_NONBACKUP_DIR/docsgpt/redis
   initServicesCredentials
   set +e
   addUserMailu alias $DOCSGPT_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -111502,13 +110808,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $DOCSGPT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-docsgpt-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-docsgpt-redis:/data
 
 volumes:
   v-docsgpt-db:
@@ -111523,12 +110828,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/docsgpt/dbexport
-  v-docsgpt-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/docsgpt/redis
 
 networks:
   dock-proxy-net:
@@ -113472,8 +112771,6 @@ function installMonica()
   mkdir $HSHQ_STACKS_DIR/monica/db
   mkdir $HSHQ_STACKS_DIR/monica/dbexport
   chmod 777 $HSHQ_STACKS_DIR/monica/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/monica
-  mkdir $HSHQ_NONBACKUP_DIR/monica/redis
   initServicesCredentials
   set +e
   addUserMailu alias $MONICA_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -113682,13 +112979,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $MONICA_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-monica-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-monica-redis:/data
 
 volumes:
   v-monica-db:
@@ -113709,12 +113005,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/monica/meilisearch
-  v-monica-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/monica/redis
 
 networks:
   dock-proxy-net:
@@ -113864,8 +113154,6 @@ function installAFFiNE()
   mkdir $HSHQ_STACKS_DIR/affine/db
   mkdir $HSHQ_STACKS_DIR/affine/dbexport
   chmod 777 $HSHQ_STACKS_DIR/affine/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/affine
-  mkdir $HSHQ_NONBACKUP_DIR/affine/redis
   initServicesCredentials
   set +e
   addUserMailu alias $AFFINE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -114053,21 +113341,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $AFFINE_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-affine-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-affine-redis:/data
-
-volumes:
-  v-affine-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/affine/redis
 
 networks:
   dock-aipriv-net:
@@ -114574,8 +113853,6 @@ function installSuperset()
   mkdir $HSHQ_STACKS_DIR/superset/dbimport
   mkdir $HSHQ_STACKS_DIR/superset/dbexport
   chmod 777 $HSHQ_STACKS_DIR/superset/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/superset
-  mkdir $HSHQ_NONBACKUP_DIR/superset/redis
   initServicesCredentials
   set +e
   addUserMailu alias $SUPERSET_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -114837,13 +114114,12 @@ services:
     security_opt:
       - no-new-privileges:true
     command: redis-server
-      --appendonly yes
+      --appendonly no
     networks:
       - int-superset-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-superset-redis:/data
 
 volumes:
   v-superset-home:
@@ -114852,12 +114128,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/superset/home
-  v-superset-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/superset/redis
 
 networks:
   dock-proxy-net:
@@ -116140,8 +115410,6 @@ function installLiteLLM()
   mkdir $HSHQ_STACKS_DIR/litellm/db
   mkdir $HSHQ_STACKS_DIR/litellm/dbexport
   chmod 777 $HSHQ_STACKS_DIR/litellm/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/litellm
-  mkdir $HSHQ_NONBACKUP_DIR/litellm/redis
   initServicesCredentials
   set +e
   addUserMailu alias $LITELLM_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -116284,21 +115552,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $LITELLM_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-litellm-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-litellm-redis:/data
-
-volumes:
-  v-litellm-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/litellm/redis
 
 networks:
   dock-proxy-net:
@@ -116490,8 +115749,6 @@ function installLangfuse()
   mkdir $HSHQ_STACKS_DIR/langfuse/db
   mkdir $HSHQ_STACKS_DIR/langfuse/dbexport
   chmod 777 $HSHQ_STACKS_DIR/langfuse/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/langfuse
-  mkdir $HSHQ_NONBACKUP_DIR/langfuse/redis
   initServicesCredentials
   set +e
   addUserMailu alias $LANGFUSE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -116741,14 +115998,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $LANGFUSE_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
       --maxmemory-policy noeviction
     networks:
       - int-langfuse-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-langfuse-redis:/data
 
 volumes:
   v-langfuse-clickhouse-data:
@@ -116763,12 +116019,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/langfuse/clickhouse-logs
-  v-langfuse-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/langfuse/redis
 
 networks:
   dock-proxy-net:
@@ -117271,8 +116521,6 @@ function installWger()
   mkdir $HSHQ_STACKS_DIR/wger/db
   mkdir $HSHQ_STACKS_DIR/wger/dbexport
   chmod 777 $HSHQ_STACKS_DIR/wger/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/wger
-  mkdir $HSHQ_NONBACKUP_DIR/wger/redis
   initServicesCredentials
   set +e
   addUserMailu alias $WGER_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -117472,13 +116720,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $WGER_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-wger-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-wger-redis:/data
 
 volumes:
   v-wger-static:
@@ -117499,12 +116746,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/wger/beat
-  v-wger-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/wger/redis
 
 networks:
   dock-proxy-net:
@@ -119072,8 +118313,6 @@ function installEmailClassifierAI()
   set -e
   mkdir $HSHQ_STACKS_DIR/emailclassifierai
   mkdir $HSHQ_STACKS_DIR/emailclassifierai/data
-  mkdir $HSHQ_NONBACKUP_DIR/emailclassifierai
-  mkdir $HSHQ_NONBACKUP_DIR/emailclassifierai/redis
   initServicesCredentials
   set +e
   outputConfigEmailClassifierAI
@@ -119194,14 +118433,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $EMAILCLASSIFIERAI_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - dock-dbs-net
       - int-emailclassifierai-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-emailclassifierai-redis:/data
 
 volumes:
   v-emailclassifierai-data:
@@ -119210,12 +118448,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/emailclassifierai/data
-  v-emailclassifierai-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/emailclassifierai/redis
 
 networks:
   dock-proxy-net:
@@ -119952,6 +119184,7 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $AUTOKB_REDIS_PASSWORD
+      --appendonly no
     networks:
       - int-autokb-net
       - dock-dbs-net
@@ -120490,9 +119723,8 @@ services:
     security_opt:
       - no-new-privileges:true
     command: redis-server
-      --appendonly no
-      --save ""
       --requirepass $SUITECRM_REDIS_PASSWORD
+      --appendonly no
     networks:
       - dock-dbs-net
       - int-suitecrm-net
@@ -121610,8 +120842,6 @@ function installCognee()
   mkdir $HSHQ_STACKS_DIR/cognee/db
   mkdir $HSHQ_STACKS_DIR/cognee/dbexport
   chmod 777 $HSHQ_STACKS_DIR/cognee/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/cognee
-  mkdir $HSHQ_NONBACKUP_DIR/cognee/redis
   initServicesCredentials
   set +e
   addUserMailu alias $COGNEE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -121817,14 +121047,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $COGNEE_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - dock-dbs-net
       - int-cognee-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-cognee-redis:/data
 
 volumes:
   v-cognee-data:
@@ -121845,12 +121074,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/cognee/frontend/public
-  v-cognee-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/cognee/redis
 
 networks:
   dock-ext-net:
@@ -135324,7 +134547,7 @@ EOFCF
 }
 
 ($CADDY_SNIPPET_RELAXEDCSP) {
-  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' registry.npmmirror.com; font-src 'self' registry.npmmirror.com excalidraw.nyc3.cdn.digitaloceanspaces.com esm.sh; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com github.com cdn.anythingllm.com assets.appsmith.com www.authelia.com registry.npmmirror.com *.s3.amazonaws.com activepieces.com *.activepieces.com ts.w.org *.${HOMESERVER_DOMAIN} data: blob:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; media-src 'self' *.${HOMESERVER_DOMAIN} github.com data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} api.comfy.org huggingface.co cdn.anythingllm.com registry.npmmirror.com libraries.excalidraw.com data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
+  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' registry.npmmirror.com; font-src 'self' registry.npmmirror.com excalidraw.nyc3.cdn.digitaloceanspaces.com esm.sh data:; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com github.com cdn.anythingllm.com assets.appsmith.com www.authelia.com registry.npmmirror.com *.s3.amazonaws.com activepieces.com *.activepieces.com ts.w.org *.${HOMESERVER_DOMAIN} data: blob:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; media-src 'self' *.${HOMESERVER_DOMAIN} github.com data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} api.comfy.org huggingface.co cdn.anythingllm.com registry.npmmirror.com libraries.excalidraw.com data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
 }
 
 # At some point we'll fix the svcs.snip and collapse these two
