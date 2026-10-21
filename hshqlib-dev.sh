@@ -31008,14 +31008,14 @@ function addPrimaryUserPaperless()
   jsonbody="{ \"name\": \"${addUserPaper_uid} Email\", \"imap_server\": \"$SMTP_HOSTNAME\", \"imap_port\": 143, \"imap_security\": 3, \"username\": \"$addUserPaper_email\", \"password\": \"$addUserPaper_emailpw\", \"account_type\": 1, \"owner\": $add_user_id, \"user_can_change\": true }"
   mail_account_id=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   if [ -n "$mail_account_id" ]; then
-    jsonbody="{ \"name\": \"${addUserPaper_uid} Email Personal\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $add_user_id, \"user_can_change\": true, \"stop_processing\": false }"
+    jsonbody="{ \"name\": \"${addUserPaper_uid} Email Personal\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 2, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $add_user_id, \"user_can_change\": true, \"stop_processing\": false }"
     curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-    jsonbody="{ \"name\": \"${addUserPaper_uid} Email Work\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Work\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $add_user_id, \"user_can_change\": true, \"stop_processing\": false }"
+    jsonbody="{ \"name\": \"${addUserPaper_uid} Email Work\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Work\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 2, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $add_user_id, \"user_can_change\": true, \"stop_processing\": false }"
     curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   fi
-  jsonbody="{ \"name\": \"${addUserPaper_uid}_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/${addUserPaper_uid}/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
+  jsonbody="{ \"name\": \"${addUserPaper_uid}_personalconsume\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/${addUserPaper_uid}/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"${addUserPaper_uid}_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/${addUserPaper_uid}/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id, \"assign_document_type\": $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
+  jsonbody="{ \"name\": \"${addUserPaper_uid}_transcribeconsume\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/${addUserPaper_uid}/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id, \"assign_document_type\": $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
 }
 
@@ -31058,7 +31058,7 @@ function addPrimaryUserAutoKB()
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"${formal_name}-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"storage_path_id\":$paperless_storage_id,\"document_filter\":\"owner__id=$paperless_user_id&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"processing_mode\":\"Paperless Content\"}}" \
+    --data "{\"name\":\"${formal_name}-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"document_filter\":\"storage_path__id=$paperless_storage_id&owner__id=$paperless_user_id&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"processing_mode\":\"Paperless Content\"}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/ePaperlessDoclingPlugin")"
   akbCode="${akbRes##*$'\n'}"
@@ -53532,6 +53532,7 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-nextcloud-net
       - dock-aipriv-net
@@ -53902,6 +53903,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-nextcloud-net
       - dock-aipriv-net
@@ -55387,6 +55389,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-nextcloud-net
       - dock-aipriv-net
@@ -56551,6 +56554,8 @@ services:
       - wikijs-db
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
     networks:
       - int-wikijs-net
       - dock-ext-net
@@ -56567,6 +56572,9 @@ services:
     hostname: wikijs-mcp
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-wikijs-net
       - dock-aipriv-net
@@ -56797,6 +56805,8 @@ services:
       - wikijs-db
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
     networks:
       - int-wikijs-net
       - dock-ext-net
@@ -56813,6 +56823,9 @@ services:
     hostname: wikijs-mcp
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-wikijs-net
       - dock-aipriv-net
@@ -60640,6 +60653,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-wordpress-net
       - dock-aipriv-net
@@ -60831,6 +60845,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-wordpress-net
       - dock-aipriv-net
@@ -66743,6 +66758,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - dock-aipriv-net
       - int-mealie-net
@@ -67032,6 +67048,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - dock-aipriv-net
       - int-mealie-net
@@ -68586,6 +68603,8 @@ services:
     hostname: linkwarden-app
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - linkwarden-db
     networks:
@@ -68606,6 +68625,9 @@ services:
     hostname: linkwarden-mcp
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-linkwarden-net
       - dock-aipriv-net
@@ -68987,6 +69009,8 @@ services:
     hostname: linkwarden-app
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - linkwarden-db
     networks:
@@ -69006,6 +69030,9 @@ services:
     hostname: linkwarden-mcp
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-linkwarden-net
       - dock-aipriv-net
@@ -69150,6 +69177,8 @@ services:
     hostname: linkwarden-app
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - linkwarden-db
     networks:
@@ -69170,6 +69199,9 @@ services:
     hostname: linkwarden-mcp
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-linkwarden-net
       - dock-aipriv-net
@@ -69625,6 +69657,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-bar-assistant-net
       - dock-aipriv-net
@@ -69970,6 +70003,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     command: npm start -- --sse
     networks:
       - int-bar-assistant-net
@@ -70222,6 +70256,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-bar-assistant-net
       - dock-aipriv-net
@@ -70713,6 +70748,8 @@ services:
     hostname: keila-app
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - keila-db
     networks:
@@ -70733,6 +70770,9 @@ services:
     hostname: keila-mcp
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-keila-net
       - dock-aipriv-net
@@ -70775,7 +70815,6 @@ networks:
     internal: true
     ipam:
       driver: default
-
 
 EOFBA
   cat <<EOFBA > $HOME/keila.env
@@ -70963,6 +71002,8 @@ services:
     hostname: keila-app
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - keila-db
     networks:
@@ -70983,6 +71024,9 @@ services:
     hostname: keila-app
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-keila-net
       - dock-aipriv-net
@@ -71025,7 +71069,6 @@ networks:
     internal: true
     ipam:
       driver: default
-
 
 EOFBA
   cat <<EOFBA > $HOME/keila.env
@@ -71698,7 +71741,7 @@ PDF_OCR_TAGGING=true
 PDF_OCR_COMPLETE_TAG=paperless-gpt-ocr-complete
 AUTO_OCR_TAG=paperless-gpt-ocr-auto
 PAPERLESS_OCR_PAGES=0
-PAPERLESS_OCR_MODE=force
+PAPERLESS_OCR_MODE=auto
 OCR_LIMIT_PAGES=0
 LOG_LEVEL=info
 PAPERLESS_API_KEY=$PAPERLESS_API_TOKEN
@@ -71927,6 +71970,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-paperless-net
       - dock-aipriv-net
@@ -72148,24 +72192,28 @@ function performWorkflowsIntegrationPaperless()
   if [ -z "$adminPathID" ] || [ $adminPathID -ne 3 ]; then
     echo "ERROR: The assigned ID($adminPathID) for this storage path is unexpected. It should be assigned an id of 3."
   fi
-  jsonbody="{ \"name\": \"sharedconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/SharedConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 2, \"assign_owner\": $PAPERLESS_ADMIN_ID, \"assign_view_users\": [], \"assign_view_groups\": [ 1 ], \"assign_change_users\": [], \"assign_change_groups\": [ 1 ], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
+
+  jsonbody="{ \"name\": \"default_personalprocessed\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 1, \"assign_owner\": null, \"assign_view_users\": [], \"assign_view_groups\": [], \"assign_change_users\": [], \"assign_change_groups\": [], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"sharedemail\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 2, \"assign_owner\": null, \"assign_view_users\": [], \"assign_view_groups\": [ 1 ], \"assign_change_users\": [], \"assign_change_groups\": [ 1 ], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
+
+  jsonbody="{ \"name\": \"sharedconsume\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/SharedConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 2, \"assign_owner\": $PAPERLESS_ADMIN_ID, \"assign_view_users\": [], \"assign_view_groups\": [ 1 ], \"assign_change_users\": [], \"assign_change_groups\": [ 1 ], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"admin_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/$NEXTCLOUD_ADMIN_USERNAME/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
+  jsonbody="{ \"name\": \"sharedemail\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 2, \"assign_owner\": null, \"assign_view_users\": [], \"assign_view_groups\": [ 1 ], \"assign_change_users\": [], \"assign_change_groups\": [ 1 ], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"admin_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/$SPEAKR_ADMIN_USERNAME/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID, \"assign_document_type\": $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
+  jsonbody="{ \"name\": \"admin_personalconsume\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/$NEXTCLOUD_ADMIN_USERNAME/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"assign_kb\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_has_any_document_types\": [$manual_doc_type, $research_doc_type, $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID] }, { \"type\": 3, \"filter_has_any_document_types\": [$manual_doc_type, $research_doc_type, $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID] } ], \"actions\": [ { \"type\": 1, \"assign_tags\": [ $PAPERLESS_KNOWLEDGEBASE_TAG_ID ] } ] }"
+  jsonbody="{ \"name\": \"admin_transcribeconsume\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/$SPEAKR_ADMIN_USERNAME/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID, \"assign_document_type\": $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"trigger_ai\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_filename\": null, \"matching_algorithm\": 0 } ], \"actions\": [ { \"type\": 4,\"order\": 0, \"webhook\": { \"url\": \"http://paperless-ai:3000/api/webhook/document\", \"as_json\": true, \"params\": { \"url\": \"{{doc_url}}\" }, \"headers\": { \"x-api-key\": \"$PAPERLESS_AI_API_KEY\" }, \"include_document\": false } } ] }"
+  jsonbody="{ \"name\": \"assign_kb\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_has_any_document_types\": [$manual_doc_type, $research_doc_type, $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID] }, { \"type\": 3, \"filter_has_any_document_types\": [$manual_doc_type, $research_doc_type, $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID] } ], \"actions\": [ { \"type\": 1, \"assign_tags\": [ $PAPERLESS_KNOWLEDGEBASE_TAG_ID ] } ] }"
+  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  jsonbody="{ \"name\": \"trigger_ai\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_filename\": null, \"matching_algorithm\": 0 } ], \"actions\": [ { \"type\": 4,\"order\": 0, \"webhook\": { \"url\": \"http://paperless-ai:3000/api/webhook/document\", \"as_json\": true, \"params\": { \"url\": \"{{doc_url}}\" }, \"headers\": { \"x-api-key\": \"$PAPERLESS_AI_API_KEY\" }, \"include_document\": false } } ] }"
   curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{ \"name\": \"${EMAIL_JOINT_USERNAME} Email\", \"imap_server\": \"$SMTP_HOSTNAME\", \"imap_port\": 143, \"imap_security\": 3, \"username\": \"$EMAIL_JOINT_EMAIL_ADDRESS\", \"password\": \"$EMAIL_JOINT_PASSWORD\", \"account_type\": 1, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true }"
   mail_account_id=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   if [ -n "$mail_account_id" ]; then
-    jsonbody="{ \"name\": \"${EMAIL_JOINT_USERNAME} Email Personal\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true, \"stop_processing\": false }"
+    jsonbody="{ \"name\": \"${EMAIL_JOINT_USERNAME} Email Personal\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 2, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true, \"stop_processing\": false }"
     curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-    jsonbody="{ \"name\": \"${EMAIL_JOINT_USERNAME} Email Work\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Work\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true, \"stop_processing\": false }"
+    jsonbody="{ \"name\": \"${EMAIL_JOINT_USERNAME} Email Work\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Work\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 2, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true, \"stop_processing\": false }"
     curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   fi
 }
@@ -73054,6 +73102,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-paperless-net
       - dock-aipriv-net
@@ -73175,7 +73224,7 @@ function mfPaperlessV8AddGPT()
     echo "PDF_OCR_COMPLETE_TAG=paperless-gpt-ocr-complete" >> $HOME/paperless.env
     echo "AUTO_OCR_TAG=paperless-gpt-ocr-auto" >> $HOME/paperless.env
     echo "PAPERLESS_OCR_PAGES=0" >> $HOME/paperless.env
-    echo "PAPERLESS_OCR_MODE=force" >> $HOME/paperless.env
+    echo "PAPERLESS_OCR_MODE=auto" >> $HOME/paperless.env
     echo "OCR_LIMIT_PAGES=0" >> $HOME/paperless.env
     echo "LOG_LEVEL=info" >> $HOME/paperless.env
   fi
@@ -73320,7 +73369,7 @@ PDF_OCR_TAGGING=true
 PDF_OCR_COMPLETE_TAG=paperless-gpt-ocr-complete
 AUTO_OCR_TAG=paperless-gpt-ocr-auto
 PAPERLESS_OCR_PAGES=0
-PAPERLESS_OCR_MODE=force
+PAPERLESS_OCR_MODE=auto
 OCR_LIMIT_PAGES=0
 LOG_LEVEL=info
 PAPERLESS_API_KEY=$PAPERLESS_API_TOKEN
@@ -73549,6 +73598,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-paperless-net
       - dock-aipriv-net
@@ -76702,6 +76752,7 @@ services:
       disable: true
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-immich-net
       - dock-aipriv-net
@@ -77269,6 +77320,7 @@ services:
       disable: true
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-immich-net
       - dock-aipriv-net
@@ -86608,6 +86660,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-twenty-net
       - dock-aipriv-net
@@ -87410,6 +87463,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-twenty-net
       - dock-aipriv-net
@@ -89643,6 +89697,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-openproject-net
       - dock-aipriv-net
@@ -90292,6 +90347,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-openproject-net
       - dock-aipriv-net
@@ -93091,6 +93147,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-invoiceshelf-net
       - dock-aipriv-net
@@ -93445,6 +93502,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-invoiceshelf-net
       - dock-aipriv-net
@@ -94518,6 +94576,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     depends_on:
       - dolibarr-db
     networks:
@@ -94701,6 +94760,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     depends_on:
       - dolibarr-db
     networks:
@@ -95049,6 +95109,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     depends_on:
       - dolibarr-db
     networks:
@@ -109986,6 +110047,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-opennotebook-net
       - dock-aipriv-net
@@ -110143,6 +110205,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-opennotebook-net
       - dock-aipriv-net
@@ -110269,6 +110332,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-opennotebook-net
       - dock-aipriv-net
@@ -119167,6 +119231,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-autokb-net
       - dock-aipriv-net
@@ -119294,7 +119359,7 @@ function performAutoKBInstallIntegrations()
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"HSHQSuperAdmin-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"storage_path_id\":3,\"document_filter\":\"owner__id=$paperless_user_id&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"processing_mode\":\"Paperless Content\"}}" \
+    --data "{\"name\":\"HSHQSuperAdmin-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"document_filter\":\"storage_path__id=3&owner__id=$paperless_user_id&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"processing_mode\":\"Paperless Content\"}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/ePaperlessDoclingPlugin")"
   akbCode="${akbRes##*$'\n'}"
@@ -119370,7 +119435,7 @@ function addSharedPipelinesAutoKB()
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"Shared-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"storage_path_id\":2,\"document_filter\":\"tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"processing_mode\":\"Paperless Content\"}}" \
+    --data "{\"name\":\"Shared-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"document_filter\":\"storage_path__id=2&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"processing_mode\":\"Paperless Content\"}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/ePaperlessDoclingPlugin")"
   akbCode="${akbRes##*$'\n'}"
@@ -119379,7 +119444,7 @@ function addSharedPipelinesAutoKB()
   PAPERLESS_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
   docker ps | grep paperless-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
-    jsonbody="{ \"name\": \"notify_akb\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_filename\": null, \"matching_algorithm\": 0 }, { \"type\": 3, \"filter_filename\": null, \"matching_algorithm\": 0 } ], \"actions\": [ { \"type\": 4,\"order\": 0, \"webhook\": { \"url\": \"http://autokb-web/api/subscriptions/$PAPERLESS_SUB_ID/trigger\", \"headers\": { \"Authorization\": \"Bearer $AUTOKB_WEBHOOK_API_KEY\" }, \"include_document\": false } } ] }"
+    jsonbody="{ \"name\": \"notify_akb\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_filename\": null, \"matching_algorithm\": 0 }, { \"type\": 3, \"filter_filename\": null, \"matching_algorithm\": 0 } ], \"actions\": [ { \"type\": 4,\"order\": 0, \"webhook\": { \"url\": \"http://autokb-web/api/subscriptions/$PAPERLESS_SUB_ID/trigger\", \"headers\": { \"Authorization\": \"Bearer $AUTOKB_WEBHOOK_API_KEY\" }, \"include_document\": false } } ] }"
     PAPERLESS_AKB_WORKFLOW_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
     updateConfigVar PAPERLESS_AKB_WORKFLOW_ID "$PAPERLESS_AKB_WORKFLOW_ID"
   fi
@@ -119708,6 +119773,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-suitecrm-net
       - dock-aipriv-net
@@ -120292,6 +120358,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-hedgedoc-net
       - dock-aipriv-net
@@ -120510,6 +120577,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-presenton-net
       - dock-aipriv-net
@@ -122446,6 +122514,8 @@ SecRule SERVER_NAME "@rx ^$SUB_NEXTCLOUD\." "id:9101100,phase:1,pass,nolog,t:non
     SecRule REQUEST_URI "@rx ^/remote\.php/dav/"
 
 SecRule SERVER_NAME "@rx ^$SUB_OPENWEBUI_APP\." "id:9101200,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
+
+SecRule SERVER_NAME "@rx ^$SUB_OPENNOTEBOOK_APP\." "id:9101300,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-behavior.yaml
 # =====================================================================
