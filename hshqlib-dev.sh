@@ -24523,33 +24523,33 @@ function version238Update()
   docker ps | grep -q paperless-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME="Personal Email"
-    PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
+    PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=$(docker exec paperless-app curl -s -X GET "http://localhost:8000/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
     if [ -z "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID" ] || [ "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID" = "null" ]; then
       jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME\", \"color\": \"#299aa5\" }"
-      PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+      PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
     fi
     updateConfigVar PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME"
     updateConfigVar PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID"
     PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME="Shared Email"
-    PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
+    PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=$(docker exec paperless-app curl -s -X GET "http://localhost:8000/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
     if [ -z "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID" ] || [ "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID" = "null" ]; then
       jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME\", \"color\": \"#ff7f7f\" }"
-      PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+      PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
     fi
     updateConfigVar PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME"
     updateConfigVar PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID"
     PAPERLESS_KNOWLEDGEBASE_TAG_NAME="Knowledge Base"
-    PAPERLESS_KNOWLEDGEBASE_TAG_ID=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_KNOWLEDGEBASE_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
+    PAPERLESS_KNOWLEDGEBASE_TAG_ID=$(docker exec paperless-app curl -s -X GET "http://localhost:8000/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_KNOWLEDGEBASE_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
     if [ -z "$PAPERLESS_KNOWLEDGEBASE_TAG_ID" ] || [ "$PAPERLESS_KNOWLEDGEBASE_TAG_ID" = "null" ]; then
       jsonbody="{ \"name\": \"$PAPERLESS_KNOWLEDGEBASE_TAG_NAME\", \"color\": \"#615dff\", \"matching_algorithm\": 6, \"is_insensitive\": true }"
-      PAPERLESS_KNOWLEDGEBASE_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+      PAPERLESS_KNOWLEDGEBASE_TAG_ID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
     fi
     updateConfigVar PAPERLESS_KNOWLEDGEBASE_TAG_NAME "$PAPERLESS_KNOWLEDGEBASE_TAG_NAME"
     updateConfigVar PAPERLESS_KNOWLEDGEBASE_TAG_ID "$PAPERLESS_KNOWLEDGEBASE_TAG_ID"
     PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME="Transcription"
-    PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
+    PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=$(docker exec paperless-app curl -s -X GET "http://localhost:8000/api/document_types/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
     if [ -z "$PAPERLESS_TRANSCRIPTION_DOCTYPE_ID" ] || [ "$PAPERLESS_TRANSCRIPTION_DOCTYPE_ID" = "null" ]; then
-      RESPONSE=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
+      RESPONSE=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/document_types/" \
       -H "Authorization: Token $PAPERLESS_API_TOKEN" \
       -H "Content-Type: application/json" \
       -d "{\"name\": \"$PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME\", \"matching_algorithm\": 6, \"match\": \"\"}")
@@ -30823,7 +30823,7 @@ EOFAU
   docker ps | grep -q paperless-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     jsonbody="username=${addPUUID}&password=$addPUPassword"
-    newuser_paperless_apitoken=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/token/" -H "accept: application/json" -H "Content-Type: application/x-www-form-urlencoded" -d "$jsonbody" | jq -r '.token')
+    newuser_paperless_apitoken=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/token/" -H "accept: application/json" -H "Content-Type: application/x-www-form-urlencoded" -d "$jsonbody" | jq -r '.token')
   fi
   fullName="${addPUFirstName}${addPULastName}"
   cleanName="${fullName//[![:alnum:]]/}"
@@ -30996,27 +30996,27 @@ function addPrimaryUserPaperless()
     return
   fi
   echo "Adding primary user to Paperless..."
-  primary_user_gid=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg LDAP_PRIMARY_USER_GROUP_NAME "$LDAP_PRIMARY_USER_GROUP_NAME" '.results[] | select(.name == $LDAP_PRIMARY_USER_GROUP_NAME) | .id')
+  primary_user_gid=$(docker exec paperless-app curl -s -X GET "http://localhost:8000/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg LDAP_PRIMARY_USER_GROUP_NAME "$LDAP_PRIMARY_USER_GROUP_NAME" '.results[] | select(.name == $LDAP_PRIMARY_USER_GROUP_NAME) | .id')
   if [ -z "$primary_user_gid" ] || ! [[ $primary_user_gid =~ ^[+-]?[0-9]+$ ]]; then
     return
   fi
   jsonbody="{\"username\": \"$addUserPaper_uid\",\"email\": \"$addUserPaper_email\",\"password\": \"$addUserPaper_password\",\"first_name\": \"$addUserPaper_firstname\",\"last_name\": \"$addUserPaper_lastname\",\"is_staff\": false,\"is_active\": true,\"is_superuser\": false,\"groups\": [$primary_user_gid]}"
-  add_user_id=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/users/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  add_user_id=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/users/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   if [ -z "$add_user_id" ] || ! [[ $add_user_id =~ ^[+-]?[0-9]+$ ]]; then
     return
   fi
   jsonbody="{ \"name\": \"${addUserPaper_uid} Email\", \"imap_server\": \"$SMTP_HOSTNAME\", \"imap_port\": 143, \"imap_security\": 3, \"username\": \"$addUserPaper_email\", \"password\": \"$addUserPaper_emailpw\", \"account_type\": 1, \"owner\": $add_user_id, \"user_can_change\": true }"
-  mail_account_id=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  mail_account_id=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   if [ -n "$mail_account_id" ]; then
     jsonbody="{ \"name\": \"${addUserPaper_uid} Email Personal\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 2, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $add_user_id, \"user_can_change\": true, \"stop_processing\": false }"
-    curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+    docker exec paperless-app curl -s -X POST "http://localhost:8000/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
     jsonbody="{ \"name\": \"${addUserPaper_uid} Email Work\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Work\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 2, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $add_user_id, \"user_can_change\": true, \"stop_processing\": false }"
-    curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+    docker exec paperless-app curl -s -X POST "http://localhost:8000/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   fi
   jsonbody="{ \"name\": \"${addUserPaper_uid}_personalconsume\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/${addUserPaper_uid}/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{ \"name\": \"${addUserPaper_uid}_transcribeconsume\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/${addUserPaper_uid}/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id, \"assign_document_type\": $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
 }
 
 function addPrimaryUserAutoKB()
@@ -31067,11 +31067,11 @@ function addPrimaryUserAutoKB()
   PAPERLESS_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
   docker ps | grep paperless-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
-    AKB_WORKFLOW=$(curl -s https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN")
+    AKB_WORKFLOW=$(docker exec paperless-app curl -s -X GET http://localhost:8000/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN")
     if ! [ -z "$AKB_WORKFLOW" ]; then
       NEW_ACTION="{ \"type\": 4, \"order\": 99, \"webhook\": { \"url\": \"http://autokb-web/api/subscriptions/$PAPERLESS_SUB_ID/trigger\", \"headers\": { \"Authorization\": \"Bearer $AUTOKB_WEBHOOK_API_KEY\" }, \"include_document\": false } }"
       UPDATED_WF=$(echo "$AKB_WORKFLOW" | jq --argjson action "$NEW_ACTION" '.actions += [$action]')
-      echo "$UPDATED_WF" | curl -X PUT https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @- > /dev/null 2>&1
+      echo "$UPDATED_WF" | docker exec paperless-app curl -X PUT http://localhost:8000/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @- > /dev/null 2>&1
     fi
   fi
   docker ps | grep -q openwebui-app > /dev/null 2>&1
@@ -41444,6 +41444,8 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_YAMTRACK.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ZULIP_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_BESZEL_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_METABASE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CONTROLR_APP.$HOMESERVER_DOMAIN\n"
@@ -41496,7 +41498,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_KILLBILL_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LINKWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MESHCENTRAL.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_METABASE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MINTHCM.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PAPERLESS_AI_WEB.$HOMESERVER_DOMAIN\n"
@@ -41611,7 +41612,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WAZUH.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WIKIJS.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_BESZEL_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KOPIA_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_TABBYML_APP.$HOMESERVER_DOMAIN\n"
@@ -72114,7 +72114,7 @@ function performIntegrationPaperlessAI()
   sleep 5
   waitForContainerLogString paperless-app 3 60 "celery@paperless-app ready"
   if [ -z "$PAPERLESS_API_TOKEN" ]; then
-    PAPERLESS_API_TOKEN=$(curl -s -X POST https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/token/ -d "username=${PAPERLESS_ADMIN_USERNAME}&password=${PAPERLESS_ADMIN_PASSWORD}" | jq -r .token)
+    PAPERLESS_API_TOKEN=$(docker exec paperless-app curl -s -X POST http://localhost:8000/api/token/ -d "username=${PAPERLESS_ADMIN_USERNAME}&password=${PAPERLESS_ADMIN_PASSWORD}" | jq -r .token)
   fi
   sed -i "s/PAPERLESS_API_TOKEN=.*/PAPERLESS_API_TOKEN=$PAPERLESS_API_TOKEN/" $HSHQ_STACKS_DIR/paperless/ai.env
   dtNow=$(date '+%Y-%m-%d %H:%M:%S')
@@ -72139,7 +72139,7 @@ function performWorkflowsIntegrationPaperless()
   isAPISuccess=false
   while [ $numTries -lt $totalTries ]
   do
-    apiRes=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN")
+    apiRes=$(docker exec paperless-app curl -s -X GET "http://localhost:8000/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN")
     if ! [ -z "$apiRes" ]; then
       isAPISuccess=true
       break
@@ -72153,27 +72153,27 @@ function performWorkflowsIntegrationPaperless()
     return
   fi
   jsonbody="{\"name\": \"$LDAP_PRIMARY_USER_GROUP_NAME\", \"permissions\": [\"view_logentry\",\"view_group\",\"view_user\",\"add_correspondent\",\"change_correspondent\",\"delete_correspondent\",\"view_correspondent\",\"add_document\",\"change_document\",\"delete_document\",\"view_document\",\"view_documenttype\",\"add_note\",\"change_note\",\"delete_note\",\"view_note\",\"add_savedview\",\"change_savedview\",\"delete_savedview\",\"view_savedview\",\"add_sharelink\",\"change_sharelink\",\"delete_sharelink\",\"view_sharelink\",\"add_tag\",\"change_tag\",\"delete_tag\",\"view_tag\",\"add_uisettings\",\"change_uisettings\",\"delete_uisettings\",\"view_uisettings\",\"view_workflow\",\"add_mailaccount\",\"change_mailaccount\",\"delete_mailaccount\",\"view_mailaccount\",\"add_mailrule\",\"change_mailrule\",\"delete_mailrule\",\"view_mailrule\",\"add_processedmail\",\"change_processedmail\",\"delete_processedmail\",\"view_processedmail\"]}"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   pap_doc_types=(
     "Invoice" "Receipt" "Contract" "Bank Statement" "Taxes" "Policy" "Identification" "Medical Record" "Pay Stub" "Certificate" "Quote" "Form" "Report" "Other"
   )
   for cur_doc_type in "${pap_doc_types[@]}";
   do
-    RESPONSE=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
+    RESPONSE=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/document_types/" \
       -H "Authorization: Token $PAPERLESS_API_TOKEN" \
       -H "Content-Type: application/json" \
       -d "{\"name\": \"$cur_doc_type\", \"matching_algorithm\": 6, \"match\": \"\"}")
   done
-  manual_doc_type=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
+  manual_doc_type=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/document_types/" \
       -H "Authorization: Token $PAPERLESS_API_TOKEN" \
       -H "Content-Type: application/json" \
       -d "{\"name\": \"Manual\", \"matching_algorithm\": 6, \"match\": \"\"}" | jq -r '.id')
-  research_doc_type=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
+  research_doc_type=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/document_types/" \
       -H "Authorization: Token $PAPERLESS_API_TOKEN" \
       -H "Content-Type: application/json" \
       -d "{\"name\": \"Research Paper\", \"matching_algorithm\": 6, \"match\": \"\"}" | jq -r '.id')
   PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME="Transcription"
-  PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
+  PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/document_types/" \
       -H "Authorization: Token $PAPERLESS_API_TOKEN" \
       -H "Content-Type: application/json" \
       -d "{\"name\": \"$PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME\", \"matching_algorithm\": 6, \"match\": \"\"}" | jq -r '.id')
@@ -72181,64 +72181,64 @@ function performWorkflowsIntegrationPaperless()
   updateConfigVar PAPERLESS_TRANSCRIPTION_DOCTYPE_ID "$PAPERLESS_TRANSCRIPTION_DOCTYPE_ID"
   PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME="Personal Email"
   jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME\", \"color\": \"#299aa5\" }"
-  PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   updateConfigVar PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME"
   updateConfigVar PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID"
   PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME="Shared Email"
   jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME\", \"color\": \"#ff7f7f\" }"
-  PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   updateConfigVar PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME"
   updateConfigVar PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID"
   PAPERLESS_KNOWLEDGEBASE_TAG_NAME="Knowledge Base"
   jsonbody="{ \"name\": \"$PAPERLESS_KNOWLEDGEBASE_TAG_NAME\", \"color\": \"#615dff\", \"matching_algorithm\": 6, \"is_insensitive\": true }"
-  PAPERLESS_KNOWLEDGEBASE_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  PAPERLESS_KNOWLEDGEBASE_TAG_ID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   updateConfigVar PAPERLESS_KNOWLEDGEBASE_TAG_NAME "$PAPERLESS_KNOWLEDGEBASE_TAG_NAME"
   updateConfigVar PAPERLESS_KNOWLEDGEBASE_TAG_ID "$PAPERLESS_KNOWLEDGEBASE_TAG_ID"
   jsonbody="{\"name\": \"PersonalProcessed\",\"path\": \"PersonalProcessed/{{owner_username}}/PersonalProcessed/{{title}}\",\"match\": \"\",\"matching_algorithm\": 6,\"is_insensitive\": true,\"owner\": $PAPERLESS_ADMIN_ID}"
-  personalPathID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/storage_paths/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r .id)
+  personalPathID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/storage_paths/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r .id)
   if [ -z "$personalPathID" ] || [ $personalPathID -ne 1 ]; then
     echo "ERROR: The assigned ID($personalPathID) for this storage path is unexpected. It should be assigned an id of 1."
   fi
   jsonbody="{\"name\": \"SharedProcessed\",\"path\": \"SharedProcessed/{{title}}\",\"match\": \"\",\"matching_algorithm\": 6,\"is_insensitive\": true,\"owner\": $PAPERLESS_ADMIN_ID}"
-  sharedPathID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/storage_paths/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r .id)
+  sharedPathID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/storage_paths/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r .id)
   if [ -z "$sharedPathID" ] || [ $sharedPathID -ne 2 ]; then
     echo "ERROR: The assigned ID($sharedPathID) for this storage path is unexpected. It should be assigned an id of 2."
   fi
   jsonbody="{\"name\": \"AdminProcessed\",\"path\": \"PersonalProcessed/$NEXTCLOUD_ADMIN_USERNAME/PersonalProcessed/{{title}}\",\"match\": \"\",\"matching_algorithm\": 6,\"is_insensitive\": true,\"owner\": $PAPERLESS_ADMIN_ID}"
-  adminPathID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/storage_paths/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r .id)
+  adminPathID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/storage_paths/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r .id)
   if [ -z "$adminPathID" ] || [ $adminPathID -ne 3 ]; then
     echo "ERROR: The assigned ID($adminPathID) for this storage path is unexpected. It should be assigned an id of 3."
   fi
 
   jsonbody="{ \"name\": \"default_personalprocessed\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 1, \"assign_owner\": null, \"assign_view_users\": [], \"assign_view_groups\": [], \"assign_change_users\": [], \"assign_change_groups\": [], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
 
   jsonbody="{ \"name\": \"sharedconsume\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/SharedConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 2, \"assign_owner\": $PAPERLESS_ADMIN_ID, \"assign_view_users\": [], \"assign_view_groups\": [ 1 ], \"assign_change_users\": [], \"assign_change_groups\": [ 1 ], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{ \"name\": \"sharedemail\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 2, \"assign_owner\": null, \"assign_view_users\": [], \"assign_view_groups\": [ 1 ], \"assign_change_users\": [], \"assign_change_groups\": [ 1 ], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{ \"name\": \"admin_personalconsume\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/$NEXTCLOUD_ADMIN_USERNAME/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{ \"name\": \"admin_transcribeconsume\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/$SPEAKR_ADMIN_USERNAME/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID, \"assign_document_type\": $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{ \"name\": \"assign_kb\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_has_any_document_types\": [$manual_doc_type, $research_doc_type, $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID] }, { \"type\": 3, \"filter_has_any_document_types\": [$manual_doc_type, $research_doc_type, $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID] } ], \"actions\": [ { \"type\": 1, \"assign_tags\": [ $PAPERLESS_KNOWLEDGEBASE_TAG_ID ] } ] }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{ \"name\": \"trigger_ai\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_filename\": null, \"matching_algorithm\": 0 } ], \"actions\": [ { \"type\": 4,\"order\": 0, \"webhook\": { \"url\": \"http://paperless-ai:3000/api/webhook/document\", \"as_json\": true, \"params\": { \"url\": \"{{doc_url}}\" }, \"headers\": { \"x-api-key\": \"$PAPERLESS_AI_API_KEY\" }, \"include_document\": false } } ] }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{ \"name\": \"${EMAIL_JOINT_USERNAME} Email\", \"imap_server\": \"$SMTP_HOSTNAME\", \"imap_port\": 143, \"imap_security\": 3, \"username\": \"$EMAIL_JOINT_EMAIL_ADDRESS\", \"password\": \"$EMAIL_JOINT_PASSWORD\", \"account_type\": 1, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true }"
-  mail_account_id=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  mail_account_id=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   if [ -n "$mail_account_id" ]; then
     jsonbody="{ \"name\": \"${EMAIL_JOINT_USERNAME} Email Personal\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 2, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true, \"stop_processing\": false }"
-    curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+    docker exec paperless-app curl -s -X POST "http://localhost:8000/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
     jsonbody="{ \"name\": \"${EMAIL_JOINT_USERNAME} Email Work\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Work\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 2, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true, \"stop_processing\": false }"
-    curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+    docker exec paperless-app curl -s -X POST "http://localhost:8000/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   fi
 }
 
 function getPaperlessIDFromUsername()
 {
   pap_username="$1"
-  pap_id=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/users/?username__iexact=$pap_username" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r '.results[0].id')
+  pap_id=$(docker exec paperless-app curl -s -X GET "http://localhost:8000/api/users/?username__iexact=$pap_username" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r '.results[0].id')
   echo $pap_id
 }
 
@@ -72246,7 +72246,7 @@ function performIntegrationPaperlessGPT()
 {
   echo "Integrating paperless-gpt, please wait..."
   waitForContainerLogString paperless-app 3 60 "celery@paperless-app ready"
-  PAPERLESS_API_TOKEN=$(curl -s -X POST https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/token/ -d "username=${PAPERLESS_ADMIN_USERNAME}&password=${PAPERLESS_ADMIN_PASSWORD}" | jq -r .token)
+  PAPERLESS_API_TOKEN=$(docker exec paperless-app curl -s -X POST http://localhost:8000/api/token/ -d "username=${PAPERLESS_ADMIN_USERNAME}&password=${PAPERLESS_ADMIN_PASSWORD}" | jq -r .token)
   updateConfigVar PAPERLESS_API_TOKEN $PAPERLESS_API_TOKEN
   updateStackEnv paperless mfUpdateAPITokenPaperless
 }
@@ -72510,7 +72510,7 @@ function mfPaperlessV7AddAI()
     echo "RAG_SERVICE_ENABLED=true" >> $HOME/paperless.env
     echo "ANONYMIZED_TELEMETRY=False" >> $HOME/paperless.env
     echo "PAPERLESS_API_URL=http://paperless-app:8000" >> $HOME/paperless.env
-    PAPERLESS_API_TOKEN=$(curl -s -X POST https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/token/ -d "username=${PAPERLESS_ADMIN_USERNAME}&password=${PAPERLESS_ADMIN_PASSWORD}" | jq -r .token)
+    PAPERLESS_API_TOKEN=$(docker exec paperless-app curl -s -X POST http://localhost:8000/api/token/ -d "username=${PAPERLESS_ADMIN_USERNAME}&password=${PAPERLESS_ADMIN_PASSWORD}" | jq -r .token)
     updateConfigVar PAPERLESS_API_TOKEN $PAPERLESS_API_TOKEN
     echo "PAPERLESS_API_TOKEN=$PAPERLESS_API_TOKEN" >> $HOME/paperless.env
   fi
@@ -83897,7 +83897,7 @@ EOFWZ
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_METABASE $MANAGETLS_METABASE "$is_integrate_hshq" $NETDEFAULT_METABASE "$inner_block"
-  insertSubAuthelia $SUB_METABASE.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_METABASE.$HOMESERVER_DOMAIN bypass
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll metabase "$FMLNAME_METABASE" $USERTYPE_METABASE "https://$SUB_METABASE.$HOMESERVER_DOMAIN" "metabase.png" "$(getHeimdallOrderFromSub $SUB_METABASE $USERTYPE_METABASE)"
     restartAllCaddyContainers
@@ -96349,7 +96349,7 @@ function installBeszel()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_BESZEL_APP $MANAGETLS_BESZEL_APP "$is_integrate_hshq" $NETDEFAULT_BESZEL_APP "$inner_block"
-  insertSubAuthelia $SUB_BESZEL_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_BESZEL_APP.$HOMESERVER_DOMAIN bypass
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll beszel "$FMLNAME_BESZEL_APP" $USERTYPE_BESZEL_APP "https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN" "beszel.png" "$(getHeimdallOrderFromSub $SUB_BESZEL_APP $USERTYPE_BESZEL_APP)"
     restartAllCaddyContainers
@@ -119386,11 +119386,11 @@ function performAutoKBInstallIntegrations()
   PAPERLESS_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
   docker ps | grep paperless-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
-    AKB_WORKFLOW=$(curl -s https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN")
+    AKB_WORKFLOW=$(docker exec paperless-app curl -s -X GET http://localhost:8000/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN")
     if ! [ -z "$AKB_WORKFLOW" ]; then
       NEW_ACTION="{ \"type\": 4, \"order\": 99, \"webhook\": { \"url\": \"http://autokb-web/api/subscriptions/$PAPERLESS_SUB_ID/trigger\", \"headers\": { \"Authorization\": \"Bearer $AUTOKB_WEBHOOK_API_KEY\" }, \"include_document\": false } }"
       UPDATED_WF=$(echo "$AKB_WORKFLOW" | jq --argjson action "$NEW_ACTION" '.actions += [$action]')
-      echo "$UPDATED_WF" | curl -X PUT https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @- > /dev/null 2>&1
+      echo "$UPDATED_WF" | docker exec -i paperless-app curl -X PUT http://localhost:8000/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @- > /dev/null 2>&1
     fi
   fi
   docker ps | grep -q openwebui-app > /dev/null 2>&1
@@ -119463,7 +119463,7 @@ function addSharedPipelinesAutoKB()
   docker ps | grep paperless-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     jsonbody="{ \"name\": \"notify_akb\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_filename\": null, \"matching_algorithm\": 0 }, { \"type\": 3, \"filter_filename\": null, \"matching_algorithm\": 0 } ], \"actions\": [ { \"type\": 4,\"order\": 0, \"webhook\": { \"url\": \"http://autokb-web/api/subscriptions/$PAPERLESS_SUB_ID/trigger\", \"headers\": { \"Authorization\": \"Bearer $AUTOKB_WEBHOOK_API_KEY\" }, \"include_document\": false } } ] }"
-    PAPERLESS_AKB_WORKFLOW_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+    PAPERLESS_AKB_WORKFLOW_ID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
     updateConfigVar PAPERLESS_AKB_WORKFLOW_ID "$PAPERLESS_AKB_WORKFLOW_ID"
   fi
   echo "Creating Nextcloud/Twenty contact sync subscription..."
