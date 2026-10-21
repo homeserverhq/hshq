@@ -4896,7 +4896,8 @@ EOFBU
   else
     echo "Got token, importing backup configuration..."
   fi
-  http --check-status --ignore-stdin POST https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/api/v1/backups "Authorization: Bearer $dtok" @$HOME/hshq-backup.json > /dev/null 2>&1
+  docker exec -i -e DTOK="$dtok" duplicati sh -c 'curl -sS --fail-with-body --max-time 300 -X POST -H "Authorization: Bearer $DTOK" -H "Content-Type: application/json" --data-binary @- http://localhost:8200/api/v1/backups' < "$HOME/hshq-backup.json"
+  #http --check-status --ignore-stdin POST https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/api/v1/backups "Authorization: Bearer $dtok" @$HOME/hshq-backup.json > /dev/null 2>&1
   #docker exec duplicati bash -c "mono /app/duplicati/Duplicati.CommandLine.ConfigurationImporter.exe /config/hshq-backup.json --import-metadata=false --server-datafolder=/config"
   uplRetval=$?
   sudo rm -f $HOME/hshq-backup.json
@@ -4915,7 +4916,8 @@ function getDuplicatiToken()
   dupToken=""
   while [ $curDupTries -lt $maxDupTries ]
   do
-    dupToken=$(http --check-status --ignore-stdin --timeout=300 https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/api/v1/auth/login password=$DUPLICATI_ADMIN_PASSWORD | jq -r .AccessToken)
+    dupToken=$(docker exec -e DUPLICATI_ADMIN_PASSWORD="$DUPLICATI_ADMIN_PASSWORD" duplicati sh -c 'curl -sS --fail-with-body --max-time 300 -X POST -H "Content-Type: application/json" -d "$(jq -nc --arg p "$DUPLICATI_ADMIN_PASSWORD" "{password: \$p}")" http://localhost:8200/api/v1/auth/login' | jq -r .AccessToken)
+    #dupToken=$(http --check-status --ignore-stdin --timeout=300 https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/api/v1/auth/login password=$DUPLICATI_ADMIN_PASSWORD | jq -r .AccessToken)
     if [ $? -eq 0 ] && ! [ -z "$dupToken" ]; then
       isSuccess=true
       break
@@ -32117,7 +32119,7 @@ function loadPinnedDockerImages()
   IMG_OPENRAG_FRONTEND=mirror.gcr.io/langflowai/openrag-frontend:0.4.0
   IMG_OPENRAG_LANGFLOW=mirror.gcr.io/langflowai/openrag-langflow:0.4.0
   IMG_VOICEBOX_APP=hshq/voicebox:v1
-  IMG_OPENCODE_APP=ghcr.io/joostme/opencode-docker:2.3.1
+  IMG_OPENCODE_APP=ghcr.io/homeserverhq/opencode-docker:v3.1.0
   IMG_OPENCODE_PLAYWRIGHT=mcr.microsoft.com/playwright/mcp:v0.0.70
   IMG_OPENSKILLS_APP=hshq/openskills:v1
   IMG_EMAILCLASSIFIERAI_APP=ghcr.io/homeserverhq/emailclassifierai:v6
@@ -32484,7 +32486,7 @@ function getScriptStackVersion()
     voicebox)
       echo "v1" ;;
     opencode)
-      echo "v1" ;;
+      echo "v2" ;;
     openskills)
       echo "v1" ;;
     emailclassifierai)
@@ -118191,7 +118193,13 @@ function performUpdateOpenCode()
     1)
       newVer=v1
       curImageList=ghcr.io/joostme/opencode-docker:2.3.1,mcr.microsoft.com/playwright/mcp:v0.0.70
-      image_update_map[0]="ghcr.io/joostme/opencode-docker:2.3.1,ghcr.io/joostme/opencode-docker:2.3.1"
+      image_update_map[0]="ghcr.io/joostme/opencode-docker:2.3.1,ghcr.io/homeserverhq/opencode-docker:v3.1.0"
+      image_update_map[1]="mcr.microsoft.com/playwright/mcp:v0.0.70,mcr.microsoft.com/playwright/mcp:v0.0.70"
+    ;;
+    2)
+      newVer=v2
+      curImageList=ghcr.io/homeserverhq/opencode-docker:v3.1.0,mcr.microsoft.com/playwright/mcp:v0.0.70
+      image_update_map[0]="ghcr.io/homeserverhq/opencode-docker:v3.1.0,ghcr.io/homeserverhq/opencode-docker:v3.1.0"
       image_update_map[1]="mcr.microsoft.com/playwright/mcp:v0.0.70,mcr.microsoft.com/playwright/mcp:v0.0.70"
     ;;
     *)
