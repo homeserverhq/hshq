@@ -31895,18 +31895,18 @@ function loadPinnedDockerImages()
   IMG_MAIL_RELAY_RSPAMD=ghcr.io/homeserverhq/mail-relay-rspamd:v1
   IMG_MAIL_RELAY_CLAMAV=clamav/clamav:1.2.1
   IMG_MAIL_RELAY_UNBOUND=mvance/unbound:1.19.0
-  IMG_MAILU_ADMIN=ghcr.io/mailu/admin:2024.06.54
-  IMG_MAILU_ANTISPAM=ghcr.io/mailu/rspamd:2024.06.54
+  IMG_MAILU_ADMIN=ghcr.io/mailu/admin:2024.06.65
+  IMG_MAILU_ANTISPAM=ghcr.io/mailu/rspamd:2024.06.65
   IMG_MAILU_ANTIVIRUS=mirror.gcr.io/clamav/clamav:1.5.3
-  IMG_MAILU_FETCHMAIL=ghcr.io/mailu/fetchmail:2024.06.54
-  IMG_MAILU_FRONT=ghcr.io/mailu/nginx:2024.06.54
-  IMG_MAILU_IMAP=ghcr.io/mailu/dovecot:2024.06.54
-  IMG_MAILU_OLETOOLS=ghcr.io/mailu/oletools:2024.06.54
-  IMG_MAILU_SMTP=ghcr.io/mailu/postfix:2024.06.54
+  IMG_MAILU_FETCHMAIL=ghcr.io/mailu/fetchmail:2024.06.65
+  IMG_MAILU_FRONT=ghcr.io/mailu/nginx:2024.06.65
+  IMG_MAILU_IMAP=ghcr.io/mailu/dovecot:2024.06.65
+  IMG_MAILU_OLETOOLS=ghcr.io/mailu/oletools:2024.06.65
+  IMG_MAILU_SMTP=ghcr.io/mailu/postfix:2024.06.65
   IMG_MAILU_TIKA=mirror.gcr.io/apache/tika:3.3.1.0-full
-  IMG_MAILU_UNBOUND=ghcr.io/mailu/unbound:2024.06.54
-  IMG_MAILU_WEBDAV=ghcr.io/mailu/radicale:2024.06.54
-  IMG_MAILU_WEBMAIL=ghcr.io/mailu/webmail:2024.06.54
+  IMG_MAILU_UNBOUND=ghcr.io/mailu/unbound:2024.06.65
+  IMG_MAILU_WEBDAV=ghcr.io/mailu/radicale:2024.06.65
+  IMG_MAILU_WEBMAIL=ghcr.io/mailu/webmail:2024.06.65
   IMG_MASTODON_APP=mirror.gcr.io/tootsuite/mastodon:v4.5.2
   IMG_MASTODON_STREAMING=mirror.gcr.io/tootsuite/mastodon-streaming:v4.5.2
   IMG_MATRIX_ELEMENT=mirror.gcr.io/vectorim/element-web:v1.12.6
@@ -32160,7 +32160,7 @@ function getScriptStackVersion()
     openldap)
       echo "v1" ;;
     mailu)
-      echo "v8" ;;
+      echo "v9" ;;
     wazuh)
       echo "v8" ;;
     collabora)
@@ -51326,20 +51326,20 @@ function performUpdateMailu()
       image_update_map[12]="mirror.gcr.io/apache/tika:3.2.2.0-full,mirror.gcr.io/apache/tika:3.2.3.0-full"
     ;;
     7)
-      newVer=v8
+      newVer=v9
       curImageList=mirror.gcr.io/redis:8.4.0-bookworm,ghcr.io/mailu/admin:2024.06.45,ghcr.io/mailu/rspamd:2024.06.45,mirror.gcr.io/clamav/clamav:1.4.3-67,ghcr.io/mailu/fetchmail:2024.06.45,ghcr.io/mailu/nginx:2024.06.45,ghcr.io/mailu/dovecot:2024.06.45,ghcr.io/mailu/oletools:2024.06.45,ghcr.io/mailu/postfix:2024.06.45,ghcr.io/mailu/unbound:2024.06.45,ghcr.io/mailu/radicale:2024.06.45,ghcr.io/mailu/webmail:2024.06.45,mirror.gcr.io/apache/tika:3.2.3.0-full
       image_update_map[0]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[1]="ghcr.io/mailu/admin:2024.06.45,ghcr.io/mailu/admin:2024.06.54"
-      image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.45,ghcr.io/mailu/rspamd:2024.06.54"
+      image_update_map[1]="ghcr.io/mailu/admin:2024.06.45,ghcr.io/mailu/admin:2024.06.65"
+      image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.45,ghcr.io/mailu/rspamd:2024.06.65"
       image_update_map[3]="mirror.gcr.io/clamav/clamav:1.4.3-67,mirror.gcr.io/clamav/clamav:1.5.3"
-      image_update_map[4]="ghcr.io/mailu/fetchmail:2024.06.45,ghcr.io/mailu/fetchmail:2024.06.54"
-      image_update_map[5]="ghcr.io/mailu/nginx:2024.06.45,ghcr.io/mailu/nginx:2024.06.54"
-      image_update_map[6]="ghcr.io/mailu/dovecot:2024.06.45,ghcr.io/mailu/dovecot:2024.06.54"
-      image_update_map[7]="ghcr.io/mailu/oletools:2024.06.45,ghcr.io/mailu/oletools:2024.06.54"
-      image_update_map[8]="ghcr.io/mailu/postfix:2024.06.45,ghcr.io/mailu/postfix:2024.06.54"
-      image_update_map[9]="ghcr.io/mailu/unbound:2024.06.45,ghcr.io/mailu/unbound:2024.06.54"
-      image_update_map[10]="ghcr.io/mailu/radicale:2024.06.45,ghcr.io/mailu/radicale:2024.06.54"
-      image_update_map[11]="ghcr.io/mailu/webmail:2024.06.45,ghcr.io/mailu/webmail:2024.06.54"
+      image_update_map[4]="ghcr.io/mailu/fetchmail:2024.06.45,ghcr.io/mailu/fetchmail:2024.06.65"
+      image_update_map[5]="ghcr.io/mailu/nginx:2024.06.45,ghcr.io/mailu/nginx:2024.06.65"
+      image_update_map[6]="ghcr.io/mailu/dovecot:2024.06.45,ghcr.io/mailu/dovecot:2024.06.65"
+      image_update_map[7]="ghcr.io/mailu/oletools:2024.06.45,ghcr.io/mailu/oletools:2024.06.65"
+      image_update_map[8]="ghcr.io/mailu/postfix:2024.06.45,ghcr.io/mailu/postfix:2024.06.65"
+      image_update_map[9]="ghcr.io/mailu/unbound:2024.06.45,ghcr.io/mailu/unbound:2024.06.65"
+      image_update_map[10]="ghcr.io/mailu/radicale:2024.06.45,ghcr.io/mailu/radicale:2024.06.65"
+      image_update_map[11]="ghcr.io/mailu/webmail:2024.06.45,ghcr.io/mailu/webmail:2024.06.65"
       image_update_map[12]="mirror.gcr.io/apache/tika:3.2.3.0-full,mirror.gcr.io/apache/tika:3.2.3.0-full"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
@@ -51347,20 +51347,37 @@ function performUpdateMailu()
       return
     ;;
     8)
-      newVer=v8
+      newVer=v9
       curImageList=mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/mailu/admin:2024.06.54,ghcr.io/mailu/rspamd:2024.06.54,mirror.gcr.io/clamav/clamav:1.5.3,ghcr.io/mailu/fetchmail:2024.06.54,ghcr.io/mailu/nginx:2024.06.54,ghcr.io/mailu/dovecot:2024.06.54,ghcr.io/mailu/oletools:2024.06.54,ghcr.io/mailu/postfix:2024.06.54,ghcr.io/mailu/unbound:2024.06.54,ghcr.io/mailu/radicale:2024.06.54,ghcr.io/mailu/webmail:2024.06.54,mirror.gcr.io/apache/tika:3.3.1.0-full
       image_update_map[0]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[1]="ghcr.io/mailu/admin:2024.06.54,ghcr.io/mailu/admin:2024.06.54"
-      image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.54,ghcr.io/mailu/rspamd:2024.06.54"
+      image_update_map[1]="ghcr.io/mailu/admin:2024.06.54,ghcr.io/mailu/admin:2024.06.65"
+      image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.54,ghcr.io/mailu/rspamd:2024.06.65"
       image_update_map[3]="mirror.gcr.io/clamav/clamav:1.5.3,mirror.gcr.io/clamav/clamav:1.5.3"
-      image_update_map[4]="ghcr.io/mailu/fetchmail:2024.06.54,ghcr.io/mailu/fetchmail:2024.06.54"
-      image_update_map[5]="ghcr.io/mailu/nginx:2024.06.54,ghcr.io/mailu/nginx:2024.06.54"
-      image_update_map[6]="ghcr.io/mailu/dovecot:2024.06.54,ghcr.io/mailu/dovecot:2024.06.54"
-      image_update_map[7]="ghcr.io/mailu/oletools:2024.06.54,ghcr.io/mailu/oletools:2024.06.54"
-      image_update_map[8]="ghcr.io/mailu/postfix:2024.06.54,ghcr.io/mailu/postfix:2024.06.54"
-      image_update_map[9]="ghcr.io/mailu/unbound:2024.06.54,ghcr.io/mailu/unbound:2024.06.54"
-      image_update_map[10]="ghcr.io/mailu/radicale:2024.06.54,ghcr.io/mailu/radicale:2024.06.54"
-      image_update_map[11]="ghcr.io/mailu/webmail:2024.06.54,ghcr.io/mailu/webmail:2024.06.54"
+      image_update_map[4]="ghcr.io/mailu/fetchmail:2024.06.54,ghcr.io/mailu/fetchmail:2024.06.65"
+      image_update_map[5]="ghcr.io/mailu/nginx:2024.06.54,ghcr.io/mailu/nginx:2024.06.65"
+      image_update_map[6]="ghcr.io/mailu/dovecot:2024.06.54,ghcr.io/mailu/dovecot:2024.06.65"
+      image_update_map[7]="ghcr.io/mailu/oletools:2024.06.54,ghcr.io/mailu/oletools:2024.06.65"
+      image_update_map[8]="ghcr.io/mailu/postfix:2024.06.54,ghcr.io/mailu/postfix:2024.06.65"
+      image_update_map[9]="ghcr.io/mailu/unbound:2024.06.54,ghcr.io/mailu/unbound:2024.06.65"
+      image_update_map[10]="ghcr.io/mailu/radicale:2024.06.54,ghcr.io/mailu/radicale:2024.06.65"
+      image_update_map[11]="ghcr.io/mailu/webmail:2024.06.54,ghcr.io/mailu/webmail:2024.06.65"
+      image_update_map[12]="mirror.gcr.io/apache/tika:3.3.1.0-full,mirror.gcr.io/apache/tika:3.3.1.0-full"
+    ;;
+    9)
+      newVer=v9
+      curImageList=mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/mailu/admin:2024.06.65,ghcr.io/mailu/rspamd:2024.06.65,mirror.gcr.io/clamav/clamav:1.5.3,ghcr.io/mailu/fetchmail:2024.06.65,ghcr.io/mailu/nginx:2024.06.65,ghcr.io/mailu/dovecot:2024.06.65,ghcr.io/mailu/oletools:2024.06.65,ghcr.io/mailu/postfix:2024.06.65,ghcr.io/mailu/unbound:2024.06.65,ghcr.io/mailu/radicale:2024.06.65,ghcr.io/mailu/webmail:2024.06.65,mirror.gcr.io/apache/tika:3.3.1.0-full
+      image_update_map[0]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[1]="ghcr.io/mailu/admin:2024.06.65,ghcr.io/mailu/admin:2024.06.65"
+      image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.65,ghcr.io/mailu/rspamd:2024.06.65"
+      image_update_map[3]="mirror.gcr.io/clamav/clamav:1.5.3,mirror.gcr.io/clamav/clamav:1.5.3"
+      image_update_map[4]="ghcr.io/mailu/fetchmail:2024.06.65,ghcr.io/mailu/fetchmail:2024.06.65"
+      image_update_map[5]="ghcr.io/mailu/nginx:2024.06.65,ghcr.io/mailu/nginx:2024.06.65"
+      image_update_map[6]="ghcr.io/mailu/dovecot:2024.06.65,ghcr.io/mailu/dovecot:2024.06.65"
+      image_update_map[7]="ghcr.io/mailu/oletools:2024.06.65,ghcr.io/mailu/oletools:2024.06.65"
+      image_update_map[8]="ghcr.io/mailu/postfix:2024.06.65,ghcr.io/mailu/postfix:2024.06.65"
+      image_update_map[9]="ghcr.io/mailu/unbound:2024.06.65,ghcr.io/mailu/unbound:2024.06.65"
+      image_update_map[10]="ghcr.io/mailu/radicale:2024.06.65,ghcr.io/mailu/radicale:2024.06.65"
+      image_update_map[11]="ghcr.io/mailu/webmail:2024.06.65,ghcr.io/mailu/webmail:2024.06.65"
       image_update_map[12]="mirror.gcr.io/apache/tika:3.3.1.0-full,mirror.gcr.io/apache/tika:3.3.1.0-full"
     ;;
     *)
