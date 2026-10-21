@@ -76579,6 +76579,7 @@ function installImmich()
   mkdir $HSHQ_STACKS_DIR/immich/app
   mkdir $HSHQ_STACKS_DIR/immich/config
   chmod 777 $HSHQ_STACKS_DIR/immich/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/immich
   mkdir $HSHQ_NONBACKUP_DIR/immich/cache
   initServicesCredentials
   set +e
