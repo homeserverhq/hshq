@@ -56499,6 +56499,7 @@ function installWikijs()
   sleep 3
   addReadOnlyUserToDatabase Wiki.js postgres wikijs-db $WIKIJS_DATABASE_NAME $WIKIJS_DATABASE_USER $WIKIJS_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/wikijs/dbexport $WIKIJS_DATABASE_READONLYUSER $WIKIJS_DATABASE_READONLYUSER_PASSWORD
   addMCPServerLiteLLM "wikijs" "wjs" "http://wikijs-mcp:80/mcp" http none ""
+  initializeSiteWikijs
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WIKIJS.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -56518,7 +56519,6 @@ function installWikijs()
     insertEnableSvcAll wikijs "$FMLNAME_WIKIJS" $USERTYPE_WIKIJS "https://$SUB_WIKIJS.$HOMESERVER_DOMAIN" "wikijs.png" "$(getHeimdallOrderFromSub $SUB_WIKIJS $USERTYPE_WIKIJS)"
     restartAllCaddyContainers
   fi
-  initializeSiteWikijs
 }
 
 function outputConfigWikijs()
@@ -56649,7 +56649,7 @@ EOFWJ
 function initializeSiteWikijs()
 {
   set +e
-  curl -X POST https://$SUB_WIKIJS.$HOMESERVER_DOMAIN/finalize \
+  docker exec wikijs-web curl -sS -X POST http://localhost:3000/finalize \
   -H 'Content-Type: application/json' \
   -d "{
     \"adminEmail\": \"$WIKIJS_ADMIN_EMAIL_ADDRESS\",
