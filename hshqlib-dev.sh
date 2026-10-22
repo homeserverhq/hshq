@@ -31828,7 +31828,7 @@ function loadPinnedDockerImages()
   IMG_DBGATE_APP=mirror.gcr.io/dbgate/dbgate:6.7.3-alpine
   IMG_DISCOURSE=mirror.gcr.io/bitnami/discourse:3.4.7
   IMG_DNSMASQ=mirror.gcr.io/jpillora/dnsmasq:1.1
-  IMG_DOLIBARR_APP=mirror.gcr.io/dolibarr/dolibarr:23.0.3-php8.2
+  IMG_DOLIBARR_APP=ghcr.io/homeserverhq/dolibarr:v23.0.4
   IMG_DOLIBARR_MCP=ghcr.io/homeserverhq/dolibarr-mcp:v2
   IMG_DOZZLE=mirror.gcr.io/amir20/dozzle:v6.1.1
   IMG_DRAWIO_PLANTUML=mirror.gcr.io/jgraph/plantuml-server
@@ -32348,7 +32348,7 @@ function getScriptStackVersion()
     invoiceninja)
       echo "v4" ;;
     dolibarr)
-      echo "v4" ;;
+      echo "v5" ;;
     n8n)
       echo "v2" ;;
     automatisch)
@@ -94917,10 +94917,18 @@ function performUpdateDolibarr()
       return
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/dolibarr/dolibarr:23.0.3-php8.2,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/dolibarr-mcp:v2
       image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
-      image_update_map[1]="mirror.gcr.io/dolibarr/dolibarr:23.0.3-php8.2,mirror.gcr.io/dolibarr/dolibarr:23.0.3-php8.2"
+      image_update_map[1]="mirror.gcr.io/dolibarr/dolibarr:23.0.3-php8.2,ghcr.io/homeserverhq/dolibarr:v23.0.4"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[3]="ghcr.io/homeserverhq/dolibarr-mcp:v2,ghcr.io/homeserverhq/dolibarr-mcp:v2"
+    ;;
+    5)
+      newVer=v5
+      curImageList=mirror.gcr.io/mariadb:10.7.3,ghcr.io/homeserverhq/dolibarr:v23.0.4,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/dolibarr-mcp:v2
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="ghcr.io/homeserverhq/dolibarr:v23.0.4,ghcr.io/homeserverhq/dolibarr:v23.0.4"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[3]="ghcr.io/homeserverhq/dolibarr-mcp:v2,ghcr.io/homeserverhq/dolibarr-mcp:v2"
     ;;
