@@ -118651,10 +118651,10 @@ function installHermesAgent()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  #buildOrPullImage $(getScriptImageByContainerName hermes-agent-camofox)
-  #if [ $? -ne 0 ]; then
-  #  return 1
-  #fi
+  buildOrPullImage $(getScriptImageByContainerName hermes-agent-camofox)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   buildOrPullImage $(getScriptImageByContainerName hermes-agent-webui)
   if [ $? -ne 0 ]; then
     return 1
@@ -134910,10 +134910,11 @@ CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 $add_ri
 CADDY_HSHQ_PRIVATE_IPS=\${$priv_ip_net} $(getPrivateIPRangesCaddy $bind_ip)
 CADDY_HSHQ_CA_URL=$ca_url
 CADDY_HSHQ_BIND_IP=\${$ipVarName}
+CADDY_STACK_NAME=$caddy_net_name
 ENABLE_ACCESS_LOGGING=false
 ENABLE_CROWDSEC_BOUNCER=false
 ENABLE_CROWDSEC_APPSEC=false
-CADDY_STACK_NAME=$caddy_net_name
+CROWDSEC_API_KEY=$CROWDSEC_API_KEY
 EOFCE
       ;;
     primary)
@@ -135106,10 +135107,11 @@ CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
 CADDY_HSHQ_PRIVATE_IPS=
 CADDY_HSHQ_CA_URL=$ca_url
 CADDY_HSHQ_BIND_IP=$bind_ip
+CADDY_STACK_NAME=$caddy_net_name
 ENABLE_ACCESS_LOGGING=false
 ENABLE_CROWDSEC_BOUNCER=false
 ENABLE_CROWDSEC_APPSEC=false
-CADDY_STACK_NAME=$caddy_net_name
+CROWDSEC_API_KEY=$CROWDSEC_API_KEY
 EOFCE
       ;;
     other)
@@ -135191,10 +135193,11 @@ CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
 CADDY_HSHQ_PRIVATE_IPS=
 CADDY_HSHQ_CA_URL=$ca_url
 CADDY_HSHQ_BIND_IP=$bind_ip
+CADDY_STACK_NAME=$caddy_net_name
 ENABLE_ACCESS_LOGGING=false
 ENABLE_CROWDSEC_BOUNCER=false
 ENABLE_CROWDSEC_APPSEC=false
-CADDY_STACK_NAME=$caddy_net_name
+CROWDSEC_API_KEY=$CROWDSEC_API_KEY
 EOFCE
       ;;
     *)
