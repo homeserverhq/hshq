@@ -31934,7 +31934,7 @@ function loadPinnedDockerImages()
   IMG_ODOO_APP=mirror.gcr.io/odoo:19.0-20251121
   IMG_OFELIA=mirror.gcr.io/mcuadros/ofelia:0.3.18
   IMG_OMBI_APP=linuxserver/ombi:4.47.1
-  IMG_OPENLDAP_MANAGER=wheelybird/ldap-user-manager:v1.11
+  IMG_OPENLDAP_MANAGER=mirror.gcr.io/wheelybird/luminary:v2.2.1
   IMG_OPENLDAP_PHP=osixia/phpldapadmin:stable
   IMG_OPENLDAP_SERVER=osixia/openldap:1.5.0
   IMG_OPENPROJECT_APP=mirror.gcr.io/openproject/openproject:17.6.0-slim
@@ -32160,7 +32160,7 @@ function getScriptStackVersion()
     sysutils)
       echo "v11" ;;
     openldap)
-      echo "v1" ;;
+      echo "v2" ;;
     mailu)
       echo "v9" ;;
     wazuh)
@@ -50257,7 +50257,6 @@ networks:
     external: true
 
 EOFLC
-
   cat <<EOFLD > $HOME/openldap.env
 TZ=\${PORTAINER_TZ}
 UID=$USERID
@@ -50312,7 +50311,6 @@ SMTP_USE_TLS=true
 SERVER_CERT_FILENAME=ldapmanager.crt
 SERVER_KEY_FILENAME=ldapmanager.key
 CA_CERT_FILENAME=${CERTS_ROOT_CA_NAME}.crt
-LDAP_TLS_CACERT_FILE=/opt/ssl/${CERTS_ROOT_CA_NAME}.crt
 LDAP_ADMIN_BIND_DN_FILE=/run/secrets/ldap_admin_bind_dn
 LDAP_ADMIN_BIND_PWD_FILE=/run/secrets/ldap_admin_bind_password
 SMTP_USERNAME_FILE=/run/secrets/smtp_username
@@ -50320,7 +50318,6 @@ SMTP_PASSWORD_FILE=/run/secrets/smtp_password
 NEW_ACCOUNT_EMAIL_BODY=<h1>New Account Created</h1><p>You've been set up with an account for {organisation}.  Your credentials are:</p><p></p><p>Login: {login}<br>Password: {password}</p><p></p><p>You should log into <a href={change_password_url}>{change_password_url}</a> and change the password as soon as possible.</p>
 
 EOFLD
-
   cat <<EOFLD > $HSHQ_STACKS_DIR/openldap/ldapmanager/ldap.conf
 TLS_CERT /opt/ssl/ldapmanager.crt
 TLS_KEY /opt/ssl/ldapmanager.key
@@ -50328,13 +50325,11 @@ TLS_CACERT /opt/ssl/${CERTS_ROOT_CA_NAME}.crt
 TLS_REQCERT demand
 TLS_REQSAN demand
 EOFLD
-
   cat <<EOFLI > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/initdbscript.sh
 #!/bin/sh
 
 ldapadd -f /tmp/initconfig/initdb.ldif -D $LDAP_ADMIN_BIND_DN -Z -w $LDAP_ADMIN_BIND_PASSWORD
 EOFLI
-
   cat <<EOFLB > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/initdb.ldif
 # People
 dn: ou=people,${LDAP_BASE_DN}
@@ -50414,7 +50409,6 @@ cn: $LDAP_BASIC_USER_GROUP_NAME
 uniqueMember: uid=${LDAP_ADMIN_USER_USERNAME},ou=people,${LDAP_BASE_DN}
 gidNumber: 2004
 EOFLB
-
 }
 
 function performUpdateOpenLDAP()
@@ -50425,11 +50419,21 @@ function performUpdateOpenLDAP()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=osixia/openldap:1.5.0,osixia/phpldapadmin:stable,wheelybird/ldap-user-manager:v1.11
       image_update_map[0]="osixia/openldap:1.5.0,osixia/openldap:1.5.0"
       image_update_map[1]="osixia/phpldapadmin:stable,osixia/phpldapadmin:stable"
-      image_update_map[2]="wheelybird/ldap-user-manager:v1.11,wheelybird/ldap-user-manager:v1.11"
+      image_update_map[2]="wheelybird/ldap-user-manager:v1.11,mirror.gcr.io/wheelybird/luminary:v2.2.1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfOpenLDAPV2Update
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=osixia/openldap:1.5.0,osixia/phpldapadmin:stable,mirror.gcr.io/wheelybird/luminary:v2.2.1
+      image_update_map[0]="osixia/openldap:1.5.0,osixia/openldap:1.5.0"
+      image_update_map[1]="osixia/phpldapadmin:stable,osixia/phpldapadmin:stable"
+      image_update_map[2]="mirror.gcr.io/wheelybird/luminary:v2.2.1,mirror.gcr.io/wheelybird/luminary:v2.2.1"
     ;;
     *)
       is_upgrade_error=true
@@ -50439,6 +50443,11 @@ function performUpdateOpenLDAP()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfOpenLDAPV2Update()
+{
+  sed -i '/^LDAP_TLS_CACERT_FILE=.*/d' $HOME/openldap.env
 }
 
 # Mailu
@@ -83906,6 +83915,7 @@ EOFWZ
     checkAddDBConnection true metabase "$FMLNAME_METABASE" postgres metabase-db $METABASE_DATABASE_NAME $METABASE_DATABASE_USER $METABASE_DATABASE_USER_PASSWORD
   fi
   sleep 3
+  set +e
   setup_token=$(curl -s -X GET -H "Content-Type: application/json" https://$SUB_METABASE.$HOMESERVER_DOMAIN/api/session/properties | jq -r '.["setup-token"]')
   curl -s -X POST -H "Content-type: application/json" \
   https://$SUB_METABASE.$HOMESERVER_DOMAIN/api/setup -d '{
@@ -83928,6 +83938,7 @@ EOFWZ
   startStopStack metabase start
   waitForContainerLogString metabase-app 5 120 "Starting listener"
   echo "Metabase configured!"
+  docker container restart openwebui-mcpo > /dev/null 2>&1
 }
 
 function outputConfigMetabase()
@@ -83988,6 +83999,7 @@ services:
       - dock-dbs-net
       - dock-internalmail-net
       - dock-ldap-net
+      - dock-aipriv-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -84008,6 +84020,9 @@ networks:
     external: true
   dock-ldap-net:
     name: dock-ldap
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
     external: true
   int-metabase-net:
     driver: bridge
@@ -101236,6 +101251,7 @@ services:
     networks:
       - int-openwebui-net
       - dock-aipriv-net
+      - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -101617,6 +101633,7 @@ services:
     networks:
       - int-openwebui-net
       - dock-aipriv-net
+      - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
