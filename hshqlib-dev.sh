@@ -4797,9 +4797,9 @@ EOF
   sudo cp /etc/fstab /etc/fstab.old
   echo "# Backup Drive" | sudo tee -a /etc/fstab > /dev/null 2>&1
   if [ -z "$newPartID" ]; then
-    echo "$newPart $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
+    echo "$newPart $HSHQ_BACKUP_DIR ext4 defaults,nofail,x-systemd.device-timeout=15 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
   else
-    echo "UUID=$newPartID $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
+    echo "UUID=$newPartID $HSHQ_BACKUP_DIR ext4 defaults,nofail,x-systemd.device-timeout=15 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
   fi
   sudo systemctl daemon-reload > /dev/null 2>&1
   sudo findmnt --verify | grep "Success, no errors or warnings detected" > /dev/null 2>&1
@@ -5012,9 +5012,9 @@ EOF
   sudo cp /etc/fstab /etc/fstab.old
   echo "# Backup Drive" | sudo tee -a /etc/fstab > /dev/null 2>&1
   if [ -z "$newPartID" ]; then
-    echo "$newPart $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
+    echo "$newPart $HSHQ_BACKUP_DIR ext4 defaults,nofail,x-systemd.device-timeout=15 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
   else
-    echo "UUID=$newPartID $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
+    echo "UUID=$newPartID $HSHQ_BACKUP_DIR ext4 defaults,nofail,x-systemd.device-timeout=15 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
   fi
   sudo systemctl daemon-reload > /dev/null 2>&1
   sudo findmnt --verify | grep "Success, no errors or warnings detected" > /dev/null 2>&1
@@ -19416,7 +19416,7 @@ user_pref("dom.event.clipboardevents.enabled",			false);
 // https://hg.mozilla.org/mozilla-central/rev/2f9f8ea4b9c3
 // https://github.com/pyllyukko/user.js/issues/287
 // NOTICE: Disabling clipboard operations will break legitimate JS-based "copy to clipboard" functionality
-user_pref("dom.allow_cut_copy", false);
+user_pref("dom.allow_cut_copy", true);
 
 // PREF: Disable speech recognition
 // https://dvcs.w3.org/hg/speech-api/raw-file/tip/speechapi.html
@@ -31838,11 +31838,11 @@ function loadPinnedDockerImages()
   IMG_DUPLICATI=mirror.gcr.io/linuxserver/duplicati:v2.3.0.4_stable_2026-07-09-ls300
   IMG_EASYAPPOINTMENTS_APP=mirror.gcr.io/alextselegidis/easyappointments:1.5.2
   IMG_ESPOCRM_APP=mirror.gcr.io/espocrm/espocrm:9.2.5-apache
-  IMG_EXCALIDRAW_SERVER=mirror.gcr.io/excalidraw/excalidraw-room
-  IMG_EXCALIDRAW_STORAGE=mirror.gcr.io/kiliandeca/excalidraw-storage-backend
-  IMG_EXCALIDRAW_WEB=hshq/excalidraw-web:v1
-  IMG_EXCALIDRAW_AI=hshq/excalidraw-ai:v1
-  IMG_EXCALIDRAW_MCP=hshq/excalidraw-mcp:v1
+  IMG_EXCALIDRAW_SERVER=ghcr.io/homeserverhq/excalidraw-room:v0.1
+  IMG_EXCALIDRAW_STORAGE=ghcr.io/homeserverhq/excalidraw-storage-backend:v0.1
+  IMG_EXCALIDRAW_WEB=ghcr.io/homeserverhq/excalidraw:v0.1
+  IMG_EXCALIDRAW_AI=ghcr.io/homeserverhq/excalidraw-canvas:v0.1
+  IMG_EXCALIDRAW_MCP=ghcr.io/homeserverhq/excalidraw-mcp:v0.1
   IMG_FILEBROWSER=mirror.gcr.io/filebrowser/filebrowser:v2.50.0
   IMG_FILEDROP=filedrop/filedrop:1
   IMG_FIREFLY_APP=mirror.gcr.io/fireflyiii/core:version-6.4.9
@@ -32058,7 +32058,7 @@ function loadPinnedDockerImages()
   IMG_LOBECHAT_APP=mirror.gcr.io/lobehub/lobe-chat-database:1.143.3
   IMG_INVOKEAI_APP=ghcr.io/invoke-ai/invokeai:6.12-cpu
   IMG_RAGFLOW_INFINITY=mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3
-  IMG_RAGFLOW_APP=ghcr.io/homeserverhq/ragflow:v0.27.1
+  IMG_RAGFLOW_APP=ghcr.io/homeserverhq/ragflow:v0.27.3.1
   IMG_RAGFLOW_SANDBOX=mirror.gcr.io/infiniflow/sandbox-executor-manager:latest
   IMG_RAGFLOW_SB_NODEJS=mirror.gcr.io/infiniflow/sandbox-base-nodejs:latest
   IMG_RAGFLOW_SB_PYTHON=mirror.gcr.io/infiniflow/sandbox-base-python:latest
@@ -32416,7 +32416,7 @@ function getScriptStackVersion()
     invokeai)
       echo "v1" ;;
     ragflow)
-      echo "v4" ;;
+      echo "v5" ;;
     tabbyml)
       echo "v1" ;;
     deepwikiopen)
@@ -35037,9 +35037,9 @@ LIGHTRAG_DATABASE_READONLYUSER_PASSWORD=
 LIGHTRAG_TOKEN_SECRET=
 LIGHTRAG_API_KEY=
 LIGHTRAG_QDRANT_API_KEY=
-LIGHTRAG_MEMGRAPH_DATABASE=
-LIGHTRAG_MEMGRAPH_USER=
-LIGHTRAG_MEMGRAPH_PASSWORD=
+LIGHTRAG_NEO4J_DATABASE=
+LIGHTRAG_NEO4J_USER=
+LIGHTRAG_NEO4J_PASSWORD=
 # LightRAG (Service Details) END
 
 # OpenSERP (Service Details) BEGIN
@@ -40128,17 +40128,17 @@ function initServicesCredentials()
     LIGHTRAG_QDRANT_API_KEY=$(pwgen -c -n 32 1)
     updateConfigVar LIGHTRAG_QDRANT_API_KEY $LIGHTRAG_QDRANT_API_KEY
   fi
-  if [ -z "$LIGHTRAG_MEMGRAPH_DATABASE" ]; then
-    LIGHTRAG_MEMGRAPH_DATABASE=memgraph
-    updateConfigVar LIGHTRAG_MEMGRAPH_DATABASE $LIGHTRAG_MEMGRAPH_DATABASE
+  if [ -z "$LIGHTRAG_NEO4J_DATABASE" ]; then
+    LIGHTRAG_NEO4J_DATABASE=neo4j
+    updateConfigVar LIGHTRAG_NEO4J_DATABASE $LIGHTRAG_NEO4J_DATABASE
   fi
-  if [ -z "$LIGHTRAG_MEMGRAPH_USER" ]; then
-    LIGHTRAG_MEMGRAPH_USER=lightrag-user
-    updateConfigVar LIGHTRAG_MEMGRAPH_USER $LIGHTRAG_MEMGRAPH_USER
+  if [ -z "$LIGHTRAG_NEO4J_USER" ]; then
+    LIGHTRAG_NEO4J_USER=lightrag-user
+    updateConfigVar LIGHTRAG_NEO4J_USER $LIGHTRAG_NEO4J_USER
   fi
-  if [ -z "$LIGHTRAG_MEMGRAPH_PASSWORD" ]; then
-    LIGHTRAG_MEMGRAPH_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar LIGHTRAG_MEMGRAPH_PASSWORD $LIGHTRAG_MEMGRAPH_PASSWORD
+  if [ -z "$LIGHTRAG_NEO4J_PASSWORD" ]; then
+    LIGHTRAG_NEO4J_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LIGHTRAG_NEO4J_PASSWORD $LIGHTRAG_NEO4J_PASSWORD
   fi
   if [ -z "$SURICATA_ADMIN_USERNAME" ]; then
     SURICATA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_suricata"
@@ -44594,8 +44594,8 @@ function getScriptImageByContainerName()
     "lightrag-qdrant")
       container_image=mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged
       ;;
-    "lightrag-memgraph")
-      container_image=mirror.gcr.io/memgraph/memgraph-mage:3.12.0
+    "lightrag-neo4j")
+      container_image=mirror.gcr.io/neo4j:5.26.32-community
       ;;
     "openserp-app")
       container_image=$IMG_OPENSERP_APP
@@ -44766,7 +44766,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Presenton" "PRESENTON_INIT_ENV=false,PRESENTON_ADMIN_USERNAME=,PRESENTON_ADMIN_EMAIL_ADDRESS=,PRESENTON_ADMIN_PASSWORD=,PRESENTON_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "BasicMemory" "BASICMEMORY_INIT_ENV=false,BASICMEMORY_ADMIN_USERNAME=,BASICMEMORY_ADMIN_EMAIL_ADDRESS=,BASICMEMORY_ADMIN_PASSWORD=,BASICMEMORY_DATABASE_NAME=,BASICMEMORY_DATABASE_USER=,BASICMEMORY_DATABASE_USER_PASSWORD=,BASICMEMORY_DATABASE_READONLYUSER=,BASICMEMORY_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Cognee" "COGNEE_INIT_ENV=false,COGNEE_ADMIN_USERNAME=,COGNEE_ADMIN_EMAIL_ADDRESS=,COGNEE_ADMIN_PASSWORD=,COGNEE_DATABASE_NAME=,COGNEE_DATABASE_USER=,COGNEE_DATABASE_USER_PASSWORD=,COGNEE_DATABASE_READONLYUSER=,COGNEE_DATABASE_READONLYUSER_PASSWORD=,COGNEE_REDIS_PASSWORD=,COGNEE_JWT_SECRET=,COGNEE_VERIFICATION_TOKEN_SECRET=,COGNEE_RESET_PASSWORD_TOKEN_SECRET=" $CONFIG_FILE false
-  checkAddServiceToConfig "LightRAG" "LIGHTRAG_INIT_ENV=false,LIGHTRAG_ADMIN_USERNAME=,LIGHTRAG_ADMIN_EMAIL_ADDRESS=,LIGHTRAG_ADMIN_PASSWORD=,LIGHTRAG_DATABASE_NAME=,LIGHTRAG_DATABASE_USER=,LIGHTRAG_DATABASE_USER_PASSWORD=,LIGHTRAG_DATABASE_READONLYUSER=,LIGHTRAG_DATABASE_READONLYUSER_PASSWORD=,LIGHTRAG_TOKEN_SECRET=,LIGHTRAG_API_KEY=,LIGHTRAG_QDRANT_API_KEY=,LIGHTRAG_MEMGRAPH_DATABASE=,LIGHTRAG_MEMGRAPH_USER=,LIGHTRAG_MEMGRAPH_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "LightRAG" "LIGHTRAG_INIT_ENV=false,LIGHTRAG_ADMIN_USERNAME=,LIGHTRAG_ADMIN_EMAIL_ADDRESS=,LIGHTRAG_ADMIN_PASSWORD=,LIGHTRAG_DATABASE_NAME=,LIGHTRAG_DATABASE_USER=,LIGHTRAG_DATABASE_USER_PASSWORD=,LIGHTRAG_DATABASE_READONLYUSER=,LIGHTRAG_DATABASE_READONLYUSER_PASSWORD=,LIGHTRAG_TOKEN_SECRET=,LIGHTRAG_API_KEY=,LIGHTRAG_QDRANT_API_KEY=,LIGHTRAG_NEO4J_DATABASE=,LIGHTRAG_NEO4J_USER=,LIGHTRAG_NEO4J_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "OpenSERP" "OPENSERP_INIT_ENV=false" $CONFIG_FILE false
   checkAddServiceToConfig "Suricata" "SURICATA_INIT_ENV=false,SURICATA_ADMIN_USERNAME=,SURICATA_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "CrowdSec" "CROWDSEC_INIT_ENV=false,CROWDSEC_ADMIN_USERNAME=,CROWDSEC_ADMIN_PASSWORD=,CROWDSEC_LAPI_USERNAME=,CROWDSEC_LAPI_PASSWORD=,CROWDSEC_API_KEY=" $CONFIG_FILE false
@@ -44827,6 +44827,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "RAGFlow" "RAGFLOW_DATABASE_ROOT_PASSWORD=,RAGFLOW_ADMIN_API_KEY=,RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "AutoKB" "AUTOKB_ENCRYPTION_SALT=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "SysUtils" "ALLOY_ADMIN_USERNAME=,ALLOY_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "LightRAG" "LIGHTRAG_NEO4J_DATABASE=,LIGHTRAG_NEO4J_USER=,LIGHTRAG_NEO4J_PASSWORD=" $CONFIG_FILE false
   initServicesCredentials
 }
 
@@ -65191,6 +65192,8 @@ ENABLE_CANVAS_SYNC=true
 MCP_HTTP_HOST=0.0.0.0
 MCP_PORT=3100
 MCP_TRANSPORT=http
+DISABLED_TOOLS=get_canvas_screenshot,export_to_image
+EXCALIDRAW_PUBLIC_URL=https://$SUB_EXCALIDRAW_AI.$HOMESERVER_DOMAIN/
 EOFEX
 }
 
@@ -65271,14 +65274,24 @@ function performUpdateExcalidraw()
       return
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=mirror.gcr.io/excalidraw/excalidraw-room,mirror.gcr.io/kiliandeca/excalidraw-storage-backend,hshq/excalidraw-web:v1,mirror.gcr.io/valkey/valkey:alpine3.23,hshq/excalidraw-ai:v1,hshq/excalidraw-mcp:v1
-      image_update_map[0]="mirror.gcr.io/excalidraw/excalidraw-room,mirror.gcr.io/excalidraw/excalidraw-room"
-      image_update_map[1]="mirror.gcr.io/kiliandeca/excalidraw-storage-backend,mirror.gcr.io/kiliandeca/excalidraw-storage-backend"
-      image_update_map[2]="hshq/excalidraw-web:v1,hshq/excalidraw-web:v1"
+      image_update_map[0]="mirror.gcr.io/excalidraw/excalidraw-room,ghcr.io/homeserverhq/excalidraw-room:v0.1"
+      image_update_map[1]="mirror.gcr.io/kiliandeca/excalidraw-storage-backend,ghcr.io/homeserverhq/excalidraw-storage-backend:v0.1"
+      image_update_map[2]="hshq/excalidraw-web:v1,ghcr.io/homeserverhq/excalidraw:v0.1"
       image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[4]="hshq/excalidraw-ai:v1,hshq/excalidraw-ai:v1"
-      image_update_map[5]="hshq/excalidraw-mcp:v1,hshq/excalidraw-mcp:v1"
+      image_update_map[4]="hshq/excalidraw-ai:v1,ghcr.io/homeserverhq/excalidraw-canvas:v0.1"
+      image_update_map[5]="hshq/excalidraw-mcp:v1,ghcr.io/homeserverhq/excalidraw-mcp:v0.1"
+    ;;
+    6)
+      newVer=v6
+      curImageList=ghcr.io/homeserverhq/excalidraw-room:v0.1,ghcr.io/homeserverhq/excalidraw-storage-backend:v0.1,ghcr.io/homeserverhq/excalidraw:v0.1,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/excalidraw-canvas:v0.1,ghcr.io/homeserverhq/excalidraw-mcp:v0.1
+      image_update_map[0]="ghcr.io/homeserverhq/excalidraw-room:v0.1,ghcr.io/homeserverhq/excalidraw-room:v0.1"
+      image_update_map[1]="ghcr.io/homeserverhq/excalidraw-storage-backend:v0.1,ghcr.io/homeserverhq/excalidraw-storage-backend:v0.1"
+      image_update_map[2]="ghcr.io/homeserverhq/excalidraw:v0.1,ghcr.io/homeserverhq/excalidraw:v0.1"
+      image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[4]="ghcr.io/homeserverhq/excalidraw-canvas:v0.1,ghcr.io/homeserverhq/excalidraw-canvas:v0.1"
+      image_update_map[5]="ghcr.io/homeserverhq/excalidraw-mcp:v0.1,ghcr.io/homeserverhq/excalidraw-mcp:v0.1"
     ;;
     *)
       is_upgrade_error=true
@@ -101002,10 +101015,10 @@ function installOpenWebUI()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  buildOrPullImage $(getScriptImageByContainerName openwebui-pipelines)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
+  #buildOrPullImage $(getScriptImageByContainerName openwebui-pipelines)
+  #if [ $? -ne 0 ]; then
+  #  return 1
+  #fi
   buildOrPullImage $(getScriptImageByContainerName openwebui-mcp)
   if [ $? -ne 0 ]; then
     return 1
@@ -101260,24 +101273,24 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/mcpo:/app/config
 
-  openwebui-pipelines:
-    image: $(getScriptImageByContainerName openwebui-pipelines)
-    container_name: openwebui-pipelines
-    hostname: openwebui-pipelines
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - int-openwebui-net
-      - dock-aipriv-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-openwebui-pipelines:/app/pipelines
+#  openwebui-pipelines:
+#    image: $(getScriptImageByContainerName openwebui-pipelines)
+#    container_name: openwebui-pipelines
+#    hostname: openwebui-pipelines
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    networks:
+#      - int-openwebui-net
+#      - dock-aipriv-net
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+#      - v-openwebui-pipelines:/app/pipelines
 
   openwebui-mcp:
     image: $(getScriptImageByContainerName openwebui-mcp)
@@ -103319,9 +103332,9 @@ services:
       - /etc/ssl/certs/ca-certificates.crt:/ragflow/.venv/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:9380/api/v1/system/healthz"]
-      interval: 10s
+      interval: 60s
       timeout: 10s
-      retries: 120
+      retries: 5
       start_period: 60s
 
   ragflow-minio:
@@ -103466,11 +103479,20 @@ function performUpdateRAGFlow()
       image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,ghcr.io/homeserverhq/ragflow:v0.27.1,ghcr.io/homeserverhq/minio:v1.0,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/mariadb:11.4.12"
       image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3"
-      image_update_map[2]="ghcr.io/homeserverhq/ragflow:v0.27.1,ghcr.io/homeserverhq/ragflow:v0.27.1"
+      image_update_map[2]="ghcr.io/homeserverhq/ragflow:v0.27.1,ghcr.io/homeserverhq/ragflow:v0.27.3.1"
+      image_update_map[3]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
+      image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    5)
+      newVer=v5
+      curImageList=mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,ghcr.io/homeserverhq/ragflow:v0.27.3.1,ghcr.io/homeserverhq/minio:v1.0,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/mariadb:11.4.12"
+      image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3"
+      image_update_map[2]="ghcr.io/homeserverhq/ragflow:v0.27.3.1,ghcr.io/homeserverhq/ragflow:v0.27.3.1"
       image_update_map[3]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
       image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
@@ -121333,7 +121355,7 @@ function installLightRAG()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  buildOrPullImage $(getScriptImageByContainerName lightrag-memgraph)
+  buildOrPullImage $(getScriptImageByContainerName lightrag-neo4j)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -121344,7 +121366,7 @@ function installLightRAG()
   mkdir $HSHQ_STACKS_DIR/lightrag/inputs
   mkdir $HSHQ_STACKS_DIR/lightrag/prompts
   mkdir $HSHQ_STACKS_DIR/lightrag/qdrant
-  mkdir $HSHQ_STACKS_DIR/lightrag/memgraph
+  mkdir $HSHQ_STACKS_DIR/lightrag/neo4j
   mkdir $HSHQ_STACKS_DIR/lightrag/db
   mkdir $HSHQ_STACKS_DIR/lightrag/dbexport
   chmod 777 $HSHQ_STACKS_DIR/lightrag/dbexport
@@ -121464,7 +121486,7 @@ services:
     depends_on:
       - lightrag-db
       - lightrag-qdrant
-      - lightrag-memgraph
+      - lightrag-neo4j
     networks:
       - int-lightrag-net
       - dock-proxy-net
@@ -121501,10 +121523,10 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - v-lightrag-qdrant:/qdrant/storage
 
-  lightrag-memgraph:
-    image: $(getScriptImageByContainerName lightrag-memgraph)
-    container_name: lightrag-memgraph
-    hostname: lightrag-memgraph
+  lightrag-neo4j:
+    image: $(getScriptImageByContainerName lightrag-neo4j)
+    container_name: lightrag-neo4j
+    hostname: lightrag-neo4j
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -121517,7 +121539,15 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-lightrag-memgraph:/var/lib/memgraph
+      - v-lightrag-neo4j:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'PORT_HEX="\$(printf ''%04X'' 7687)"; cat /proc/net/tcp /proc/net/tcp6 2>/dev/null | grep -q ":\$\${PORT_HEX} "'
+      interval: 10s
+      timeout: 3s
+      retries: 120
+      start_period: 10s
 
 volumes:
   v-lightrag-qdrant:
@@ -121526,12 +121556,12 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/lightrag/qdrant
-  v-lightrag-memgraph:
+  v-lightrag-neo4j:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/lightrag/memgraph
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/lightrag/neo4j
 
 networks:
   dock-proxy-net:
@@ -121616,21 +121646,22 @@ LLM_BINDING_API_KEY=$LITELLM_MASTER_KEY
 LLM_MODEL=LongContext
 LIGHTRAG_KV_STORAGE=PGKVStorage
 LIGHTRAG_DOC_STATUS_STORAGE=PGDocStatusStorage
-LIGHTRAG_GRAPH_STORAGE=MemgraphStorage
+LIGHTRAG_GRAPH_STORAGE=Neo4JStorage
 LIGHTRAG_VECTOR_STORAGE=QdrantVectorDBStorage
 POSTGRES_URI=postgresql://$LIGHTRAG_DATABASE_USER:$LIGHTRAG_DATABASE_USER_PASSWORD@lightrag-db:5432/$LIGHTRAG_DATABASE_NAME
 QDRANT_URL=http://lightrag-qdrant:6333
 QDRANT_API_KEY=$LIGHTRAG_QDRANT_API_KEY
 QDRANT__SERVICE__API_KEY=$LIGHTRAG_QDRANT_API_KEY
-MEMGRAPH_URI=bolt://lightrag-memgraph:7687
-MEMGRAPH_USER=$LIGHTRAG_MEMGRAPH_USER
-MEMGRAPH_USERNAME=$LIGHTRAG_MEMGRAPH_USER
-MEMGRAPH_PASSWORD=$LIGHTRAG_MEMGRAPH_PASSWORD
-MEMGRAPH_DATABASE=$LIGHTRAG_MEMGRAPH_DATABASE
+NEO4J_URI=bolt://lightrag-neo4j:7687
+NEO4J_USERNAME=$LIGHTRAG_NEO4J_USER
+NEO4J_PASSWORD=$LIGHTRAG_NEO4J_PASSWORD
+NEO4J_AUTH=$LIGHTRAG_NEO4J_USER/$LIGHTRAG_NEO4J_PASSWORD
+NEO4J_dbms_default__database=$LIGHTRAG_NEO4J_DATABASE
+NEO4J_server_config_strict__validation_enabled=false
 LIGHTRAG_SETUP_POSTGRES_DEPLOYMENT=docker
 LIGHTRAG_SETUP_REDIS_DEPLOYMENT=docker
 LIGHTRAG_SETUP_QDRANT_DEPLOYMENT=docker
-LIGHTRAG_SETUP_MEMGRAPH_DEPLOYMENT=docker
+LIGHTRAG_SETUP_NEO4J_DEPLOYMENT=docker
 EOFMT
   cp $HOME/lightrag.env $HSHQ_STACKS_DIR/lightrag/config/lightrag.env
 }
@@ -121644,11 +121675,11 @@ function performUpdateLightRAG()
   case "$perform_stack_ver" in
     1)
       newVer=v1
-      curImageList=mirror.gcr.io/pgvector/pgvector:pg18,ghcr.io/hkuds/lightrag:v1.5.6,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,mirror.gcr.io/memgraph/memgraph-mage:3.12.0
+      curImageList=mirror.gcr.io/pgvector/pgvector:pg18,ghcr.io/hkuds/lightrag:v1.5.6,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,mirror.gcr.io/neo4j:5.26.32-community
       image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg18,mirror.gcr.io/pgvector/pgvector:pg18"
       image_update_map[1]="ghcr.io/hkuds/lightrag:v1.5.6,ghcr.io/hkuds/lightrag:v1.5.6"
       image_update_map[2]="mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged"
-      image_update_map[3]="mirror.gcr.io/memgraph/memgraph-mage:3.12.0,mirror.gcr.io/memgraph/memgraph-mage:3.12.0"
+      image_update_map[3]="mirror.gcr.io/neo4j:5.26.32-community,mirror.gcr.io/neo4j:5.26.32-community"
     ;;
     *)
       is_upgrade_error=true
@@ -122545,7 +122576,7 @@ SecAction "id:900030,phase:1,pass,nolog,t:none,ctl:ruleRemoveById=920180,ctl:rul
 
 SecRule SERVER_NAME "@rx ^$SUB_TWENTY\." "id:9101001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=932230;ARGS:json.query,ctl:ruleRemoveTargetById=932235;ARGS:json.query,ctl:ruleRemoveTargetById=932260;ARGS:json.query,ctl:ruleRemoveTargetById=932370;ARGS:json.query,ctl:ruleRemoveTargetById=932115;ARGS:json.query,ctl:ruleRemoveTargetById=932125;ARGS:json.query,ctl:ruleRemoveTargetById=942290;ARGS:json.query"
 
-SecRule SERVER_NAME "@rx ^$SUB_WIKIJS\." "id:9101002,phase:1,pass,nolog,ctl:ruleRemoveTargetById=932230;ARGS:json.0.query,ctl:ruleRemoveTargetById=932235;ARGS:json.0.query,ctl:ruleRemoveTargetById=932115;ARGS:json.0.query,ctl:ruleRemoveTargetById=932160;ARGS:json.0.query"
+SecRule SERVER_NAME "@rx ^$SUB_WIKIJS\." "id:9101002,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
 
 SecRule SERVER_NAME "@rx ^$SUB_BESZEL_APP\." "id:9101003,phase:1,pass,nolog,ctl:ruleRemoveTargetById=942100;ARGS"
 
@@ -122564,9 +122595,15 @@ SecRule SERVER_NAME "@rx ^$SUB_DUPLICATI\." "id:9101009,phase:1,pass,nolog,ctl:r
 SecRule SERVER_NAME "@rx ^$SUB_NEXTCLOUD\." "id:9101100,phase:1,pass,nolog,t:none,chain,ctl:requestBodyAccess=Off"
     SecRule REQUEST_URI "@rx ^/remote\.php/dav/"
 
+SecRule SERVER_NAME "@rx ^$SUB_NEXTCLOUD\." "id:9101101,phase:1,pass,nolog,ctl:ruleRemoveTargetById=932260;ARGS:requesttoken"
+
 SecRule SERVER_NAME "@rx ^$SUB_OPENWEBUI_APP\." "id:9101200,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
 
 SecRule SERVER_NAME "@rx ^$SUB_OPENNOTEBOOK_APP\." "id:9101300,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
+
+SecRule SERVER_NAME "@rx ^$SUB_OPENCODE_CODESERVER\." "id:9101400,phase:1,pass,nolog,ctl:ruleRemoveTargetById=932260;ARGS:path"
+
+SecRule SERVER_NAME "@rx ^($SUB_EXCALIDRAW_WEB|$SUB_EXCALIDRAW_AI)\." "id:9101500,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-behavior.yaml
 # =====================================================================
