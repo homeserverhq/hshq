@@ -31971,8 +31971,8 @@ function loadPinnedDockerImages()
   IMG_REVOLT_CROND=ghcr.io/revoltchat/crond:20250807-1
   IMG_REVOLT_PUSHD=ghcr.io/revoltchat/pushd:20250807-1
   IMG_SABNZBD=mirror.gcr.io/linuxserver/sabnzbd:4.5.5
-  IMG_SEARXNG_APP=ghcr.io/searxng/searxng:2026.7.12-c19d86faa
-  IMG_SEARXNG_MCP=hshq/searxng-mcp:v1
+  IMG_SEARXNG_APP=ghcr.io/searxng/searxng:2026.10.27-cb74e7f81
+  IMG_SEARXNG_MCP=ghcr.io/homeserverhq/mcp-searxng-enhanced:v1.0
   IMG_SERVARR_SONARR=mirror.gcr.io/linuxserver/sonarr:4.0.16
   IMG_SERVARR_RADARR=mirror.gcr.io/linuxserver/radarr:6.1.0-nightly
   IMG_SERVARR_LIDARR=mirror.gcr.io/linuxserver/lidarr:3.1.0
@@ -32044,8 +32044,8 @@ function loadPinnedDockerImages()
   IMG_FIRECRAWL_API=ghcr.io/firecrawl/firecrawl:latest
   IMG_LIBRECHAT_APP=ghcr.io/danny-avila/librechat:v0.8.1
   IMG_LIBRECHAT_RAGAPI=ghcr.io/danny-avila/librechat-rag-api-dev-lite:v0.7.0
-  IMG_CRAWL4AI_APP=mirror.gcr.io/unclecode/crawl4ai:0.8.6
-  IMG_CRAWL4AI_PROXY=ghcr.io/lennyerik/crawl4ai-proxy:latest
+  IMG_CRAWL4AI_APP=ghcr.io/homeserverhq/crawl4ai:v0.9.5
+  IMG_CRAWL4AI_PROXY=ghcr.io/homeserverhq/crawl4ai-proxy:v0.1
   IMG_OLLAMA_SERVER=mirror.gcr.io/ollama/ollama:0.20.5
   IMG_OPENWEBUI_APP=ghcr.io/homeserverhq/open-webui:v0.12.0
   IMG_OPENWEBUI_OPENTERMINAL=ghcr.io/open-webui/open-terminal:0.11.34
@@ -32064,7 +32064,7 @@ function loadPinnedDockerImages()
   IMG_RAGFLOW_SB_PYTHON=mirror.gcr.io/infiniflow/sandbox-base-python:latest
   IMG_TABBYML_APP=mirror.gcr.io/tabbyml/tabby:0.31.2
   IMG_DEEPWIKIOPEN_APP=ghcr.io/asyncfuncai/deepwiki-open:sha-d48f5bc
-  IMG_DOCLING_APP=hshq/docling-serve:v1.31.0
+  IMG_DOCLING_APP=hshq/docling-serve:v1.38.1
   IMG_DIFY_SSRF=mirror.gcr.io/ubuntu/squid:latest
   IMG_DIFY_API=mirror.gcr.io/langgenius/dify-api:1.11.2
   IMG_DIFY_PLUGIND=mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local
@@ -32092,10 +32092,10 @@ function loadPinnedDockerImages()
   IMG_MEMOS_APP=mirror.gcr.io/neosmemo/memos:0.25.3
   IMG_SILLYTAVERN=ghcr.io/sillytavern/sillytavern:1.15.0
   IMG_LEMONADE_SERVER=ghcr.io/lemonade-sdk/lemonade-server:v9.2.0
-  IMG_SPEAKR_APP=ghcr.io/homeserverhq/speakr:v0.10.5
+  IMG_SPEAKR_APP=ghcr.io/homeserverhq/speakr:v0.10.16
   IMG_SPEAKR_WHISPERX=mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1
-  IMG_INSANELYFASTWHISPER_APP=hshq/insanelyfastwhisper:v1
-  IMG_IVBOX_APP=hshq/ivbox:v1
+  IMG_INSANELYFASTWHISPER_APP=hshq/insanelyfastwhisper:v2
+  IMG_IVBOX_APP=ghcr.io/homeserverhq/ivbox:v0.1.0
   IMG_MONICA_APP=hshq/monica-app:v1
   IMG_MONICA_WEB=hshq/monica-web:v1
   IMG_AFFINE_APP=ghcr.io/toeverything/affine:0.25.7
@@ -32104,10 +32104,10 @@ function loadPinnedDockerImages()
   IMG_SUPERSET_APP=mirror.gcr.io/apache/superset:6.0.0
   IMG_SUPERSET_WORKER=mirror.gcr.io/apache/superset:dev
   IMG_SUPERSET_WEBSOCKET=mirror.gcr.io/apache/superset:6.0.0-websocket
-  IMG_KOKORO_TTS=hshq/kokoro-tts:v1
+  IMG_KOKORO_TTS=ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0
   IMG_KOKORO_WEB=ghcr.io/remsky/kokoro-fastapi-ui:v0.1.0
   IMG_CHATTERBOX_APP=hshq/chatterbox:v1
-  IMG_LITELLM_APP=ghcr.io/berriai/litellm:v1.92.0
+  IMG_LITELLM_APP=ghcr.io/homeserverhq/litellm:v1.106.4
   IMG_LANGFUSE_WORKER=langfuse/langfuse-worker:3.213.0
   IMG_LANGFUSE_APP=mirror.gcr.io/langfuse/langfuse:3.213.0
   IMG_SKYVERN_API=mirror.gcr.io/skyvern/skyvern:v1.0.13
@@ -32182,7 +32182,7 @@ function getScriptStackVersion()
     dozzle)
       echo "v7" ;;
     searxng)
-      echo "v11" ;;
+      echo "v12" ;;
     jellyfin)
       echo "v7" ;;
     filebrowser)
@@ -32404,7 +32404,7 @@ function getScriptStackVersion()
     librechat)
       echo "v1" ;;
     crawl4ai)
-      echo "v2" ;;
+      echo "v3" ;;
     ollama)
       echo "v2" ;;
     openwebui)
@@ -32422,7 +32422,7 @@ function getScriptStackVersion()
     deepwikiopen)
       echo "v1" ;;
     docling)
-      echo "v2" ;;
+      echo "v3" ;;
     dify)
       echo "v2" ;;
     mindsdb)
@@ -32454,11 +32454,11 @@ function getScriptStackVersion()
     lemonade)
       echo "v1" ;;
     speakr)
-      echo "v4" ;;
+      echo "v5" ;;
     insanelyfastwhisper)
-      echo "v1" ;;
+      echo "v2" ;;
     ivbox)
-      echo "v1" ;;
+      echo "v2" ;;
     monica)
       echo "v1" ;;
     affine)
@@ -32468,11 +32468,11 @@ function getScriptStackVersion()
     superset)
       echo "v1" ;;
     kokoro)
-      echo "v1" ;;
+      echo "v2" ;;
     chatterbox)
       echo "v1" ;;
     litellm)
-      echo "v2" ;;
+      echo "v3" ;;
     langfuse)
       echo "v3" ;;
     skyvern)
@@ -44886,6 +44886,9 @@ function buildOrPullImage()
     "hshq/docling-serve:v1.31.0")
       buildImageDoclingV2
       ;;
+    "hshq/docling-serve:v1.38.1")
+      buildImageDoclingV3
+      ;;
     "hshq/ente-server:v1")
       buildImageEnteServerV1
       ;;
@@ -44894,6 +44897,9 @@ function buildOrPullImage()
       ;;
     "hshq/insanelyfastwhisper:v1")
       buildImageInsanelyFastWhisperV1
+      ;;
+    "hshq/insanelyfastwhisper:v2")
+      buildImageInsanelyFastWhisperV2
       ;;
     "hshq/ivbox:v1")
       buildImageIVBoxV1
@@ -45006,6 +45012,9 @@ function checkIsCustomImage()
       echo "true"
       ;;
     "hshq/insanelyfastwhisper:v1")
+      echo "true"
+      ;;
+    "hshq/insanelyfastwhisper:v2")
       echo "true"
       ;;
     "hshq/ivbox:v1")
@@ -58715,12 +58724,20 @@ function performUpdateSearxNG()
       return
     ;;
     11)
-      newVer=v11
+      newVer=v12
       curImageList=ghcr.io/searxng/searxng:2026.7.12-c19d86faa,mirror.gcr.io/caddy:2.11.4,mirror.gcr.io/valkey/valkey:alpine3.23,hshq/searxng-mcp:v1
-      image_update_map[0]="ghcr.io/searxng/searxng:2026.7.12-c19d86faa,ghcr.io/searxng/searxng:2026.7.12-c19d86faa"
+      image_update_map[0]="ghcr.io/searxng/searxng:2026.7.12-c19d86faa,ghcr.io/searxng/searxng:2026.10.27-cb74e7f81"
       image_update_map[1]="mirror.gcr.io/caddy:2.11.4,mirror.gcr.io/caddy:2.11.4"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[3]="hshq/searxng-mcp:v1,hshq/searxng-mcp:v1"
+      image_update_map[3]="hshq/searxng-mcp:v1,ghcr.io/homeserverhq/mcp-searxng-enhanced:v1.0"
+    ;;
+    12)
+      newVer=v12
+      curImageList=ghcr.io/searxng/searxng:2026.10.27-cb74e7f81,mirror.gcr.io/caddy:2.11.4,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/mcp-searxng-enhanced:v1.0
+      image_update_map[0]="ghcr.io/searxng/searxng:2026.10.27-cb74e7f81,ghcr.io/searxng/searxng:2026.10.27-cb74e7f81"
+      image_update_map[1]="mirror.gcr.io/caddy:2.11.4,mirror.gcr.io/caddy:2.11.4"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[3]="ghcr.io/homeserverhq/mcp-searxng-enhanced:v1.0,ghcr.io/homeserverhq/mcp-searxng-enhanced:v1.0"
     ;;
     *)
       is_upgrade_error=true
@@ -100793,10 +100810,19 @@ function performUpdateCrawl4AI()
       image_update_map[1]="ghcr.io/lennyerik/crawl4ai-proxy:latest,ghcr.io/lennyerik/crawl4ai-proxy:latest"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/unclecode/crawl4ai:0.8.6,ghcr.io/lennyerik/crawl4ai-proxy:latest
-      image_update_map[0]="mirror.gcr.io/unclecode/crawl4ai:0.8.6,mirror.gcr.io/unclecode/crawl4ai:0.8.6"
-      image_update_map[1]="ghcr.io/lennyerik/crawl4ai-proxy:latest,ghcr.io/lennyerik/crawl4ai-proxy:latest"
+      image_update_map[0]="mirror.gcr.io/unclecode/crawl4ai:0.8.6,ghcr.io/homeserverhq/crawl4ai:v0.9.5"
+      image_update_map[1]="ghcr.io/lennyerik/crawl4ai-proxy:latest,ghcr.io/homeserverhq/crawl4ai-proxy:v0.1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateCrawl4AIV3
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=ghcr.io/homeserverhq/crawl4ai:v0.9.5,ghcr.io/homeserverhq/crawl4ai-proxy:v0.1
+      image_update_map[0]="ghcr.io/homeserverhq/crawl4ai:v0.9.5,ghcr.io/homeserverhq/crawl4ai:v0.9.5"
+      image_update_map[1]="ghcr.io/homeserverhq/crawl4ai-proxy:v0.1,ghcr.io/homeserverhq/crawl4ai-proxy:v0.1"
     ;;
     *)
       is_upgrade_error=true
@@ -100806,6 +100832,19 @@ function performUpdateCrawl4AI()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfUpdateCrawl4AIV3()
+{
+  rm -f $HOME/crawl4ai.env
+  cat <<EOFMT > $HOME/crawl4ai.env
+TZ=\${PORTAINER_TZ}
+OPENAI_BASE_URL=http://litellm-proxy:4000
+OPENAI_API_KEY=$LITELLM_MASTER_KEY
+LLM_PROVIDER=Chat
+LLM_TEMPERATURE=0.5
+CRAWL4AI_URL=http://crawl4ai-app:11235
+EOFMT
 }
 
 # Ollama
@@ -104570,15 +104609,21 @@ function performUpdateDocling()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v3
       curImageList=hshq/docling:v1,mirror.gcr.io/valkey/valkey:alpine3.23
-      image_update_map[0]="hshq/docling:v1,hshq/docling-serve:v1.31.0"
+      image_update_map[0]="hshq/docling:v1,hshq/docling-serve:v1.38.1"
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=hshq/docling-serve:v1.31.0,mirror.gcr.io/valkey/valkey:alpine3.23
-      image_update_map[0]="hshq/docling-serve:v1.31.0,hshq/docling-serve:v1.31.0"
+      image_update_map[0]="hshq/docling-serve:v1.31.0,hshq/docling-serve:v1.38.1"
+      image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    3)
+      newVer=v3
+      curImageList=hshq/docling-serve:v1.38.1,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="hshq/docling-serve:v1.38.1,hshq/docling-serve:v1.38.1"
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
@@ -104614,8 +104659,18 @@ function buildImageDoclingV1()
 
 function buildImageDoclingV2()
 {
+  buildImageDoclingHSHQ v1.31.0
+}
+
+function buildImageDoclingV3()
+{
+  buildImageDoclingHSHQ v1.38.1
+}
+
+function buildImageDoclingHSHQ()
+{
   set +e
-  curDoclingVersion=v1.31.0
+  curDoclingVersion="$1"
   echo -e "\n========================================================================"
   echo -e "  The Docling image is being built. It can take awhile for the process"
   echo -e "  to complete, so please be patient."
@@ -111698,10 +111753,6 @@ function installSpeakr()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  buildOrPullImage $(getScriptImageByContainerName speakr-whisperx)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/speakr
   mkdir $HSHQ_STACKS_DIR/speakr/uploads
@@ -111712,7 +111763,6 @@ function installSpeakr()
   mkdir $HSHQ_STACKS_DIR/speakr/db
   mkdir $HSHQ_STACKS_DIR/speakr/dbexport
   chmod 777 $HSHQ_STACKS_DIR/speakr/dbexport
-  mkdir -p $HSHQ_AIMODELS_DIR/whisperx
   initServicesCredentials
   set +e
   addUserMailu alias $SPEAKR_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -111835,34 +111885,6 @@ services:
       - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/huggingface:/.cache/huggingface
       - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
 
-  speakr-whisperx:
-    image: $(getScriptImageByContainerName speakr-whisperx)
-    container_name: speakr-whisperx
-    hostname: speakr-whisperx
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - int-speakr-net
-      - dock-ext-net
-      - dock-aipriv-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-speakr-whisperx-cache:/root/.cache
-
-volumes:
-  v-speakr-whisperx-cache:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/whisperx
-
 networks:
   dock-internalmail-net:
     name: dock-internalmail
@@ -111914,9 +111936,11 @@ function outputEnvSpeakr()
 {
   cat <<EOFMT > $HOME/speakr.env
 TZ=\${PORTAINER_TZ}
-SKIP_EMAIL_DOMAIN_CHECK=true
-PYTHON_VER=python3.11
 TIMEZONE=\${PORTAINER_TZ}
+PYTHON_VER=python3.11
+HSA_OVERRIDE_GFX_VERSION=11.0.0
+HIP_VISIBLE_DEVICES=0
+SKIP_EMAIL_DOMAIN_CHECK=true
 HF_TOKEN=your-huggingface-token
 DEVICE=cuda
 COMPUTE_TYPE=float16
@@ -111938,10 +111962,9 @@ ENABLE_STREAM_OPTIONS=false
 TEXT_MODEL_API_KEY=$LITELLM_MASTER_KEY
 TEXT_MODEL_BASE_URL=http://litellm-proxy:4000/v1
 TEXT_MODEL_NAME=LongContext
-ASR_BASE_URL=http://speakr-whisperx:9000
-ASR_DIARIZE=true
-ASR_RETURN_SPEAKER_EMBEDDINGS=true
-ASR_TIMEOUT=1800
+TRANSCRIPTION_API_KEY=abcd
+TRANSCRIPTION_BASE_URL=http://insanelyfastwhisper-api:8888/v1
+TRANSCRIPTION_MODEL=distil-whisper/distil-large-v3.5
 ALLOW_REGISTRATION=false
 REGISTRATION_ALLOWED_DOMAINS=
 SUMMARY_MAX_TOKENS=8000
@@ -111999,6 +112022,11 @@ SMTP_USE_TLS=true
 SMTP_USE_SSL=false
 SMTP_FROM_ADDRESS=$EMAIL_SMTP_EMAIL_ADDRESS
 SMTP_FROM_NAME=Speakr $(getAdminEmailName)
+TRANSCRIPTION_CONNECTOR=asr_endpoint
+ASR_BASE_URL=http://insanelyfastwhisper-api:8888
+ASR_DIARIZE=true
+ASR_RETURN_SPEAKER_EMBEDDINGS=true
+ASR_TIMEOUT=1800
 EOFMT
 }
 
@@ -112037,11 +112065,20 @@ function performUpdateSpeakr()
       return
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/speakr:v0.10.5,mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
-      image_update_map[1]="ghcr.io/homeserverhq/speakr:v0.10.5,ghcr.io/homeserverhq/speakr:v0.10.5"
+      image_update_map[1]="ghcr.io/homeserverhq/speakr:v0.10.5,ghcr.io/homeserverhq/speakr:v0.10.16"
       image_update_map[2]="mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1,mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateSpeakrV5
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    5)
+      newVer=v5
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/speakr:v0.10.16
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="ghcr.io/homeserverhq/speakr:v0.10.16,ghcr.io/homeserverhq/speakr:v0.10.16"
     ;;
     *)
       is_upgrade_error=true
@@ -112298,6 +112335,195 @@ EOFMT
   sed -i "s/AUTO_PROCESS_MODE=.*/AUTO_PROCESS_MODE=user_directories/" $HOME/speakr.env
 }
 
+function mfUpdateSpeakrV5()
+{
+  rm -f $HOME/speakr-compose.yml
+  rm -f $HOME/speakr.env
+  cat <<EOFMT > $HOME/speakr-compose.yml
+$STACK_VERSION_PREFIX speakr v5
+
+services:
+  speakr-db:
+    image: mirror.gcr.io/postgres:16.9-bookworm
+    container_name: speakr-db
+    hostname: speakr-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-speakr-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.speakr-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.speakr-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.speakr-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.speakr-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.speakr-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.speakr-hourly-db.email-from=Speakr Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.speakr-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.speakr-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.speakr-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.speakr-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.speakr-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.speakr-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.speakr-monthly-db.email-from=Speakr Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.speakr-monthly-db.mail-only-on-error=false"
+
+  speakr-app:
+    image:  ghcr.io/homeserverhq/speakr:v0.10.16
+    container_name: speakr-app
+    hostname: speakr-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - speakr-db
+    networks:
+      - int-speakr-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/uploads:/data/uploads
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/instance:/data/instance
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/exports:/data/exports
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalTranscribeInput:/data/auto-process
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalTranscribeInput/$NEXTCLOUD_ADMIN_USERNAME:/data/auto-process/$SPEAKR_ADMIN_USERNAME
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalTranscribeOutput:/data/consume
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/huggingface:/.cache/huggingface
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+
+networks:
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-speakr-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+EOFMT
+  cat <<EOFMT > $HOME/speakr.env
+TZ=\${PORTAINER_TZ}
+TIMEZONE=\${PORTAINER_TZ}
+PYTHON_VER=python3.11
+HSA_OVERRIDE_GFX_VERSION=11.0.0
+HIP_VISIBLE_DEVICES=0
+SKIP_EMAIL_DOMAIN_CHECK=true
+HF_TOKEN=your-huggingface-token
+DEVICE=cuda
+COMPUTE_TYPE=float16
+BATCH_SIZE=32
+CACHE_DIR=/.cache/huggingface/hub
+HF_HOME=/.cache/huggingface
+NLTK_DATA=/.cache/nltk_data
+PRELOAD_MODEL=medium
+MAX_FILE_SIZE_MB=3000
+POSTGRES_DB=$SPEAKR_DATABASE_NAME
+POSTGRES_USER=$SPEAKR_DATABASE_USER
+POSTGRES_PASSWORD=$SPEAKR_DATABASE_USER_PASSWORD
+GPT5_REASONING_EFFORT=medium
+GPT5_VERBOSITY=medium
+CHAT_MODEL_API_KEY=$LITELLM_MASTER_KEY
+CHAT_MODEL_BASE_URL=http://litellm-proxy:4000/v1
+CHAT_MODEL_NAME=LongContext
+ENABLE_STREAM_OPTIONS=false
+TEXT_MODEL_API_KEY=$LITELLM_MASTER_KEY
+TEXT_MODEL_BASE_URL=http://litellm-proxy:4000/v1
+TEXT_MODEL_NAME=LongContext
+TRANSCRIPTION_API_KEY=abcd
+TRANSCRIPTION_BASE_URL=http://insanelyfastwhisper-api:8888/v1
+TRANSCRIPTION_MODEL=distil-whisper/distil-large-v3.5
+ALLOW_REGISTRATION=false
+REGISTRATION_ALLOWED_DOMAINS=
+SUMMARY_MAX_TOKENS=8000
+CHAT_MAX_TOKENS=5000
+LOG_LEVEL=INFO
+AUDIO_COMPRESS_UPLOADS=true
+AUDIO_CODEC=mp3
+AUDIO_BITRATE=128k
+AUDIO_UNSUPPORTED_CODECS=
+ADMIN_USERNAME=$SPEAKR_ADMIN_USERNAME
+ADMIN_EMAIL=$SPEAKR_ADMIN_EMAIL_ADDRESS
+ADMIN_PASSWORD=$SPEAKR_ADMIN_PASSWORD
+ENABLE_INQUIRE_MODE=true
+ENABLE_AUTO_PROCESSING=true
+ENABLE_AUTO_EXPORT=true
+AUTO_EXPORT_DIR=/data/exports
+AUTO_EXPORT_TRANSCRIPTION=true
+AUTO_EXPORT_SUMMARY=false
+AUTO_CONSUME_DIR=/data/consume
+AUTO_PROCESS_MODE=user_directories
+AUTO_PROCESS_WATCH_DIR=/data/auto-process
+AUTO_PROCESS_CHECK_INTERVAL=30
+AUTO_PROCESS_DEFAULT_USERNAME=$SPEAKR_ADMIN_USERNAME
+ENABLE_AUTO_DELETION=false
+GLOBAL_RETENTION_DAYS=90
+DELETION_MODE=audio_only
+USERS_CAN_DELETE=true
+ENABLE_INTERNAL_SHARING=true
+SHOW_USERNAMES_IN_UI=true
+ENABLE_PUBLIC_SHARING=true
+ENABLE_INCOGNITO_MODE=false
+INCOGNITO_MODE_DEFAULT=false
+JOB_QUEUE_WORKERS=2
+SUMMARY_QUEUE_WORKERS=2
+JOB_MAX_RETRIES=3
+SQLALCHEMY_DATABASE_URI=postgresql://$SPEAKR_DATABASE_USER:$SPEAKR_DATABASE_USER_PASSWORD@speakr-db:5432/$SPEAKR_DATABASE_NAME
+UPLOAD_FOLDER=/data/uploads
+ENABLE_SSO=true
+SSO_PROVIDER_NAME=Authelia
+SSO_CLIENT_ID=$SPEAKR_OIDC_CLIENT_ID
+SSO_CLIENT_SECRET=$SPEAKR_OIDC_CLIENT_SECRET
+SSO_DISCOVERY_URL=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/.well-known/openid-configuration
+SSO_REDIRECT_URI=https://$SUB_SPEAKR_APP.$HOMESERVER_DOMAIN/auth/sso/callback
+SSO_AUTO_REGISTER=true
+SSO_ALLOWED_DOMAINS=
+SSO_DEFAULT_USERNAME_CLAIM=preferred_username
+SSO_DEFAULT_NAME_CLAIM=given_name
+ENABLE_EMAIL_VERIFICATION=true
+REQUIRE_EMAIL_VERIFICATION=true
+SMTP_HOST=$SMTP_HOSTNAME
+SMTP_PORT=587
+SMTP_USERNAME=$EMAIL_SMTP_EMAIL_ADDRESS
+SMTP_PASSWORD=$EMAIL_SMTP_PASSWORD
+SMTP_USE_TLS=true
+SMTP_USE_SSL=false
+SMTP_FROM_ADDRESS=$EMAIL_SMTP_EMAIL_ADDRESS
+SMTP_FROM_NAME=Speakr $(getAdminEmailName)
+TRANSCRIPTION_CONNECTOR=asr_endpoint
+ASR_BASE_URL=http://insanelyfastwhisper-api:8888
+ASR_DIARIZE=true
+ASR_RETURN_SPEAKER_EMBEDDINGS=true
+ASR_TIMEOUT=1800
+EOFMT
+}
+
 # InsanelyFastWhisper
 function installInsanelyFastWhisper()
 {
@@ -112308,10 +112534,7 @@ function installInsanelyFastWhisper()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName insanelyfastwhisper-app)
-  if [ $? -ne 0 ]; then
-    buildOrPullImage hshq/insanelyfastwhisper:v1
-  fi
+  buildOrPullImage $(getScriptImageByContainerName insanelyfastwhisper-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -112492,8 +112715,8 @@ EOFMT
   cat <<EOFMT > $HOME/insanelyfastwhisper.env
 TZ=\${PORTAINER_TZ}
 APP_TIMEZONE=\${PORTAINER_TZ}
+HSA_OVERRIDE_GFX_VERSION=11.5.1
 WHISPER_MODEL=distil-whisper/distil-large-v3.5
-LD_LIBRARY_PATH=/opt/rocm/lib
 WHISPER_DEVICE=0
 WHISPER_BATCH_SIZE=4
 PROGRESS_GROUP_SIZE=4
@@ -112507,21 +112730,16 @@ DEMUCS_DEFAULT=false
 VAD_DEFAULT=false
 VAD_THRESHOLD_DEFAULT=0.35
 WHISPER_DIARIZATION_MODEL=pyannote/speaker-diarization-community-1
-HF_TOKEN=
 WHISPER_UPLOAD_DIR=temp_uploads
 WHISPER_TRANSCRIPTS_DIR=transcripts
 AUDIO_CHUNK_DURATION=600
 AUDIO_CHUNK_OVERLAP=1.0
 AUDIO_CHUNK_MIN_DURATION=5.0
-PYTORCH_ALLOC_CONF=garbage_collection_threshold:0.7,max_split_size_mb:128
-HSA_OVERRIDE_GFX_VERSION=11.0.0
 SAVE_TRANSCRIPTIONS=true
 API_HOST=0.0.0.0
 API_PORT=8888
-DEV_API_PORT=8889
 WEBUI_HOST=0.0.0.0
 WEBUI_PORT=7860
-DEV_WEBUI_PORT=7862
 LOG_LEVEL=INFO
 USE_READABLE_SUBTITLES=true
 MAX_LINE_CHARS=42
@@ -112535,6 +112753,14 @@ MAX_SEGMENT_DURATION_SEC=5.5
 DISPLAY_BUFFER_SEC=0.2
 SOFT_BOUNDARY_WORDS=and,but,or,so,for,nor,yet
 INTERJECTION_WHITELIST=um,uh,ah,er,like
+HF_TOKEN=
+DIARIZATION_DEVICE=cuda
+DIARIZATION_PRELOAD_AUDIO=true
+DIARIZATION_ALLOW_CPU_FALLBACK=true
+DIARIZATION_DISABLE_MIOPEN=true
+DIARIZATION_EMBEDDING_CLUSTERING=true
+DIARIZE_DEFAULT=true
+MIOPEN_FIND_MODE=2
 EOFMT
 }
 
@@ -112546,9 +112772,17 @@ function performUpdateInsanelyFastWhisper()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=hshq/insanelyfastwhisper:v1
-      image_update_map[0]="hshq/insanelyfastwhisper:v1,hshq/insanelyfastwhisper:v1"
+      image_update_map[0]="hshq/insanelyfastwhisper:v1,hshq/insanelyfastwhisper:v2"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateInsanelyFastWhisperV2
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=hshq/insanelyfastwhisper:v2
+      image_update_map[0]="hshq/insanelyfastwhisper:v2,hshq/insanelyfastwhisper:v2"
     ;;
     *)
       is_upgrade_error=true
@@ -112582,6 +112816,79 @@ function buildImageInsanelyFastWhisperV1()
   return $rtval
 }
 
+function buildImageInsanelyFastWhisperV2()
+{
+  set +e
+  echo -e "\n========================================================================"
+  echo -e "  The InsanelyFastWhisper image is being built. It can take a very"
+  echo -e "  long time for the process to complete, so please be patient."
+  echo -e "========================================================================\n"
+  sudo rm -fr $HSHQ_BUILD_DIR/insanely-fast-whisper-rocm
+  cd $HSHQ_BUILD_DIR
+  git -c advice.detachedHead=false clone --depth 1 --branch v2.1.6 https://github.com/homeserverhq/insanely-fast-whisper-rocm
+  cd $HSHQ_BUILD_DIR/insanely-fast-whisper-rocm
+  docker image build -t hshq/insanelyfastwhisper:v2 -f Dockerfile .
+  rtval=$?
+  cd
+  sudo rm -fr $HSHQ_BUILD_DIR/insanely-fast-whisper-rocm
+  return $rtval
+}
+
+function mfUpdateInsanelyFastWhisperV2()
+{
+  rm -f $HOME/insanelyfastwhisper.env
+  cat <<EOFMT > $HOME/insanelyfastwhisper.env
+TZ=\${PORTAINER_TZ}
+APP_TIMEZONE=\${PORTAINER_TZ}
+HSA_OVERRIDE_GFX_VERSION=11.5.1
+WHISPER_MODEL=distil-whisper/distil-large-v3.5
+WHISPER_DEVICE=0
+WHISPER_BATCH_SIZE=4
+PROGRESS_GROUP_SIZE=4
+WHISPER_TIMESTAMP_TYPE=chunk
+WHISPER_LANGUAGE=None
+WHISPER_DTYPE=float16
+WHISPER_BETTER_TRANSFORMER=false
+WHISPER_CHUNK_LENGTH=30
+STABILIZE_DEFAULT=false
+DEMUCS_DEFAULT=false
+VAD_DEFAULT=false
+VAD_THRESHOLD_DEFAULT=0.35
+WHISPER_DIARIZATION_MODEL=pyannote/speaker-diarization-community-1
+WHISPER_UPLOAD_DIR=temp_uploads
+WHISPER_TRANSCRIPTS_DIR=transcripts
+AUDIO_CHUNK_DURATION=600
+AUDIO_CHUNK_OVERLAP=1.0
+AUDIO_CHUNK_MIN_DURATION=5.0
+SAVE_TRANSCRIPTIONS=true
+API_HOST=0.0.0.0
+API_PORT=8888
+WEBUI_HOST=0.0.0.0
+WEBUI_PORT=7860
+LOG_LEVEL=INFO
+USE_READABLE_SUBTITLES=true
+MAX_LINE_CHARS=42
+MAX_LINES_PER_BLOCK=2
+MAX_BLOCK_CHARS=84
+MAX_BLOCK_CHARS_SOFT=90
+MIN_CPS=12.0
+MAX_CPS=17.0
+MIN_SEGMENT_DURATION_SEC=1.2
+MAX_SEGMENT_DURATION_SEC=5.5
+DISPLAY_BUFFER_SEC=0.2
+SOFT_BOUNDARY_WORDS=and,but,or,so,for,nor,yet
+INTERJECTION_WHITELIST=um,uh,ah,er,like
+HF_TOKEN=
+DIARIZATION_DEVICE=cuda
+DIARIZATION_PRELOAD_AUDIO=true
+DIARIZATION_ALLOW_CPU_FALLBACK=true
+DIARIZATION_DISABLE_MIOPEN=true
+DIARIZATION_EMBEDDING_CLUSTERING=true
+DIARIZE_DEFAULT=true
+MIOPEN_FIND_MODE=2
+EOFMT
+}
+
 # IVBox
 function installIVBox()
 {
@@ -112592,23 +112899,14 @@ function installIVBox()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName ivbox-app)
-  if [ $? -ne 0 ]; then
-    buildOrPullImage hshq/ivbox:v1
-  fi
+  buildOrPullImage $(getScriptImageByContainerName ivbox-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
   set -e
   mkdir $HSHQ_STACKS_DIR/ivbox
-  mkdir $HSHQ_STACKS_DIR/ivbox/input
-  mkdir $HSHQ_STACKS_DIR/ivbox/output
-  mkdir $HSHQ_STACKS_DIR/ivbox/custom_nodes
-  mkdir $HSHQ_STACKS_DIR/ivbox/user
-  mkdir $HSHQ_STACKS_DIR/ivbox/cache
-  mkdir $HSHQ_STACKS_DIR/ivbox/qwen
+  mkdir $HSHQ_STACKS_DIR/ivbox/data
   mkdir -p $HSHQ_AIMODELS_DIR/comfyui
-  mkdir -p $HSHQ_AIMODELS_DIR/ivbox/{wan,cache}
   initServicesCredentials
   set +e
   outputConfigIVBox
@@ -112738,8 +113036,6 @@ services:
       resources:
         limits:
           memory: 96G
-    working_dir: /workspace
-    command: /opt/start_docker.sh
     networks:
       - dock-ext-net
       - dock-aipriv-net
@@ -112750,13 +113046,7 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - v-ivbox-models:/opt/ComfyUI/models
-      - v-ivbox-input:/opt/ComfyUI/input
-      - v-ivbox-output:/opt/ComfyUI/output
-      - v-ivbox-user:/opt/ComfyUI/user
-      - v-ivbox-custom_nodes:/opt/ComfyUI/custom_nodes
-      - v-ivbox-cache:/opt/ComfyUI/.cache
-      - \${PORTAINER_HSHQ_STACKS_DIR}/ivbox/qwen:/root/.qwen-image-studio
-      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/ivbox/wan:/workspace/wan-models
+      - v-ivbox-data:/comfyui
       - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/ivbox/cache:/root/.cache/huggingface
 
 volumes:
@@ -112766,36 +113056,12 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/comfyui
-  v-ivbox-input:
+  v-ivbox-data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/ivbox/input
-  v-ivbox-output:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/ivbox/output
-  v-ivbox-user:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/ivbox/user
-  v-ivbox-custom_nodes:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/ivbox/custom_nodes
-  v-ivbox-cache:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/ivbox/cache
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ivbox/data
 
 networks:
   dock-ext-net:
@@ -112808,17 +113074,14 @@ networks:
 EOFMT
   cat <<EOFMT > $HOME/ivbox.env
 TZ=\${PORTAINER_TZ}
-HSA_OVERRIDE_GFX_VERSION=11.5.1
-FLASH_ATTENTION_TRITON_AMD_ENABLE=false
-QWEN_FA_SHIM=1
-WAN_ATTENTION_BACKEND=sdpa
-PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:1024,garbage_collection_threshold:0.8
 HIP_VISIBLE_DEVICES=0
-ROC_ENABLE_PRE_VEGA=1
-QIM_CLI_PATH=/opt/qwen-image-studio/qwen-image-mps.py
 HF_HUB_ENABLE_HF_TRANSFER=1
-QWEN_PORT=8000
+HF_XET_HIGH_PERFORMANCE=1
 COMFYUI_PORT=8188
+TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
+TORCH_BLAS_PREFER_HIPBLASLT=1
+COMFYUI_FLAGS=--bf16-vae --disable-mmap
+COMFYUI_ARGS=
 EOFMT
 }
 
@@ -112830,9 +113093,17 @@ function performUpdateIVBox()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=hshq/ivbox:v1
-      image_update_map[0]="hshq/ivbox:v1,hshq/ivbox:v1"
+      image_update_map[0]="hshq/ivbox:v1,ghcr.io/homeserverhq/ivbox:v0.1.0"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateIVBoxV2
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=ghcr.io/homeserverhq/ivbox:v0.1.0
+      image_update_map[0]="ghcr.io/homeserverhq/ivbox:v0.1.0,ghcr.io/homeserverhq/ivbox:v0.1.0"
     ;;
     *)
       is_upgrade_error=true
@@ -112860,6 +113131,83 @@ function buildImageIVBoxV1()
   cd
   sudo rm -fr $HSHQ_BUILD_DIR/amd-strix-halo-image-video-distrobox
   return $rtval
+}
+
+function mfUpdateIVBoxV2()
+{
+  cat <<EOFMT > $HOME/ivbox-compose.yml
+$STACK_VERSION_PREFIX ivbox v2
+
+services:
+  ivbox-app:
+    image: ghcr.io/homeserverhq/ivbox:v0.1.0
+    container_name: ivbox-app
+    hostname: ivbox-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - seccomp=unconfined
+      - label=disable
+    cap_add:
+      - SYS_PTRACE
+    ipc: host
+    devices:
+      - /dev/dri
+      - /dev/kfd
+    group_add:
+      - video
+    deploy:
+      resources:
+        limits:
+          memory: 96G
+    networks:
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-ivbox-models:/opt/ComfyUI/models
+      - v-ivbox-data:/comfyui
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/ivbox/cache:/root/.cache/huggingface
+
+volumes:
+  v-ivbox-models:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/comfyui
+  v-ivbox-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ivbox/data
+
+networks:
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/ivbox.env
+TZ=\${PORTAINER_TZ}
+HIP_VISIBLE_DEVICES=0
+HF_HUB_ENABLE_HF_TRANSFER=1
+HF_XET_HIGH_PERFORMANCE=1
+COMFYUI_PORT=8188
+TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
+TORCH_BLAS_PREFER_HIPBLASLT=1
+COMFYUI_FLAGS=--bf16-vae --disable-mmap
+COMFYUI_ARGS=
+EOFMT
+  mkdir -p $HSHQ_STACKS_DIR/ivbox/data
 }
 
 # Monica
@@ -114974,27 +115322,15 @@ function installKokoro()
   fi
   pullImage $(getScriptImageByContainerName kokoro-tts)
   if [ $? -ne 0 ]; then
-    buildOrPullImage hshq/kokoro-tts:v1
-  fi
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
-  pullImage $(getScriptImageByContainerName kokoro-web)
-  if [ $? -ne 0 ]; then
     return 1
   fi
   set -e
   mkdir $HSHQ_STACKS_DIR/kokoro
-  mkdir $HSHQ_STACKS_DIR/kokoro/api
-  mkdir $HSHQ_STACKS_DIR/kokoro/config
-  mkdir $HSHQ_STACKS_DIR/kokoro/data
-  mkdir $HSHQ_NONBACKUP_DIR/kokoro
-  mkdir $HSHQ_NONBACKUP_DIR/kokoro/cache
+  mkdir $HSHQ_STACKS_DIR/kokoro/web
   initServicesCredentials
   set +e
   outputConfigKokoro
-  # If we need a string to monitor, its this: "Uvicorn running on http"
-  installStack kokoro kokoro-tts "" $HOME/kokoro.env 1
+  installStack kokoro kokoro-tts "Uvicorn running on http" $HOME/kokoro.env 3
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -115018,7 +115354,7 @@ function installKokoro()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://kokoro-web:7860 {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://kokoro-tts:8880 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>}\n"
@@ -115068,7 +115404,7 @@ function installKokoro()
   updateCaddyBlocks $SUB_KOKORO_API $MANAGETLS_KOKORO_API "$is_integrate_hshq" $NETDEFAULT_KOKORO_API "$inner_block"
   insertSubAuthelia $SUB_KOKORO_API.$HOMESERVER_DOMAIN bypass
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll kokoro "$FMLNAME_KOKORO_WEB" $USERTYPE_KOKORO_WEB "https://$SUB_KOKORO_WEB.$HOMESERVER_DOMAIN" "kokoro.png" "$(getHeimdallOrderFromSub $SUB_KOKORO_WEB $USERTYPE_KOKORO_WEB)"
+    insertEnableSvcAll kokoro "$FMLNAME_KOKORO_WEB" $USERTYPE_KOKORO_WEB "https://$SUB_KOKORO_WEB.$HOMESERVER_DOMAIN/web" "kokoro.png" "$(getHeimdallOrderFromSub $SUB_KOKORO_WEB $USERTYPE_KOKORO_WEB)"
     insertEnableSvcUptimeKuma kokoro "$FMLNAME_KOKORO_API" $USERTYPE_KOKORO_API "https://$SUB_KOKORO_API.$HOMESERVER_DOMAIN/v1/test?api-key=$KOKORO_API_KEY" true
     restartAllCaddyContainers
   fi
@@ -115089,7 +115425,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - int-kokoro-net
       - dock-ext-net
       - dock-aipriv-net
     volumes:
@@ -115098,85 +115433,29 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-kokoro-api:/app/api
-      - v-kokoro-config:/root/.config/miopen
-      - v-kokoro-cache:/root/.cache/miopen
-
-  kokoro-web:
-    image: $(getScriptImageByContainerName kokoro-web)
-    container_name: kokoro-web
-    hostname: kokoro-web
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - int-kokoro-net
-      - dock-proxy-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/kokoro/data:/app/ui/data
-      - \${PORTAINER_HSHQ_STACKS_DIR}/kokoro/app.py:/app/app.py
+      - v-kokoro-web:/app/web
 
 volumes:
-  v-kokoro-api:
+  v-kokoro-web:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/kokoro/api
-  v-kokoro-config:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/kokoro/config
-  v-kokoro-cache:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/kokoro/cache
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/kokoro/web
 
 networks:
-  dock-proxy-net:
-    name: dock-proxy
-    external: true
   dock-ext-net:
     name: dock-ext
     external: true
   dock-aipriv-net:
     name: dock-aipriv
     external: true
-  int-kokoro-net:
-    driver: bridge
-    internal: true
-    ipam:
-      driver: default
 
 EOFMT
   cat <<EOFMT > $HOME/kokoro.env
 TZ=\${PORTAINER_TZ}
 USE_GPU=false
-MIOPEN_FIND_MODE=3
-MIOPEN_LOG_LEVEL=3
-PYTHONPATH=/app:/app/models
-GRADIO_WATCH=1
 PYTHONUNBUFFERED=1
-DISABLE_LOCAL_SAVING=false
-API_HOST=kokoro-tts
-API_PORT=8880
-EOFMT
-  cat <<EOFMT > $HSHQ_STACKS_DIR/kokoro/app.py
-from lib.interface import create_interface
-
-if __name__ == "__main__":
-    demo = create_interface()
-    demo.launch(server_name="0.0.0.0", server_port=7860, show_error=True)
 EOFMT
 }
 
@@ -115188,10 +115467,18 @@ function performUpdateKokoro()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=hshq/kokoro-tts:v1,ghcr.io/remsky/kokoro-fastapi-ui:v0.1.0
-      image_update_map[0]="hshq/kokoro-tts:v1,hshq/kokoro-tts:v1"
+      image_update_map[0]="hshq/kokoro-tts:v1,ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0"
       image_update_map[1]="ghcr.io/remsky/kokoro-fastapi-ui:v0.1.0,ghcr.io/remsky/kokoro-fastapi-ui:v0.1.0"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateKokoroV2
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0
+      image_update_map[0]="ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0,ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0"
     ;;
     *)
       is_upgrade_error=true
@@ -115223,6 +115510,78 @@ function buildImageKokoroV1()
   cd
   sudo rm -fr $HSHQ_BUILD_DIR/kokoro
   return $rtval
+}
+
+function mfUpdateKokoroV2()
+{
+  rm -f $HOME/kokoro-compose.yml
+  rm -f $HOME/kokoro.env
+  cat <<EOFMT > $HOME/kokoro-compose.yml
+$STACK_VERSION_PREFIX kokoro v2
+
+services:
+  kokoro-tts:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0
+    container_name: kokoro-tts
+    hostname: kokoro-tts
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-kokoro-web:/app/web
+
+volumes:
+  v-kokoro-web:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/kokoro/web
+
+networks:
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/kokoro.env
+TZ=\${PORTAINER_TZ}
+USE_GPU=false
+PYTHONUNBUFFERED=1
+EOFMT
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_KOKORO_WEB.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://kokoro-tts:8880 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_KOKORO_WEB $MANAGETLS_KOKORO_WEB "$is_integrate_hshq" $NETDEFAULT_KOKORO_WEB "$inner_block"
+  mkdir -p $HSHQ_STACKS_DIR/kokoro/web
+  sudo rm -fr $HSHQ_STACKS_DIR/kokoro/api
+  sudo rm -fr $HSHQ_STACKS_DIR/kokoro/config
+  sudo rm -fr $HSHQ_STACKS_DIR/kokoro/data
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/kokoro
+  sudo rm -fr $HSHQ_STACKS_DIR/kokoro/app.py
 }
 
 # Chatterbox
@@ -115807,10 +116166,17 @@ function performUpdateLiteLLM()
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/pgvector/pgvector:pg17,ghcr.io/berriai/litellm:v1.92.0,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
-      image_update_map[1]="ghcr.io/berriai/litellm:v1.92.0,ghcr.io/berriai/litellm:v1.92.0"
+      image_update_map[1]="ghcr.io/berriai/litellm:v1.92.0,ghcr.io/homeserverhq/litellm:v1.106.4"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/pgvector/pgvector:pg17,ghcr.io/homeserverhq/litellm:v1.106.4,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
+      image_update_map[1]="ghcr.io/homeserverhq/litellm:v1.106.4,ghcr.io/homeserverhq/litellm:v1.106.4"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
