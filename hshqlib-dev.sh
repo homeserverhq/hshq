@@ -122970,6 +122970,11 @@ SecRule SERVER_NAME "@rx ^$SUB_OPENNOTEBOOK_APP\." "id:9101300,phase:1,pass,nolo
 SecRule SERVER_NAME "@rx ^$SUB_OPENCODE_CODESERVER\." "id:9101400,phase:1,pass,nolog,ctl:ruleRemoveTargetById=932260;ARGS:path"
 
 SecRule SERVER_NAME "@rx ^($SUB_EXCALIDRAW_WEB|$SUB_EXCALIDRAW_AI)\." "id:9101500,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
+
+SecRule SERVER_NAME "@rx ^($SUB_INSANELYFASTWHISPER_API|$SUB_INSANELYFASTWHISPER_APP)\." "id:9101600,phase:1,pass,nolog,ctl:ruleRemoveTargetById=930120;ARGS:/^json\.data\./"
+
+SecRule SERVER_NAME "@rx ^$SUB_LITELLM_APP\." "id:9101700,phase:1,pass,nolog,ctl:ruleRemoveTargetById=930120;ARGS:json.litellm_params.api_base"
+
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-behavior.yaml
 # =====================================================================
