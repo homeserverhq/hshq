@@ -34,6 +34,7 @@ function init()
   PRIOR_HSHQ_VERSION=0
   LAST_RELAYSERVER_VERSION_UPDATE=239
   IS_AUTO_INSTALL=false
+  HSHQ_INSTALL_VARIANT=base
   loadVersionVars
   IS_RUST_UTILS=false
   if [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^26\.04. ]]; then
@@ -532,6 +533,9 @@ function checkDockerPre()
 
 function upgradeHostOS()
 {
+  if [ "$IS_DISABLE_HOST_UPGRADE" = "true" ]; then
+    return
+  fi
   sudo DEBIAN_FRONTEND=noninteractive apt update
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
 }
@@ -3345,7 +3349,6 @@ function installDependencies()
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
   # Install utils
   installHostNTPServer
-
   for util in $UTILS_LIST; do
     if [[ "$(isProgramInstalled $util)" = "false" ]]; then
       lib_name=$(echo $util | cut -d"|" -f2)
@@ -3353,7 +3356,6 @@ function installDependencies()
       performAptInstall $lib_name
     fi
   done
-
   if ! [ -f /etc/rsyslog.d/docker-logs.conf ]; then
     # Install Rsyslog
     sudo systemctl status rsyslog > /dev/null 2>&1
@@ -3364,7 +3366,6 @@ function installDependencies()
       sudo systemctl start rsyslog
     fi
   fi
-
   # Some host tuning
   updateSysctl true
   updateLogrotateConfig
