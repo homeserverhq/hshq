@@ -32095,7 +32095,7 @@ function loadPinnedDockerImages()
   IMG_LEMONADE_SERVER=ghcr.io/lemonade-sdk/lemonade-server:v9.2.0
   IMG_SPEAKR_APP=ghcr.io/homeserverhq/speakr:v0.10.16
   IMG_SPEAKR_WHISPERX=mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1
-  IMG_INSANELYFASTWHISPER_APP=hshq/insanelyfastwhisper:v2
+  IMG_INSANELYFASTWHISPER_APP=hshq/insanelyfastwhisper:v3
   IMG_IVBOX_APP=ghcr.io/homeserverhq/ivbox:v0.1.0
   IMG_MONICA_APP=hshq/monica-app:v1
   IMG_MONICA_WEB=hshq/monica-web:v1
@@ -32457,7 +32457,7 @@ function getScriptStackVersion()
     speakr)
       echo "v5" ;;
     insanelyfastwhisper)
-      echo "v2" ;;
+      echo "v3" ;;
     ivbox)
       echo "v2" ;;
     monica)
@@ -40134,7 +40134,7 @@ function initServicesCredentials()
     updateConfigVar LIGHTRAG_NEO4J_DATABASE $LIGHTRAG_NEO4J_DATABASE
   fi
   if [ -z "$LIGHTRAG_NEO4J_USER" ]; then
-    LIGHTRAG_NEO4J_USER=lightrag-user
+    LIGHTRAG_NEO4J_USER=neo4j
     updateConfigVar LIGHTRAG_NEO4J_USER $LIGHTRAG_NEO4J_USER
   fi
   if [ -z "$LIGHTRAG_NEO4J_PASSWORD" ]; then
@@ -44902,6 +44902,9 @@ function buildOrPullImage()
     "hshq/insanelyfastwhisper:v2")
       buildImageInsanelyFastWhisperV2
       ;;
+    "hshq/insanelyfastwhisper:v3")
+      buildImageInsanelyFastWhisperV3
+      ;;
     "hshq/ivbox:v1")
       buildImageIVBoxV1
       ;;
@@ -45016,6 +45019,9 @@ function checkIsCustomImage()
       echo "true"
       ;;
     "hshq/insanelyfastwhisper:v2")
+      echo "true"
+      ;;
+    "hshq/insanelyfastwhisper:v3")
       echo "true"
       ;;
     "hshq/ivbox:v1")
@@ -112773,17 +112779,22 @@ function performUpdateInsanelyFastWhisper()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v3
       curImageList=hshq/insanelyfastwhisper:v1
-      image_update_map[0]="hshq/insanelyfastwhisper:v1,hshq/insanelyfastwhisper:v2"
+      image_update_map[0]="hshq/insanelyfastwhisper:v1,hshq/insanelyfastwhisper:v3"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateInsanelyFastWhisperV2
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=hshq/insanelyfastwhisper:v2
-      image_update_map[0]="hshq/insanelyfastwhisper:v2,hshq/insanelyfastwhisper:v2"
+      image_update_map[0]="hshq/insanelyfastwhisper:v2,hshq/insanelyfastwhisper:v3"
+    ;;
+    3)
+      newVer=v3
+      curImageList=hshq/insanelyfastwhisper:v3
+      image_update_map[0]="hshq/insanelyfastwhisper:v3,hshq/insanelyfastwhisper:v3"
     ;;
     *)
       is_upgrade_error=true
@@ -112819,6 +112830,18 @@ function buildImageInsanelyFastWhisperV1()
 
 function buildImageInsanelyFastWhisperV2()
 {
+  buildHSHQImageInsanelyFastWhisper v2.1.6 v2
+}
+
+function buildImageInsanelyFastWhisperV3()
+{
+  buildHSHQImageInsanelyFastWhisper v2.1.7 v3
+}
+
+function buildHSHQImageInsanelyFastWhisper()
+{
+  curBranch="$1"
+  curVersion="$2"
   set +e
   echo -e "\n========================================================================"
   echo -e "  The InsanelyFastWhisper image is being built. It can take a very"
@@ -112826,9 +112849,9 @@ function buildImageInsanelyFastWhisperV2()
   echo -e "========================================================================\n"
   sudo rm -fr $HSHQ_BUILD_DIR/insanely-fast-whisper-rocm
   cd $HSHQ_BUILD_DIR
-  git -c advice.detachedHead=false clone --depth 1 --branch v2.1.6 https://github.com/homeserverhq/insanely-fast-whisper-rocm
+  git -c advice.detachedHead=false clone --depth 1 --branch $curBranch https://github.com/homeserverhq/insanely-fast-whisper-rocm
   cd $HSHQ_BUILD_DIR/insanely-fast-whisper-rocm
-  docker image build -t hshq/insanelyfastwhisper:v2 -f Dockerfile .
+  docker image build -t hshq/insanelyfastwhisper:$curVersion -f Dockerfile .
   rtval=$?
   cd
   sudo rm -fr $HSHQ_BUILD_DIR/insanely-fast-whisper-rocm
