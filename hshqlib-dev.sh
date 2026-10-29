@@ -4572,7 +4572,7 @@ EOFHP
     sudo cp $HSHQ_LOG_FILE $HSHQ_BASE_DIR/hshqInstall.log
     sudo chown $USERNAME:$USERNAME $HSHQ_BASE_DIR/hshqInstall.log
     chmod 0400 $HSHQ_BASE_DIR/hshqInstall.log
-    #sudo truncate -s 0 $HSHQ_LOG_FILE
+    sudo truncate -s 0 $HSHQ_LOG_FILE
     sudo reboot
   fi
 }
