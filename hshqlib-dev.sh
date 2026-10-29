@@ -122553,7 +122553,7 @@ PYEOF
   docker exec crowdsec-app cscli machines add $CROWDSEC_LAPI_USERNAME --password $CROWDSEC_LAPI_PASSWORD -f /dev/null > /dev/null 2>&1
   docker exec crowdsec-app cscli bouncers add caddy-bouncer -k $CROWDSEC_API_KEY > /dev/null 2>&1
   docker exec crowdsec-app cscli allowlists create local_internal -d "internal docker network" > /dev/null 2>&1
-  docker exec crowdsec-app cscli allowlists add local_internal 172.16.0.0/14 > /dev/null 2>&1
+  docker exec crowdsec-app cscli allowlists add local_internal $DOCKER_NETWORK_RESERVED_RANGE > /dev/null 2>&1
   sudo sqlite3 $HSHQ_STACKS_DIR/crowdsec/web/crowdsec.db "insert into auth_users(username,password_hash,role,created_at,updated_at) values ('$CROWDSEC_ADMIN_USERNAME','$CROWDSEC_ADMIN_PASSWORD_HASH','admin',strftime('%Y-%m-%dT%H:%M:%f', 'now') || 'Z',strftime('%Y-%m-%dT%H:%M:%f', 'now') || 'Z');" > /dev/null 2>&1
   docker container restart crowdsec-web > /dev/null 2>&1
   if [ -z "$FMLNAME_CROWDSEC_WEB" ]; then
@@ -122622,6 +122622,7 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/acquis.d:/etc/crowdsec/acquis.d
       - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/modes/\${WAF_MODE:-monitor}/profiles.yaml:/etc/crowdsec/profiles.yaml
       - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/notifications:/etc/crowdsec/notifications
+      - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/crowdsec-config.yaml.local:/etc/crowdsec/config.yaml.local:ro
 
   crowdsec-web:
     image: $(getScriptImageByContainerName crowdsec-web)
@@ -123341,6 +123342,14 @@ instances:
         icon: 📊
         url: http://crowdsec-app:6060/metrics
         requestTimeout: 5s
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/crowdsec-config.yaml.local
+api:
+  server:
+    trusted_ips:
+      - 127.0.0.1
+      - ::1
+      - $DOCKER_NETWORK_RESERVED_RANGE
 EOFMT
 }
 
@@ -135147,7 +135156,7 @@ EOFCF
 
 (log_true) {
   @aclog_filter { 
-    remote_ip 172.16.0.0/14 
+    remote_ip $DOCKER_NETWORK_RESERVED_RANGE
   }
   log_skip @aclog_filter
   log {
