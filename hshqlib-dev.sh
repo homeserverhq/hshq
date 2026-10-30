@@ -3123,6 +3123,7 @@ fs.inotify.max_user_instances = 8192
 fs.inotify.max_user_watches = 524288
 vm.swappiness = 10
 net.core.somaxconn = 65536
+net.mptcp.enabled = 0
 net.netfilter.nf_conntrack_max = 1048576
 net.netfilter.nf_conntrack_tcp_loose = 0
 net.netfilter.nf_conntrack_tcp_timeout_established = 1800
@@ -6978,6 +6979,7 @@ fs.inotify.max_user_watches = 524288
 net.core.rmem_max = 4194304
 net.core.wmem_max = 4194304
 net.core.somaxconn = 65536
+net.mptcp.enabled = 0
 net.netfilter.nf_conntrack_max = 1048576
 net.netfilter.nf_conntrack_tcp_loose = 0
 net.netfilter.nf_conntrack_tcp_timeout_established = 1800
@@ -21414,6 +21416,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=243
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 244 ]; then
+    echo "Updating to Version 244..."
+    version244Update
+    HSHQ_VERSION=244
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -24836,6 +24844,11 @@ function version243Update()
   do
     updateStackEnv $curCH modFunCaddyAddCrowdSec
   done
+}
+
+function version244Update()
+{
+  updateSysctl
 }
 
 function getNextHSVPNRoutingTable()
