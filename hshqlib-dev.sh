@@ -51389,7 +51389,7 @@ function performUpdateMailu()
     ;;
     8)
       newVer=v9
-      curImageList=mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/mailu/admin:2024.06.54,ghcr.io/mailu/rspamd:2024.06.54,mirror.gcr.io/clamav/clamav:1.5.3,ghcr.io/mailu/fetchmail:2024.06.54,ghcr.io/mailu/nginx:2024.06.54,ghcr.io/mailu/dovecot:2024.06.54,ghcr.io/mailu/oletools:2024.06.54,ghcr.io/mailu/postfix:2024.06.54,ghcr.io/mailu/unbound:2024.06.54,ghcr.io/mailu/radicale:2024.06.54,ghcr.io/mailu/webmail:2024.06.54,mirror.gcr.io/apache/tika:3.3.1.0-full
+      curImageList=mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/mailu/admin:2024.06.54,ghcr.io/mailu/rspamd:2024.06.54,mirror.gcr.io/clamav/clamav:1.5.3,ghcr.io/mailu/fetchmail:2024.06.54,ghcr.io/mailu/nginx:2024.06.54,ghcr.io/mailu/dovecot:2024.06.54,ghcr.io/mailu/oletools:2024.06.54,ghcr.io/mailu/postfix:2024.06.54,ghcr.io/mailu/unbound:2024.06.54,ghcr.io/mailu/radicale:2024.06.54,ghcr.io/mailu/webmail:2024.06.54,mirror.gcr.io/apache/tika:3.2.3.0-full
       image_update_map[0]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[1]="ghcr.io/mailu/admin:2024.06.54,ghcr.io/mailu/admin:2024.06.65"
       image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.54,ghcr.io/mailu/rspamd:2024.06.65"
@@ -51402,7 +51402,7 @@ function performUpdateMailu()
       image_update_map[9]="ghcr.io/mailu/unbound:2024.06.54,ghcr.io/mailu/unbound:2024.06.65"
       image_update_map[10]="ghcr.io/mailu/radicale:2024.06.54,ghcr.io/mailu/radicale:2024.06.65"
       image_update_map[11]="ghcr.io/mailu/webmail:2024.06.54,ghcr.io/mailu/webmail:2024.06.65"
-      image_update_map[12]="mirror.gcr.io/apache/tika:3.3.1.0-full,mirror.gcr.io/apache/tika:3.3.1.0-full"
+      image_update_map[12]="mirror.gcr.io/apache/tika:3.2.3.0-full,mirror.gcr.io/apache/tika:3.3.1.0-full"
     ;;
     9)
       newVer=v9
