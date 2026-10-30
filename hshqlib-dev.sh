@@ -8327,6 +8327,7 @@ function pullImage()
     docker image inspect \$img_and_version > /dev/null 2>&1
     is_success=\$?
     ((num_tries++))
+    sleep 3
   done
   set -e
   if [ \$is_success -ne 0 ]; then
@@ -13163,7 +13164,7 @@ PreDown = iptables -t mangle -D OUTPUT -j CONNMARK --restore-mark --nfmask 0xfff
 PublicKey = $relayserver_public_key
 PresharedKey = $preshared_key
 AllowedIPs = 10.0.0.0/8
-Endpoint = $endpoint_hostname:$endpoint_PORT
+Endpoint = $endpoint_hostname:$endpoint_port
 PersistentKeepalive = 20
 EOFWG
       config_name="Other-VPN-$domain_name"
@@ -18387,7 +18388,6 @@ function removeRevertDNS()
     deleteDomainAdguardHS "*.$curExtPrefix.$curDomain"
     removeDomainAndWildcardIgnoreQuerylogAndStatsHS "$curDomain"
     # Eventually delete this next line, but we'll leave it in for awhile
-    deleteSvcUptimeKuma "https://$SUB_HSHQHOME.${curDomain}" true
     deleteSvcUptimeKuma "https://$SUB_HSHQSTATUS.${curDomain}" true
   else
     # Found an alternate, replace it
@@ -118314,7 +118314,7 @@ function installOpenCode()
   initServicesCredentials
   set +e
   outputConfigOpenCode
-  installStack opencode opencode-app "opencode server listening on" $HOME/opencode.env 10
+  installStack opencode opencode-app "server listening on" $HOME/opencode.env 10
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -118371,7 +118371,6 @@ function installOpenCode()
   insertSubAuthelia $SUB_OPENCODE_CODESERVER.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcHeimdall opencode "$FMLNAME_OPENCODE_APP" $USERTYPE_OPENCODE_APP "https://$SUB_OPENCODE_APP.$HOMESERVER_DOMAIN" "opencode.png" true "$(getHeimdallOrderFromSub $SUB_OPENCODE_APP $USERTYPE_OPENCODE_APP)"
-    insertEnableSvcUptimeKuma opencode "$FMLNAME_OPENCODE_APP" $USERTYPE_OPENCODE_APP "https://$OPENCODE_ADMIN_USERNAME:$OPENCODE_ADMIN_PASSWORD@$SUB_OPENCODE_APP.$HOMESERVER_DOMAIN" true
     insertEnableSvcAll opencode "$FMLNAME_OPENCODE_CODESERVER" $USERTYPE_OPENCODE_CODESERVER "https://$SUB_OPENCODE_CODESERVER.$HOMESERVER_DOMAIN" "codeserver.png" "$(getHeimdallOrderFromSub $SUB_OPENCODE_CODESERVER $USERTYPE_OPENCODE_CODESERVER)"
     restartAllCaddyContainers
   fi
@@ -119187,7 +119186,6 @@ function installHermesAgent()
   updateCaddyBlocks $SUB_HERMES_AGENT_WEBUI $MANAGETLS_HERMES_AGENT_WEBUI "$is_integrate_hshq" $NETDEFAULT_HERMES_AGENT_WEBUI "$inner_block"
   insertSubAuthelia $SUB_HERMES_AGENT_WEBUI.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcUptimeKuma hermes-agent "$FMLNAME_HERMES_AGENT_DASHBOARD" $USERTYPE_HERMES_AGENT_DASHBOARD "https://$HERMES_AGENT_ADMIN_USERNAME:$HERMES_AGENT_ADMIN_PASSWORD@$SUB_HERMES_AGENT_DASHBOARD.$HOMESERVER_DOMAIN" true
     insertEnableSvcHeimdall hermes-agent "$FMLNAME_HERMES_AGENT_DASHBOARD" $USERTYPE_HERMES_AGENT_DASHBOARD "https://$SUB_HERMES_AGENT_DASHBOARD.$HOMESERVER_DOMAIN" "hermes-agent.png" true "$(getHeimdallOrderFromSub $SUB_HERMES_AGENT_DASHBOARD $USERTYPE_HERMES_AGENT_DASHBOARD)"
     insertEnableSvcAll hermes-agent "$FMLNAME_HERMES_AGENT_WEBUI" $USERTYPE_HERMES_AGENT_WEBUI "https://$SUB_HERMES_AGENT_WEBUI.$HOMESERVER_DOMAIN" "hermes-webui.png" "$(getHeimdallOrderFromSub $SUB_HERMES_AGENT_WEBUI $USERTYPE_HERMES_AGENT_WEBUI)"
     restartAllCaddyContainers
@@ -134911,6 +134909,10 @@ function deleteSvcHeimdall()
   is_manage_container=$3
   user_id=$(getHeimdallUserIDFromType $user_type)
   if [ "$IS_INSTALLED" = "true" ] && [ -f $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite ]; then
+    chk_exists=$(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select url from items where url like '${svc_url}%';")
+    if [ -z "$chk_exists" ]; then
+      return
+    fi
     if [ "$is_manage_container" = "true" ]; then
       docker container stop heimdall >/dev/null
     fi
@@ -136408,6 +136410,10 @@ function deleteSvcUptimeKuma()
   svc_url=$1
   is_manage_container=$2
   if [ "$IS_INSTALLED" = "true" ] && [ -f $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db ]; then
+    chk_exists=$(sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "select url from monitor where url like '${svc_url}%';")
+    if [ -z "$chk_exists" ]; then
+      return
+    fi
     if [ "$is_manage_container" = "true" ]; then
       docker container stop uptimekuma >/dev/null
     fi
