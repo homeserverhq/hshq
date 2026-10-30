@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=243
+HSHQ_LIB_SCRIPT_VERSION=244
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -34,6 +34,7 @@ function init()
   PRIOR_HSHQ_VERSION=0
   LAST_RELAYSERVER_VERSION_UPDATE=239
   IS_AUTO_INSTALL=false
+  HSHQ_INSTALL_VARIANT=base
   loadVersionVars
   IS_RUST_UTILS=false
   if [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^26\.04. ]]; then
@@ -532,6 +533,9 @@ function checkDockerPre()
 
 function upgradeHostOS()
 {
+  if [ "$IS_DISABLE_HOST_UPGRADE" = "true" ]; then
+    return
+  fi
   sudo DEBIAN_FRONTEND=noninteractive apt update
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
 }
@@ -3119,6 +3123,7 @@ fs.inotify.max_user_instances = 8192
 fs.inotify.max_user_watches = 524288
 vm.swappiness = 10
 net.core.somaxconn = 65536
+net.mptcp.enabled = 0
 net.netfilter.nf_conntrack_max = 1048576
 net.netfilter.nf_conntrack_tcp_loose = 0
 net.netfilter.nf_conntrack_tcp_timeout_established = 1800
@@ -3345,7 +3350,6 @@ function installDependencies()
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
   # Install utils
   installHostNTPServer
-
   for util in $UTILS_LIST; do
     if [[ "$(isProgramInstalled $util)" = "false" ]]; then
       lib_name=$(echo $util | cut -d"|" -f2)
@@ -3353,7 +3357,6 @@ function installDependencies()
       performAptInstall $lib_name
     fi
   done
-
   if ! [ -f /etc/rsyslog.d/docker-logs.conf ]; then
     # Install Rsyslog
     sudo systemctl status rsyslog > /dev/null 2>&1
@@ -3364,7 +3367,6 @@ function installDependencies()
       sudo systemctl start rsyslog
     fi
   fi
-
   # Some host tuning
   updateSysctl true
   updateLogrotateConfig
@@ -4571,7 +4573,7 @@ EOFHP
     sudo cp $HSHQ_LOG_FILE $HSHQ_BASE_DIR/hshqInstall.log
     sudo chown $USERNAME:$USERNAME $HSHQ_BASE_DIR/hshqInstall.log
     chmod 0400 $HSHQ_BASE_DIR/hshqInstall.log
-    #sudo truncate -s 0 $HSHQ_LOG_FILE
+    sudo truncate -s 0 $HSHQ_LOG_FILE
     sudo reboot
   fi
 }
@@ -4797,9 +4799,9 @@ EOF
   sudo cp /etc/fstab /etc/fstab.old
   echo "# Backup Drive" | sudo tee -a /etc/fstab > /dev/null 2>&1
   if [ -z "$newPartID" ]; then
-    echo "$newPart $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
+    echo "$newPart $HSHQ_BACKUP_DIR ext4 defaults,nofail,x-systemd.device-timeout=15 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
   else
-    echo "UUID=$newPartID $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
+    echo "UUID=$newPartID $HSHQ_BACKUP_DIR ext4 defaults,nofail,x-systemd.device-timeout=15 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
   fi
   sudo systemctl daemon-reload > /dev/null 2>&1
   sudo findmnt --verify | grep "Success, no errors or warnings detected" > /dev/null 2>&1
@@ -4896,7 +4898,8 @@ EOFBU
   else
     echo "Got token, importing backup configuration..."
   fi
-  http --check-status --ignore-stdin POST https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/api/v1/backups "Authorization: Bearer $dtok" @$HOME/hshq-backup.json > /dev/null 2>&1
+  docker exec -i -e DTOK="$dtok" duplicati sh -c 'curl -sS --fail-with-body --max-time 300 -X POST -H "Authorization: Bearer $DTOK" -H "Content-Type: application/json" --data-binary @- http://localhost:8200/api/v1/backups' < "$HOME/hshq-backup.json"
+  #http --check-status --ignore-stdin POST https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/api/v1/backups "Authorization: Bearer $dtok" @$HOME/hshq-backup.json > /dev/null 2>&1
   #docker exec duplicati bash -c "mono /app/duplicati/Duplicati.CommandLine.ConfigurationImporter.exe /config/hshq-backup.json --import-metadata=false --server-datafolder=/config"
   uplRetval=$?
   sudo rm -f $HOME/hshq-backup.json
@@ -4915,7 +4918,8 @@ function getDuplicatiToken()
   dupToken=""
   while [ $curDupTries -lt $maxDupTries ]
   do
-    dupToken=$(http --check-status --ignore-stdin --timeout=300 https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/api/v1/auth/login password=$DUPLICATI_ADMIN_PASSWORD | jq -r .AccessToken)
+    dupToken=$(docker exec -e DUPLICATI_ADMIN_PASSWORD="$DUPLICATI_ADMIN_PASSWORD" duplicati sh -c 'curl -sS --fail-with-body --max-time 300 -X POST -H "Content-Type: application/json" -d "$(jq -nc --arg p "$DUPLICATI_ADMIN_PASSWORD" "{password: \$p}")" http://localhost:8200/api/v1/auth/login' | jq -r .AccessToken)
+    #dupToken=$(http --check-status --ignore-stdin --timeout=300 https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/api/v1/auth/login password=$DUPLICATI_ADMIN_PASSWORD | jq -r .AccessToken)
     if [ $? -eq 0 ] && ! [ -z "$dupToken" ]; then
       isSuccess=true
       break
@@ -5010,9 +5014,9 @@ EOF
   sudo cp /etc/fstab /etc/fstab.old
   echo "# Backup Drive" | sudo tee -a /etc/fstab > /dev/null 2>&1
   if [ -z "$newPartID" ]; then
-    echo "$newPart $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
+    echo "$newPart $HSHQ_BACKUP_DIR ext4 defaults,nofail,x-systemd.device-timeout=15 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
   else
-    echo "UUID=$newPartID $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
+    echo "UUID=$newPartID $HSHQ_BACKUP_DIR ext4 defaults,nofail,x-systemd.device-timeout=15 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
   fi
   sudo systemctl daemon-reload > /dev/null 2>&1
   sudo findmnt --verify | grep "Success, no errors or warnings detected" > /dev/null 2>&1
@@ -6975,6 +6979,7 @@ fs.inotify.max_user_watches = 524288
 net.core.rmem_max = 4194304
 net.core.wmem_max = 4194304
 net.core.somaxconn = 65536
+net.mptcp.enabled = 0
 net.netfilter.nf_conntrack_max = 1048576
 net.netfilter.nf_conntrack_tcp_loose = 0
 net.netfilter.nf_conntrack_tcp_timeout_established = 1800
@@ -8322,6 +8327,7 @@ function pullImage()
     docker image inspect \$img_and_version > /dev/null 2>&1
     is_success=\$?
     ((num_tries++))
+    sleep 3
   done
   set -e
   if [ \$is_success -ne 0 ]; then
@@ -9509,7 +9515,6 @@ function installMailRelay()
   mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/rspamd
   mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/rspamd/conf
   mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/rspamd/var
-  mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/redis
   mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/clamav
   mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/unbound
   pw_hash=\$(docker run --rm $IMG_MAIL_RELAY_RSPAMD rspamadm pw -p $RELAYSERVER_RSPAMD_ADMIN_PASSWORD)
@@ -9644,13 +9649,12 @@ services:
     security_opt:
       - no-new-privileges:true
     command: redis-server
-      --appendonly yes
+      --appendonly no
     networks:
       - dock-mailrelay-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mail-relay-redis:/data
 
 volumes:
   caddy-certs:
@@ -9673,12 +9677,6 @@ volumes:
 #      type: none
 #      o: bind
 #      device: \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/clamav
-  v-mail-relay-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/redis
 
 networks:
   dock-ext-net:
@@ -13166,7 +13164,7 @@ PreDown = iptables -t mangle -D OUTPUT -j CONNMARK --restore-mark --nfmask 0xfff
 PublicKey = $relayserver_public_key
 PresharedKey = $preshared_key
 AllowedIPs = 10.0.0.0/8
-Endpoint = $endpoint_hostname:$endpoint_PORT
+Endpoint = $endpoint_hostname:$endpoint_port
 PersistentKeepalive = 20
 EOFWG
       config_name="Other-VPN-$domain_name"
@@ -18390,7 +18388,6 @@ function removeRevertDNS()
     deleteDomainAdguardHS "*.$curExtPrefix.$curDomain"
     removeDomainAndWildcardIgnoreQuerylogAndStatsHS "$curDomain"
     # Eventually delete this next line, but we'll leave it in for awhile
-    deleteSvcUptimeKuma "https://$SUB_HSHQHOME.${curDomain}" true
     deleteSvcUptimeKuma "https://$SUB_HSHQSTATUS.${curDomain}" true
   else
     # Found an alternate, replace it
@@ -19422,7 +19419,7 @@ user_pref("dom.event.clipboardevents.enabled",			false);
 // https://hg.mozilla.org/mozilla-central/rev/2f9f8ea4b9c3
 // https://github.com/pyllyukko/user.js/issues/287
 // NOTICE: Disabling clipboard operations will break legitimate JS-based "copy to clipboard" functionality
-user_pref("dom.allow_cut_copy", false);
+user_pref("dom.allow_cut_copy", true);
 
 // PREF: Disable speech recognition
 // https://dvcs.w3.org/hg/speech-api/raw-file/tip/speechapi.html
@@ -21419,6 +21416,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=243
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 244 ]; then
+    echo "Updating to Version 244..."
+    version244Update
+    HSHQ_VERSION=244
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -21640,13 +21643,12 @@ services:
     security_opt:
       - no-new-privileges:true
     command: redis-server
-      --appendonly yes
+      --appendonly no
     networks:
       - dock-mailu-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mailu-redis:/data
 
   admin:
     image: $IMG_MAILU_ADMIN
@@ -21812,14 +21814,6 @@ $is_antivirus_commented_out      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/filter:/d
       - /etc/timezone:/etc/timezone:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/webmail:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/roundcube:/overrides:ro
-
-volumes:
-  v-mailu-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/mailu/redis
 
 networks:
   dock-internalmail-net:
@@ -24540,33 +24534,33 @@ function version238Update()
   docker ps | grep -q paperless-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME="Personal Email"
-    PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
+    PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=$(docker exec paperless-app curl -s -X GET "http://localhost:8000/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
     if [ -z "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID" ] || [ "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID" = "null" ]; then
       jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME\", \"color\": \"#299aa5\" }"
-      PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+      PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
     fi
     updateConfigVar PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME"
     updateConfigVar PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID"
     PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME="Shared Email"
-    PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
+    PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=$(docker exec paperless-app curl -s -X GET "http://localhost:8000/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
     if [ -z "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID" ] || [ "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID" = "null" ]; then
       jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME\", \"color\": \"#ff7f7f\" }"
-      PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+      PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
     fi
     updateConfigVar PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME"
     updateConfigVar PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID"
     PAPERLESS_KNOWLEDGEBASE_TAG_NAME="Knowledge Base"
-    PAPERLESS_KNOWLEDGEBASE_TAG_ID=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_KNOWLEDGEBASE_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
+    PAPERLESS_KNOWLEDGEBASE_TAG_ID=$(docker exec paperless-app curl -s -X GET "http://localhost:8000/api/tags/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_KNOWLEDGEBASE_TAG_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
     if [ -z "$PAPERLESS_KNOWLEDGEBASE_TAG_ID" ] || [ "$PAPERLESS_KNOWLEDGEBASE_TAG_ID" = "null" ]; then
       jsonbody="{ \"name\": \"$PAPERLESS_KNOWLEDGEBASE_TAG_NAME\", \"color\": \"#615dff\", \"matching_algorithm\": 6, \"is_insensitive\": true }"
-      PAPERLESS_KNOWLEDGEBASE_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+      PAPERLESS_KNOWLEDGEBASE_TAG_ID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
     fi
     updateConfigVar PAPERLESS_KNOWLEDGEBASE_TAG_NAME "$PAPERLESS_KNOWLEDGEBASE_TAG_NAME"
     updateConfigVar PAPERLESS_KNOWLEDGEBASE_TAG_ID "$PAPERLESS_KNOWLEDGEBASE_TAG_ID"
     PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME="Transcription"
-    PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
+    PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=$(docker exec paperless-app curl -s -X GET "http://localhost:8000/api/document_types/?page_size=100" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg n "$PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME" '.results[] | select(.name == $n) | .id' | head -n1)
     if [ -z "$PAPERLESS_TRANSCRIPTION_DOCTYPE_ID" ] || [ "$PAPERLESS_TRANSCRIPTION_DOCTYPE_ID" = "null" ]; then
-      RESPONSE=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
+      RESPONSE=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/document_types/" \
       -H "Authorization: Token $PAPERLESS_API_TOKEN" \
       -H "Content-Type: application/json" \
       -d "{\"name\": \"$PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME\", \"matching_algorithm\": 6, \"match\": \"\"}")
@@ -24850,6 +24844,11 @@ function version243Update()
   do
     updateStackEnv $curCH modFunCaddyAddCrowdSec
   done
+}
+
+function version244Update()
+{
+  updateSysctl
 }
 
 function getNextHSVPNRoutingTable()
@@ -30840,7 +30839,7 @@ EOFAU
   docker ps | grep -q paperless-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     jsonbody="username=${addPUUID}&password=$addPUPassword"
-    newuser_paperless_apitoken=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/token/" -H "accept: application/json" -H "Content-Type: application/x-www-form-urlencoded" -d "$jsonbody" | jq -r '.token')
+    newuser_paperless_apitoken=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/token/" -H "accept: application/json" -H "Content-Type: application/x-www-form-urlencoded" -d "$jsonbody" | jq -r '.token')
   fi
   fullName="${addPUFirstName}${addPULastName}"
   cleanName="${fullName//[![:alnum:]]/}"
@@ -31013,27 +31012,27 @@ function addPrimaryUserPaperless()
     return
   fi
   echo "Adding primary user to Paperless..."
-  primary_user_gid=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg LDAP_PRIMARY_USER_GROUP_NAME "$LDAP_PRIMARY_USER_GROUP_NAME" '.results[] | select(.name == $LDAP_PRIMARY_USER_GROUP_NAME) | .id')
+  primary_user_gid=$(docker exec paperless-app curl -s -X GET "http://localhost:8000/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r --arg LDAP_PRIMARY_USER_GROUP_NAME "$LDAP_PRIMARY_USER_GROUP_NAME" '.results[] | select(.name == $LDAP_PRIMARY_USER_GROUP_NAME) | .id')
   if [ -z "$primary_user_gid" ] || ! [[ $primary_user_gid =~ ^[+-]?[0-9]+$ ]]; then
     return
   fi
   jsonbody="{\"username\": \"$addUserPaper_uid\",\"email\": \"$addUserPaper_email\",\"password\": \"$addUserPaper_password\",\"first_name\": \"$addUserPaper_firstname\",\"last_name\": \"$addUserPaper_lastname\",\"is_staff\": false,\"is_active\": true,\"is_superuser\": false,\"groups\": [$primary_user_gid]}"
-  add_user_id=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/users/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  add_user_id=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/users/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   if [ -z "$add_user_id" ] || ! [[ $add_user_id =~ ^[+-]?[0-9]+$ ]]; then
     return
   fi
   jsonbody="{ \"name\": \"${addUserPaper_uid} Email\", \"imap_server\": \"$SMTP_HOSTNAME\", \"imap_port\": 143, \"imap_security\": 3, \"username\": \"$addUserPaper_email\", \"password\": \"$addUserPaper_emailpw\", \"account_type\": 1, \"owner\": $add_user_id, \"user_can_change\": true }"
-  mail_account_id=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  mail_account_id=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   if [ -n "$mail_account_id" ]; then
-    jsonbody="{ \"name\": \"${addUserPaper_uid} Email Personal\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $add_user_id, \"user_can_change\": true, \"stop_processing\": false }"
-    curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-    jsonbody="{ \"name\": \"${addUserPaper_uid} Email Work\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Work\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $add_user_id, \"user_can_change\": true, \"stop_processing\": false }"
-    curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+    jsonbody="{ \"name\": \"${addUserPaper_uid} Email Personal\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 2, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $add_user_id, \"user_can_change\": true, \"stop_processing\": false }"
+    docker exec paperless-app curl -s -X POST "http://localhost:8000/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+    jsonbody="{ \"name\": \"${addUserPaper_uid} Email Work\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Work\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 2, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $add_user_id, \"user_can_change\": true, \"stop_processing\": false }"
+    docker exec paperless-app curl -s -X POST "http://localhost:8000/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   fi
-  jsonbody="{ \"name\": \"${addUserPaper_uid}_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/${addUserPaper_uid}/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"${addUserPaper_uid}_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/${addUserPaper_uid}/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id, \"assign_document_type\": $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  jsonbody="{ \"name\": \"${addUserPaper_uid}_personalconsume\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/${addUserPaper_uid}/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  jsonbody="{ \"name\": \"${addUserPaper_uid}_transcribeconsume\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/${addUserPaper_uid}/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $add_user_id, \"assign_document_type\": $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID }, { \"type\": 1, \"assign_storage_path\": 1 } ] }"
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
 }
 
 function addPrimaryUserAutoKB()
@@ -31075,7 +31074,7 @@ function addPrimaryUserAutoKB()
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"${formal_name}-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"storage_path_id\":$paperless_storage_id,\"document_filter\":\"owner__id=$paperless_user_id&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"processing_mode\":\"Paperless Content\"}}" \
+    --data "{\"name\":\"${formal_name}-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"document_filter\":\"storage_path__id=$paperless_storage_id&owner__id=$paperless_user_id&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"processing_mode\":\"Paperless Content\"}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/ePaperlessDoclingPlugin")"
   akbCode="${akbRes##*$'\n'}"
@@ -31084,11 +31083,11 @@ function addPrimaryUserAutoKB()
   PAPERLESS_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
   docker ps | grep paperless-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
-    AKB_WORKFLOW=$(curl -s https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN")
+    AKB_WORKFLOW=$(docker exec paperless-app curl -s -X GET http://localhost:8000/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN")
     if ! [ -z "$AKB_WORKFLOW" ]; then
       NEW_ACTION="{ \"type\": 4, \"order\": 99, \"webhook\": { \"url\": \"http://autokb-web/api/subscriptions/$PAPERLESS_SUB_ID/trigger\", \"headers\": { \"Authorization\": \"Bearer $AUTOKB_WEBHOOK_API_KEY\" }, \"include_document\": false } }"
       UPDATED_WF=$(echo "$AKB_WORKFLOW" | jq --argjson action "$NEW_ACTION" '.actions += [$action]')
-      echo "$UPDATED_WF" | curl -X PUT https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @- > /dev/null 2>&1
+      echo "$UPDATED_WF" | docker exec paperless-app curl -X PUT http://localhost:8000/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @- > /dev/null 2>&1
     fi
   fi
   docker ps | grep -q openwebui-app > /dev/null 2>&1
@@ -31843,7 +31842,7 @@ function loadPinnedDockerImages()
   IMG_DBGATE_APP=mirror.gcr.io/dbgate/dbgate:6.7.3-alpine
   IMG_DISCOURSE=mirror.gcr.io/bitnami/discourse:3.4.7
   IMG_DNSMASQ=mirror.gcr.io/jpillora/dnsmasq:1.1
-  IMG_DOLIBARR_APP=mirror.gcr.io/dolibarr/dolibarr:23.0.3-php8.2
+  IMG_DOLIBARR_APP=ghcr.io/homeserverhq/dolibarr:v23.0.4
   IMG_DOLIBARR_MCP=ghcr.io/homeserverhq/dolibarr-mcp:v2
   IMG_DOZZLE=mirror.gcr.io/amir20/dozzle:v6.1.1
   IMG_DRAWIO_PLANTUML=mirror.gcr.io/jgraph/plantuml-server
@@ -31853,11 +31852,11 @@ function loadPinnedDockerImages()
   IMG_DUPLICATI=mirror.gcr.io/linuxserver/duplicati:v2.3.0.4_stable_2026-07-09-ls300
   IMG_EASYAPPOINTMENTS_APP=mirror.gcr.io/alextselegidis/easyappointments:1.5.2
   IMG_ESPOCRM_APP=mirror.gcr.io/espocrm/espocrm:9.2.5-apache
-  IMG_EXCALIDRAW_SERVER=mirror.gcr.io/excalidraw/excalidraw-room
-  IMG_EXCALIDRAW_STORAGE=mirror.gcr.io/kiliandeca/excalidraw-storage-backend
-  IMG_EXCALIDRAW_WEB=hshq/excalidraw-web:v1
-  IMG_EXCALIDRAW_AI=hshq/excalidraw-ai:v1
-  IMG_EXCALIDRAW_MCP=hshq/excalidraw-mcp:v1
+  IMG_EXCALIDRAW_SERVER=ghcr.io/homeserverhq/excalidraw-room:v0.1
+  IMG_EXCALIDRAW_STORAGE=ghcr.io/homeserverhq/excalidraw-storage-backend:v0.1
+  IMG_EXCALIDRAW_WEB=ghcr.io/homeserverhq/excalidraw:v0.1
+  IMG_EXCALIDRAW_AI=ghcr.io/homeserverhq/excalidraw-canvas:v0.1
+  IMG_EXCALIDRAW_MCP=ghcr.io/homeserverhq/excalidraw-mcp:v0.1
   IMG_FILEBROWSER=mirror.gcr.io/filebrowser/filebrowser:v2.50.0
   IMG_FILEDROP=filedrop/filedrop:1
   IMG_FIREFLY_APP=mirror.gcr.io/fireflyiii/core:version-6.4.9
@@ -31912,18 +31911,18 @@ function loadPinnedDockerImages()
   IMG_MAIL_RELAY_RSPAMD=ghcr.io/homeserverhq/mail-relay-rspamd:v1
   IMG_MAIL_RELAY_CLAMAV=clamav/clamav:1.2.1
   IMG_MAIL_RELAY_UNBOUND=mvance/unbound:1.19.0
-  IMG_MAILU_ADMIN=ghcr.io/mailu/admin:2024.06.54
-  IMG_MAILU_ANTISPAM=ghcr.io/mailu/rspamd:2024.06.54
+  IMG_MAILU_ADMIN=ghcr.io/mailu/admin:2024.06.65
+  IMG_MAILU_ANTISPAM=ghcr.io/mailu/rspamd:2024.06.65
   IMG_MAILU_ANTIVIRUS=mirror.gcr.io/clamav/clamav:1.5.3
-  IMG_MAILU_FETCHMAIL=ghcr.io/mailu/fetchmail:2024.06.54
-  IMG_MAILU_FRONT=ghcr.io/mailu/nginx:2024.06.54
-  IMG_MAILU_IMAP=ghcr.io/mailu/dovecot:2024.06.54
-  IMG_MAILU_OLETOOLS=ghcr.io/mailu/oletools:2024.06.54
-  IMG_MAILU_SMTP=ghcr.io/mailu/postfix:2024.06.54
+  IMG_MAILU_FETCHMAIL=ghcr.io/mailu/fetchmail:2024.06.65
+  IMG_MAILU_FRONT=ghcr.io/mailu/nginx:2024.06.65
+  IMG_MAILU_IMAP=ghcr.io/mailu/dovecot:2024.06.65
+  IMG_MAILU_OLETOOLS=ghcr.io/mailu/oletools:2024.06.65
+  IMG_MAILU_SMTP=ghcr.io/mailu/postfix:2024.06.65
   IMG_MAILU_TIKA=mirror.gcr.io/apache/tika:3.3.1.0-full
-  IMG_MAILU_UNBOUND=ghcr.io/mailu/unbound:2024.06.54
-  IMG_MAILU_WEBDAV=ghcr.io/mailu/radicale:2024.06.54
-  IMG_MAILU_WEBMAIL=ghcr.io/mailu/webmail:2024.06.54
+  IMG_MAILU_UNBOUND=ghcr.io/mailu/unbound:2024.06.65
+  IMG_MAILU_WEBDAV=ghcr.io/mailu/radicale:2024.06.65
+  IMG_MAILU_WEBMAIL=ghcr.io/mailu/webmail:2024.06.65
   IMG_MASTODON_APP=mirror.gcr.io/tootsuite/mastodon:v4.5.2
   IMG_MASTODON_STREAMING=mirror.gcr.io/tootsuite/mastodon-streaming:v4.5.2
   IMG_MATRIX_ELEMENT=mirror.gcr.io/vectorim/element-web:v1.12.6
@@ -31949,7 +31948,7 @@ function loadPinnedDockerImages()
   IMG_ODOO_APP=mirror.gcr.io/odoo:19.0-20251121
   IMG_OFELIA=mirror.gcr.io/mcuadros/ofelia:0.3.18
   IMG_OMBI_APP=linuxserver/ombi:4.47.1
-  IMG_OPENLDAP_MANAGER=wheelybird/ldap-user-manager:v1.11
+  IMG_OPENLDAP_MANAGER=mirror.gcr.io/wheelybird/luminary:v2.2.1
   IMG_OPENLDAP_PHP=osixia/phpldapadmin:stable
   IMG_OPENLDAP_SERVER=osixia/openldap:1.5.0
   IMG_OPENPROJECT_APP=mirror.gcr.io/openproject/openproject:17.6.0-slim
@@ -31986,8 +31985,8 @@ function loadPinnedDockerImages()
   IMG_REVOLT_CROND=ghcr.io/revoltchat/crond:20250807-1
   IMG_REVOLT_PUSHD=ghcr.io/revoltchat/pushd:20250807-1
   IMG_SABNZBD=mirror.gcr.io/linuxserver/sabnzbd:4.5.5
-  IMG_SEARXNG_APP=ghcr.io/searxng/searxng:2026.7.12-c19d86faa
-  IMG_SEARXNG_MCP=hshq/searxng-mcp:v1
+  IMG_SEARXNG_APP=ghcr.io/searxng/searxng:2026.10.27-cb74e7f81
+  IMG_SEARXNG_MCP=ghcr.io/homeserverhq/mcp-searxng-enhanced:v1.0
   IMG_SERVARR_SONARR=mirror.gcr.io/linuxserver/sonarr:4.0.16
   IMG_SERVARR_RADARR=mirror.gcr.io/linuxserver/radarr:6.1.0-nightly
   IMG_SERVARR_LIDARR=mirror.gcr.io/linuxserver/lidarr:3.1.0
@@ -32059,8 +32058,8 @@ function loadPinnedDockerImages()
   IMG_FIRECRAWL_API=ghcr.io/firecrawl/firecrawl:latest
   IMG_LIBRECHAT_APP=ghcr.io/danny-avila/librechat:v0.8.1
   IMG_LIBRECHAT_RAGAPI=ghcr.io/danny-avila/librechat-rag-api-dev-lite:v0.7.0
-  IMG_CRAWL4AI_APP=mirror.gcr.io/unclecode/crawl4ai:0.8.6
-  IMG_CRAWL4AI_PROXY=ghcr.io/lennyerik/crawl4ai-proxy:latest
+  IMG_CRAWL4AI_APP=ghcr.io/homeserverhq/crawl4ai:v0.9.5
+  IMG_CRAWL4AI_PROXY=ghcr.io/homeserverhq/crawl4ai-proxy:v0.1
   IMG_OLLAMA_SERVER=mirror.gcr.io/ollama/ollama:0.20.5
   IMG_OPENWEBUI_APP=ghcr.io/homeserverhq/open-webui:v0.12.0
   IMG_OPENWEBUI_OPENTERMINAL=ghcr.io/open-webui/open-terminal:0.11.34
@@ -32073,13 +32072,13 @@ function loadPinnedDockerImages()
   IMG_LOBECHAT_APP=mirror.gcr.io/lobehub/lobe-chat-database:1.143.3
   IMG_INVOKEAI_APP=ghcr.io/invoke-ai/invokeai:6.12-cpu
   IMG_RAGFLOW_INFINITY=mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3
-  IMG_RAGFLOW_APP=ghcr.io/homeserverhq/ragflow:v0.27.1
+  IMG_RAGFLOW_APP=ghcr.io/homeserverhq/ragflow:v0.27.3.1
   IMG_RAGFLOW_SANDBOX=mirror.gcr.io/infiniflow/sandbox-executor-manager:latest
   IMG_RAGFLOW_SB_NODEJS=mirror.gcr.io/infiniflow/sandbox-base-nodejs:latest
   IMG_RAGFLOW_SB_PYTHON=mirror.gcr.io/infiniflow/sandbox-base-python:latest
   IMG_TABBYML_APP=mirror.gcr.io/tabbyml/tabby:0.31.2
   IMG_DEEPWIKIOPEN_APP=ghcr.io/asyncfuncai/deepwiki-open:sha-d48f5bc
-  IMG_DOCLING_APP=hshq/docling-serve:v1.31.0
+  IMG_DOCLING_APP=hshq/docling-serve:v1.38.1
   IMG_DIFY_SSRF=mirror.gcr.io/ubuntu/squid:latest
   IMG_DIFY_API=mirror.gcr.io/langgenius/dify-api:1.11.2
   IMG_DIFY_PLUGIND=mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local
@@ -32107,10 +32106,10 @@ function loadPinnedDockerImages()
   IMG_MEMOS_APP=mirror.gcr.io/neosmemo/memos:0.25.3
   IMG_SILLYTAVERN=ghcr.io/sillytavern/sillytavern:1.15.0
   IMG_LEMONADE_SERVER=ghcr.io/lemonade-sdk/lemonade-server:v9.2.0
-  IMG_SPEAKR_APP=ghcr.io/homeserverhq/speakr:v0.10.5
+  IMG_SPEAKR_APP=ghcr.io/homeserverhq/speakr:v0.10.16
   IMG_SPEAKR_WHISPERX=mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1
-  IMG_INSANELYFASTWHISPER_APP=hshq/insanelyfastwhisper:v1
-  IMG_IVBOX_APP=hshq/ivbox:v1
+  IMG_INSANELYFASTWHISPER_APP=hshq/insanelyfastwhisper:v3
+  IMG_IVBOX_APP=ghcr.io/homeserverhq/ivbox:v0.1.0
   IMG_MONICA_APP=hshq/monica-app:v1
   IMG_MONICA_WEB=hshq/monica-web:v1
   IMG_AFFINE_APP=ghcr.io/toeverything/affine:0.25.7
@@ -32119,10 +32118,10 @@ function loadPinnedDockerImages()
   IMG_SUPERSET_APP=mirror.gcr.io/apache/superset:6.0.0
   IMG_SUPERSET_WORKER=mirror.gcr.io/apache/superset:dev
   IMG_SUPERSET_WEBSOCKET=mirror.gcr.io/apache/superset:6.0.0-websocket
-  IMG_KOKORO_TTS=hshq/kokoro-tts:v1
+  IMG_KOKORO_TTS=ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0
   IMG_KOKORO_WEB=ghcr.io/remsky/kokoro-fastapi-ui:v0.1.0
   IMG_CHATTERBOX_APP=hshq/chatterbox:v1
-  IMG_LITELLM_APP=ghcr.io/berriai/litellm:v1.92.0
+  IMG_LITELLM_APP=ghcr.io/homeserverhq/litellm:v1.106.4
   IMG_LANGFUSE_WORKER=langfuse/langfuse-worker:3.213.0
   IMG_LANGFUSE_APP=mirror.gcr.io/langfuse/langfuse:3.213.0
   IMG_SKYVERN_API=mirror.gcr.io/skyvern/skyvern:v1.0.13
@@ -32134,7 +32133,7 @@ function loadPinnedDockerImages()
   IMG_OPENRAG_FRONTEND=mirror.gcr.io/langflowai/openrag-frontend:0.4.0
   IMG_OPENRAG_LANGFLOW=mirror.gcr.io/langflowai/openrag-langflow:0.4.0
   IMG_VOICEBOX_APP=hshq/voicebox:v1
-  IMG_OPENCODE_APP=ghcr.io/joostme/opencode-docker:2.3.1
+  IMG_OPENCODE_APP=ghcr.io/homeserverhq/opencode-docker:v3.1.0
   IMG_OPENCODE_PLAYWRIGHT=mcr.microsoft.com/playwright/mcp:v0.0.70
   IMG_OPENSKILLS_APP=hshq/openskills:v1
   IMG_EMAILCLASSIFIERAI_APP=ghcr.io/homeserverhq/emailclassifierai:v6
@@ -32175,9 +32174,9 @@ function getScriptStackVersion()
     sysutils)
       echo "v11" ;;
     openldap)
-      echo "v1" ;;
+      echo "v2" ;;
     mailu)
-      echo "v8" ;;
+      echo "v9" ;;
     wazuh)
       echo "v8" ;;
     collabora)
@@ -32197,7 +32196,7 @@ function getScriptStackVersion()
     dozzle)
       echo "v7" ;;
     searxng)
-      echo "v11" ;;
+      echo "v12" ;;
     jellyfin)
       echo "v7" ;;
     filebrowser)
@@ -32363,7 +32362,7 @@ function getScriptStackVersion()
     invoiceninja)
       echo "v4" ;;
     dolibarr)
-      echo "v4" ;;
+      echo "v5" ;;
     n8n)
       echo "v2" ;;
     automatisch)
@@ -32419,7 +32418,7 @@ function getScriptStackVersion()
     librechat)
       echo "v1" ;;
     crawl4ai)
-      echo "v2" ;;
+      echo "v3" ;;
     ollama)
       echo "v2" ;;
     openwebui)
@@ -32431,13 +32430,13 @@ function getScriptStackVersion()
     invokeai)
       echo "v1" ;;
     ragflow)
-      echo "v4" ;;
+      echo "v5" ;;
     tabbyml)
       echo "v1" ;;
     deepwikiopen)
       echo "v1" ;;
     docling)
-      echo "v2" ;;
+      echo "v3" ;;
     dify)
       echo "v2" ;;
     mindsdb)
@@ -32469,11 +32468,11 @@ function getScriptStackVersion()
     lemonade)
       echo "v1" ;;
     speakr)
-      echo "v4" ;;
+      echo "v5" ;;
     insanelyfastwhisper)
-      echo "v1" ;;
+      echo "v3" ;;
     ivbox)
-      echo "v1" ;;
+      echo "v2" ;;
     monica)
       echo "v1" ;;
     affine)
@@ -32483,11 +32482,11 @@ function getScriptStackVersion()
     superset)
       echo "v1" ;;
     kokoro)
-      echo "v1" ;;
+      echo "v2" ;;
     chatterbox)
       echo "v1" ;;
     litellm)
-      echo "v2" ;;
+      echo "v3" ;;
     langfuse)
       echo "v3" ;;
     skyvern)
@@ -32501,7 +32500,7 @@ function getScriptStackVersion()
     voicebox)
       echo "v1" ;;
     opencode)
-      echo "v1" ;;
+      echo "v2" ;;
     openskills)
       echo "v1" ;;
     emailclassifierai)
@@ -35052,9 +35051,9 @@ LIGHTRAG_DATABASE_READONLYUSER_PASSWORD=
 LIGHTRAG_TOKEN_SECRET=
 LIGHTRAG_API_KEY=
 LIGHTRAG_QDRANT_API_KEY=
-LIGHTRAG_MEMGRAPH_DATABASE=
-LIGHTRAG_MEMGRAPH_USER=
-LIGHTRAG_MEMGRAPH_PASSWORD=
+LIGHTRAG_NEO4J_DATABASE=
+LIGHTRAG_NEO4J_USER=
+LIGHTRAG_NEO4J_PASSWORD=
 # LightRAG (Service Details) END
 
 # OpenSERP (Service Details) BEGIN
@@ -40143,17 +40142,17 @@ function initServicesCredentials()
     LIGHTRAG_QDRANT_API_KEY=$(pwgen -c -n 32 1)
     updateConfigVar LIGHTRAG_QDRANT_API_KEY $LIGHTRAG_QDRANT_API_KEY
   fi
-  if [ -z "$LIGHTRAG_MEMGRAPH_DATABASE" ]; then
-    LIGHTRAG_MEMGRAPH_DATABASE=memgraph
-    updateConfigVar LIGHTRAG_MEMGRAPH_DATABASE $LIGHTRAG_MEMGRAPH_DATABASE
+  if [ -z "$LIGHTRAG_NEO4J_DATABASE" ]; then
+    LIGHTRAG_NEO4J_DATABASE=neo4j
+    updateConfigVar LIGHTRAG_NEO4J_DATABASE $LIGHTRAG_NEO4J_DATABASE
   fi
-  if [ -z "$LIGHTRAG_MEMGRAPH_USER" ]; then
-    LIGHTRAG_MEMGRAPH_USER=lightrag-user
-    updateConfigVar LIGHTRAG_MEMGRAPH_USER $LIGHTRAG_MEMGRAPH_USER
+  if [ -z "$LIGHTRAG_NEO4J_USER" ]; then
+    LIGHTRAG_NEO4J_USER=neo4j
+    updateConfigVar LIGHTRAG_NEO4J_USER $LIGHTRAG_NEO4J_USER
   fi
-  if [ -z "$LIGHTRAG_MEMGRAPH_PASSWORD" ]; then
-    LIGHTRAG_MEMGRAPH_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar LIGHTRAG_MEMGRAPH_PASSWORD $LIGHTRAG_MEMGRAPH_PASSWORD
+  if [ -z "$LIGHTRAG_NEO4J_PASSWORD" ]; then
+    LIGHTRAG_NEO4J_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LIGHTRAG_NEO4J_PASSWORD $LIGHTRAG_NEO4J_PASSWORD
   fi
   if [ -z "$SURICATA_ADMIN_USERNAME" ]; then
     SURICATA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_suricata"
@@ -40290,27 +40289,10 @@ function checkCreateNonbackupDirByStack()
       mkdir -p $HSHQ_NONBACKUP_DIR/duplicati/restore
       ;;
     "mastodon")
-      mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/redis
       mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/static
-      ;;
-    "searxng")
-      mkdir -p $HSHQ_NONBACKUP_DIR/searxng/redis
       ;;
     "peertube")
       mkdir -p $HSHQ_NONBACKUP_DIR/peertube/assets
-      mkdir -p $HSHQ_NONBACKUP_DIR/peertube/redis
-      ;;
-    "gitlab")
-      mkdir -p $HSHQ_NONBACKUP_DIR/gitlab/redis
-      ;;
-    "discourse")
-      mkdir -p $HSHQ_NONBACKUP_DIR/discourse/redis
-      ;;
-    "shlink")
-      mkdir -p $HSHQ_NONBACKUP_DIR/shlink/redis
-      ;;
-    "firefly")
-      mkdir -p $HSHQ_NONBACKUP_DIR/firefly/redis
       ;;
     "kasm")
       mkdir -p $HSHQ_NONBACKUP_DIR/kasm/data
@@ -40322,72 +40304,11 @@ function checkCreateNonbackupDirByStack()
       mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/logs
       mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/traindata
       ;;
-    "bar-assistant")
-      mkdir -p $HSHQ_NONBACKUP_DIR/bar-assistant/redis
-      ;;
-    "wallabag")
-      mkdir -p $HSHQ_NONBACKUP_DIR/wallabag/redis
-      ;;
-    "paperless")
-      mkdir -p $HSHQ_NONBACKUP_DIR/paperless/redis
-      ;;
     "piped")
       mkdir -p $HSHQ_NONBACKUP_DIR/piped/proxy
       ;;
-    "penpot")
-      mkdir -p $HSHQ_NONBACKUP_DIR/penpot/redis
-      ;;
     "immich")
-      mkdir -p $HSHQ_NONBACKUP_DIR/immich/redis
       mkdir -p $HSHQ_NONBACKUP_DIR/immich/cache
-      ;;
-    "aistack")
-      mkdir -p $HSHQ_NONBACKUP_DIR/aistack/redis
-      ;;
-    "pixelfed")
-      mkdir -p $HSHQ_NONBACKUP_DIR/pixelfed/redis
-      ;;
-    "yamtrack")
-      mkdir -p $HSHQ_NONBACKUP_DIR/yamtrack/redis
-      ;;
-    "budibase")
-      mkdir -p $HSHQ_NONBACKUP_DIR/budibase/redis
-      ;;
-    "standardnotes")
-      mkdir -p $HSHQ_NONBACKUP_DIR/standardnotes/redis
-      ;;
-    "revolt")
-      mkdir -p $HSHQ_NONBACKUP_DIR/revolt/redis
-      ;;
-    "twenty")
-      mkdir -p $HSHQ_NONBACKUP_DIR/twenty/redis
-      ;;
-    "zammad")
-      mkdir -p $HSHQ_NONBACKUP_DIR/zammad/redis
-      ;;
-    "zulip")
-      mkdir -p $HSHQ_NONBACKUP_DIR/zulip/redis
-      ;;
-    "killbill")
-      mkdir -p $HSHQ_NONBACKUP_DIR/killbill/redis
-      ;;
-    "invoiceninja")
-      mkdir -p $HSHQ_NONBACKUP_DIR/invoiceninja/redis
-      ;;
-    "dolibarr")
-      mkdir -p $HSHQ_NONBACKUP_DIR/dolibarr/redis
-      ;;
-    "n8n")
-      mkdir -p $HSHQ_NONBACKUP_DIR/n8n/redis
-      ;;
-    "automatisch")
-      mkdir -p $HSHQ_NONBACKUP_DIR/automatisch/redis
-      ;;
-    "activepieces")
-      mkdir -p $HSHQ_NONBACKUP_DIR/activepieces/redis
-      ;;
-    "akaunting")
-      mkdir -p $HSHQ_NONBACKUP_DIR/akaunting/redis
       ;;
     "kopia")
       mkdir -p $HSHQ_NONBACKUP_DIR/kopia/snapshots
@@ -40402,27 +40323,6 @@ function checkCreateNonbackupDirByStack()
       mkdir -p $HSHQ_AIMODELS_DIR/comfyui
       mkdir -p $HSHQ_NONBACKUP_DIR/comfyui/cache
       ;;
-    "firecrawl")
-      mkdir -p $HSHQ_NONBACKUP_DIR/firecrawl/redis
-      ;;
-    "librechat")
-      mkdir -p $HSHQ_NONBACKUP_DIR/librechat/redis
-      ;;
-    "openwebui")
-      mkdir -p $HSHQ_NONBACKUP_DIR/openwebui/redis
-      ;;
-    "lobechat")
-      mkdir -p $HSHQ_NONBACKUP_DIR/lobechat/redis
-      ;;
-    "ragflow")
-      mkdir -p $HSHQ_NONBACKUP_DIR/ragflow/redis
-      ;;
-    "docling")
-      mkdir -p $HSHQ_NONBACKUP_DIR/docling/redis
-      ;;
-    "dify")
-      mkdir -p $HSHQ_NONBACKUP_DIR/dify/redis
-      ;;
     "khoj")
       mkdir -p $HSHQ_AIMODELS_DIR/khoj
       ;;
@@ -40430,53 +40330,8 @@ function checkCreateNonbackupDirByStack()
       mkdir -p $HSHQ_AIMODELS_DIR/invokeai/models
       mkdir -p $HSHQ_AIMODELS_DIR/invokeai/cache/{download,convert}
       ;;
-    "mindsdb")
-      mkdir -p $HSHQ_NONBACKUP_DIR/mindsdb/redis
-      ;;
-    "watercrawl")
-      mkdir -p $HSHQ_NONBACKUP_DIR/watercrawl/redis
-      ;;
-    "flowise")
-      mkdir -p $HSHQ_NONBACKUP_DIR/flowise/redis
-      ;;
-    "nocodb")
-      mkdir -p $HSHQ_NONBACKUP_DIR/nocodb/redis
-      ;;
     "morphic")
       mkdir -p $HSHQ_NONBACKUP_DIR/morphic/redis
-      ;;
-    "docsgpt")
-      mkdir -p $HSHQ_NONBACKUP_DIR/docsgpt/redis
-      ;;
-    "monica")
-      mkdir -p $HSHQ_NONBACKUP_DIR/monica/redis
-      ;;
-    "affine")
-      mkdir -p $HSHQ_NONBACKUP_DIR/affine/redis
-      ;;
-    "superset")
-      mkdir -p $HSHQ_NONBACKUP_DIR/superset/redis
-      ;;
-    "litellm")
-      mkdir -p $HSHQ_NONBACKUP_DIR/litellm/redis
-      ;;
-    "langfuse")
-      mkdir -p $HSHQ_NONBACKUP_DIR/langfuse/redis
-      ;;
-    "wger")
-      mkdir -p $HSHQ_NONBACKUP_DIR/wger/redis
-      ;;
-    "emailclassifierai")
-      mkdir -p $HSHQ_NONBACKUP_DIR/emailclassifierai/redis
-      ;;
-    "autokb")
-      mkdir -p $HSHQ_NONBACKUP_DIR/autokb/redis
-      ;;
-    "suitecrm")
-      mkdir -p $HSHQ_NONBACKUP_DIR/suitecrm/redis
-      ;;
-    "cognee")
-      mkdir -p $HSHQ_NONBACKUP_DIR/cognee/redis
       ;;
 #ADD_NEW_NONBACKUP_DIRS_HERE
     *)
@@ -41605,6 +41460,8 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_YAMTRACK.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ZULIP_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_BESZEL_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_METABASE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CONTROLR_APP.$HOMESERVER_DOMAIN\n"
@@ -41657,7 +41514,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_KILLBILL_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LINKWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MESHCENTRAL.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_METABASE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MINTHCM.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PAPERLESS_AI_WEB.$HOMESERVER_DOMAIN\n"
@@ -41772,7 +41628,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WAZUH.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WIKIJS.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_BESZEL_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CONTROLR_ASPIRE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KOPIA_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_TABBYML_APP.$HOMESERVER_DOMAIN\n"
@@ -42975,7 +42830,7 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,opennotebook,appsmith,trilium,memos,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,wger,workoutcool,voicebox,opencode,emailclassifierai,hermes-agent,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,opennotebook,appsmith,trilium,memos,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,insanelyfastwhisper,ivbox,wger,workoutcool,voicebox,opencode,emailclassifierai,hermes-agent,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
   DS_MEM_LOW=minimal
   DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
   DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
@@ -42989,7 +42844,7 @@ function initServiceDefaults()
   BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
 #INIT_SERVICE_DEFAULTS_END
   if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
-    HSHQ_OPTIONAL_STACKS=${HSHQ_OPTIONAL_STACKS},surfsense,ente,comfyui,perplexica,morphic,insanelyfastwhisper,ivbox,skyvern,openrag,openskills,sillytavern
+    HSHQ_OPTIONAL_STACKS=${HSHQ_OPTIONAL_STACKS},surfsense,ente,comfyui,perplexica,morphic,skyvern,openrag,openskills,sillytavern
   fi
 }
 
@@ -44753,8 +44608,8 @@ function getScriptImageByContainerName()
     "lightrag-qdrant")
       container_image=mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged
       ;;
-    "lightrag-memgraph")
-      container_image=mirror.gcr.io/memgraph/memgraph-mage:3.12.0
+    "lightrag-neo4j")
+      container_image=mirror.gcr.io/neo4j:5.26.32-community
       ;;
     "openserp-app")
       container_image=$IMG_OPENSERP_APP
@@ -44925,7 +44780,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Presenton" "PRESENTON_INIT_ENV=false,PRESENTON_ADMIN_USERNAME=,PRESENTON_ADMIN_EMAIL_ADDRESS=,PRESENTON_ADMIN_PASSWORD=,PRESENTON_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "BasicMemory" "BASICMEMORY_INIT_ENV=false,BASICMEMORY_ADMIN_USERNAME=,BASICMEMORY_ADMIN_EMAIL_ADDRESS=,BASICMEMORY_ADMIN_PASSWORD=,BASICMEMORY_DATABASE_NAME=,BASICMEMORY_DATABASE_USER=,BASICMEMORY_DATABASE_USER_PASSWORD=,BASICMEMORY_DATABASE_READONLYUSER=,BASICMEMORY_DATABASE_READONLYUSER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Cognee" "COGNEE_INIT_ENV=false,COGNEE_ADMIN_USERNAME=,COGNEE_ADMIN_EMAIL_ADDRESS=,COGNEE_ADMIN_PASSWORD=,COGNEE_DATABASE_NAME=,COGNEE_DATABASE_USER=,COGNEE_DATABASE_USER_PASSWORD=,COGNEE_DATABASE_READONLYUSER=,COGNEE_DATABASE_READONLYUSER_PASSWORD=,COGNEE_REDIS_PASSWORD=,COGNEE_JWT_SECRET=,COGNEE_VERIFICATION_TOKEN_SECRET=,COGNEE_RESET_PASSWORD_TOKEN_SECRET=" $CONFIG_FILE false
-  checkAddServiceToConfig "LightRAG" "LIGHTRAG_INIT_ENV=false,LIGHTRAG_ADMIN_USERNAME=,LIGHTRAG_ADMIN_EMAIL_ADDRESS=,LIGHTRAG_ADMIN_PASSWORD=,LIGHTRAG_DATABASE_NAME=,LIGHTRAG_DATABASE_USER=,LIGHTRAG_DATABASE_USER_PASSWORD=,LIGHTRAG_DATABASE_READONLYUSER=,LIGHTRAG_DATABASE_READONLYUSER_PASSWORD=,LIGHTRAG_TOKEN_SECRET=,LIGHTRAG_API_KEY=,LIGHTRAG_QDRANT_API_KEY=,LIGHTRAG_MEMGRAPH_DATABASE=,LIGHTRAG_MEMGRAPH_USER=,LIGHTRAG_MEMGRAPH_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "LightRAG" "LIGHTRAG_INIT_ENV=false,LIGHTRAG_ADMIN_USERNAME=,LIGHTRAG_ADMIN_EMAIL_ADDRESS=,LIGHTRAG_ADMIN_PASSWORD=,LIGHTRAG_DATABASE_NAME=,LIGHTRAG_DATABASE_USER=,LIGHTRAG_DATABASE_USER_PASSWORD=,LIGHTRAG_DATABASE_READONLYUSER=,LIGHTRAG_DATABASE_READONLYUSER_PASSWORD=,LIGHTRAG_TOKEN_SECRET=,LIGHTRAG_API_KEY=,LIGHTRAG_QDRANT_API_KEY=,LIGHTRAG_NEO4J_DATABASE=,LIGHTRAG_NEO4J_USER=,LIGHTRAG_NEO4J_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "OpenSERP" "OPENSERP_INIT_ENV=false" $CONFIG_FILE false
   checkAddServiceToConfig "Suricata" "SURICATA_INIT_ENV=false,SURICATA_ADMIN_USERNAME=,SURICATA_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "CrowdSec" "CROWDSEC_INIT_ENV=false,CROWDSEC_ADMIN_USERNAME=,CROWDSEC_ADMIN_PASSWORD=,CROWDSEC_LAPI_USERNAME=,CROWDSEC_LAPI_PASSWORD=,CROWDSEC_API_KEY=" $CONFIG_FILE false
@@ -44986,6 +44841,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "RAGFlow" "RAGFLOW_DATABASE_ROOT_PASSWORD=,RAGFLOW_ADMIN_API_KEY=,RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "AutoKB" "AUTOKB_ENCRYPTION_SALT=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "SysUtils" "ALLOY_ADMIN_USERNAME=,ALLOY_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "LightRAG" "LIGHTRAG_NEO4J_DATABASE=,LIGHTRAG_NEO4J_USER=,LIGHTRAG_NEO4J_PASSWORD=" $CONFIG_FILE false
   initServicesCredentials
 }
 
@@ -45044,6 +44900,9 @@ function buildOrPullImage()
     "hshq/docling-serve:v1.31.0")
       buildImageDoclingV2
       ;;
+    "hshq/docling-serve:v1.38.1")
+      buildImageDoclingV3
+      ;;
     "hshq/ente-server:v1")
       buildImageEnteServerV1
       ;;
@@ -45052,6 +44911,12 @@ function buildOrPullImage()
       ;;
     "hshq/insanelyfastwhisper:v1")
       buildImageInsanelyFastWhisperV1
+      ;;
+    "hshq/insanelyfastwhisper:v2")
+      buildImageInsanelyFastWhisperV2
+      ;;
+    "hshq/insanelyfastwhisper:v3")
+      buildImageInsanelyFastWhisperV3
       ;;
     "hshq/ivbox:v1")
       buildImageIVBoxV1
@@ -45164,6 +45029,12 @@ function checkIsCustomImage()
       echo "true"
       ;;
     "hshq/insanelyfastwhisper:v1")
+      echo "true"
+      ;;
+    "hshq/insanelyfastwhisper:v2")
+      echo "true"
+      ;;
+    "hshq/insanelyfastwhisper:v3")
       echo "true"
       ;;
     "hshq/ivbox:v1")
@@ -50416,7 +50287,6 @@ networks:
     external: true
 
 EOFLC
-
   cat <<EOFLD > $HOME/openldap.env
 TZ=\${PORTAINER_TZ}
 UID=$USERID
@@ -50471,7 +50341,6 @@ SMTP_USE_TLS=true
 SERVER_CERT_FILENAME=ldapmanager.crt
 SERVER_KEY_FILENAME=ldapmanager.key
 CA_CERT_FILENAME=${CERTS_ROOT_CA_NAME}.crt
-LDAP_TLS_CACERT_FILE=/opt/ssl/${CERTS_ROOT_CA_NAME}.crt
 LDAP_ADMIN_BIND_DN_FILE=/run/secrets/ldap_admin_bind_dn
 LDAP_ADMIN_BIND_PWD_FILE=/run/secrets/ldap_admin_bind_password
 SMTP_USERNAME_FILE=/run/secrets/smtp_username
@@ -50479,7 +50348,6 @@ SMTP_PASSWORD_FILE=/run/secrets/smtp_password
 NEW_ACCOUNT_EMAIL_BODY=<h1>New Account Created</h1><p>You've been set up with an account for {organisation}.  Your credentials are:</p><p></p><p>Login: {login}<br>Password: {password}</p><p></p><p>You should log into <a href={change_password_url}>{change_password_url}</a> and change the password as soon as possible.</p>
 
 EOFLD
-
   cat <<EOFLD > $HSHQ_STACKS_DIR/openldap/ldapmanager/ldap.conf
 TLS_CERT /opt/ssl/ldapmanager.crt
 TLS_KEY /opt/ssl/ldapmanager.key
@@ -50487,13 +50355,11 @@ TLS_CACERT /opt/ssl/${CERTS_ROOT_CA_NAME}.crt
 TLS_REQCERT demand
 TLS_REQSAN demand
 EOFLD
-
   cat <<EOFLI > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/initdbscript.sh
 #!/bin/sh
 
 ldapadd -f /tmp/initconfig/initdb.ldif -D $LDAP_ADMIN_BIND_DN -Z -w $LDAP_ADMIN_BIND_PASSWORD
 EOFLI
-
   cat <<EOFLB > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/initdb.ldif
 # People
 dn: ou=people,${LDAP_BASE_DN}
@@ -50573,7 +50439,6 @@ cn: $LDAP_BASIC_USER_GROUP_NAME
 uniqueMember: uid=${LDAP_ADMIN_USER_USERNAME},ou=people,${LDAP_BASE_DN}
 gidNumber: 2004
 EOFLB
-
 }
 
 function performUpdateOpenLDAP()
@@ -50584,11 +50449,21 @@ function performUpdateOpenLDAP()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=osixia/openldap:1.5.0,osixia/phpldapadmin:stable,wheelybird/ldap-user-manager:v1.11
       image_update_map[0]="osixia/openldap:1.5.0,osixia/openldap:1.5.0"
       image_update_map[1]="osixia/phpldapadmin:stable,osixia/phpldapadmin:stable"
-      image_update_map[2]="wheelybird/ldap-user-manager:v1.11,wheelybird/ldap-user-manager:v1.11"
+      image_update_map[2]="wheelybird/ldap-user-manager:v1.11,mirror.gcr.io/wheelybird/luminary:v2.2.1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfOpenLDAPV2Update
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=osixia/openldap:1.5.0,osixia/phpldapadmin:stable,mirror.gcr.io/wheelybird/luminary:v2.2.1
+      image_update_map[0]="osixia/openldap:1.5.0,osixia/openldap:1.5.0"
+      image_update_map[1]="osixia/phpldapadmin:stable,osixia/phpldapadmin:stable"
+      image_update_map[2]="mirror.gcr.io/wheelybird/luminary:v2.2.1,mirror.gcr.io/wheelybird/luminary:v2.2.1"
     ;;
     *)
       is_upgrade_error=true
@@ -50598,6 +50473,11 @@ function performUpdateOpenLDAP()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfOpenLDAPV2Update()
+{
+  sed -i '/^LDAP_TLS_CACERT_FILE=.*/d' $HOME/openldap.env
 }
 
 # Mailu
@@ -50615,7 +50495,6 @@ function installMailu()
   set -e
   mkdir $HSHQ_STACKS_DIR/mailu
   mkdir $HSHQ_STACKS_DIR/mailu/certs
-  mkdir $HSHQ_STACKS_DIR/mailu/redis
   mkdir $HSHQ_STACKS_DIR/mailu/clamav
   mkdir $HSHQ_STACKS_DIR/mailu/initconfig
   sudo chown 1000:1000 $HSHQ_STACKS_DIR/mailu/clamav
@@ -50887,13 +50766,12 @@ services:
     security_opt:
       - no-new-privileges:true
     command: redis-server
-      --appendonly yes
+      --appendonly no
     networks:
       - dock-mailu-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mailu-redis:/data
 
   admin:
     image: $(getScriptImageByContainerName mailu-admin)
@@ -51062,14 +50940,6 @@ $is_antivirus_commented_out      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/clamav:/v
       - /etc/timezone:/etc/timezone:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/webmail:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/roundcube:/overrides:ro
-
-volumes:
-  v-mailu-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/mailu/redis
 
 networks:
   dock-internalmail-net:
@@ -51147,13 +51017,12 @@ services:
     security_opt:
       - no-new-privileges:true
     command: redis-server
-      --appendonly yes
+      --appendonly no
     networks:
       - dock-mailu-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mailu-redis:/data
 
   admin:
     image: $(getScriptImageByContainerName mailu-admin)
@@ -51320,14 +51189,6 @@ $is_antivirus_commented_out      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/clamav:/v
       - /etc/timezone:/etc/timezone:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/webmail:/data
       - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/roundcube:/overrides:ro
-
-volumes:
-  v-mailu-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/mailu/redis
 
 networks:
   dock-internalmail-net:
@@ -51506,20 +51367,20 @@ function performUpdateMailu()
       image_update_map[12]="mirror.gcr.io/apache/tika:3.2.2.0-full,mirror.gcr.io/apache/tika:3.2.3.0-full"
     ;;
     7)
-      newVer=v8
+      newVer=v9
       curImageList=mirror.gcr.io/redis:8.4.0-bookworm,ghcr.io/mailu/admin:2024.06.45,ghcr.io/mailu/rspamd:2024.06.45,mirror.gcr.io/clamav/clamav:1.4.3-67,ghcr.io/mailu/fetchmail:2024.06.45,ghcr.io/mailu/nginx:2024.06.45,ghcr.io/mailu/dovecot:2024.06.45,ghcr.io/mailu/oletools:2024.06.45,ghcr.io/mailu/postfix:2024.06.45,ghcr.io/mailu/unbound:2024.06.45,ghcr.io/mailu/radicale:2024.06.45,ghcr.io/mailu/webmail:2024.06.45,mirror.gcr.io/apache/tika:3.2.3.0-full
       image_update_map[0]="mirror.gcr.io/redis:8.4.0-bookworm,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[1]="ghcr.io/mailu/admin:2024.06.45,ghcr.io/mailu/admin:2024.06.54"
-      image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.45,ghcr.io/mailu/rspamd:2024.06.54"
+      image_update_map[1]="ghcr.io/mailu/admin:2024.06.45,ghcr.io/mailu/admin:2024.06.65"
+      image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.45,ghcr.io/mailu/rspamd:2024.06.65"
       image_update_map[3]="mirror.gcr.io/clamav/clamav:1.4.3-67,mirror.gcr.io/clamav/clamav:1.5.3"
-      image_update_map[4]="ghcr.io/mailu/fetchmail:2024.06.45,ghcr.io/mailu/fetchmail:2024.06.54"
-      image_update_map[5]="ghcr.io/mailu/nginx:2024.06.45,ghcr.io/mailu/nginx:2024.06.54"
-      image_update_map[6]="ghcr.io/mailu/dovecot:2024.06.45,ghcr.io/mailu/dovecot:2024.06.54"
-      image_update_map[7]="ghcr.io/mailu/oletools:2024.06.45,ghcr.io/mailu/oletools:2024.06.54"
-      image_update_map[8]="ghcr.io/mailu/postfix:2024.06.45,ghcr.io/mailu/postfix:2024.06.54"
-      image_update_map[9]="ghcr.io/mailu/unbound:2024.06.45,ghcr.io/mailu/unbound:2024.06.54"
-      image_update_map[10]="ghcr.io/mailu/radicale:2024.06.45,ghcr.io/mailu/radicale:2024.06.54"
-      image_update_map[11]="ghcr.io/mailu/webmail:2024.06.45,ghcr.io/mailu/webmail:2024.06.54"
+      image_update_map[4]="ghcr.io/mailu/fetchmail:2024.06.45,ghcr.io/mailu/fetchmail:2024.06.65"
+      image_update_map[5]="ghcr.io/mailu/nginx:2024.06.45,ghcr.io/mailu/nginx:2024.06.65"
+      image_update_map[6]="ghcr.io/mailu/dovecot:2024.06.45,ghcr.io/mailu/dovecot:2024.06.65"
+      image_update_map[7]="ghcr.io/mailu/oletools:2024.06.45,ghcr.io/mailu/oletools:2024.06.65"
+      image_update_map[8]="ghcr.io/mailu/postfix:2024.06.45,ghcr.io/mailu/postfix:2024.06.65"
+      image_update_map[9]="ghcr.io/mailu/unbound:2024.06.45,ghcr.io/mailu/unbound:2024.06.65"
+      image_update_map[10]="ghcr.io/mailu/radicale:2024.06.45,ghcr.io/mailu/radicale:2024.06.65"
+      image_update_map[11]="ghcr.io/mailu/webmail:2024.06.45,ghcr.io/mailu/webmail:2024.06.65"
       image_update_map[12]="mirror.gcr.io/apache/tika:3.2.3.0-full,mirror.gcr.io/apache/tika:3.2.3.0-full"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
@@ -51527,20 +51388,37 @@ function performUpdateMailu()
       return
     ;;
     8)
-      newVer=v8
-      curImageList=mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/mailu/admin:2024.06.54,ghcr.io/mailu/rspamd:2024.06.54,mirror.gcr.io/clamav/clamav:1.5.3,ghcr.io/mailu/fetchmail:2024.06.54,ghcr.io/mailu/nginx:2024.06.54,ghcr.io/mailu/dovecot:2024.06.54,ghcr.io/mailu/oletools:2024.06.54,ghcr.io/mailu/postfix:2024.06.54,ghcr.io/mailu/unbound:2024.06.54,ghcr.io/mailu/radicale:2024.06.54,ghcr.io/mailu/webmail:2024.06.54,mirror.gcr.io/apache/tika:3.3.1.0-full
+      newVer=v9
+      curImageList=mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/mailu/admin:2024.06.54,ghcr.io/mailu/rspamd:2024.06.54,mirror.gcr.io/clamav/clamav:1.5.3,ghcr.io/mailu/fetchmail:2024.06.54,ghcr.io/mailu/nginx:2024.06.54,ghcr.io/mailu/dovecot:2024.06.54,ghcr.io/mailu/oletools:2024.06.54,ghcr.io/mailu/postfix:2024.06.54,ghcr.io/mailu/unbound:2024.06.54,ghcr.io/mailu/radicale:2024.06.54,ghcr.io/mailu/webmail:2024.06.54,mirror.gcr.io/apache/tika:3.2.3.0-full
       image_update_map[0]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[1]="ghcr.io/mailu/admin:2024.06.54,ghcr.io/mailu/admin:2024.06.54"
-      image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.54,ghcr.io/mailu/rspamd:2024.06.54"
+      image_update_map[1]="ghcr.io/mailu/admin:2024.06.54,ghcr.io/mailu/admin:2024.06.65"
+      image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.54,ghcr.io/mailu/rspamd:2024.06.65"
       image_update_map[3]="mirror.gcr.io/clamav/clamav:1.5.3,mirror.gcr.io/clamav/clamav:1.5.3"
-      image_update_map[4]="ghcr.io/mailu/fetchmail:2024.06.54,ghcr.io/mailu/fetchmail:2024.06.54"
-      image_update_map[5]="ghcr.io/mailu/nginx:2024.06.54,ghcr.io/mailu/nginx:2024.06.54"
-      image_update_map[6]="ghcr.io/mailu/dovecot:2024.06.54,ghcr.io/mailu/dovecot:2024.06.54"
-      image_update_map[7]="ghcr.io/mailu/oletools:2024.06.54,ghcr.io/mailu/oletools:2024.06.54"
-      image_update_map[8]="ghcr.io/mailu/postfix:2024.06.54,ghcr.io/mailu/postfix:2024.06.54"
-      image_update_map[9]="ghcr.io/mailu/unbound:2024.06.54,ghcr.io/mailu/unbound:2024.06.54"
-      image_update_map[10]="ghcr.io/mailu/radicale:2024.06.54,ghcr.io/mailu/radicale:2024.06.54"
-      image_update_map[11]="ghcr.io/mailu/webmail:2024.06.54,ghcr.io/mailu/webmail:2024.06.54"
+      image_update_map[4]="ghcr.io/mailu/fetchmail:2024.06.54,ghcr.io/mailu/fetchmail:2024.06.65"
+      image_update_map[5]="ghcr.io/mailu/nginx:2024.06.54,ghcr.io/mailu/nginx:2024.06.65"
+      image_update_map[6]="ghcr.io/mailu/dovecot:2024.06.54,ghcr.io/mailu/dovecot:2024.06.65"
+      image_update_map[7]="ghcr.io/mailu/oletools:2024.06.54,ghcr.io/mailu/oletools:2024.06.65"
+      image_update_map[8]="ghcr.io/mailu/postfix:2024.06.54,ghcr.io/mailu/postfix:2024.06.65"
+      image_update_map[9]="ghcr.io/mailu/unbound:2024.06.54,ghcr.io/mailu/unbound:2024.06.65"
+      image_update_map[10]="ghcr.io/mailu/radicale:2024.06.54,ghcr.io/mailu/radicale:2024.06.65"
+      image_update_map[11]="ghcr.io/mailu/webmail:2024.06.54,ghcr.io/mailu/webmail:2024.06.65"
+      image_update_map[12]="mirror.gcr.io/apache/tika:3.2.3.0-full,mirror.gcr.io/apache/tika:3.3.1.0-full"
+    ;;
+    9)
+      newVer=v9
+      curImageList=mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/mailu/admin:2024.06.65,ghcr.io/mailu/rspamd:2024.06.65,mirror.gcr.io/clamav/clamav:1.5.3,ghcr.io/mailu/fetchmail:2024.06.65,ghcr.io/mailu/nginx:2024.06.65,ghcr.io/mailu/dovecot:2024.06.65,ghcr.io/mailu/oletools:2024.06.65,ghcr.io/mailu/postfix:2024.06.65,ghcr.io/mailu/unbound:2024.06.65,ghcr.io/mailu/radicale:2024.06.65,ghcr.io/mailu/webmail:2024.06.65,mirror.gcr.io/apache/tika:3.3.1.0-full
+      image_update_map[0]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[1]="ghcr.io/mailu/admin:2024.06.65,ghcr.io/mailu/admin:2024.06.65"
+      image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.65,ghcr.io/mailu/rspamd:2024.06.65"
+      image_update_map[3]="mirror.gcr.io/clamav/clamav:1.5.3,mirror.gcr.io/clamav/clamav:1.5.3"
+      image_update_map[4]="ghcr.io/mailu/fetchmail:2024.06.65,ghcr.io/mailu/fetchmail:2024.06.65"
+      image_update_map[5]="ghcr.io/mailu/nginx:2024.06.65,ghcr.io/mailu/nginx:2024.06.65"
+      image_update_map[6]="ghcr.io/mailu/dovecot:2024.06.65,ghcr.io/mailu/dovecot:2024.06.65"
+      image_update_map[7]="ghcr.io/mailu/oletools:2024.06.65,ghcr.io/mailu/oletools:2024.06.65"
+      image_update_map[8]="ghcr.io/mailu/postfix:2024.06.65,ghcr.io/mailu/postfix:2024.06.65"
+      image_update_map[9]="ghcr.io/mailu/unbound:2024.06.65,ghcr.io/mailu/unbound:2024.06.65"
+      image_update_map[10]="ghcr.io/mailu/radicale:2024.06.65,ghcr.io/mailu/radicale:2024.06.65"
+      image_update_map[11]="ghcr.io/mailu/webmail:2024.06.65,ghcr.io/mailu/webmail:2024.06.65"
       image_update_map[12]="mirror.gcr.io/apache/tika:3.3.1.0-full,mirror.gcr.io/apache/tika:3.3.1.0-full"
     ;;
     *)
@@ -51690,13 +51568,12 @@ function mfMailuFixRedisCompose()
   replaceText=$replaceText">>>>security_opt:\n"
   replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
   replaceText=$replaceText">>>>command: redis-server\n"
-  replaceText=$replaceText">>>>>>--appendonly yes\n"
+  replaceText=$replaceText">>>>>>--appendonly no\n"
   replaceText=$replaceText">>>>networks:\n"
   replaceText=$replaceText">>>>>>- dock-mailu-ext-net\n"
   replaceText=$replaceText">>>>volumes:\n"
   replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
   replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
-  replaceText=$replaceText">>>>>>- v-mailu-redis:/data\n"
   replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/mailu-compose.yml false ">"
   cat -s $HOME/mailu-compose.yml > $HOME/ac.tmp
   mv $HOME/ac.tmp $HOME/mailu-compose.yml
@@ -53713,6 +53590,7 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-nextcloud-net
       - dock-aipriv-net
@@ -54083,6 +53961,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-nextcloud-net
       - dock-aipriv-net
@@ -55568,6 +55447,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-nextcloud-net
       - dock-aipriv-net
@@ -56660,6 +56540,7 @@ function installWikijs()
   sleep 3
   addReadOnlyUserToDatabase Wiki.js postgres wikijs-db $WIKIJS_DATABASE_NAME $WIKIJS_DATABASE_USER $WIKIJS_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/wikijs/dbexport $WIKIJS_DATABASE_READONLYUSER $WIKIJS_DATABASE_READONLYUSER_PASSWORD
   addMCPServerLiteLLM "wikijs" "wjs" "http://wikijs-mcp:80/mcp" http none ""
+  initializeSiteWikijs
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WIKIJS.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -56679,7 +56560,6 @@ function installWikijs()
     insertEnableSvcAll wikijs "$FMLNAME_WIKIJS" $USERTYPE_WIKIJS "https://$SUB_WIKIJS.$HOMESERVER_DOMAIN" "wikijs.png" "$(getHeimdallOrderFromSub $SUB_WIKIJS $USERTYPE_WIKIJS)"
     restartAllCaddyContainers
   fi
-  initializeSiteWikijs
 }
 
 function outputConfigWikijs()
@@ -56732,6 +56612,8 @@ services:
       - wikijs-db
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
     networks:
       - int-wikijs-net
       - dock-ext-net
@@ -56748,6 +56630,9 @@ services:
     hostname: wikijs-mcp
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-wikijs-net
       - dock-aipriv-net
@@ -56805,7 +56690,7 @@ EOFWJ
 function initializeSiteWikijs()
 {
   set +e
-  curl -X POST https://$SUB_WIKIJS.$HOMESERVER_DOMAIN/finalize \
+  docker exec wikijs-web curl -sS -X POST http://localhost:3000/finalize \
   -H 'Content-Type: application/json' \
   -d "{
     \"adminEmail\": \"$WIKIJS_ADMIN_EMAIL_ADDRESS\",
@@ -56978,6 +56863,8 @@ services:
       - wikijs-db
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
     networks:
       - int-wikijs-net
       - dock-ext-net
@@ -56994,6 +56881,9 @@ services:
     hostname: wikijs-mcp
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-wikijs-net
       - dock-aipriv-net
@@ -57290,7 +57180,6 @@ function installMastodon()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/mastodon
   mkdir $HSHQ_STACKS_DIR/mastodon/db
   mkdir $HSHQ_STACKS_DIR/mastodon/dbexport
@@ -57300,7 +57189,6 @@ function installMastodon()
   sudo chown 991:991 $HSHQ_STACKS_DIR/mastodon/system
   chmod 777 $HSHQ_STACKS_DIR/mastodon/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/mastodon
-  mkdir $HSHQ_NONBACKUP_DIR/mastodon/redis
   mkdir $HSHQ_NONBACKUP_DIR/mastodon/static
   MASTODON_SECRET_KEY_BASE=$(openssl rand -hex 64)
   MASTODON_OTP_SECRET=$(openssl rand -hex 64)
@@ -57621,13 +57509,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $MASTODON_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-mastodon-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mastodon-redis:/data
 
   mastodon-redis-cache:
     image: $(getScriptImageByContainerName mastodon-redis-cache)
@@ -57797,12 +57684,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/mastodon/static
-  v-mastodon-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/mastodon/redis
 
 networks:
   dock-proxy-net:
@@ -58008,13 +57889,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $MASTODON_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-mastodon-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mastodon-redis:/data
 
   mastodon-redis-cache:
     image: $mastodon_redis_image
@@ -58067,12 +57947,6 @@ volumes:
       type: none
       o: bind
       device: ${HSHQ_NONBACKUP_DIR}/mastodon/static
-  v-mastodon-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${HSHQ_NONBACKUP_DIR}/mastodon/redis
 
 networks:
   dock-ldap-net:
@@ -58193,13 +58067,12 @@ function mfMastodonFixRedisCompose()
   replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
   replaceText=$replaceText">>>>command: redis-server\n"
   replaceText=$replaceText">>>>>>--requirepass $rpass\n"
-  replaceText=$replaceText">>>>>>--appendonly yes\n"
+  replaceText=$replaceText">>>>>>--appendonly no\n"
   replaceText=$replaceText">>>>networks:\n"
   replaceText=$replaceText">>>>>>- int-mastodon-net\n"
   replaceText=$replaceText">>>>volumes:\n"
   replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
-  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
-  replaceText=$replaceText">>>>>>- v-mastodon-redis:/data\n\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n\n"
   replaceText=$replaceText">>mastodon-redis-cache:\n"
   replaceText=$replaceText">>>>image: mirror.gcr.io/redis:8.2.0-bookworm\n"
   replaceText=$replaceText">>>>container_name: mastodon-redis-cache\n"
@@ -58434,8 +58307,6 @@ function installSearxNG()
   mkdir $HSHQ_STACKS_DIR/searxng
   mkdir $HSHQ_STACKS_DIR/searxng/caddy
   mkdir $HSHQ_STACKS_DIR/searxng/web
-  mkdir $HSHQ_NONBACKUP_DIR/searxng
-  mkdir $HSHQ_NONBACKUP_DIR/searxng/redis
   if [ -z "$SEARXNG_REDIS_PASSWORD" ]; then
     SEARXNG_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar SEARXNG_REDIS_PASSWORD $SEARXNG_REDIS_PASSWORD
@@ -58558,21 +58429,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $SEARXNG_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-searxng-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-searxng-redis:/data
-
-volumes:
-  v-searxng-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/searxng/redis
 
 networks:
   dock-proxy-net:
@@ -58882,12 +58744,20 @@ function performUpdateSearxNG()
       return
     ;;
     11)
-      newVer=v11
+      newVer=v12
       curImageList=ghcr.io/searxng/searxng:2026.7.12-c19d86faa,mirror.gcr.io/caddy:2.11.4,mirror.gcr.io/valkey/valkey:alpine3.23,hshq/searxng-mcp:v1
-      image_update_map[0]="ghcr.io/searxng/searxng:2026.7.12-c19d86faa,ghcr.io/searxng/searxng:2026.7.12-c19d86faa"
+      image_update_map[0]="ghcr.io/searxng/searxng:2026.7.12-c19d86faa,ghcr.io/searxng/searxng:2026.10.27-cb74e7f81"
       image_update_map[1]="mirror.gcr.io/caddy:2.11.4,mirror.gcr.io/caddy:2.11.4"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[3]="hshq/searxng-mcp:v1,hshq/searxng-mcp:v1"
+      image_update_map[3]="hshq/searxng-mcp:v1,ghcr.io/homeserverhq/mcp-searxng-enhanced:v1.0"
+    ;;
+    12)
+      newVer=v12
+      curImageList=ghcr.io/searxng/searxng:2026.10.27-cb74e7f81,mirror.gcr.io/caddy:2.11.4,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/mcp-searxng-enhanced:v1.0
+      image_update_map[0]="ghcr.io/searxng/searxng:2026.10.27-cb74e7f81,ghcr.io/searxng/searxng:2026.10.27-cb74e7f81"
+      image_update_map[1]="mirror.gcr.io/caddy:2.11.4,mirror.gcr.io/caddy:2.11.4"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[3]="ghcr.io/homeserverhq/mcp-searxng-enhanced:v1.0,ghcr.io/homeserverhq/mcp-searxng-enhanced:v1.0"
     ;;
     *)
       is_upgrade_error=true
@@ -59005,21 +58875,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $SEARXNG_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-searxng-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-searxng-redis:/data
-
-volumes:
-  v-searxng-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/searxng/redis
 
 networks:
   dock-proxy-net:
@@ -60858,6 +60719,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-wordpress-net
       - dock-aipriv-net
@@ -61049,6 +60911,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-wordpress-net
       - dock-aipriv-net
@@ -61395,7 +61258,6 @@ function installPeerTube()
   chmod 777 $HSHQ_STACKS_DIR/peertube/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/peertube
   mkdir $HSHQ_NONBACKUP_DIR/peertube/assets
-  mkdir $HSHQ_NONBACKUP_DIR/peertube/redis
   initServicesCredentials
   pt_secret=$(openssl rand -hex 32)
   set +e
@@ -61527,13 +61389,12 @@ services:
     security_opt:
       - no-new-privileges:true
     command: redis-server
-      --appendonly yes
+      --appendonly no
     networks:
       - int-peertube-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-peertube-redis:/data
 
 volumes:
   v-peertube-assets:
@@ -61542,12 +61403,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/peertube/assets
-  v-peertube-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/peertube/redis
 
 networks:
   dock-proxy-net:
@@ -61704,13 +61559,12 @@ function mfPeerTubeFixRedisCompose()
   replaceText=$replaceText">>>>security_opt:\n"
   replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
   replaceText=$replaceText">>>>command: redis-server\n"
-  replaceText=$replaceText">>>>>>--appendonly yes\n"
+  replaceText=$replaceText">>>>>>--appendonly no\n"
   replaceText=$replaceText">>>>networks:\n"
   replaceText=$replaceText">>>>>>- int-peertube-net\n"
   replaceText=$replaceText">>>>volumes:\n"
   replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
-  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
-  replaceText=$replaceText">>>>>>- v-peertube-redis:/data\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n\n"
   replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/peertube-compose.yml false ">"
   cat -s $HOME/peertube-compose.yml > $HOME/ac.tmp
   mv $HOME/ac.tmp $HOME/peertube-compose.yml
@@ -62721,8 +62575,6 @@ function installGitlab()
   mkdir $HSHQ_STACKS_DIR/gitlab/db
   mkdir $HSHQ_STACKS_DIR/gitlab/dbexport
   chmod 777 $HSHQ_STACKS_DIR/gitlab/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/gitlab
-  mkdir $HSHQ_NONBACKUP_DIR/gitlab/redis
   initServicesCredentials
   if [ -z "$GITLAB_ROOT_PASSWORD" ]; then
     GITLAB_ROOT_PASSWORD=$(pwgen -c -n 32 1)
@@ -62869,21 +62721,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $GITLAB_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-gitlab-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-gitlab-redis:/data
-
-volumes:
-  v-gitlab-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/gitlab/redis
 
 networks:
   dock-proxy-net:
@@ -63452,14 +63295,11 @@ function installDiscourse()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/discourse
   mkdir $HSHQ_STACKS_DIR/discourse/db
   mkdir $HSHQ_STACKS_DIR/discourse/dbexport
   mkdir $HSHQ_STACKS_DIR/discourse/app
   chmod 777 $HSHQ_STACKS_DIR/discourse/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/discourse
-  mkdir $HSHQ_NONBACKUP_DIR/discourse/redis
   initServicesCredentials
   if [ -z "$DISCOURSE_DATABASE_USER_PASSWORD" ]; then
     DISCOURSE_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
@@ -63595,21 +63435,14 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $DISCOURSE_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-discourse-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-discourse-redis:/data
 
 volumes:
-  v-discourse-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/discourse/redis
   v-discourse-data:
     driver: local
     driver_opts:
@@ -64229,14 +64062,11 @@ function installShlink()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/shlink
   mkdir $HSHQ_STACKS_DIR/shlink/db
   mkdir $HSHQ_STACKS_DIR/shlink/dbexport
   mkdir $HSHQ_STACKS_DIR/shlink/web
   chmod 777 $HSHQ_STACKS_DIR/shlink/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/shlink
-  mkdir $HSHQ_NONBACKUP_DIR/shlink/redis
   initServicesCredentials
   if [ -z "$SHLINK_REDIS_PASSWORD" ]; then
     SHLINK_REDIS_PASSWORD=$(pwgen -c -n 32 1)
@@ -64379,21 +64209,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $SHLINK_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-shlink-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-shlink-redis:/data
-
-volumes:
-  v-shlink-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/shlink/redis
 
 networks:
   dock-proxy-net:
@@ -64637,8 +64458,6 @@ function installFirefly()
   mkdir $HSHQ_STACKS_DIR/firefly/dbexport
   mkdir $HSHQ_STACKS_DIR/firefly/data
   chmod 777 $HSHQ_STACKS_DIR/firefly/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/firefly
-  mkdir $HSHQ_NONBACKUP_DIR/firefly/redis
   initServicesCredentials
   if [ -z "$FIREFLY_REDIS_PASSWORD" ]; then
     FIREFLY_REDIS_PASSWORD=$(pwgen -c -n 32 1)
@@ -64886,13 +64705,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $FIREFLY_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-firefly-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-firefly-redis:/data
 
 volumes:
   v-firefly-db:
@@ -64907,12 +64725,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/firefly/data
-  v-firefly-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/firefly/redis
 
 networks:
   dock-proxy-net:
@@ -65417,6 +65229,8 @@ ENABLE_CANVAS_SYNC=true
 MCP_HTTP_HOST=0.0.0.0
 MCP_PORT=3100
 MCP_TRANSPORT=http
+DISABLED_TOOLS=get_canvas_screenshot,export_to_image
+EXCALIDRAW_PUBLIC_URL=https://$SUB_EXCALIDRAW_AI.$HOMESERVER_DOMAIN/
 EOFEX
 }
 
@@ -65497,14 +65311,24 @@ function performUpdateExcalidraw()
       return
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=mirror.gcr.io/excalidraw/excalidraw-room,mirror.gcr.io/kiliandeca/excalidraw-storage-backend,hshq/excalidraw-web:v1,mirror.gcr.io/valkey/valkey:alpine3.23,hshq/excalidraw-ai:v1,hshq/excalidraw-mcp:v1
-      image_update_map[0]="mirror.gcr.io/excalidraw/excalidraw-room,mirror.gcr.io/excalidraw/excalidraw-room"
-      image_update_map[1]="mirror.gcr.io/kiliandeca/excalidraw-storage-backend,mirror.gcr.io/kiliandeca/excalidraw-storage-backend"
-      image_update_map[2]="hshq/excalidraw-web:v1,hshq/excalidraw-web:v1"
+      image_update_map[0]="mirror.gcr.io/excalidraw/excalidraw-room,ghcr.io/homeserverhq/excalidraw-room:v0.1"
+      image_update_map[1]="mirror.gcr.io/kiliandeca/excalidraw-storage-backend,ghcr.io/homeserverhq/excalidraw-storage-backend:v0.1"
+      image_update_map[2]="hshq/excalidraw-web:v1,ghcr.io/homeserverhq/excalidraw:v0.1"
       image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[4]="hshq/excalidraw-ai:v1,hshq/excalidraw-ai:v1"
-      image_update_map[5]="hshq/excalidraw-mcp:v1,hshq/excalidraw-mcp:v1"
+      image_update_map[4]="hshq/excalidraw-ai:v1,ghcr.io/homeserverhq/excalidraw-canvas:v0.1"
+      image_update_map[5]="hshq/excalidraw-mcp:v1,ghcr.io/homeserverhq/excalidraw-mcp:v0.1"
+    ;;
+    6)
+      newVer=v6
+      curImageList=ghcr.io/homeserverhq/excalidraw-room:v0.1,ghcr.io/homeserverhq/excalidraw-storage-backend:v0.1,ghcr.io/homeserverhq/excalidraw:v0.1,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/excalidraw-canvas:v0.1,ghcr.io/homeserverhq/excalidraw-mcp:v0.1
+      image_update_map[0]="ghcr.io/homeserverhq/excalidraw-room:v0.1,ghcr.io/homeserverhq/excalidraw-room:v0.1"
+      image_update_map[1]="ghcr.io/homeserverhq/excalidraw-storage-backend:v0.1,ghcr.io/homeserverhq/excalidraw-storage-backend:v0.1"
+      image_update_map[2]="ghcr.io/homeserverhq/excalidraw:v0.1,ghcr.io/homeserverhq/excalidraw:v0.1"
+      image_update_map[3]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[4]="ghcr.io/homeserverhq/excalidraw-canvas:v0.1,ghcr.io/homeserverhq/excalidraw-canvas:v0.1"
+      image_update_map[5]="ghcr.io/homeserverhq/excalidraw-mcp:v0.1,ghcr.io/homeserverhq/excalidraw-mcp:v0.1"
     ;;
     *)
       is_upgrade_error=true
@@ -67012,6 +66836,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - dock-aipriv-net
       - int-mealie-net
@@ -67301,6 +67126,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - dock-aipriv-net
       - int-mealie-net
@@ -68855,6 +68681,8 @@ services:
     hostname: linkwarden-app
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - linkwarden-db
     networks:
@@ -68875,6 +68703,9 @@ services:
     hostname: linkwarden-mcp
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-linkwarden-net
       - dock-aipriv-net
@@ -69256,6 +69087,8 @@ services:
     hostname: linkwarden-app
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - linkwarden-db
     networks:
@@ -69275,6 +69108,9 @@ services:
     hostname: linkwarden-mcp
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-linkwarden-net
       - dock-aipriv-net
@@ -69419,6 +69255,8 @@ services:
     hostname: linkwarden-app
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - linkwarden-db
     networks:
@@ -69439,6 +69277,9 @@ services:
     hostname: linkwarden-mcp
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-linkwarden-net
       - dock-aipriv-net
@@ -69667,8 +69508,6 @@ function installBarAssistant()
   mkdir $HSHQ_STACKS_DIR/bar-assistant/app
   mkdir $HSHQ_STACKS_DIR/bar-assistant/meilisearch
   mkdir $HSHQ_STACKS_DIR/bar-assistant/web
-  mkdir $HSHQ_NONBACKUP_DIR/bar-assistant
-  mkdir $HSHQ_NONBACKUP_DIR/bar-assistant/redis
   initServicesCredentials
   outputConfigBarAssistant
   installStack bar-assistant bar-assistant-app "ready to handle connections" $HOME/bar-assistant.env 10
@@ -69834,14 +69673,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $BARASSISTANT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-bar-assistant-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-bar-assistant-redis:/data
 
   bar-assistant-saltrim:
     image: $(getScriptImageByContainerName bar-assistant-saltrim)
@@ -69897,6 +69735,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-bar-assistant-net
       - dock-aipriv-net
@@ -69920,12 +69759,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/bar-assistant/meilisearch
-  v-bar-assistant-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/bar-assistant/redis
 
 networks:
   dock-proxy-net:
@@ -70248,6 +70081,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     command: npm start -- --sse
     networks:
       - int-bar-assistant-net
@@ -70270,14 +70104,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $BARASSISTANT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-bar-assistant-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-bar-assistant-redis:/data
 
 volumes:
   v-bar-assistant-app:
@@ -70292,12 +70125,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/bar-assistant/meilisearch
-  v-bar-assistant-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/bar-assistant/redis
 
 networks:
   dock-proxy-net:
@@ -70445,14 +70272,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $BARASSISTANT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-bar-assistant-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-bar-assistant-redis:/data
 
   bar-assistant-saltrim:
     image: mirror.gcr.io/barassistant/salt-rim:4.15.0
@@ -70508,6 +70334,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-bar-assistant-net
       - dock-aipriv-net
@@ -70531,12 +70358,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/bar-assistant/meilisearch
-  v-bar-assistant-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/bar-assistant/redis
 
 networks:
   dock-proxy-net:
@@ -71005,6 +70826,8 @@ services:
     hostname: keila-app
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - keila-db
     networks:
@@ -71025,6 +70848,9 @@ services:
     hostname: keila-mcp
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-keila-net
       - dock-aipriv-net
@@ -71067,7 +70893,6 @@ networks:
     internal: true
     ipam:
       driver: default
-
 
 EOFBA
   cat <<EOFBA > $HOME/keila.env
@@ -71255,6 +71080,8 @@ services:
     hostname: keila-app
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - keila-db
     networks:
@@ -71275,6 +71102,9 @@ services:
     hostname: keila-app
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-keila-net
       - dock-aipriv-net
@@ -71317,7 +71147,6 @@ networks:
     internal: true
     ipam:
       driver: default
-
 
 EOFBA
   cat <<EOFBA > $HOME/keila.env
@@ -71372,14 +71201,11 @@ function installWallabag()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/wallabag
   mkdir $HSHQ_STACKS_DIR/wallabag/db
   mkdir $HSHQ_STACKS_DIR/wallabag/dbexport
   mkdir $HSHQ_STACKS_DIR/wallabag/images
   chmod 777 $HSHQ_STACKS_DIR/wallabag/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/wallabag
-  mkdir $HSHQ_NONBACKUP_DIR/wallabag/redis
   initServicesCredentials
   if [ -z "$WALLABAG_ENV_SECRET" ]; then
     WALLABAG_ENV_SECRET=$(pwgen -c -n 30 1)
@@ -71487,13 +71313,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $WALLABAG_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-wallabag-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-wallabag-redis:/data
 
   wallabag-app:
     image: $(getScriptImageByContainerName wallabag-app)
@@ -71517,14 +71342,6 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/wallabag/images:/var/www/wallabag/web/assets/images
-
-volumes:
-  v-wallabag-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/wallabag/redis
 
 networks:
   dock-proxy-net:
@@ -71838,8 +71655,6 @@ function installPaperless()
   mkdir $HSHQ_STACKS_DIR/paperless/gpt/pdf
   mkdir $HSHQ_STACKS_DIR/paperless/public_objects
   chmod 777 $HSHQ_STACKS_DIR/paperless/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/paperless
-  mkdir $HSHQ_NONBACKUP_DIR/paperless/redis
   initServicesCredentials
   if [ -z "$PAPERLESS_SECRET_KEY" ]; then
     PAPERLESS_SECRET_KEY=$(pwgen -c -n 64 1)
@@ -72004,7 +71819,7 @@ PDF_OCR_TAGGING=true
 PDF_OCR_COMPLETE_TAG=paperless-gpt-ocr-complete
 AUTO_OCR_TAG=paperless-gpt-ocr-auto
 PAPERLESS_OCR_PAGES=0
-PAPERLESS_OCR_MODE=force
+PAPERLESS_OCR_MODE=auto
 OCR_LIMIT_PAGES=0
 LOG_LEVEL=info
 PAPERLESS_API_KEY=$PAPERLESS_API_TOKEN
@@ -72233,6 +72048,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-paperless-net
       - dock-aipriv-net
@@ -72251,14 +72067,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $PAPERLESS_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-paperless-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-paperless-redis:/data
 
 volumes:
   v-paperless-data:
@@ -72273,12 +72088,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/paperless/media
-  v-paperless-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/paperless/redis
   v-paperless-ai:
     driver: local
     driver_opts:
@@ -72366,7 +72175,7 @@ function performIntegrationPaperlessAI()
   sleep 5
   waitForContainerLogString paperless-app 3 60 "celery@paperless-app ready"
   if [ -z "$PAPERLESS_API_TOKEN" ]; then
-    PAPERLESS_API_TOKEN=$(curl -s -X POST https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/token/ -d "username=${PAPERLESS_ADMIN_USERNAME}&password=${PAPERLESS_ADMIN_PASSWORD}" | jq -r .token)
+    PAPERLESS_API_TOKEN=$(docker exec paperless-app curl -s -X POST http://localhost:8000/api/token/ -d "username=${PAPERLESS_ADMIN_USERNAME}&password=${PAPERLESS_ADMIN_PASSWORD}" | jq -r .token)
   fi
   sed -i "s/PAPERLESS_API_TOKEN=.*/PAPERLESS_API_TOKEN=$PAPERLESS_API_TOKEN/" $HSHQ_STACKS_DIR/paperless/ai.env
   dtNow=$(date '+%Y-%m-%d %H:%M:%S')
@@ -72391,7 +72200,7 @@ function performWorkflowsIntegrationPaperless()
   isAPISuccess=false
   while [ $numTries -lt $totalTries ]
   do
-    apiRes=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN")
+    apiRes=$(docker exec paperless-app curl -s -X GET "http://localhost:8000/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN")
     if ! [ -z "$apiRes" ]; then
       isAPISuccess=true
       break
@@ -72405,27 +72214,27 @@ function performWorkflowsIntegrationPaperless()
     return
   fi
   jsonbody="{\"name\": \"$LDAP_PRIMARY_USER_GROUP_NAME\", \"permissions\": [\"view_logentry\",\"view_group\",\"view_user\",\"add_correspondent\",\"change_correspondent\",\"delete_correspondent\",\"view_correspondent\",\"add_document\",\"change_document\",\"delete_document\",\"view_document\",\"view_documenttype\",\"add_note\",\"change_note\",\"delete_note\",\"view_note\",\"add_savedview\",\"change_savedview\",\"delete_savedview\",\"view_savedview\",\"add_sharelink\",\"change_sharelink\",\"delete_sharelink\",\"view_sharelink\",\"add_tag\",\"change_tag\",\"delete_tag\",\"view_tag\",\"add_uisettings\",\"change_uisettings\",\"delete_uisettings\",\"view_uisettings\",\"view_workflow\",\"add_mailaccount\",\"change_mailaccount\",\"delete_mailaccount\",\"view_mailaccount\",\"add_mailrule\",\"change_mailrule\",\"delete_mailrule\",\"view_mailrule\",\"add_processedmail\",\"change_processedmail\",\"delete_processedmail\",\"view_processedmail\"]}"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/groups/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   pap_doc_types=(
     "Invoice" "Receipt" "Contract" "Bank Statement" "Taxes" "Policy" "Identification" "Medical Record" "Pay Stub" "Certificate" "Quote" "Form" "Report" "Other"
   )
   for cur_doc_type in "${pap_doc_types[@]}";
   do
-    RESPONSE=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
+    RESPONSE=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/document_types/" \
       -H "Authorization: Token $PAPERLESS_API_TOKEN" \
       -H "Content-Type: application/json" \
       -d "{\"name\": \"$cur_doc_type\", \"matching_algorithm\": 6, \"match\": \"\"}")
   done
-  manual_doc_type=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
+  manual_doc_type=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/document_types/" \
       -H "Authorization: Token $PAPERLESS_API_TOKEN" \
       -H "Content-Type: application/json" \
       -d "{\"name\": \"Manual\", \"matching_algorithm\": 6, \"match\": \"\"}" | jq -r '.id')
-  research_doc_type=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
+  research_doc_type=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/document_types/" \
       -H "Authorization: Token $PAPERLESS_API_TOKEN" \
       -H "Content-Type: application/json" \
       -d "{\"name\": \"Research Paper\", \"matching_algorithm\": 6, \"match\": \"\"}" | jq -r '.id')
   PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME="Transcription"
-  PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/document_types/" \
+  PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/document_types/" \
       -H "Authorization: Token $PAPERLESS_API_TOKEN" \
       -H "Content-Type: application/json" \
       -d "{\"name\": \"$PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME\", \"matching_algorithm\": 6, \"match\": \"\"}" | jq -r '.id')
@@ -72433,60 +72242,64 @@ function performWorkflowsIntegrationPaperless()
   updateConfigVar PAPERLESS_TRANSCRIPTION_DOCTYPE_ID "$PAPERLESS_TRANSCRIPTION_DOCTYPE_ID"
   PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME="Personal Email"
   jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME\", \"color\": \"#299aa5\" }"
-  PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   updateConfigVar PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME"
   updateConfigVar PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID"
   PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME="Shared Email"
   jsonbody="{ \"name\": \"$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME\", \"color\": \"#ff7f7f\" }"
-  PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   updateConfigVar PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME"
   updateConfigVar PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID "$PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID"
   PAPERLESS_KNOWLEDGEBASE_TAG_NAME="Knowledge Base"
   jsonbody="{ \"name\": \"$PAPERLESS_KNOWLEDGEBASE_TAG_NAME\", \"color\": \"#615dff\", \"matching_algorithm\": 6, \"is_insensitive\": true }"
-  PAPERLESS_KNOWLEDGEBASE_TAG_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  PAPERLESS_KNOWLEDGEBASE_TAG_ID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/tags/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   updateConfigVar PAPERLESS_KNOWLEDGEBASE_TAG_NAME "$PAPERLESS_KNOWLEDGEBASE_TAG_NAME"
   updateConfigVar PAPERLESS_KNOWLEDGEBASE_TAG_ID "$PAPERLESS_KNOWLEDGEBASE_TAG_ID"
   jsonbody="{\"name\": \"PersonalProcessed\",\"path\": \"PersonalProcessed/{{owner_username}}/PersonalProcessed/{{title}}\",\"match\": \"\",\"matching_algorithm\": 6,\"is_insensitive\": true,\"owner\": $PAPERLESS_ADMIN_ID}"
-  personalPathID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/storage_paths/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r .id)
+  personalPathID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/storage_paths/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r .id)
   if [ -z "$personalPathID" ] || [ $personalPathID -ne 1 ]; then
     echo "ERROR: The assigned ID($personalPathID) for this storage path is unexpected. It should be assigned an id of 1."
   fi
   jsonbody="{\"name\": \"SharedProcessed\",\"path\": \"SharedProcessed/{{title}}\",\"match\": \"\",\"matching_algorithm\": 6,\"is_insensitive\": true,\"owner\": $PAPERLESS_ADMIN_ID}"
-  sharedPathID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/storage_paths/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r .id)
+  sharedPathID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/storage_paths/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r .id)
   if [ -z "$sharedPathID" ] || [ $sharedPathID -ne 2 ]; then
     echo "ERROR: The assigned ID($sharedPathID) for this storage path is unexpected. It should be assigned an id of 2."
   fi
   jsonbody="{\"name\": \"AdminProcessed\",\"path\": \"PersonalProcessed/$NEXTCLOUD_ADMIN_USERNAME/PersonalProcessed/{{title}}\",\"match\": \"\",\"matching_algorithm\": 6,\"is_insensitive\": true,\"owner\": $PAPERLESS_ADMIN_ID}"
-  adminPathID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/storage_paths/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r .id)
+  adminPathID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/storage_paths/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r .id)
   if [ -z "$adminPathID" ] || [ $adminPathID -ne 3 ]; then
     echo "ERROR: The assigned ID($adminPathID) for this storage path is unexpected. It should be assigned an id of 3."
   fi
-  jsonbody="{ \"name\": \"sharedconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/SharedConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 2, \"assign_owner\": $PAPERLESS_ADMIN_ID, \"assign_view_users\": [], \"assign_view_groups\": [ 1 ], \"assign_change_users\": [], \"assign_change_groups\": [ 1 ], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"sharedemail\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 2, \"assign_owner\": null, \"assign_view_users\": [], \"assign_view_groups\": [ 1 ], \"assign_change_users\": [], \"assign_change_groups\": [ 1 ], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"admin_personalconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/$NEXTCLOUD_ADMIN_USERNAME/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"admin_transcribeconsume\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/$SPEAKR_ADMIN_USERNAME/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID, \"assign_document_type\": $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"assign_kb\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_has_any_document_types\": [$manual_doc_type, $research_doc_type, $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID] }, { \"type\": 3, \"filter_has_any_document_types\": [$manual_doc_type, $research_doc_type, $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID] } ], \"actions\": [ { \"type\": 1, \"assign_tags\": [ $PAPERLESS_KNOWLEDGEBASE_TAG_ID ] } ] }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-  jsonbody="{ \"name\": \"trigger_ai\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_filename\": null, \"matching_algorithm\": 0 } ], \"actions\": [ { \"type\": 4,\"order\": 0, \"webhook\": { \"url\": \"http://paperless-ai:3000/api/webhook/document\", \"as_json\": true, \"params\": { \"url\": \"{{doc_url}}\" }, \"headers\": { \"x-api-key\": \"$PAPERLESS_AI_API_KEY\" }, \"include_document\": false } } ] }"
-  curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+
+  jsonbody="{ \"name\": \"default_personalprocessed\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 1, \"assign_owner\": null, \"assign_view_users\": [], \"assign_view_groups\": [], \"assign_change_users\": [], \"assign_change_groups\": [], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+
+  jsonbody="{ \"name\": \"sharedconsume\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/SharedConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 2, \"assign_owner\": $PAPERLESS_ADMIN_ID, \"assign_view_users\": [], \"assign_view_groups\": [ 1 ], \"assign_change_users\": [], \"assign_change_groups\": [ 1 ], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  jsonbody="{ \"name\": \"sharedemail\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_title\": null, \"assign_tags\": [], \"assign_correspondent\": null, \"assign_document_type\": null, \"assign_storage_path\": 2, \"assign_owner\": null, \"assign_view_users\": [], \"assign_view_groups\": [ 1 ], \"assign_change_users\": [], \"assign_change_groups\": [ 1 ], \"assign_custom_fields\": [], \"assign_custom_fields_values\": {}, \"remove_all_tags\": false, \"remove_tags\": [], \"remove_all_correspondents\": false, \"remove_correspondents\": [], \"remove_all_document_types\": false, \"remove_document_types\": [], \"remove_all_storage_paths\": false, \"remove_storage_paths\": [], \"remove_custom_fields\": [], \"remove_all_custom_fields\": false, \"remove_all_owners\": false, \"remove_owners\": [], \"remove_all_permissions\": false, \"remove_view_users\": [], \"remove_view_groups\": [], \"remove_change_users\": [], \"remove_change_groups\": [], \"email\": null, \"webhook\": null } ] }"
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  jsonbody="{ \"name\": \"admin_personalconsume\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalConsume/$NEXTCLOUD_ADMIN_USERNAME/PersonalConsume/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true }, { \"sources\": [], \"type\": 2, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] }, { \"sources\": [], \"type\": 3, \"filter_path\": null, \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true, \"filter_has_tags\": [ $PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID ] } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  jsonbody="{ \"name\": \"admin_transcribeconsume\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"sources\": [ 1, 2, 3, 4 ], \"type\": 1, \"filter_path\": \"*/PersonalTranscribeOutput/$SPEAKR_ADMIN_USERNAME/*\", \"filter_filename\": null, \"filter_mailrule\": null, \"matching_algorithm\": 0, \"match\": \"\", \"is_insensitive\": true } ], \"actions\": [ { \"type\": 1, \"assign_owner\": $PAPERLESS_ADMIN_ID, \"assign_document_type\": $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID }, { \"type\": 1, \"assign_storage_path\": 3 } ] }"
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  jsonbody="{ \"name\": \"assign_kb\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_has_any_document_types\": [$manual_doc_type, $research_doc_type, $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID] }, { \"type\": 3, \"filter_has_any_document_types\": [$manual_doc_type, $research_doc_type, $PAPERLESS_TRANSCRIPTION_DOCTYPE_ID] } ], \"actions\": [ { \"type\": 1, \"assign_tags\": [ $PAPERLESS_KNOWLEDGEBASE_TAG_ID ] } ] }"
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+  jsonbody="{ \"name\": \"trigger_ai\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_filename\": null, \"matching_algorithm\": 0 } ], \"actions\": [ { \"type\": 4,\"order\": 0, \"webhook\": { \"url\": \"http://paperless-ai:3000/api/webhook/document\", \"as_json\": true, \"params\": { \"url\": \"{{doc_url}}\" }, \"headers\": { \"x-api-key\": \"$PAPERLESS_AI_API_KEY\" }, \"include_document\": false } } ] }"
+  docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   jsonbody="{ \"name\": \"${EMAIL_JOINT_USERNAME} Email\", \"imap_server\": \"$SMTP_HOSTNAME\", \"imap_port\": 143, \"imap_security\": 3, \"username\": \"$EMAIL_JOINT_EMAIL_ADDRESS\", \"password\": \"$EMAIL_JOINT_PASSWORD\", \"account_type\": 1, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true }"
-  mail_account_id=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+  mail_account_id=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/mail_accounts/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
   if [ -n "$mail_account_id" ]; then
-    jsonbody="{ \"name\": \"${EMAIL_JOINT_USERNAME} Email Personal\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true, \"stop_processing\": false }"
-    curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
-    jsonbody="{ \"name\": \"${EMAIL_JOINT_USERNAME} Email Work\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Work\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 1, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true, \"stop_processing\": false }"
-    curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+    jsonbody="{ \"name\": \"${EMAIL_JOINT_USERNAME} Email Personal\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Personal\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 2, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true, \"stop_processing\": false }"
+    docker exec paperless-app curl -s -X POST "http://localhost:8000/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
+    jsonbody="{ \"name\": \"${EMAIL_JOINT_USERNAME} Email Work\", \"account\": $mail_account_id, \"enabled\": true, \"folder\": \"Processed.Work\", \"maximum_age\": 0, \"action\": 5, \"action_parameter\": \"paperless\", \"assign_title_from\": 2, \"assign_correspondent_from\": 1, \"assign_tags\": [ $PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID ], \"assign_owner_from_rule\": true, \"order\": 2, \"attachment_type\": 1, \"consumption_scope\": 1, \"pdf_layout\": 0, \"owner\": $PAPERLESS_ADMIN_ID, \"user_can_change\": true, \"stop_processing\": false }"
+    docker exec paperless-app curl -s -X POST "http://localhost:8000/api/mail_rules/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" > /dev/null 2>&1
   fi
 }
 
 function getPaperlessIDFromUsername()
 {
   pap_username="$1"
-  pap_id=$(curl -s -X GET "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/users/?username__iexact=$pap_username" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r '.results[0].id')
+  pap_id=$(docker exec paperless-app curl -s -X GET "http://localhost:8000/api/users/?username__iexact=$pap_username" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" | jq -r '.results[0].id')
   echo $pap_id
 }
 
@@ -72494,7 +72307,7 @@ function performIntegrationPaperlessGPT()
 {
   echo "Integrating paperless-gpt, please wait..."
   waitForContainerLogString paperless-app 3 60 "celery@paperless-app ready"
-  PAPERLESS_API_TOKEN=$(curl -s -X POST https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/token/ -d "username=${PAPERLESS_ADMIN_USERNAME}&password=${PAPERLESS_ADMIN_PASSWORD}" | jq -r .token)
+  PAPERLESS_API_TOKEN=$(docker exec paperless-app curl -s -X POST http://localhost:8000/api/token/ -d "username=${PAPERLESS_ADMIN_USERNAME}&password=${PAPERLESS_ADMIN_PASSWORD}" | jq -r .token)
   updateConfigVar PAPERLESS_API_TOKEN $PAPERLESS_API_TOKEN
   updateStackEnv paperless mfUpdateAPITokenPaperless
 }
@@ -72758,7 +72571,7 @@ function mfPaperlessV7AddAI()
     echo "RAG_SERVICE_ENABLED=true" >> $HOME/paperless.env
     echo "ANONYMIZED_TELEMETRY=False" >> $HOME/paperless.env
     echo "PAPERLESS_API_URL=http://paperless-app:8000" >> $HOME/paperless.env
-    PAPERLESS_API_TOKEN=$(curl -s -X POST https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/token/ -d "username=${PAPERLESS_ADMIN_USERNAME}&password=${PAPERLESS_ADMIN_PASSWORD}" | jq -r .token)
+    PAPERLESS_API_TOKEN=$(docker exec paperless-app curl -s -X POST http://localhost:8000/api/token/ -d "username=${PAPERLESS_ADMIN_USERNAME}&password=${PAPERLESS_ADMIN_PASSWORD}" | jq -r .token)
     updateConfigVar PAPERLESS_API_TOKEN $PAPERLESS_API_TOKEN
     echo "PAPERLESS_API_TOKEN=$PAPERLESS_API_TOKEN" >> $HOME/paperless.env
   fi
@@ -72926,14 +72739,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $PAPERLESS_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-paperless-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-paperless-redis:/data
 
 volumes:
   v-paperless-data:
@@ -72948,12 +72760,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/paperless/media
-  v-paperless-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/paperless/redis
   v-paperless-ai:
     driver: local
     driver_opts:
@@ -73153,14 +72959,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $PAPERLESS_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-paperless-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-paperless-redis:/data
 
 volumes:
   v-paperless-data:
@@ -73175,12 +72980,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/paperless/media
-  v-paperless-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/paperless/redis
   v-paperless-ai:
     driver: local
     driver_opts:
@@ -73381,6 +73180,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-paperless-net
       - dock-aipriv-net
@@ -73401,14 +73201,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $PAPERLESS_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-paperless-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-paperless-redis:/data
 
 volumes:
   v-paperless-data:
@@ -73423,12 +73222,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/paperless/media
-  v-paperless-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/paperless/redis
   v-paperless-ai:
     driver: local
     driver_opts:
@@ -73509,7 +73302,7 @@ function mfPaperlessV8AddGPT()
     echo "PDF_OCR_COMPLETE_TAG=paperless-gpt-ocr-complete" >> $HOME/paperless.env
     echo "AUTO_OCR_TAG=paperless-gpt-ocr-auto" >> $HOME/paperless.env
     echo "PAPERLESS_OCR_PAGES=0" >> $HOME/paperless.env
-    echo "PAPERLESS_OCR_MODE=force" >> $HOME/paperless.env
+    echo "PAPERLESS_OCR_MODE=auto" >> $HOME/paperless.env
     echo "OCR_LIMIT_PAGES=0" >> $HOME/paperless.env
     echo "LOG_LEVEL=info" >> $HOME/paperless.env
   fi
@@ -73654,7 +73447,7 @@ PDF_OCR_TAGGING=true
 PDF_OCR_COMPLETE_TAG=paperless-gpt-ocr-complete
 AUTO_OCR_TAG=paperless-gpt-ocr-auto
 PAPERLESS_OCR_PAGES=0
-PAPERLESS_OCR_MODE=force
+PAPERLESS_OCR_MODE=auto
 OCR_LIMIT_PAGES=0
 LOG_LEVEL=info
 PAPERLESS_API_KEY=$PAPERLESS_API_TOKEN
@@ -73883,6 +73676,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-paperless-net
       - dock-aipriv-net
@@ -73901,14 +73695,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $PAPERLESS_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-paperless-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-paperless-redis:/data
 
 volumes:
   v-paperless-data:
@@ -73923,12 +73716,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/paperless/media
-  v-paperless-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/paperless/redis
   v-paperless-ai:
     driver: local
     driver_opts:
@@ -76187,8 +75974,6 @@ function installPenpot()
   mkdir $HSHQ_STACKS_DIR/penpot/ssl
   mkdir $HSHQ_STACKS_DIR/penpot/assets
   chmod 777 $HSHQ_STACKS_DIR/penpot/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/penpot
-  mkdir $HSHQ_NONBACKUP_DIR/penpot/redis
   initServicesCredentials
   set +e
   docker run --rm --name=tomcat -v $HSHQ_STACKS_DIR/penpot/ssl:/certsexport -v /usr/local/share/ca-certificates:/usr/local/share/ca-certificates $IMG_TOMCAT bash -c "keytool -importcert -file /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt -alias ${CERTS_ROOT_CA_NAME}.crt -cacerts -storepass changeit -noprompt; cp /opt/java/openjdk/lib/security/cacerts /certsexport/"
@@ -76346,13 +76131,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $PENPOT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-penpot-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-penpot-redis:/data
 
 volumes:
   v-penpot-db:
@@ -76367,12 +76151,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/penpot/assets
-  v-penpot-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/penpot/redis
 
 networks:
   dock-proxy-net:
@@ -76863,7 +76641,6 @@ function installImmich()
   mkdir $HSHQ_STACKS_DIR/immich/config
   chmod 777 $HSHQ_STACKS_DIR/immich/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/immich
-  mkdir $HSHQ_NONBACKUP_DIR/immich/redis
   mkdir $HSHQ_NONBACKUP_DIR/immich/cache
   initServicesCredentials
   set +e
@@ -77054,6 +76831,7 @@ services:
       disable: true
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-immich-net
       - dock-aipriv-net
@@ -77070,14 +76848,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $IMMICH_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-immich-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-immich-redis:/data
 
 volumes:
   v-immich-cache:
@@ -77086,12 +76863,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/immich/cache
-  v-immich-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/immich/redis
 
 networks:
   dock-proxy-net:
@@ -77628,6 +77399,7 @@ services:
       disable: true
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-immich-net
       - dock-aipriv-net
@@ -77644,14 +77416,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $IMMICH_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-immich-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-immich-redis:/data
 
 volumes:
   v-immich-cache:
@@ -77660,12 +77431,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/immich/cache
-  v-immich-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/immich/redis
 
 networks:
   dock-proxy-net:
@@ -78644,8 +78409,6 @@ function installAIStack()
   mkdir $HSHQ_STACKS_DIR/aistack/mindsdb/dbexport
   mkdir $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport
   mkdir $HSHQ_STACKS_DIR/aistack/otel
-  mkdir $HSHQ_NONBACKUP_DIR/aistack
-  mkdir $HSHQ_NONBACKUP_DIR/aistack/redis
   chmod 777 $HSHQ_STACKS_DIR/aistack/mindsdb/dbexport
   initServicesCredentials
   set +e
@@ -78849,13 +78612,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $AISTACK_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-aistack-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-aistack-redis:/data
 
 volumes:
   v-aistack-mindsdb-app:
@@ -78864,12 +78626,6 @@ volumes:
       type: none
       o: bind
       device: ${HSHQ_STACKS_DIR}/aistack/mindsdb/app
-  v-aistack-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${HSHQ_NONBACKUP_DIR}/aistack/redis
 
 networks:
   dock-proxy-net:
@@ -79015,13 +78771,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $AISTACK_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-aistack-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-aistack-redis:/data
 
 volumes:
   v-aistack-mindsdb-app:
@@ -79030,12 +78785,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/aistack/mindsdb/app
-  v-aistack-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/aistack/redis
 
 networks:
   dock-proxy-net:
@@ -79325,8 +79074,6 @@ function installPixelfed()
   mkdir $HSHQ_STACKS_DIR/pixelfed/dbexport
   mkdir $HSHQ_STACKS_DIR/pixelfed/appstorage
   mkdir $HSHQ_STACKS_DIR/pixelfed/appbootstrapcache
-  mkdir $HSHQ_NONBACKUP_DIR/pixelfed
-  mkdir $HSHQ_NONBACKUP_DIR/pixelfed/redis
   chmod 777 $HSHQ_STACKS_DIR/pixelfed/dbexport
   initServicesCredentials
   set +e
@@ -79481,13 +79228,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $PIXELFED_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-pixelfed-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-pixelfed-redis:/data
 
 volumes:
   v-pixelfed-appstorage:
@@ -79508,12 +79254,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/pixelfed/appbootstrapcache
-  v-pixelfed-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/pixelfed/redis
 
 networks:
   dock-proxy-net:
@@ -80811,8 +80551,6 @@ function installYamtrack()
   mkdir $HSHQ_STACKS_DIR/yamtrack
   mkdir $HSHQ_STACKS_DIR/yamtrack/db
   mkdir $HSHQ_STACKS_DIR/yamtrack/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/yamtrack
-  mkdir $HSHQ_NONBACKUP_DIR/yamtrack/redis
   chmod 777 $HSHQ_STACKS_DIR/yamtrack/dbexport
   initServicesCredentials
   set +e
@@ -80930,13 +80668,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $YAMTRACK_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-yamtrack-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-yamtrack-redis:/data
 
 volumes:
   v-yamtrack-db:
@@ -80945,12 +80682,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/yamtrack/db
-  v-yamtrack-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/yamtrack/redis
 
 networks:
   dock-proxy-net:
@@ -83105,7 +82836,6 @@ function installBudibase()
   mkdir $HSHQ_STACKS_DIR/budibase/plugins
   mkdir $HSHQ_STACKS_DIR/budibase/couchdb
   mkdir $HSHQ_STACKS_DIR/budibase/minio
-  mkdir -p $HSHQ_NONBACKUP_DIR/budibase/redis
   chmod 777 $HSHQ_STACKS_DIR/budibase/dbexport
   initServicesCredentials
   set +e
@@ -83303,13 +83033,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $BUDIBASE_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-budibase-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-budibase-redis:/data
 
 volumes:
   v-budibase-db:
@@ -83324,12 +83053,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/budibase/couchdb
-  v-budibase-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/budibase/redis
 
 networks:
   dock-proxy-net:
@@ -83673,8 +83396,6 @@ function installStandardNotes()
   set -e
   mkdir $HSHQ_STACKS_DIR/standardnotes
   mkdir $HSHQ_STACKS_DIR/standardnotes/{db,dbexport,config,localstack,logs,uploads}
-  mkdir $HSHQ_NONBACKUP_DIR/standardnotes
-  mkdir $HSHQ_NONBACKUP_DIR/standardnotes/redis
   chmod 777 $HSHQ_STACKS_DIR/standardnotes/dbexport
   initServicesCredentials
   set +e
@@ -83856,13 +83577,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $STANDARDNOTES_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-standardnotes-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-standardnotes-redis:/data
 
 volumes:
   v-standardnotes-db:
@@ -83871,12 +83591,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/standardnotes/db
-  v-standardnotes-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/standardnotes/redis
 
 networks:
   dock-proxy-net:
@@ -84244,13 +83958,14 @@ EOFWZ
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_METABASE $MANAGETLS_METABASE "$is_integrate_hshq" $NETDEFAULT_METABASE "$inner_block"
-  insertSubAuthelia $SUB_METABASE.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_METABASE.$HOMESERVER_DOMAIN bypass
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll metabase "$FMLNAME_METABASE" $USERTYPE_METABASE "https://$SUB_METABASE.$HOMESERVER_DOMAIN" "metabase.png" "$(getHeimdallOrderFromSub $SUB_METABASE $USERTYPE_METABASE)"
     restartAllCaddyContainers
     checkAddDBConnection true metabase "$FMLNAME_METABASE" postgres metabase-db $METABASE_DATABASE_NAME $METABASE_DATABASE_USER $METABASE_DATABASE_USER_PASSWORD
   fi
   sleep 3
+  set +e
   setup_token=$(curl -s -X GET -H "Content-Type: application/json" https://$SUB_METABASE.$HOMESERVER_DOMAIN/api/session/properties | jq -r '.["setup-token"]')
   curl -s -X POST -H "Content-type: application/json" \
   https://$SUB_METABASE.$HOMESERVER_DOMAIN/api/setup -d '{
@@ -84273,6 +83988,7 @@ EOFWZ
   startStopStack metabase start
   waitForContainerLogString metabase-app 5 120 "Starting listener"
   echo "Metabase configured!"
+  docker container restart openwebui-mcpo > /dev/null 2>&1
 }
 
 function outputConfigMetabase()
@@ -84333,6 +84049,7 @@ services:
       - dock-dbs-net
       - dock-internalmail-net
       - dock-ldap-net
+      - dock-aipriv-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -84353,6 +84070,9 @@ networks:
     external: true
   dock-ldap-net:
     name: dock-ldap
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
     external: true
   int-metabase-net:
     driver: bridge
@@ -85087,8 +84807,6 @@ function installRevolt()
   mkdir $HSHQ_STACKS_DIR/revolt/caddy
   mkdir $HSHQ_STACKS_DIR/revolt/caddy/data
   mkdir $HSHQ_STACKS_DIR/revolt/caddy/config
-  mkdir $HSHQ_NONBACKUP_DIR/revolt
-  mkdir $HSHQ_NONBACKUP_DIR/revolt/redis
   initServicesCredentials
   set +e
   outputConfigRevolt
@@ -85155,13 +84873,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $REVOLT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-revolt-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-revolt-redis:/data
 
   revolt-rabbitmq:
     image: $(getScriptImageByContainerName revolt-rabbitmq)
@@ -85412,12 +85129,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/revolt/dbexport
-  v-revolt-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/revolt/redis
 
 networks:
   dock-proxy-net:
@@ -85878,13 +85589,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $REVOLT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-revolt-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-revolt-redis:/data
 
   revolt-rabbitmq:
     image: mirror.gcr.io/rabbitmq:4.1.4
@@ -86135,12 +85845,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/revolt/dbexport
-  v-revolt-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/revolt/redis
 
 networks:
   dock-proxy-net:
@@ -86860,8 +86564,6 @@ function installTwenty()
   mkdir $HSHQ_STACKS_DIR/twenty
   mkdir $HSHQ_STACKS_DIR/twenty/data
   mkdir $HSHQ_STACKS_DIR/twenty/minio
-  mkdir $HSHQ_NONBACKUP_DIR/twenty
-  mkdir $HSHQ_NONBACKUP_DIR/twenty/redis
   mkdir $HSHQ_STACKS_DIR/twenty/db
   mkdir $HSHQ_STACKS_DIR/twenty/dbexport
   chmod 777 $HSHQ_STACKS_DIR/twenty/dbexport
@@ -87043,6 +86745,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-twenty-net
       - dock-aipriv-net
@@ -87061,14 +86764,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $TWENTY_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
       --maxmemory-policy noeviction
     networks:
       - int-twenty-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-twenty-redis:/data
 
 volumes:
   v-twenty-data:
@@ -87077,12 +86779,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/twenty/data
-  v-twenty-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/twenty/redis
 
 networks:
   dock-proxy-net:
@@ -87639,14 +87335,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $TWENTY_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
       --maxmemory-policy noeviction
     networks:
       - int-twenty-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-twenty-redis:/data
 
   twenty-minio:
     image: mirror.gcr.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
@@ -87689,12 +87384,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/twenty/data
-  v-twenty-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/twenty/redis
 
 networks:
   dock-proxy-net:
@@ -87859,6 +87548,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-twenty-net
       - dock-aipriv-net
@@ -87877,14 +87567,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $TWENTY_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
       --maxmemory-policy noeviction
     networks:
       - int-twenty-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-twenty-redis:/data
 
 volumes:
   v-twenty-data:
@@ -87893,12 +87582,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/twenty/data
-  v-twenty-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/twenty/redis
 
 networks:
   dock-proxy-net:
@@ -90099,6 +89782,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-openproject-net
       - dock-aipriv-net
@@ -90748,6 +90432,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-openproject-net
       - dock-aipriv-net
@@ -90908,8 +90593,6 @@ function installZammad()
   mkdir $HSHQ_STACKS_DIR/zammad/minio
   mkdir $HSHQ_STACKS_DIR/zammad/db
   mkdir $HSHQ_STACKS_DIR/zammad/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/zammad
-  mkdir $HSHQ_NONBACKUP_DIR/zammad/redis
   chmod 777 $HSHQ_STACKS_DIR/zammad/dbexport
   initServicesCredentials
   set +e
@@ -91330,13 +91013,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $ZAMMAD_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-zammad-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-zammad-redis:/data
 
 #  zammad-es:
 #    image: $(getScriptImageByContainerName zammad-es)
@@ -91410,12 +91092,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/zammad/es
-  v-zammad-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/zammad/redis
 
 networks:
   dock-proxy-net:
@@ -91777,13 +91453,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $ZAMMAD_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-zammad-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-zammad-redis:/data
 
 #  zammad-es:
 #    image: mirror.gcr.io/elasticsearch:9.2.2
@@ -91857,12 +91532,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/zammad/es
-  v-zammad-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/zammad/redis
 
 networks:
   dock-proxy-net:
@@ -91926,8 +91595,6 @@ function installZulip()
   mkdir $HSHQ_STACKS_DIR/zulip/rabbitmq
   mkdir $HSHQ_STACKS_DIR/zulip/db
   mkdir $HSHQ_STACKS_DIR/zulip/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/zulip
-  mkdir $HSHQ_NONBACKUP_DIR/zulip/redis
   chmod 777 $HSHQ_STACKS_DIR/zulip/dbexport
   initServicesCredentials
   set +e
@@ -92093,13 +91760,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $ZULIP_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-zulip-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-zulip-redis:/data
 
 volumes:
   v-zulip-data:
@@ -92114,12 +91780,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/zulip/rabbitmq
-  v-zulip-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/zulip/redis
 
 networks:
   dock-proxy-net:
@@ -93180,8 +92840,6 @@ function installKillBill()
   mkdir $HSHQ_STACKS_DIR/killbill
   mkdir $HSHQ_STACKS_DIR/killbill/db
   mkdir $HSHQ_STACKS_DIR/killbill/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/killbill
-  mkdir $HSHQ_NONBACKUP_DIR/killbill/redis
   chmod 777 $HSHQ_STACKS_DIR/killbill/dbexport
   initServicesCredentials
   set +e
@@ -93334,13 +92992,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $KILLBILL_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-killbill-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-killbill-redis:/data
 
 volumes:
   v-killbill-db:
@@ -93349,12 +93006,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/killbill/db
-  v-killbill-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/killbill/redis
 
 networks:
   dock-proxy-net:
@@ -93581,6 +93232,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-invoiceshelf-net
       - dock-aipriv-net
@@ -93935,6 +93587,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-invoiceshelf-net
       - dock-aipriv-net
@@ -94050,8 +93703,6 @@ function installInvoiceNinja()
   mkdir $HSHQ_STACKS_DIR/invoiceninja/nginx
   mkdir $HSHQ_STACKS_DIR/invoiceninja/public
   mkdir $HSHQ_STACKS_DIR/invoiceninja/minio
-  mkdir $HSHQ_NONBACKUP_DIR/invoiceninja
-  mkdir $HSHQ_NONBACKUP_DIR/invoiceninja/redis
   mkdir $HSHQ_STACKS_DIR/invoiceninja/storage
   mkdir $HSHQ_STACKS_DIR/invoiceninja/storage/logs
   touch $HSHQ_STACKS_DIR/invoiceninja/storage/logs/invoiceninja.log
@@ -94198,13 +93849,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $INVOICENINJA_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-invoiceninja-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-invoiceninja-redis:/data
 
 #  To enable, set FILESYSTEM_DRIVER=s3 in environment. However,
 #  this feature is inop at the moment.
@@ -94262,12 +93912,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/storage
-  v-invoiceninja-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/invoiceninja/redis
 
 networks:
   dock-proxy-net:
@@ -94562,13 +94206,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $INVOICENINJA_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-invoiceninja-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-invoiceninja-redis:/data
 
 #  To enable, set FILESYSTEM_DRIVER=s3 in environment. However,
 #  this feature is inop at the moment.
@@ -94626,12 +94269,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/storage
-  v-invoiceninja-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/invoiceninja/redis
 
 networks:
   dock-proxy-net:
@@ -94690,9 +94327,6 @@ function installDolibarr()
   mkdir $HSHQ_STACKS_DIR/dolibarr/mcp
   mkdir $HSHQ_STACKS_DIR/dolibarr/mcp/config
   mkdir $HSHQ_STACKS_DIR/dolibarr/mcp/plugins
-  mkdir $HSHQ_NONBACKUP_DIR/dolibarr
-  mkdir $HSHQ_NONBACKUP_DIR/dolibarr/redis
-  mkdir $HSHQ_NONBACKUP_DIR/dolibarr/mcpredis
   chmod 777 $HSHQ_STACKS_DIR/dolibarr/dbexport
   initServicesCredentials
   set +e
@@ -95011,14 +94645,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $DOLIBARR_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-dolibarr-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-dolibarr-redis:/data
 
   dolibarr-mcp:
     image: $(getScriptImageByContainerName dolibarr-mcp)
@@ -95028,6 +94661,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     depends_on:
       - dolibarr-db
     networks:
@@ -95059,18 +94693,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/dolibarr/documents
-  v-dolibarr-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/dolibarr/redis
-  v-dolibarr-mcp-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/dolibarr/mcpredis
 
 networks:
   dock-proxy-net:
@@ -95207,14 +94829,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $DOLIBARR_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-dolibarr-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-dolibarr-redis:/data
 
   dolibarr-mcp:
     image: hshq/dolibarr-mcp:v1
@@ -95224,6 +94845,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     depends_on:
       - dolibarr-db
     networks:
@@ -95246,14 +94868,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $DOLIBARR_MCP_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-dolibarr-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-dolibarr-mcp-redis:/data
 
 volumes:
   v-dolibarr-db:
@@ -95274,18 +94895,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/dolibarr/documents
-  v-dolibarr-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/dolibarr/redis
-  v-dolibarr-mcp-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/dolibarr/mcpredis
 
 networks:
   dock-proxy-net:
@@ -95373,10 +94982,18 @@ function performUpdateDolibarr()
       return
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/dolibarr/dolibarr:23.0.3-php8.2,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/dolibarr-mcp:v2
       image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
-      image_update_map[1]="mirror.gcr.io/dolibarr/dolibarr:23.0.3-php8.2,mirror.gcr.io/dolibarr/dolibarr:23.0.3-php8.2"
+      image_update_map[1]="mirror.gcr.io/dolibarr/dolibarr:23.0.3-php8.2,ghcr.io/homeserverhq/dolibarr:v23.0.4"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[3]="ghcr.io/homeserverhq/dolibarr-mcp:v2,ghcr.io/homeserverhq/dolibarr-mcp:v2"
+    ;;
+    5)
+      newVer=v5
+      curImageList=mirror.gcr.io/mariadb:10.7.3,ghcr.io/homeserverhq/dolibarr:v23.0.4,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/dolibarr-mcp:v2
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="ghcr.io/homeserverhq/dolibarr:v23.0.4,ghcr.io/homeserverhq/dolibarr:v23.0.4"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[3]="ghcr.io/homeserverhq/dolibarr-mcp:v2,ghcr.io/homeserverhq/dolibarr-mcp:v2"
     ;;
@@ -95569,14 +95186,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $DOLIBARR_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-dolibarr-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-dolibarr-redis:/data
 
   dolibarr-mcp:
     image: ghcr.io/homeserverhq/dolibarr-mcp:v2
@@ -95586,6 +95202,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     depends_on:
       - dolibarr-db
     networks:
@@ -95617,18 +95234,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/dolibarr/documents
-  v-dolibarr-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/dolibarr/redis
-  v-dolibarr-mcp-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/dolibarr/mcpredis
 
 networks:
   dock-proxy-net:
@@ -95732,8 +95337,6 @@ function installn8n()
   mkdir $HSHQ_STACKS_DIR/n8n/files
   mkdir $HSHQ_STACKS_DIR/n8n/db
   mkdir $HSHQ_STACKS_DIR/n8n/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/n8n
-  mkdir $HSHQ_NONBACKUP_DIR/n8n/redis
   chmod 777 $HSHQ_STACKS_DIR/n8n/dbexport
   initServicesCredentials
   set +e
@@ -95878,13 +95481,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $N8N_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-n8n-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-n8n-redis:/data
 
 volumes:
   v-n8n-data:
@@ -95893,12 +95495,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/n8n/data
-  v-n8n-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/n8n/redis
 
 networks:
   dock-proxy-net:
@@ -96053,8 +95649,6 @@ function installAutomatisch()
   mkdir $HSHQ_STACKS_DIR/automatisch/db
   mkdir $HSHQ_STACKS_DIR/automatisch/dbexport
   mkdir $HSHQ_STACKS_DIR/automatisch/storage
-  mkdir $HSHQ_NONBACKUP_DIR/automatisch
-  mkdir $HSHQ_NONBACKUP_DIR/automatisch/redis
   chmod 777 $HSHQ_STACKS_DIR/automatisch/dbexport
   initServicesCredentials
   set +e
@@ -96203,13 +95797,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $AUTOMATISCH_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-automatisch-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-automatisch-redis:/data
 
 volumes:
   v-automatisch-storage:
@@ -96218,12 +95811,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/automatisch/storage
-  v-automatisch-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/automatisch/redis
 
 networks:
   dock-proxy-net:
@@ -96344,8 +95931,6 @@ function installActivePieces()
   mkdir $HSHQ_STACKS_DIR/activepieces/db
   mkdir $HSHQ_STACKS_DIR/activepieces/dbexport
   mkdir $HSHQ_STACKS_DIR/activepieces/cache
-  mkdir $HSHQ_NONBACKUP_DIR/activepieces
-  mkdir $HSHQ_NONBACKUP_DIR/activepieces/redis
   chmod 777 $HSHQ_STACKS_DIR/activepieces/dbexport
   initServicesCredentials
   set +e
@@ -96498,21 +96083,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $ACTIVEPIECES_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-activepieces-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-activepieces-redis:/data
-
-volumes:
-  v-activepieces-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/activepieces/redis
 
 networks:
   dock-proxy-net:
@@ -96751,21 +96327,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $ACTIVEPIECES_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-activepieces-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-activepieces-redis:/data
-
-volumes:
-  v-activepieces-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/activepieces/redis
 
 networks:
   dock-proxy-net:
@@ -96857,7 +96424,7 @@ function installBeszel()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_BESZEL_APP $MANAGETLS_BESZEL_APP "$is_integrate_hshq" $NETDEFAULT_BESZEL_APP "$inner_block"
-  insertSubAuthelia $SUB_BESZEL_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_BESZEL_APP.$HOMESERVER_DOMAIN bypass
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll beszel "$FMLNAME_BESZEL_APP" $USERTYPE_BESZEL_APP "https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN" "beszel.png" "$(getHeimdallOrderFromSub $SUB_BESZEL_APP $USERTYPE_BESZEL_APP)"
     restartAllCaddyContainers
@@ -100700,8 +100267,6 @@ function installLibreChat()
   mkdir $HSHQ_STACKS_DIR/librechat/db
   mkdir $HSHQ_STACKS_DIR/librechat/dbexport
   chmod 777 $HSHQ_STACKS_DIR/librechat/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/librechat
-  mkdir $HSHQ_NONBACKUP_DIR/librechat/redis
   initServicesCredentials
   set +e
   addUserMailu alias $LIBRECHAT_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -100894,13 +100459,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $LIBRECHAT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-librechat-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-librechat-redis:/data
 
 volumes:
   v-librechat-mongodata:
@@ -100915,12 +100479,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/librechat/mongoexport
-  v-librechat-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/librechat/redis
 
 networks:
   dock-proxy-net:
@@ -101272,10 +100830,19 @@ function performUpdateCrawl4AI()
       image_update_map[1]="ghcr.io/lennyerik/crawl4ai-proxy:latest,ghcr.io/lennyerik/crawl4ai-proxy:latest"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/unclecode/crawl4ai:0.8.6,ghcr.io/lennyerik/crawl4ai-proxy:latest
-      image_update_map[0]="mirror.gcr.io/unclecode/crawl4ai:0.8.6,mirror.gcr.io/unclecode/crawl4ai:0.8.6"
-      image_update_map[1]="ghcr.io/lennyerik/crawl4ai-proxy:latest,ghcr.io/lennyerik/crawl4ai-proxy:latest"
+      image_update_map[0]="mirror.gcr.io/unclecode/crawl4ai:0.8.6,ghcr.io/homeserverhq/crawl4ai:v0.9.5"
+      image_update_map[1]="ghcr.io/lennyerik/crawl4ai-proxy:latest,ghcr.io/homeserverhq/crawl4ai-proxy:v0.1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateCrawl4AIV3
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=ghcr.io/homeserverhq/crawl4ai:v0.9.5,ghcr.io/homeserverhq/crawl4ai-proxy:v0.1
+      image_update_map[0]="ghcr.io/homeserverhq/crawl4ai:v0.9.5,ghcr.io/homeserverhq/crawl4ai:v0.9.5"
+      image_update_map[1]="ghcr.io/homeserverhq/crawl4ai-proxy:v0.1,ghcr.io/homeserverhq/crawl4ai-proxy:v0.1"
     ;;
     *)
       is_upgrade_error=true
@@ -101285,6 +100852,19 @@ function performUpdateCrawl4AI()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfUpdateCrawl4AIV3()
+{
+  rm -f $HOME/crawl4ai.env
+  cat <<EOFMT > $HOME/crawl4ai.env
+TZ=\${PORTAINER_TZ}
+OPENAI_BASE_URL=http://litellm-proxy:4000
+OPENAI_API_KEY=$LITELLM_MASTER_KEY
+LLM_PROVIDER=Chat
+LLM_TEMPERATURE=0.5
+CRAWL4AI_URL=http://crawl4ai-app:11235
+EOFMT
 }
 
 # Ollama
@@ -101494,10 +101074,10 @@ function installOpenWebUI()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  buildOrPullImage $(getScriptImageByContainerName openwebui-pipelines)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
+  #buildOrPullImage $(getScriptImageByContainerName openwebui-pipelines)
+  #if [ $? -ne 0 ]; then
+  #  return 1
+  #fi
   buildOrPullImage $(getScriptImageByContainerName openwebui-mcp)
   if [ $? -ne 0 ]; then
     return 1
@@ -101513,8 +101093,6 @@ function installOpenWebUI()
   mkdir $HSHQ_STACKS_DIR/openwebui/mcpo
   mkdir $HSHQ_STACKS_DIR/openwebui/pipelines
   chmod 777 $HSHQ_STACKS_DIR/openwebui/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/openwebui
-  mkdir $HSHQ_NONBACKUP_DIR/openwebui/redis
   initServicesCredentials
   set +e
   addUserMailu alias $OPENWEBUI_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -101745,6 +101323,7 @@ services:
     networks:
       - int-openwebui-net
       - dock-aipriv-net
+      - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -101753,24 +101332,24 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/mcpo:/app/config
 
-  openwebui-pipelines:
-    image: $(getScriptImageByContainerName openwebui-pipelines)
-    container_name: openwebui-pipelines
-    hostname: openwebui-pipelines
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - int-openwebui-net
-      - dock-aipriv-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-openwebui-pipelines:/app/pipelines
+#  openwebui-pipelines:
+#    image: $(getScriptImageByContainerName openwebui-pipelines)
+#    container_name: openwebui-pipelines
+#    hostname: openwebui-pipelines
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    networks:
+#      - int-openwebui-net
+#      - dock-aipriv-net
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+#      - v-openwebui-pipelines:/app/pipelines
 
   openwebui-mcp:
     image: $(getScriptImageByContainerName openwebui-mcp)
@@ -101798,22 +101377,15 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $OPENWEBUI_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-openwebui-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-openwebui-redis:/data
 
 volumes:
-  v-openwebui-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/openwebui/redis
   v-openwebui-openterminal:
     driver: local
     driver_opts:
@@ -101896,7 +101468,7 @@ QDRANT__SERVICE__API_KEY=$OPENWEBUI_QDRANT_API_KEY
 QDRANT__SERVICE__ENABLE_API_KEY_AUTHORIZATION=true
 ENABLE_API_KEYS=true
 USER_PERMISSIONS_FEATURES_API_KEYS=true
-RAG_SYSTEM_CONTEXT=True
+RAG_SYSTEM_CONTEXT=False
 ENABLE_RAG_LOCAL_WEB_FETCH=True
 VECTOR_DB=qdrant
 QDRANT_URI=http://openwebui-qdrant:6333
@@ -102133,6 +101705,7 @@ services:
     networks:
       - int-openwebui-net
       - dock-aipriv-net
+      - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -102186,22 +101759,15 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $OPENWEBUI_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-openwebui-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-openwebui-redis:/data
 
 volumes:
-  v-openwebui-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/openwebui/redis
   v-openwebui-openterminal:
     driver: local
     driver_opts:
@@ -102275,7 +101841,7 @@ function mfOpenWebUIUpdateV2()
     echo "QDRANT__SERVICE__ENABLE_API_KEY_AUTHORIZATION=true" >> $HOME/openwebui.env
     echo "ENABLE_API_KEYS=true" >> $HOME/openwebui.env
     echo "USER_PERMISSIONS_FEATURES_API_KEYS=true" >> $HOME/openwebui.env
-    echo "RAG_SYSTEM_CONTEXT=True" >> $HOME/openwebui.env
+    echo "RAG_SYSTEM_CONTEXT=False" >> $HOME/openwebui.env
     echo "ENABLE_RAG_LOCAL_WEB_FETCH=True" >> $HOME/openwebui.env
     echo "VECTOR_DB=qdrant" >> $HOME/openwebui.env
     echo "QDRANT_URI=http://openwebui-qdrant:6333" >> $HOME/openwebui.env
@@ -102876,8 +102442,6 @@ function installLobeChat()
   mkdir $HSHQ_STACKS_DIR/lobechat/db
   mkdir $HSHQ_STACKS_DIR/lobechat/dbexport
   chmod 777 $HSHQ_STACKS_DIR/lobechat/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/lobechat
-  mkdir $HSHQ_NONBACKUP_DIR/lobechat/redis
   initServicesCredentials
   set +e
   addUserMailu alias $LOBECHAT_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -103007,13 +102571,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $LOBECHAT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-lobechat-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-lobechat-redis:/data
 
   lobechat-minio:
     image: $(getScriptImageByContainerName lobechat-minio)
@@ -103042,14 +102605,6 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/lobechat/minio:/data:/data
-
-volumes:
-  v-lobechat-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/lobechat/redis
 
 networks:
   dock-proxy-net:
@@ -103345,7 +102900,6 @@ function installRAGFlow()
   mkdir $HSHQ_STACKS_DIR/ragflow/dbexport
   mkdir $HSHQ_STACKS_DIR/ragflow/misc
   chmod 777 $HSHQ_STACKS_DIR/ragflow/dbexport
-  mkdir -p $HSHQ_NONBACKUP_DIR/ragflow/redis
   initServicesCredentials
   set +e
   addUserMailu alias $RAGFLOW_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -103837,9 +103391,9 @@ services:
       - /etc/ssl/certs/ca-certificates.crt:/ragflow/.venv/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:9380/api/v1/system/healthz"]
-      interval: 10s
+      interval: 60s
       timeout: 10s
-      retries: 120
+      retries: 5
       start_period: 60s
 
   ragflow-minio:
@@ -103882,7 +103436,7 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $RAGFLOW_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
       --maxmemory 128mb
       --maxmemory-policy allkeys-lru
     networks:
@@ -103890,7 +103444,6 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-ragflow-redis:/data
 
 volumes:
   v-ragflow-config:
@@ -103911,12 +103464,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/infinity
-  v-ragflow-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/ragflow/redis
 
 networks:
   dock-proxy-net:
@@ -103991,11 +103538,20 @@ function performUpdateRAGFlow()
       image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,ghcr.io/homeserverhq/ragflow:v0.27.1,ghcr.io/homeserverhq/minio:v1.0,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/mariadb:11.4.12"
       image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3"
-      image_update_map[2]="ghcr.io/homeserverhq/ragflow:v0.27.1,ghcr.io/homeserverhq/ragflow:v0.27.1"
+      image_update_map[2]="ghcr.io/homeserverhq/ragflow:v0.27.1,ghcr.io/homeserverhq/ragflow:v0.27.3.1"
+      image_update_map[3]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
+      image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    5)
+      newVer=v5
+      curImageList=mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,ghcr.io/homeserverhq/ragflow:v0.27.3.1,ghcr.io/homeserverhq/minio:v1.0,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/mariadb:11.4.12"
+      image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3"
+      image_update_map[2]="ghcr.io/homeserverhq/ragflow:v0.27.3.1,ghcr.io/homeserverhq/ragflow:v0.27.3.1"
       image_update_map[3]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
       image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
@@ -104963,8 +104519,6 @@ function installDocling()
   mkdir $HSHQ_STACKS_DIR/docling
   mkdir $HSHQ_STACKS_DIR/docling/config
   mkdir $HSHQ_STACKS_DIR/docling/data
-  mkdir $HSHQ_NONBACKUP_DIR/docling
-  mkdir $HSHQ_NONBACKUP_DIR/docling/redis
   initServicesCredentials
   set +e
   outputConfigDocling
@@ -105036,21 +104590,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $DOCLING_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-docling-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-docling-redis:/data
-
-volumes:
-  v-docling-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/docling/redis
 
 networks:
   dock-proxy-net:
@@ -105084,15 +104629,21 @@ function performUpdateDocling()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v3
       curImageList=hshq/docling:v1,mirror.gcr.io/valkey/valkey:alpine3.23
-      image_update_map[0]="hshq/docling:v1,hshq/docling-serve:v1.31.0"
+      image_update_map[0]="hshq/docling:v1,hshq/docling-serve:v1.38.1"
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=hshq/docling-serve:v1.31.0,mirror.gcr.io/valkey/valkey:alpine3.23
-      image_update_map[0]="hshq/docling-serve:v1.31.0,hshq/docling-serve:v1.31.0"
+      image_update_map[0]="hshq/docling-serve:v1.31.0,hshq/docling-serve:v1.38.1"
+      image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    3)
+      newVer=v3
+      curImageList=hshq/docling-serve:v1.38.1,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="hshq/docling-serve:v1.38.1,hshq/docling-serve:v1.38.1"
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
@@ -105128,8 +104679,18 @@ function buildImageDoclingV1()
 
 function buildImageDoclingV2()
 {
+  buildImageDoclingHSHQ v1.31.0
+}
+
+function buildImageDoclingV3()
+{
+  buildImageDoclingHSHQ v1.38.1
+}
+
+function buildImageDoclingHSHQ()
+{
   set +e
-  curDoclingVersion=v1.31.0
+  curDoclingVersion="$1"
   echo -e "\n========================================================================"
   echo -e "  The Docling image is being built. It can take awhile for the process"
   echo -e "  to complete, so please be patient."
@@ -105211,8 +104772,6 @@ function installDify()
   mkdir $HSHQ_STACKS_DIR/dify/db
   mkdir $HSHQ_STACKS_DIR/dify/dbexport
   chmod 777 $HSHQ_STACKS_DIR/dify/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/dify
-  mkdir $HSHQ_NONBACKUP_DIR/dify/redis
   initServicesCredentials
   set +e
   addUserMailu alias $DIFY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -105648,13 +105207,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $DIFY_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-dify-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-dify-redis:/data
 
   dify-nginx:
     image: $(getScriptImageByContainerName dify-nginx)
@@ -105723,14 +105281,6 @@ services:
 #      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
 #      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 #      - \${PORTAINER_HSHQ_STACKS_DIR}/dify/minio:/data
-
-volumes:
-  v-dify-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/dify/redis
 
 networks:
   dock-proxy-net:
@@ -106540,8 +106090,6 @@ function installMindsDB()
   mkdir $HSHQ_STACKS_DIR/mindsdb/dbimport
   mkdir $HSHQ_STACKS_DIR/mindsdb/dbexport
   chmod 777 $HSHQ_STACKS_DIR/mindsdb/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/mindsdb
-  mkdir $HSHQ_NONBACKUP_DIR/mindsdb/redis
   initServicesCredentials
   set +e
   addUserMailu alias $MINDSDB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -106793,7 +106341,7 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $MINDSDB_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-mindsdb-net
     volumes:
@@ -106808,12 +106356,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/mindsdb/data
-  v-mindsdb-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/mindsdb/redis
 
 networks:
   dock-proxy-net:
@@ -106996,8 +106538,6 @@ function installWaterCrawl()
   mkdir $HSHQ_STACKS_DIR/watercrawl/db
   mkdir $HSHQ_STACKS_DIR/watercrawl/dbexport
   chmod 777 $HSHQ_STACKS_DIR/watercrawl/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/watercrawl
-  mkdir $HSHQ_NONBACKUP_DIR/watercrawl/redis
   initServicesCredentials
   set +e
   addUserMailu alias $WATERCRAWL_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -107254,13 +106794,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $WATERCRAWL_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-watercrawl-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-watercrawl-redis:/data
 
   watercrawl-mcp:
     image: $(getScriptImageByContainerName watercrawl-mcp)
@@ -107283,14 +106822,6 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-
-volumes:
-  v-watercrawl-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/watercrawl/redis
 
 networks:
   dock-proxy-net:
@@ -107536,8 +107067,6 @@ function installFlowise()
   mkdir $HSHQ_STACKS_DIR/flowise/db
   mkdir $HSHQ_STACKS_DIR/flowise/dbexport
   chmod 777 $HSHQ_STACKS_DIR/flowise/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/flowise
-  mkdir $HSHQ_NONBACKUP_DIR/flowise/redis
   initServicesCredentials
   set +e
   addUserMailu alias $FLOWISE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -107693,13 +107222,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $FLOWISE_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-flowise-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-flowise-redis:/data
 
   flowise-minio:
     image: $(getScriptImageByContainerName flowise-minio)
@@ -107732,14 +107260,6 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/flowise/minio:/data
-
-volumes:
-  v-flowise-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/flowise/redis
 
 networks:
   dock-proxy-net:
@@ -108070,8 +107590,6 @@ function installNocoDB()
   mkdir $HSHQ_STACKS_DIR/nocodb/db
   mkdir $HSHQ_STACKS_DIR/nocodb/dbexport
   chmod 777 $HSHQ_STACKS_DIR/nocodb/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/nocodb
-  mkdir $HSHQ_NONBACKUP_DIR/nocodb/redis
   initServicesCredentials
   set +e
   addUserMailu alias $NOCODB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -108190,13 +107708,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $NOCODB_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-nocodb-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-nocodb-redis:/data
 
   nocodb-minio:
     image: $(getScriptImageByContainerName nocodb-minio)
@@ -108240,12 +107757,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/nocodb/data
-  v-nocodb-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/nocodb/redis
 
 networks:
   dock-proxy-net:
@@ -110678,6 +110189,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-opennotebook-net
       - dock-aipriv-net
@@ -110835,6 +110347,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-opennotebook-net
       - dock-aipriv-net
@@ -110961,6 +110474,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-opennotebook-net
       - dock-aipriv-net
@@ -111332,8 +110846,6 @@ function installDocsGPT()
   mkdir $HSHQ_STACKS_DIR/docsgpt/db
   mkdir $HSHQ_STACKS_DIR/docsgpt/dbexport
   chmod 777 $HSHQ_STACKS_DIR/docsgpt/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/docsgpt
-  mkdir $HSHQ_NONBACKUP_DIR/docsgpt/redis
   initServicesCredentials
   set +e
   addUserMailu alias $DOCSGPT_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -111502,13 +111014,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $DOCSGPT_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-docsgpt-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-docsgpt-redis:/data
 
 volumes:
   v-docsgpt-db:
@@ -111523,12 +111034,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/docsgpt/dbexport
-  v-docsgpt-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/docsgpt/redis
 
 networks:
   dock-proxy-net:
@@ -112268,10 +111773,6 @@ function installSpeakr()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  buildOrPullImage $(getScriptImageByContainerName speakr-whisperx)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/speakr
   mkdir $HSHQ_STACKS_DIR/speakr/uploads
@@ -112282,7 +111783,6 @@ function installSpeakr()
   mkdir $HSHQ_STACKS_DIR/speakr/db
   mkdir $HSHQ_STACKS_DIR/speakr/dbexport
   chmod 777 $HSHQ_STACKS_DIR/speakr/dbexport
-  mkdir -p $HSHQ_AIMODELS_DIR/whisperx
   initServicesCredentials
   set +e
   addUserMailu alias $SPEAKR_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -112405,34 +111905,6 @@ services:
       - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/huggingface:/.cache/huggingface
       - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
 
-  speakr-whisperx:
-    image: $(getScriptImageByContainerName speakr-whisperx)
-    container_name: speakr-whisperx
-    hostname: speakr-whisperx
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - int-speakr-net
-      - dock-ext-net
-      - dock-aipriv-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-speakr-whisperx-cache:/root/.cache
-
-volumes:
-  v-speakr-whisperx-cache:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/whisperx
-
 networks:
   dock-internalmail-net:
     name: dock-internalmail
@@ -112484,9 +111956,11 @@ function outputEnvSpeakr()
 {
   cat <<EOFMT > $HOME/speakr.env
 TZ=\${PORTAINER_TZ}
-SKIP_EMAIL_DOMAIN_CHECK=true
-PYTHON_VER=python3.11
 TIMEZONE=\${PORTAINER_TZ}
+PYTHON_VER=python3.11
+HSA_OVERRIDE_GFX_VERSION=11.0.0
+HIP_VISIBLE_DEVICES=0
+SKIP_EMAIL_DOMAIN_CHECK=true
 HF_TOKEN=your-huggingface-token
 DEVICE=cuda
 COMPUTE_TYPE=float16
@@ -112508,10 +111982,9 @@ ENABLE_STREAM_OPTIONS=false
 TEXT_MODEL_API_KEY=$LITELLM_MASTER_KEY
 TEXT_MODEL_BASE_URL=http://litellm-proxy:4000/v1
 TEXT_MODEL_NAME=LongContext
-ASR_BASE_URL=http://speakr-whisperx:9000
-ASR_DIARIZE=true
-ASR_RETURN_SPEAKER_EMBEDDINGS=true
-ASR_TIMEOUT=1800
+TRANSCRIPTION_API_KEY=abcd
+TRANSCRIPTION_BASE_URL=http://insanelyfastwhisper-api:8888/v1
+TRANSCRIPTION_MODEL=distil-whisper/distil-large-v3.5
 ALLOW_REGISTRATION=false
 REGISTRATION_ALLOWED_DOMAINS=
 SUMMARY_MAX_TOKENS=8000
@@ -112569,6 +112042,11 @@ SMTP_USE_TLS=true
 SMTP_USE_SSL=false
 SMTP_FROM_ADDRESS=$EMAIL_SMTP_EMAIL_ADDRESS
 SMTP_FROM_NAME=Speakr $(getAdminEmailName)
+TRANSCRIPTION_CONNECTOR=asr_endpoint
+ASR_BASE_URL=http://insanelyfastwhisper-api:8888
+ASR_DIARIZE=true
+ASR_RETURN_SPEAKER_EMBEDDINGS=true
+ASR_TIMEOUT=1800
 EOFMT
 }
 
@@ -112607,11 +112085,20 @@ function performUpdateSpeakr()
       return
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/speakr:v0.10.5,mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
-      image_update_map[1]="ghcr.io/homeserverhq/speakr:v0.10.5,ghcr.io/homeserverhq/speakr:v0.10.5"
+      image_update_map[1]="ghcr.io/homeserverhq/speakr:v0.10.5,ghcr.io/homeserverhq/speakr:v0.10.16"
       image_update_map[2]="mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1,mirror.gcr.io/onerahmet/openai-whisper-asr-webservice:v1.9.1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateSpeakrV5
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    5)
+      newVer=v5
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/speakr:v0.10.16
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="ghcr.io/homeserverhq/speakr:v0.10.16,ghcr.io/homeserverhq/speakr:v0.10.16"
     ;;
     *)
       is_upgrade_error=true
@@ -112868,6 +112355,195 @@ EOFMT
   sed -i "s/AUTO_PROCESS_MODE=.*/AUTO_PROCESS_MODE=user_directories/" $HOME/speakr.env
 }
 
+function mfUpdateSpeakrV5()
+{
+  rm -f $HOME/speakr-compose.yml
+  rm -f $HOME/speakr.env
+  cat <<EOFMT > $HOME/speakr-compose.yml
+$STACK_VERSION_PREFIX speakr v5
+
+services:
+  speakr-db:
+    image: mirror.gcr.io/postgres:16.9-bookworm
+    container_name: speakr-db
+    hostname: speakr-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-speakr-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.speakr-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.speakr-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.speakr-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.speakr-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.speakr-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.speakr-hourly-db.email-from=Speakr Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.speakr-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.speakr-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.speakr-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.speakr-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.speakr-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.speakr-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.speakr-monthly-db.email-from=Speakr Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.speakr-monthly-db.mail-only-on-error=false"
+
+  speakr-app:
+    image:  ghcr.io/homeserverhq/speakr:v0.10.16
+    container_name: speakr-app
+    hostname: speakr-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - speakr-db
+    networks:
+      - int-speakr-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/uploads:/data/uploads
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/instance:/data/instance
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speakr/exports:/data/exports
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalTranscribeInput:/data/auto-process
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalTranscribeInput/$NEXTCLOUD_ADMIN_USERNAME:/data/auto-process/$SPEAKR_ADMIN_USERNAME
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/PersonalTranscribeOutput:/data/consume
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/huggingface:/.cache/huggingface
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+
+networks:
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-speakr-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+EOFMT
+  cat <<EOFMT > $HOME/speakr.env
+TZ=\${PORTAINER_TZ}
+TIMEZONE=\${PORTAINER_TZ}
+PYTHON_VER=python3.11
+HSA_OVERRIDE_GFX_VERSION=11.0.0
+HIP_VISIBLE_DEVICES=0
+SKIP_EMAIL_DOMAIN_CHECK=true
+HF_TOKEN=your-huggingface-token
+DEVICE=cuda
+COMPUTE_TYPE=float16
+BATCH_SIZE=32
+CACHE_DIR=/.cache/huggingface/hub
+HF_HOME=/.cache/huggingface
+NLTK_DATA=/.cache/nltk_data
+PRELOAD_MODEL=medium
+MAX_FILE_SIZE_MB=3000
+POSTGRES_DB=$SPEAKR_DATABASE_NAME
+POSTGRES_USER=$SPEAKR_DATABASE_USER
+POSTGRES_PASSWORD=$SPEAKR_DATABASE_USER_PASSWORD
+GPT5_REASONING_EFFORT=medium
+GPT5_VERBOSITY=medium
+CHAT_MODEL_API_KEY=$LITELLM_MASTER_KEY
+CHAT_MODEL_BASE_URL=http://litellm-proxy:4000/v1
+CHAT_MODEL_NAME=LongContext
+ENABLE_STREAM_OPTIONS=false
+TEXT_MODEL_API_KEY=$LITELLM_MASTER_KEY
+TEXT_MODEL_BASE_URL=http://litellm-proxy:4000/v1
+TEXT_MODEL_NAME=LongContext
+TRANSCRIPTION_API_KEY=abcd
+TRANSCRIPTION_BASE_URL=http://insanelyfastwhisper-api:8888/v1
+TRANSCRIPTION_MODEL=distil-whisper/distil-large-v3.5
+ALLOW_REGISTRATION=false
+REGISTRATION_ALLOWED_DOMAINS=
+SUMMARY_MAX_TOKENS=8000
+CHAT_MAX_TOKENS=5000
+LOG_LEVEL=INFO
+AUDIO_COMPRESS_UPLOADS=true
+AUDIO_CODEC=mp3
+AUDIO_BITRATE=128k
+AUDIO_UNSUPPORTED_CODECS=
+ADMIN_USERNAME=$SPEAKR_ADMIN_USERNAME
+ADMIN_EMAIL=$SPEAKR_ADMIN_EMAIL_ADDRESS
+ADMIN_PASSWORD=$SPEAKR_ADMIN_PASSWORD
+ENABLE_INQUIRE_MODE=true
+ENABLE_AUTO_PROCESSING=true
+ENABLE_AUTO_EXPORT=true
+AUTO_EXPORT_DIR=/data/exports
+AUTO_EXPORT_TRANSCRIPTION=true
+AUTO_EXPORT_SUMMARY=false
+AUTO_CONSUME_DIR=/data/consume
+AUTO_PROCESS_MODE=user_directories
+AUTO_PROCESS_WATCH_DIR=/data/auto-process
+AUTO_PROCESS_CHECK_INTERVAL=30
+AUTO_PROCESS_DEFAULT_USERNAME=$SPEAKR_ADMIN_USERNAME
+ENABLE_AUTO_DELETION=false
+GLOBAL_RETENTION_DAYS=90
+DELETION_MODE=audio_only
+USERS_CAN_DELETE=true
+ENABLE_INTERNAL_SHARING=true
+SHOW_USERNAMES_IN_UI=true
+ENABLE_PUBLIC_SHARING=true
+ENABLE_INCOGNITO_MODE=false
+INCOGNITO_MODE_DEFAULT=false
+JOB_QUEUE_WORKERS=2
+SUMMARY_QUEUE_WORKERS=2
+JOB_MAX_RETRIES=3
+SQLALCHEMY_DATABASE_URI=postgresql://$SPEAKR_DATABASE_USER:$SPEAKR_DATABASE_USER_PASSWORD@speakr-db:5432/$SPEAKR_DATABASE_NAME
+UPLOAD_FOLDER=/data/uploads
+ENABLE_SSO=true
+SSO_PROVIDER_NAME=Authelia
+SSO_CLIENT_ID=$SPEAKR_OIDC_CLIENT_ID
+SSO_CLIENT_SECRET=$SPEAKR_OIDC_CLIENT_SECRET
+SSO_DISCOVERY_URL=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/.well-known/openid-configuration
+SSO_REDIRECT_URI=https://$SUB_SPEAKR_APP.$HOMESERVER_DOMAIN/auth/sso/callback
+SSO_AUTO_REGISTER=true
+SSO_ALLOWED_DOMAINS=
+SSO_DEFAULT_USERNAME_CLAIM=preferred_username
+SSO_DEFAULT_NAME_CLAIM=given_name
+ENABLE_EMAIL_VERIFICATION=true
+REQUIRE_EMAIL_VERIFICATION=true
+SMTP_HOST=$SMTP_HOSTNAME
+SMTP_PORT=587
+SMTP_USERNAME=$EMAIL_SMTP_EMAIL_ADDRESS
+SMTP_PASSWORD=$EMAIL_SMTP_PASSWORD
+SMTP_USE_TLS=true
+SMTP_USE_SSL=false
+SMTP_FROM_ADDRESS=$EMAIL_SMTP_EMAIL_ADDRESS
+SMTP_FROM_NAME=Speakr $(getAdminEmailName)
+TRANSCRIPTION_CONNECTOR=asr_endpoint
+ASR_BASE_URL=http://insanelyfastwhisper-api:8888
+ASR_DIARIZE=true
+ASR_RETURN_SPEAKER_EMBEDDINGS=true
+ASR_TIMEOUT=1800
+EOFMT
+}
+
 # InsanelyFastWhisper
 function installInsanelyFastWhisper()
 {
@@ -112878,10 +112554,7 @@ function installInsanelyFastWhisper()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName insanelyfastwhisper-app)
-  if [ $? -ne 0 ]; then
-    buildOrPullImage hshq/insanelyfastwhisper:v1
-  fi
+  buildOrPullImage $(getScriptImageByContainerName insanelyfastwhisper-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -113062,8 +112735,8 @@ EOFMT
   cat <<EOFMT > $HOME/insanelyfastwhisper.env
 TZ=\${PORTAINER_TZ}
 APP_TIMEZONE=\${PORTAINER_TZ}
+HSA_OVERRIDE_GFX_VERSION=11.5.1
 WHISPER_MODEL=distil-whisper/distil-large-v3.5
-LD_LIBRARY_PATH=/opt/rocm/lib
 WHISPER_DEVICE=0
 WHISPER_BATCH_SIZE=4
 PROGRESS_GROUP_SIZE=4
@@ -113077,21 +112750,16 @@ DEMUCS_DEFAULT=false
 VAD_DEFAULT=false
 VAD_THRESHOLD_DEFAULT=0.35
 WHISPER_DIARIZATION_MODEL=pyannote/speaker-diarization-community-1
-HF_TOKEN=
 WHISPER_UPLOAD_DIR=temp_uploads
 WHISPER_TRANSCRIPTS_DIR=transcripts
 AUDIO_CHUNK_DURATION=600
 AUDIO_CHUNK_OVERLAP=1.0
 AUDIO_CHUNK_MIN_DURATION=5.0
-PYTORCH_ALLOC_CONF=garbage_collection_threshold:0.7,max_split_size_mb:128
-HSA_OVERRIDE_GFX_VERSION=11.0.0
 SAVE_TRANSCRIPTIONS=true
 API_HOST=0.0.0.0
 API_PORT=8888
-DEV_API_PORT=8889
 WEBUI_HOST=0.0.0.0
 WEBUI_PORT=7860
-DEV_WEBUI_PORT=7862
 LOG_LEVEL=INFO
 USE_READABLE_SUBTITLES=true
 MAX_LINE_CHARS=42
@@ -113105,6 +112773,14 @@ MAX_SEGMENT_DURATION_SEC=5.5
 DISPLAY_BUFFER_SEC=0.2
 SOFT_BOUNDARY_WORDS=and,but,or,so,for,nor,yet
 INTERJECTION_WHITELIST=um,uh,ah,er,like
+HF_TOKEN=
+DIARIZATION_DEVICE=cuda
+DIARIZATION_PRELOAD_AUDIO=true
+DIARIZATION_ALLOW_CPU_FALLBACK=true
+DIARIZATION_DISABLE_MIOPEN=true
+DIARIZATION_EMBEDDING_CLUSTERING=true
+DIARIZE_DEFAULT=true
+MIOPEN_FIND_MODE=2
 EOFMT
 }
 
@@ -113116,9 +112792,22 @@ function performUpdateInsanelyFastWhisper()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v3
       curImageList=hshq/insanelyfastwhisper:v1
-      image_update_map[0]="hshq/insanelyfastwhisper:v1,hshq/insanelyfastwhisper:v1"
+      image_update_map[0]="hshq/insanelyfastwhisper:v1,hshq/insanelyfastwhisper:v3"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateInsanelyFastWhisperV2
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v3
+      curImageList=hshq/insanelyfastwhisper:v2
+      image_update_map[0]="hshq/insanelyfastwhisper:v2,hshq/insanelyfastwhisper:v3"
+    ;;
+    3)
+      newVer=v3
+      curImageList=hshq/insanelyfastwhisper:v3
+      image_update_map[0]="hshq/insanelyfastwhisper:v3,hshq/insanelyfastwhisper:v3"
     ;;
     *)
       is_upgrade_error=true
@@ -113152,6 +112841,91 @@ function buildImageInsanelyFastWhisperV1()
   return $rtval
 }
 
+function buildImageInsanelyFastWhisperV2()
+{
+  buildHSHQImageInsanelyFastWhisper v2.1.6 v2
+}
+
+function buildImageInsanelyFastWhisperV3()
+{
+  buildHSHQImageInsanelyFastWhisper v2.1.7 v3
+}
+
+function buildHSHQImageInsanelyFastWhisper()
+{
+  curBranch="$1"
+  curVersion="$2"
+  set +e
+  echo -e "\n========================================================================"
+  echo -e "  The InsanelyFastWhisper image is being built. It can take a very"
+  echo -e "  long time for the process to complete, so please be patient."
+  echo -e "========================================================================\n"
+  sudo rm -fr $HSHQ_BUILD_DIR/insanely-fast-whisper-rocm
+  cd $HSHQ_BUILD_DIR
+  git -c advice.detachedHead=false clone --depth 1 --branch $curBranch https://github.com/homeserverhq/insanely-fast-whisper-rocm
+  cd $HSHQ_BUILD_DIR/insanely-fast-whisper-rocm
+  docker image build -t hshq/insanelyfastwhisper:$curVersion -f Dockerfile .
+  rtval=$?
+  cd
+  sudo rm -fr $HSHQ_BUILD_DIR/insanely-fast-whisper-rocm
+  return $rtval
+}
+
+function mfUpdateInsanelyFastWhisperV2()
+{
+  rm -f $HOME/insanelyfastwhisper.env
+  cat <<EOFMT > $HOME/insanelyfastwhisper.env
+TZ=\${PORTAINER_TZ}
+APP_TIMEZONE=\${PORTAINER_TZ}
+HSA_OVERRIDE_GFX_VERSION=11.5.1
+WHISPER_MODEL=distil-whisper/distil-large-v3.5
+WHISPER_DEVICE=0
+WHISPER_BATCH_SIZE=4
+PROGRESS_GROUP_SIZE=4
+WHISPER_TIMESTAMP_TYPE=chunk
+WHISPER_LANGUAGE=None
+WHISPER_DTYPE=float16
+WHISPER_BETTER_TRANSFORMER=false
+WHISPER_CHUNK_LENGTH=30
+STABILIZE_DEFAULT=false
+DEMUCS_DEFAULT=false
+VAD_DEFAULT=false
+VAD_THRESHOLD_DEFAULT=0.35
+WHISPER_DIARIZATION_MODEL=pyannote/speaker-diarization-community-1
+WHISPER_UPLOAD_DIR=temp_uploads
+WHISPER_TRANSCRIPTS_DIR=transcripts
+AUDIO_CHUNK_DURATION=600
+AUDIO_CHUNK_OVERLAP=1.0
+AUDIO_CHUNK_MIN_DURATION=5.0
+SAVE_TRANSCRIPTIONS=true
+API_HOST=0.0.0.0
+API_PORT=8888
+WEBUI_HOST=0.0.0.0
+WEBUI_PORT=7860
+LOG_LEVEL=INFO
+USE_READABLE_SUBTITLES=true
+MAX_LINE_CHARS=42
+MAX_LINES_PER_BLOCK=2
+MAX_BLOCK_CHARS=84
+MAX_BLOCK_CHARS_SOFT=90
+MIN_CPS=12.0
+MAX_CPS=17.0
+MIN_SEGMENT_DURATION_SEC=1.2
+MAX_SEGMENT_DURATION_SEC=5.5
+DISPLAY_BUFFER_SEC=0.2
+SOFT_BOUNDARY_WORDS=and,but,or,so,for,nor,yet
+INTERJECTION_WHITELIST=um,uh,ah,er,like
+HF_TOKEN=
+DIARIZATION_DEVICE=cuda
+DIARIZATION_PRELOAD_AUDIO=true
+DIARIZATION_ALLOW_CPU_FALLBACK=true
+DIARIZATION_DISABLE_MIOPEN=true
+DIARIZATION_EMBEDDING_CLUSTERING=true
+DIARIZE_DEFAULT=true
+MIOPEN_FIND_MODE=2
+EOFMT
+}
+
 # IVBox
 function installIVBox()
 {
@@ -113162,23 +112936,14 @@ function installIVBox()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName ivbox-app)
-  if [ $? -ne 0 ]; then
-    buildOrPullImage hshq/ivbox:v1
-  fi
+  buildOrPullImage $(getScriptImageByContainerName ivbox-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
   set -e
   mkdir $HSHQ_STACKS_DIR/ivbox
-  mkdir $HSHQ_STACKS_DIR/ivbox/input
-  mkdir $HSHQ_STACKS_DIR/ivbox/output
-  mkdir $HSHQ_STACKS_DIR/ivbox/custom_nodes
-  mkdir $HSHQ_STACKS_DIR/ivbox/user
-  mkdir $HSHQ_STACKS_DIR/ivbox/cache
-  mkdir $HSHQ_STACKS_DIR/ivbox/qwen
+  mkdir $HSHQ_STACKS_DIR/ivbox/data
   mkdir -p $HSHQ_AIMODELS_DIR/comfyui
-  mkdir -p $HSHQ_AIMODELS_DIR/ivbox/{wan,cache}
   initServicesCredentials
   set +e
   outputConfigIVBox
@@ -113308,8 +113073,6 @@ services:
       resources:
         limits:
           memory: 96G
-    working_dir: /workspace
-    command: /opt/start_docker.sh
     networks:
       - dock-ext-net
       - dock-aipriv-net
@@ -113319,14 +113082,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-ivbox-models:/opt/ComfyUI/models
-      - v-ivbox-input:/opt/ComfyUI/input
-      - v-ivbox-output:/opt/ComfyUI/output
-      - v-ivbox-user:/opt/ComfyUI/user
-      - v-ivbox-custom_nodes:/opt/ComfyUI/custom_nodes
-      - v-ivbox-cache:/opt/ComfyUI/.cache
-      - \${PORTAINER_HSHQ_STACKS_DIR}/ivbox/qwen:/root/.qwen-image-studio
-      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/ivbox/wan:/workspace/wan-models
+      - v-ivbox-models:/comfyui/models
+      - v-ivbox-data:/comfyui
       - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/ivbox/cache:/root/.cache/huggingface
 
 volumes:
@@ -113336,36 +113093,12 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/comfyui
-  v-ivbox-input:
+  v-ivbox-data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/ivbox/input
-  v-ivbox-output:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/ivbox/output
-  v-ivbox-user:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/ivbox/user
-  v-ivbox-custom_nodes:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/ivbox/custom_nodes
-  v-ivbox-cache:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/ivbox/cache
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ivbox/data
 
 networks:
   dock-ext-net:
@@ -113378,17 +113111,14 @@ networks:
 EOFMT
   cat <<EOFMT > $HOME/ivbox.env
 TZ=\${PORTAINER_TZ}
-HSA_OVERRIDE_GFX_VERSION=11.5.1
-FLASH_ATTENTION_TRITON_AMD_ENABLE=false
-QWEN_FA_SHIM=1
-WAN_ATTENTION_BACKEND=sdpa
-PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:1024,garbage_collection_threshold:0.8
 HIP_VISIBLE_DEVICES=0
-ROC_ENABLE_PRE_VEGA=1
-QIM_CLI_PATH=/opt/qwen-image-studio/qwen-image-mps.py
 HF_HUB_ENABLE_HF_TRANSFER=1
-QWEN_PORT=8000
+HF_XET_HIGH_PERFORMANCE=1
 COMFYUI_PORT=8188
+TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
+TORCH_BLAS_PREFER_HIPBLASLT=1
+COMFYUI_FLAGS=--bf16-vae --disable-mmap
+COMFYUI_ARGS=
 EOFMT
 }
 
@@ -113400,9 +113130,17 @@ function performUpdateIVBox()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=hshq/ivbox:v1
-      image_update_map[0]="hshq/ivbox:v1,hshq/ivbox:v1"
+      image_update_map[0]="hshq/ivbox:v1,ghcr.io/homeserverhq/ivbox:v0.1.0"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateIVBoxV2
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=ghcr.io/homeserverhq/ivbox:v0.1.0
+      image_update_map[0]="ghcr.io/homeserverhq/ivbox:v0.1.0,ghcr.io/homeserverhq/ivbox:v0.1.0"
     ;;
     *)
       is_upgrade_error=true
@@ -113430,6 +113168,83 @@ function buildImageIVBoxV1()
   cd
   sudo rm -fr $HSHQ_BUILD_DIR/amd-strix-halo-image-video-distrobox
   return $rtval
+}
+
+function mfUpdateIVBoxV2()
+{
+  cat <<EOFMT > $HOME/ivbox-compose.yml
+$STACK_VERSION_PREFIX ivbox v2
+
+services:
+  ivbox-app:
+    image: ghcr.io/homeserverhq/ivbox:v0.1.0
+    container_name: ivbox-app
+    hostname: ivbox-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - seccomp=unconfined
+      - label=disable
+    cap_add:
+      - SYS_PTRACE
+    ipc: host
+    devices:
+      - /dev/dri
+      - /dev/kfd
+    group_add:
+      - video
+    deploy:
+      resources:
+        limits:
+          memory: 96G
+    networks:
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-ivbox-models:/comfyui/models
+      - v-ivbox-data:/comfyui
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/ivbox/cache:/root/.cache/huggingface
+
+volumes:
+  v-ivbox-models:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/comfyui
+  v-ivbox-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ivbox/data
+
+networks:
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/ivbox.env
+TZ=\${PORTAINER_TZ}
+HIP_VISIBLE_DEVICES=0
+HF_HUB_ENABLE_HF_TRANSFER=1
+HF_XET_HIGH_PERFORMANCE=1
+COMFYUI_PORT=8188
+TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
+TORCH_BLAS_PREFER_HIPBLASLT=1
+COMFYUI_FLAGS=--bf16-vae --disable-mmap
+COMFYUI_ARGS=
+EOFMT
+  mkdir -p $HSHQ_STACKS_DIR/ivbox/data
 }
 
 # Monica
@@ -113472,8 +113287,6 @@ function installMonica()
   mkdir $HSHQ_STACKS_DIR/monica/db
   mkdir $HSHQ_STACKS_DIR/monica/dbexport
   chmod 777 $HSHQ_STACKS_DIR/monica/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/monica
-  mkdir $HSHQ_NONBACKUP_DIR/monica/redis
   initServicesCredentials
   set +e
   addUserMailu alias $MONICA_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -113682,13 +113495,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $MONICA_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-monica-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-monica-redis:/data
 
 volumes:
   v-monica-db:
@@ -113709,12 +113521,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/monica/meilisearch
-  v-monica-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/monica/redis
 
 networks:
   dock-proxy-net:
@@ -113864,8 +113670,6 @@ function installAFFiNE()
   mkdir $HSHQ_STACKS_DIR/affine/db
   mkdir $HSHQ_STACKS_DIR/affine/dbexport
   chmod 777 $HSHQ_STACKS_DIR/affine/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/affine
-  mkdir $HSHQ_NONBACKUP_DIR/affine/redis
   initServicesCredentials
   set +e
   addUserMailu alias $AFFINE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -114053,21 +113857,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $AFFINE_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-affine-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-affine-redis:/data
-
-volumes:
-  v-affine-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/affine/redis
 
 networks:
   dock-aipriv-net:
@@ -114574,8 +114369,6 @@ function installSuperset()
   mkdir $HSHQ_STACKS_DIR/superset/dbimport
   mkdir $HSHQ_STACKS_DIR/superset/dbexport
   chmod 777 $HSHQ_STACKS_DIR/superset/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/superset
-  mkdir $HSHQ_NONBACKUP_DIR/superset/redis
   initServicesCredentials
   set +e
   addUserMailu alias $SUPERSET_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -114837,13 +114630,12 @@ services:
     security_opt:
       - no-new-privileges:true
     command: redis-server
-      --appendonly yes
+      --appendonly no
     networks:
       - int-superset-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-superset-redis:/data
 
 volumes:
   v-superset-home:
@@ -114852,12 +114644,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/superset/home
-  v-superset-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/superset/redis
 
 networks:
   dock-proxy-net:
@@ -115573,27 +115359,15 @@ function installKokoro()
   fi
   pullImage $(getScriptImageByContainerName kokoro-tts)
   if [ $? -ne 0 ]; then
-    buildOrPullImage hshq/kokoro-tts:v1
-  fi
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
-  pullImage $(getScriptImageByContainerName kokoro-web)
-  if [ $? -ne 0 ]; then
     return 1
   fi
   set -e
   mkdir $HSHQ_STACKS_DIR/kokoro
-  mkdir $HSHQ_STACKS_DIR/kokoro/api
-  mkdir $HSHQ_STACKS_DIR/kokoro/config
-  mkdir $HSHQ_STACKS_DIR/kokoro/data
-  mkdir $HSHQ_NONBACKUP_DIR/kokoro
-  mkdir $HSHQ_NONBACKUP_DIR/kokoro/cache
+  mkdir $HSHQ_STACKS_DIR/kokoro/web
   initServicesCredentials
   set +e
   outputConfigKokoro
-  # If we need a string to monitor, its this: "Uvicorn running on http"
-  installStack kokoro kokoro-tts "" $HOME/kokoro.env 1
+  installStack kokoro kokoro-tts "Uvicorn running on http" $HOME/kokoro.env 3
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -115617,7 +115391,7 @@ function installKokoro()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://kokoro-web:7860 {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://kokoro-tts:8880 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>}\n"
@@ -115667,7 +115441,7 @@ function installKokoro()
   updateCaddyBlocks $SUB_KOKORO_API $MANAGETLS_KOKORO_API "$is_integrate_hshq" $NETDEFAULT_KOKORO_API "$inner_block"
   insertSubAuthelia $SUB_KOKORO_API.$HOMESERVER_DOMAIN bypass
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll kokoro "$FMLNAME_KOKORO_WEB" $USERTYPE_KOKORO_WEB "https://$SUB_KOKORO_WEB.$HOMESERVER_DOMAIN" "kokoro.png" "$(getHeimdallOrderFromSub $SUB_KOKORO_WEB $USERTYPE_KOKORO_WEB)"
+    insertEnableSvcAll kokoro "$FMLNAME_KOKORO_WEB" $USERTYPE_KOKORO_WEB "https://$SUB_KOKORO_WEB.$HOMESERVER_DOMAIN/web" "kokoro.png" "$(getHeimdallOrderFromSub $SUB_KOKORO_WEB $USERTYPE_KOKORO_WEB)"
     insertEnableSvcUptimeKuma kokoro "$FMLNAME_KOKORO_API" $USERTYPE_KOKORO_API "https://$SUB_KOKORO_API.$HOMESERVER_DOMAIN/v1/test?api-key=$KOKORO_API_KEY" true
     restartAllCaddyContainers
   fi
@@ -115688,7 +115462,6 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - int-kokoro-net
       - dock-ext-net
       - dock-aipriv-net
     volumes:
@@ -115697,85 +115470,29 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-kokoro-api:/app/api
-      - v-kokoro-config:/root/.config/miopen
-      - v-kokoro-cache:/root/.cache/miopen
-
-  kokoro-web:
-    image: $(getScriptImageByContainerName kokoro-web)
-    container_name: kokoro-web
-    hostname: kokoro-web
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - int-kokoro-net
-      - dock-proxy-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/kokoro/data:/app/ui/data
-      - \${PORTAINER_HSHQ_STACKS_DIR}/kokoro/app.py:/app/app.py
+      - v-kokoro-web:/app/web
 
 volumes:
-  v-kokoro-api:
+  v-kokoro-web:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/kokoro/api
-  v-kokoro-config:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/kokoro/config
-  v-kokoro-cache:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/kokoro/cache
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/kokoro/web
 
 networks:
-  dock-proxy-net:
-    name: dock-proxy
-    external: true
   dock-ext-net:
     name: dock-ext
     external: true
   dock-aipriv-net:
     name: dock-aipriv
     external: true
-  int-kokoro-net:
-    driver: bridge
-    internal: true
-    ipam:
-      driver: default
 
 EOFMT
   cat <<EOFMT > $HOME/kokoro.env
 TZ=\${PORTAINER_TZ}
 USE_GPU=false
-MIOPEN_FIND_MODE=3
-MIOPEN_LOG_LEVEL=3
-PYTHONPATH=/app:/app/models
-GRADIO_WATCH=1
 PYTHONUNBUFFERED=1
-DISABLE_LOCAL_SAVING=false
-API_HOST=kokoro-tts
-API_PORT=8880
-EOFMT
-  cat <<EOFMT > $HSHQ_STACKS_DIR/kokoro/app.py
-from lib.interface import create_interface
-
-if __name__ == "__main__":
-    demo = create_interface()
-    demo.launch(server_name="0.0.0.0", server_port=7860, show_error=True)
 EOFMT
 }
 
@@ -115787,10 +115504,18 @@ function performUpdateKokoro()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=hshq/kokoro-tts:v1,ghcr.io/remsky/kokoro-fastapi-ui:v0.1.0
-      image_update_map[0]="hshq/kokoro-tts:v1,hshq/kokoro-tts:v1"
+      image_update_map[0]="hshq/kokoro-tts:v1,ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0"
       image_update_map[1]="ghcr.io/remsky/kokoro-fastapi-ui:v0.1.0,ghcr.io/remsky/kokoro-fastapi-ui:v0.1.0"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateKokoroV2
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0
+      image_update_map[0]="ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0,ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0"
     ;;
     *)
       is_upgrade_error=true
@@ -115822,6 +115547,78 @@ function buildImageKokoroV1()
   cd
   sudo rm -fr $HSHQ_BUILD_DIR/kokoro
   return $rtval
+}
+
+function mfUpdateKokoroV2()
+{
+  rm -f $HOME/kokoro-compose.yml
+  rm -f $HOME/kokoro.env
+  cat <<EOFMT > $HOME/kokoro-compose.yml
+$STACK_VERSION_PREFIX kokoro v2
+
+services:
+  kokoro-tts:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0
+    container_name: kokoro-tts
+    hostname: kokoro-tts
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-kokoro-web:/app/web
+
+volumes:
+  v-kokoro-web:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/kokoro/web
+
+networks:
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/kokoro.env
+TZ=\${PORTAINER_TZ}
+USE_GPU=false
+PYTHONUNBUFFERED=1
+EOFMT
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_KOKORO_WEB.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://kokoro-tts:8880 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_KOKORO_WEB $MANAGETLS_KOKORO_WEB "$is_integrate_hshq" $NETDEFAULT_KOKORO_WEB "$inner_block"
+  mkdir -p $HSHQ_STACKS_DIR/kokoro/web
+  sudo rm -fr $HSHQ_STACKS_DIR/kokoro/api
+  sudo rm -fr $HSHQ_STACKS_DIR/kokoro/config
+  sudo rm -fr $HSHQ_STACKS_DIR/kokoro/data
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/kokoro
+  sudo rm -fr $HSHQ_STACKS_DIR/kokoro/app.py
 }
 
 # Chatterbox
@@ -116140,8 +115937,6 @@ function installLiteLLM()
   mkdir $HSHQ_STACKS_DIR/litellm/db
   mkdir $HSHQ_STACKS_DIR/litellm/dbexport
   chmod 777 $HSHQ_STACKS_DIR/litellm/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/litellm
-  mkdir $HSHQ_NONBACKUP_DIR/litellm/redis
   initServicesCredentials
   set +e
   addUserMailu alias $LITELLM_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -116284,21 +116079,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $LITELLM_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-litellm-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-litellm-redis:/data
-
-volumes:
-  v-litellm-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/litellm/redis
 
 networks:
   dock-proxy-net:
@@ -116417,10 +116203,17 @@ function performUpdateLiteLLM()
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mirror.gcr.io/pgvector/pgvector:pg17,ghcr.io/berriai/litellm:v1.92.0,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
-      image_update_map[1]="ghcr.io/berriai/litellm:v1.92.0,ghcr.io/berriai/litellm:v1.92.0"
+      image_update_map[1]="ghcr.io/berriai/litellm:v1.92.0,ghcr.io/homeserverhq/litellm:v1.106.4"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/pgvector/pgvector:pg17,ghcr.io/homeserverhq/litellm:v1.106.4,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
+      image_update_map[1]="ghcr.io/homeserverhq/litellm:v1.106.4,ghcr.io/homeserverhq/litellm:v1.106.4"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
@@ -116490,8 +116283,6 @@ function installLangfuse()
   mkdir $HSHQ_STACKS_DIR/langfuse/db
   mkdir $HSHQ_STACKS_DIR/langfuse/dbexport
   chmod 777 $HSHQ_STACKS_DIR/langfuse/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/langfuse
-  mkdir $HSHQ_NONBACKUP_DIR/langfuse/redis
   initServicesCredentials
   set +e
   addUserMailu alias $LANGFUSE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -116741,14 +116532,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $LANGFUSE_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
       --maxmemory-policy noeviction
     networks:
       - int-langfuse-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-langfuse-redis:/data
 
 volumes:
   v-langfuse-clickhouse-data:
@@ -116763,12 +116553,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/langfuse/clickhouse-logs
-  v-langfuse-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/langfuse/redis
 
 networks:
   dock-proxy-net:
@@ -117271,8 +117055,6 @@ function installWger()
   mkdir $HSHQ_STACKS_DIR/wger/db
   mkdir $HSHQ_STACKS_DIR/wger/dbexport
   chmod 777 $HSHQ_STACKS_DIR/wger/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/wger
-  mkdir $HSHQ_NONBACKUP_DIR/wger/redis
   initServicesCredentials
   set +e
   addUserMailu alias $WGER_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -117472,13 +117254,12 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $WGER_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - int-wger-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-wger-redis:/data
 
 volumes:
   v-wger-static:
@@ -117499,12 +117280,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/wger/beat
-  v-wger-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/wger/redis
 
 networks:
   dock-proxy-net:
@@ -118539,7 +118314,7 @@ function installOpenCode()
   initServicesCredentials
   set +e
   outputConfigOpenCode
-  installStack opencode opencode-app "opencode server listening on" $HOME/opencode.env 10
+  installStack opencode opencode-app "server listening on" $HOME/opencode.env 10
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -118596,7 +118371,6 @@ function installOpenCode()
   insertSubAuthelia $SUB_OPENCODE_CODESERVER.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcHeimdall opencode "$FMLNAME_OPENCODE_APP" $USERTYPE_OPENCODE_APP "https://$SUB_OPENCODE_APP.$HOMESERVER_DOMAIN" "opencode.png" true "$(getHeimdallOrderFromSub $SUB_OPENCODE_APP $USERTYPE_OPENCODE_APP)"
-    insertEnableSvcUptimeKuma opencode "$FMLNAME_OPENCODE_APP" $USERTYPE_OPENCODE_APP "https://$OPENCODE_ADMIN_USERNAME:$OPENCODE_ADMIN_PASSWORD@$SUB_OPENCODE_APP.$HOMESERVER_DOMAIN" true
     insertEnableSvcAll opencode "$FMLNAME_OPENCODE_CODESERVER" $USERTYPE_OPENCODE_CODESERVER "https://$SUB_OPENCODE_CODESERVER.$HOMESERVER_DOMAIN" "codeserver.png" "$(getHeimdallOrderFromSub $SUB_OPENCODE_CODESERVER $USERTYPE_OPENCODE_CODESERVER)"
     restartAllCaddyContainers
   fi
@@ -118868,7 +118642,13 @@ function performUpdateOpenCode()
     1)
       newVer=v1
       curImageList=ghcr.io/joostme/opencode-docker:2.3.1,mcr.microsoft.com/playwright/mcp:v0.0.70
-      image_update_map[0]="ghcr.io/joostme/opencode-docker:2.3.1,ghcr.io/joostme/opencode-docker:2.3.1"
+      image_update_map[0]="ghcr.io/joostme/opencode-docker:2.3.1,ghcr.io/homeserverhq/opencode-docker:v3.1.0"
+      image_update_map[1]="mcr.microsoft.com/playwright/mcp:v0.0.70,mcr.microsoft.com/playwright/mcp:v0.0.70"
+    ;;
+    2)
+      newVer=v2
+      curImageList=ghcr.io/homeserverhq/opencode-docker:v3.1.0,mcr.microsoft.com/playwright/mcp:v0.0.70
+      image_update_map[0]="ghcr.io/homeserverhq/opencode-docker:v3.1.0,ghcr.io/homeserverhq/opencode-docker:v3.1.0"
       image_update_map[1]="mcr.microsoft.com/playwright/mcp:v0.0.70,mcr.microsoft.com/playwright/mcp:v0.0.70"
     ;;
     *)
@@ -119072,8 +118852,6 @@ function installEmailClassifierAI()
   set -e
   mkdir $HSHQ_STACKS_DIR/emailclassifierai
   mkdir $HSHQ_STACKS_DIR/emailclassifierai/data
-  mkdir $HSHQ_NONBACKUP_DIR/emailclassifierai
-  mkdir $HSHQ_NONBACKUP_DIR/emailclassifierai/redis
   initServicesCredentials
   set +e
   outputConfigEmailClassifierAI
@@ -119194,14 +118972,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $EMAILCLASSIFIERAI_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - dock-dbs-net
       - int-emailclassifierai-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-emailclassifierai-redis:/data
 
 volumes:
   v-emailclassifierai-data:
@@ -119210,12 +118987,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/emailclassifierai/data
-  v-emailclassifierai-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/emailclassifierai/redis
 
 networks:
   dock-proxy-net:
@@ -119321,10 +119092,10 @@ function installHermesAgent()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  #buildOrPullImage $(getScriptImageByContainerName hermes-agent-camofox)
-  #if [ $? -ne 0 ]; then
-  #  return 1
-  #fi
+  buildOrPullImage $(getScriptImageByContainerName hermes-agent-camofox)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   buildOrPullImage $(getScriptImageByContainerName hermes-agent-webui)
   if [ $? -ne 0 ]; then
     return 1
@@ -119415,7 +119186,6 @@ function installHermesAgent()
   updateCaddyBlocks $SUB_HERMES_AGENT_WEBUI $MANAGETLS_HERMES_AGENT_WEBUI "$is_integrate_hshq" $NETDEFAULT_HERMES_AGENT_WEBUI "$inner_block"
   insertSubAuthelia $SUB_HERMES_AGENT_WEBUI.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcUptimeKuma hermes-agent "$FMLNAME_HERMES_AGENT_DASHBOARD" $USERTYPE_HERMES_AGENT_DASHBOARD "https://$HERMES_AGENT_ADMIN_USERNAME:$HERMES_AGENT_ADMIN_PASSWORD@$SUB_HERMES_AGENT_DASHBOARD.$HOMESERVER_DOMAIN" true
     insertEnableSvcHeimdall hermes-agent "$FMLNAME_HERMES_AGENT_DASHBOARD" $USERTYPE_HERMES_AGENT_DASHBOARD "https://$SUB_HERMES_AGENT_DASHBOARD.$HOMESERVER_DOMAIN" "hermes-agent.png" true "$(getHeimdallOrderFromSub $SUB_HERMES_AGENT_DASHBOARD $USERTYPE_HERMES_AGENT_DASHBOARD)"
     insertEnableSvcAll hermes-agent "$FMLNAME_HERMES_AGENT_WEBUI" $USERTYPE_HERMES_AGENT_WEBUI "https://$SUB_HERMES_AGENT_WEBUI.$HOMESERVER_DOMAIN" "hermes-webui.png" "$(getHeimdallOrderFromSub $SUB_HERMES_AGENT_WEBUI $USERTYPE_HERMES_AGENT_WEBUI)"
     restartAllCaddyContainers
@@ -119935,6 +119705,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-autokb-net
       - dock-aipriv-net
@@ -119952,6 +119723,7 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $AUTOKB_REDIS_PASSWORD
+      --appendonly no
     networks:
       - int-autokb-net
       - dock-dbs-net
@@ -120061,7 +119833,7 @@ function performAutoKBInstallIntegrations()
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"HSHQSuperAdmin-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"storage_path_id\":3,\"document_filter\":\"owner__id=$paperless_user_id&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"processing_mode\":\"Paperless Content\"}}" \
+    --data "{\"name\":\"HSHQSuperAdmin-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"document_filter\":\"storage_path__id=3&owner__id=$paperless_user_id&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"processing_mode\":\"Paperless Content\"}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/ePaperlessDoclingPlugin")"
   akbCode="${akbRes##*$'\n'}"
@@ -120070,11 +119842,11 @@ function performAutoKBInstallIntegrations()
   PAPERLESS_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
   docker ps | grep paperless-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
-    AKB_WORKFLOW=$(curl -s https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN")
+    AKB_WORKFLOW=$(docker exec paperless-app curl -s -X GET http://localhost:8000/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN")
     if ! [ -z "$AKB_WORKFLOW" ]; then
       NEW_ACTION="{ \"type\": 4, \"order\": 99, \"webhook\": { \"url\": \"http://autokb-web/api/subscriptions/$PAPERLESS_SUB_ID/trigger\", \"headers\": { \"Authorization\": \"Bearer $AUTOKB_WEBHOOK_API_KEY\" }, \"include_document\": false } }"
       UPDATED_WF=$(echo "$AKB_WORKFLOW" | jq --argjson action "$NEW_ACTION" '.actions += [$action]')
-      echo "$UPDATED_WF" | curl -X PUT https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @- > /dev/null 2>&1
+      echo "$UPDATED_WF" | docker exec -i paperless-app curl -X PUT http://localhost:8000/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @- > /dev/null 2>&1
     fi
   fi
   docker ps | grep -q openwebui-app > /dev/null 2>&1
@@ -120137,7 +119909,7 @@ function addSharedPipelinesAutoKB()
   akbRes="$(docker exec autokb-web curl -sS -X POST \
     -H "Authorization: Bearer $AUTOKB_API_KEY" \
     -H "Content-Type: application/json" \
-    --data "{\"name\":\"Shared-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"storage_path_id\":2,\"document_filter\":\"tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"processing_mode\":\"Paperless Content\"}}" \
+    --data "{\"name\":\"Shared-Paperless-Source\",\"cron\":\"*/15 * * * * \",\"config\":{\"document_filter\":\"storage_path__id=2&tags__id__in=$PAPERLESS_KNOWLEDGEBASE_TAG_ID\",\"paperless_url\":\"http://paperless-app:8000\",\"paperless_token\":\"$PAPERLESS_API_TOKEN\",\"docling_url\":\"http://docling-app:5001\",\"docling_api_key\":\"$DOCLING_API_KEY\",\"chunking_enabled\":false,\"processing_mode\":\"Paperless Content\"}}" \
     -w $'\n%{http_code}' \
     "http://autokb-web:80/api/subscriptions/ePaperlessDoclingPlugin")"
   akbCode="${akbRes##*$'\n'}"
@@ -120146,8 +119918,8 @@ function addSharedPipelinesAutoKB()
   PAPERLESS_SUB_ID="$(printf '%s' "$akbBody" | jq -r '.id')"
   docker ps | grep paperless-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
-    jsonbody="{ \"name\": \"notify_akb\", \"order\": 1, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_filename\": null, \"matching_algorithm\": 0 }, { \"type\": 3, \"filter_filename\": null, \"matching_algorithm\": 0 } ], \"actions\": [ { \"type\": 4,\"order\": 0, \"webhook\": { \"url\": \"http://autokb-web/api/subscriptions/$PAPERLESS_SUB_ID/trigger\", \"headers\": { \"Authorization\": \"Bearer $AUTOKB_WEBHOOK_API_KEY\" }, \"include_document\": false } } ] }"
-    PAPERLESS_AKB_WORKFLOW_ID=$(curl -s -X POST "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
+    jsonbody="{ \"name\": \"notify_akb\", \"order\": 2, \"enabled\": true, \"triggers\": [ { \"type\": 2, \"filter_filename\": null, \"matching_algorithm\": 0 }, { \"type\": 3, \"filter_filename\": null, \"matching_algorithm\": 0 } ], \"actions\": [ { \"type\": 4,\"order\": 0, \"webhook\": { \"url\": \"http://autokb-web/api/subscriptions/$PAPERLESS_SUB_ID/trigger\", \"headers\": { \"Authorization\": \"Bearer $AUTOKB_WEBHOOK_API_KEY\" }, \"include_document\": false } } ] }"
+    PAPERLESS_AKB_WORKFLOW_ID=$(docker exec paperless-app curl -s -X POST "http://localhost:8000/api/workflows/" -H "Content-Type: application/json" -H "Authorization: Token $PAPERLESS_API_TOKEN" -d "$jsonbody" | jq -r '.id')
     updateConfigVar PAPERLESS_AKB_WORKFLOW_ID "$PAPERLESS_AKB_WORKFLOW_ID"
   fi
   echo "Creating Nextcloud/Twenty contact sync subscription..."
@@ -120475,6 +120247,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-suitecrm-net
       - dock-aipriv-net
@@ -120490,9 +120263,8 @@ services:
     security_opt:
       - no-new-privileges:true
     command: redis-server
-      --appendonly no
-      --save ""
       --requirepass $SUITECRM_REDIS_PASSWORD
+      --appendonly no
     networks:
       - dock-dbs-net
       - int-suitecrm-net
@@ -121060,6 +120832,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-hedgedoc-net
       - dock-aipriv-net
@@ -121278,6 +121051,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    pull_policy: always
     networks:
       - int-presenton-net
       - dock-aipriv-net
@@ -121610,8 +121384,6 @@ function installCognee()
   mkdir $HSHQ_STACKS_DIR/cognee/db
   mkdir $HSHQ_STACKS_DIR/cognee/dbexport
   chmod 777 $HSHQ_STACKS_DIR/cognee/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/cognee
-  mkdir $HSHQ_NONBACKUP_DIR/cognee/redis
   initServicesCredentials
   set +e
   addUserMailu alias $COGNEE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -121817,14 +121589,13 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $COGNEE_REDIS_PASSWORD
-      --appendonly yes
+      --appendonly no
     networks:
       - dock-dbs-net
       - int-cognee-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-cognee-redis:/data
 
 volumes:
   v-cognee-data:
@@ -121845,12 +121616,6 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/cognee/frontend/public
-  v-cognee-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/cognee/redis
 
 networks:
   dock-ext-net:
@@ -121991,7 +121756,7 @@ function installLightRAG()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  buildOrPullImage $(getScriptImageByContainerName lightrag-memgraph)
+  buildOrPullImage $(getScriptImageByContainerName lightrag-neo4j)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -122002,7 +121767,7 @@ function installLightRAG()
   mkdir $HSHQ_STACKS_DIR/lightrag/inputs
   mkdir $HSHQ_STACKS_DIR/lightrag/prompts
   mkdir $HSHQ_STACKS_DIR/lightrag/qdrant
-  mkdir $HSHQ_STACKS_DIR/lightrag/memgraph
+  mkdir $HSHQ_STACKS_DIR/lightrag/neo4j
   mkdir $HSHQ_STACKS_DIR/lightrag/db
   mkdir $HSHQ_STACKS_DIR/lightrag/dbexport
   chmod 777 $HSHQ_STACKS_DIR/lightrag/dbexport
@@ -122122,7 +121887,7 @@ services:
     depends_on:
       - lightrag-db
       - lightrag-qdrant
-      - lightrag-memgraph
+      - lightrag-neo4j
     networks:
       - int-lightrag-net
       - dock-proxy-net
@@ -122159,10 +121924,10 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - v-lightrag-qdrant:/qdrant/storage
 
-  lightrag-memgraph:
-    image: $(getScriptImageByContainerName lightrag-memgraph)
-    container_name: lightrag-memgraph
-    hostname: lightrag-memgraph
+  lightrag-neo4j:
+    image: $(getScriptImageByContainerName lightrag-neo4j)
+    container_name: lightrag-neo4j
+    hostname: lightrag-neo4j
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -122175,7 +121940,15 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-lightrag-memgraph:/var/lib/memgraph
+      - v-lightrag-neo4j:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'PORT_HEX="\$(printf ''%04X'' 7687)"; cat /proc/net/tcp /proc/net/tcp6 2>/dev/null | grep -q ":\$\${PORT_HEX} "'
+      interval: 10s
+      timeout: 3s
+      retries: 120
+      start_period: 10s
 
 volumes:
   v-lightrag-qdrant:
@@ -122184,12 +121957,12 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/lightrag/qdrant
-  v-lightrag-memgraph:
+  v-lightrag-neo4j:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/lightrag/memgraph
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/lightrag/neo4j
 
 networks:
   dock-proxy-net:
@@ -122274,21 +122047,22 @@ LLM_BINDING_API_KEY=$LITELLM_MASTER_KEY
 LLM_MODEL=LongContext
 LIGHTRAG_KV_STORAGE=PGKVStorage
 LIGHTRAG_DOC_STATUS_STORAGE=PGDocStatusStorage
-LIGHTRAG_GRAPH_STORAGE=MemgraphStorage
+LIGHTRAG_GRAPH_STORAGE=Neo4JStorage
 LIGHTRAG_VECTOR_STORAGE=QdrantVectorDBStorage
 POSTGRES_URI=postgresql://$LIGHTRAG_DATABASE_USER:$LIGHTRAG_DATABASE_USER_PASSWORD@lightrag-db:5432/$LIGHTRAG_DATABASE_NAME
 QDRANT_URL=http://lightrag-qdrant:6333
 QDRANT_API_KEY=$LIGHTRAG_QDRANT_API_KEY
 QDRANT__SERVICE__API_KEY=$LIGHTRAG_QDRANT_API_KEY
-MEMGRAPH_URI=bolt://lightrag-memgraph:7687
-MEMGRAPH_USER=$LIGHTRAG_MEMGRAPH_USER
-MEMGRAPH_USERNAME=$LIGHTRAG_MEMGRAPH_USER
-MEMGRAPH_PASSWORD=$LIGHTRAG_MEMGRAPH_PASSWORD
-MEMGRAPH_DATABASE=$LIGHTRAG_MEMGRAPH_DATABASE
+NEO4J_URI=bolt://lightrag-neo4j:7687
+NEO4J_USERNAME=$LIGHTRAG_NEO4J_USER
+NEO4J_PASSWORD=$LIGHTRAG_NEO4J_PASSWORD
+NEO4J_AUTH=$LIGHTRAG_NEO4J_USER/$LIGHTRAG_NEO4J_PASSWORD
+NEO4J_dbms_default__database=$LIGHTRAG_NEO4J_DATABASE
+NEO4J_server_config_strict__validation_enabled=false
 LIGHTRAG_SETUP_POSTGRES_DEPLOYMENT=docker
 LIGHTRAG_SETUP_REDIS_DEPLOYMENT=docker
 LIGHTRAG_SETUP_QDRANT_DEPLOYMENT=docker
-LIGHTRAG_SETUP_MEMGRAPH_DEPLOYMENT=docker
+LIGHTRAG_SETUP_NEO4J_DEPLOYMENT=docker
 EOFMT
   cp $HOME/lightrag.env $HSHQ_STACKS_DIR/lightrag/config/lightrag.env
 }
@@ -122302,11 +122076,11 @@ function performUpdateLightRAG()
   case "$perform_stack_ver" in
     1)
       newVer=v1
-      curImageList=mirror.gcr.io/pgvector/pgvector:pg18,ghcr.io/hkuds/lightrag:v1.5.6,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,mirror.gcr.io/memgraph/memgraph-mage:3.12.0
+      curImageList=mirror.gcr.io/pgvector/pgvector:pg18,ghcr.io/hkuds/lightrag:v1.5.6,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,mirror.gcr.io/neo4j:5.26.32-community
       image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg18,mirror.gcr.io/pgvector/pgvector:pg18"
       image_update_map[1]="ghcr.io/hkuds/lightrag:v1.5.6,ghcr.io/hkuds/lightrag:v1.5.6"
       image_update_map[2]="mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged"
-      image_update_map[3]="mirror.gcr.io/memgraph/memgraph-mage:3.12.0,mirror.gcr.io/memgraph/memgraph-mage:3.12.0"
+      image_update_map[3]="mirror.gcr.io/neo4j:5.26.32-community,mirror.gcr.io/neo4j:5.26.32-community"
     ;;
     *)
       is_upgrade_error=true
@@ -122790,7 +122564,7 @@ PYEOF
   docker exec crowdsec-app cscli machines add $CROWDSEC_LAPI_USERNAME --password $CROWDSEC_LAPI_PASSWORD -f /dev/null > /dev/null 2>&1
   docker exec crowdsec-app cscli bouncers add caddy-bouncer -k $CROWDSEC_API_KEY > /dev/null 2>&1
   docker exec crowdsec-app cscli allowlists create local_internal -d "internal docker network" > /dev/null 2>&1
-  docker exec crowdsec-app cscli allowlists add local_internal 172.16.0.0/14 > /dev/null 2>&1
+  docker exec crowdsec-app cscli allowlists add local_internal $DOCKER_NETWORK_RESERVED_RANGE > /dev/null 2>&1
   sudo sqlite3 $HSHQ_STACKS_DIR/crowdsec/web/crowdsec.db "insert into auth_users(username,password_hash,role,created_at,updated_at) values ('$CROWDSEC_ADMIN_USERNAME','$CROWDSEC_ADMIN_PASSWORD_HASH','admin',strftime('%Y-%m-%dT%H:%M:%f', 'now') || 'Z',strftime('%Y-%m-%dT%H:%M:%f', 'now') || 'Z');" > /dev/null 2>&1
   docker container restart crowdsec-web > /dev/null 2>&1
   if [ -z "$FMLNAME_CROWDSEC_WEB" ]; then
@@ -122859,6 +122633,7 @@ services:
       - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/acquis.d:/etc/crowdsec/acquis.d
       - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/modes/\${WAF_MODE:-monitor}/profiles.yaml:/etc/crowdsec/profiles.yaml
       - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/notifications:/etc/crowdsec/notifications
+      - \${PORTAINER_HSHQ_STACKS_DIR}/crowdsec/crowdsec-config.yaml.local:/etc/crowdsec/config.yaml.local:ro
 
   crowdsec-web:
     image: $(getScriptImageByContainerName crowdsec-web)
@@ -123203,7 +122978,7 @@ SecAction "id:900030,phase:1,pass,nolog,t:none,ctl:ruleRemoveById=920180,ctl:rul
 
 SecRule SERVER_NAME "@rx ^$SUB_TWENTY\." "id:9101001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=932230;ARGS:json.query,ctl:ruleRemoveTargetById=932235;ARGS:json.query,ctl:ruleRemoveTargetById=932260;ARGS:json.query,ctl:ruleRemoveTargetById=932370;ARGS:json.query,ctl:ruleRemoveTargetById=932115;ARGS:json.query,ctl:ruleRemoveTargetById=932125;ARGS:json.query,ctl:ruleRemoveTargetById=942290;ARGS:json.query"
 
-SecRule SERVER_NAME "@rx ^$SUB_WIKIJS\." "id:9101002,phase:1,pass,nolog,ctl:ruleRemoveTargetById=932230;ARGS:json.0.query,ctl:ruleRemoveTargetById=932235;ARGS:json.0.query,ctl:ruleRemoveTargetById=932115;ARGS:json.0.query,ctl:ruleRemoveTargetById=932160;ARGS:json.0.query"
+SecRule SERVER_NAME "@rx ^$SUB_WIKIJS\." "id:9101002,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
 
 SecRule SERVER_NAME "@rx ^$SUB_BESZEL_APP\." "id:9101003,phase:1,pass,nolog,ctl:ruleRemoveTargetById=942100;ARGS"
 
@@ -123222,7 +122997,20 @@ SecRule SERVER_NAME "@rx ^$SUB_DUPLICATI\." "id:9101009,phase:1,pass,nolog,ctl:r
 SecRule SERVER_NAME "@rx ^$SUB_NEXTCLOUD\." "id:9101100,phase:1,pass,nolog,t:none,chain,ctl:requestBodyAccess=Off"
     SecRule REQUEST_URI "@rx ^/remote\.php/dav/"
 
+SecRule SERVER_NAME "@rx ^$SUB_NEXTCLOUD\." "id:9101101,phase:1,pass,nolog,ctl:ruleRemoveTargetById=932260;ARGS:requesttoken"
+
 SecRule SERVER_NAME "@rx ^$SUB_OPENWEBUI_APP\." "id:9101200,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
+
+SecRule SERVER_NAME "@rx ^$SUB_OPENNOTEBOOK_APP\." "id:9101300,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
+
+SecRule SERVER_NAME "@rx ^$SUB_OPENCODE_CODESERVER\." "id:9101400,phase:1,pass,nolog,ctl:ruleRemoveTargetById=932260;ARGS:path"
+
+SecRule SERVER_NAME "@rx ^($SUB_EXCALIDRAW_WEB|$SUB_EXCALIDRAW_AI)\." "id:9101500,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
+
+SecRule SERVER_NAME "@rx ^($SUB_INSANELYFASTWHISPER_API|$SUB_INSANELYFASTWHISPER_APP)\." "id:9101600,phase:1,pass,nolog,ctl:ruleRemoveTargetById=930120;ARGS:/^json\.data\./"
+
+SecRule SERVER_NAME "@rx ^$SUB_LITELLM_APP\." "id:9101700,phase:1,pass,nolog,ctl:ruleRemoveTargetById=930120;ARGS:json.litellm_params.api_base"
+
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-behavior.yaml
 # =====================================================================
@@ -123565,6 +123353,14 @@ instances:
         icon: 📊
         url: http://crowdsec-app:6060/metrics
         requestTimeout: 5s
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/crowdsec-config.yaml.local
+api:
+  server:
+    trusted_ips:
+      - 127.0.0.1
+      - ::1
+      - $DOCKER_NETWORK_RESERVED_RANGE
 EOFMT
 }
 
@@ -135113,6 +134909,10 @@ function deleteSvcHeimdall()
   is_manage_container=$3
   user_id=$(getHeimdallUserIDFromType $user_type)
   if [ "$IS_INSTALLED" = "true" ] && [ -f $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite ]; then
+    chk_exists=$(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select url from items where url like '${svc_url}%';")
+    if [ -z "$chk_exists" ]; then
+      return
+    fi
     if [ "$is_manage_container" = "true" ]; then
       docker container stop heimdall >/dev/null
     fi
@@ -135324,7 +135124,7 @@ EOFCF
 }
 
 ($CADDY_SNIPPET_RELAXEDCSP) {
-  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' registry.npmmirror.com; font-src 'self' registry.npmmirror.com excalidraw.nyc3.cdn.digitaloceanspaces.com esm.sh; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com github.com cdn.anythingllm.com assets.appsmith.com www.authelia.com registry.npmmirror.com *.s3.amazonaws.com activepieces.com *.activepieces.com ts.w.org *.${HOMESERVER_DOMAIN} data: blob:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; media-src 'self' *.${HOMESERVER_DOMAIN} github.com data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} api.comfy.org huggingface.co cdn.anythingllm.com registry.npmmirror.com libraries.excalidraw.com data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
+  header Content-Security-Policy "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline' registry.npmmirror.com; font-src 'self' registry.npmmirror.com excalidraw.nyc3.cdn.digitaloceanspaces.com esm.sh data:; img-src 'self' img.shields.io secure.gravatar.com cdn.libravatar.org seccdn.libravatar.org i.ytimg.com github.com cdn.anythingllm.com assets.appsmith.com www.authelia.com registry.npmmirror.com *.s3.amazonaws.com activepieces.com *.activepieces.com ts.w.org *.${HOMESERVER_DOMAIN} data: blob:; frame-src 'self' www.youtube-nocookie.com www.youtube.com *.${HOMESERVER_DOMAIN} data: blob:; media-src 'self' *.${HOMESERVER_DOMAIN} github.com data: blob:; connect-src 'self' *.${HOMESERVER_DOMAIN} wss://*.${HOMESERVER_DOMAIN} api.comfy.org huggingface.co cdn.anythingllm.com registry.npmmirror.com libraries.excalidraw.com data:; object-src 'none'; frame-ancestors 'self' *.${HOMESERVER_DOMAIN}; upgrade-insecure-requests;"
 }
 
 # At some point we'll fix the svcs.snip and collapse these two
@@ -135371,7 +135171,7 @@ EOFCF
 
 (log_true) {
   @aclog_filter { 
-    remote_ip 172.16.0.0/14 
+    remote_ip $DOCKER_NETWORK_RESERVED_RANGE
   }
   log_skip @aclog_filter
   log {
@@ -135583,10 +135383,11 @@ CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 $add_ri
 CADDY_HSHQ_PRIVATE_IPS=\${$priv_ip_net} $(getPrivateIPRangesCaddy $bind_ip)
 CADDY_HSHQ_CA_URL=$ca_url
 CADDY_HSHQ_BIND_IP=\${$ipVarName}
+CADDY_STACK_NAME=$caddy_net_name
 ENABLE_ACCESS_LOGGING=false
 ENABLE_CROWDSEC_BOUNCER=false
 ENABLE_CROWDSEC_APPSEC=false
-CADDY_STACK_NAME=$caddy_net_name
+CROWDSEC_API_KEY=$CROWDSEC_API_KEY
 EOFCE
       ;;
     primary)
@@ -135779,10 +135580,11 @@ CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
 CADDY_HSHQ_PRIVATE_IPS=
 CADDY_HSHQ_CA_URL=$ca_url
 CADDY_HSHQ_BIND_IP=$bind_ip
+CADDY_STACK_NAME=$caddy_net_name
 ENABLE_ACCESS_LOGGING=false
 ENABLE_CROWDSEC_BOUNCER=false
 ENABLE_CROWDSEC_APPSEC=false
-CADDY_STACK_NAME=$caddy_net_name
+CROWDSEC_API_KEY=$CROWDSEC_API_KEY
 EOFCE
       ;;
     other)
@@ -135864,10 +135666,11 @@ CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
 CADDY_HSHQ_PRIVATE_IPS=
 CADDY_HSHQ_CA_URL=$ca_url
 CADDY_HSHQ_BIND_IP=$bind_ip
+CADDY_STACK_NAME=$caddy_net_name
 ENABLE_ACCESS_LOGGING=false
 ENABLE_CROWDSEC_BOUNCER=false
 ENABLE_CROWDSEC_APPSEC=false
-CADDY_STACK_NAME=$caddy_net_name
+CROWDSEC_API_KEY=$CROWDSEC_API_KEY
 EOFCE
       ;;
     *)
@@ -136607,6 +136410,10 @@ function deleteSvcUptimeKuma()
   svc_url=$1
   is_manage_container=$2
   if [ "$IS_INSTALLED" = "true" ] && [ -f $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db ]; then
+    chk_exists=$(sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "select url from monitor where url like '${svc_url}%';")
+    if [ -z "$chk_exists" ]; then
+      return
+    fi
     if [ "$is_manage_container" = "true" ]; then
       docker container stop uptimekuma >/dev/null
     fi
