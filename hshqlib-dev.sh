@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=244
+HSHQ_LIB_SCRIPT_VERSION=245
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -31087,7 +31087,7 @@ function addPrimaryUserAutoKB()
     if ! [ -z "$AKB_WORKFLOW" ]; then
       NEW_ACTION="{ \"type\": 4, \"order\": 99, \"webhook\": { \"url\": \"http://autokb-web/api/subscriptions/$PAPERLESS_SUB_ID/trigger\", \"headers\": { \"Authorization\": \"Bearer $AUTOKB_WEBHOOK_API_KEY\" }, \"include_document\": false } }"
       UPDATED_WF=$(echo "$AKB_WORKFLOW" | jq --argjson action "$NEW_ACTION" '.actions += [$action]')
-      echo "$UPDATED_WF" | docker exec paperless-app curl -X PUT http://localhost:8000/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @- > /dev/null 2>&1
+      echo "$UPDATED_WF" | docker exec -i paperless-app curl -s -X PUT http://localhost:8000/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @- > /dev/null 2>&1
     fi
   fi
   docker ps | grep -q openwebui-app > /dev/null 2>&1
@@ -31864,7 +31864,8 @@ function loadPinnedDockerImages()
   IMG_FIREFLY_FINTSIMPORTER=mirror.gcr.io/benkl/firefly-iii-fints-importer
   IMG_FRESHRSS=mirror.gcr.io/freshrss/freshrss:1.27.1
   IMG_GHOST=mirror.gcr.io/ghost:6.9.3-alpine
-  IMG_GITEA_APP=mirror.gcr.io/gitea/gitea:1.25.2
+  IMG_GITEA_APP=mirror.gcr.io/gitea/gitea:28.2.0
+  IMG_GITEA_MCP=ghcr.io/homeserverhq/gitea-mcp:v1.0.0
   IMG_GITLAB_APP=mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0
   IMG_GRAFANA=mirror.gcr.io/grafana/grafana-oss:13.0.2
   IMG_LOKI=mirror.gcr.io/grafana/loki:3.7.7
@@ -32238,7 +32239,7 @@ function getScriptStackVersion()
     ittools)
       echo "v1" ;;
     gitea)
-      echo "v9" ;;
+      echo "v10" ;;
     mealie)
       echo "v11" ;;
     kasm)
@@ -41849,7 +41850,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_WGPORTAL}-RelayServer" https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $RELAYSERVER_WGPORTAL_ADMIN_EMAIL $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}"\n\n\n\n"
   strInstructions="Vaultwarden Import Instructions - !!! READ ALL STEPS !!!\n_________________________________________________________________________\n\n"
-  strInstructions=$strInstructions"1. Vaultwarden is only accessible on your private network, so any devices that you wish to access this service with must be correctly added. \n\n2. Upon installation, you should receive a seperate 'Join Vaultwarden' email from the Vaultwarden service. Click the provided 'Join Organization Now' button and create an account. \n\n3. After creating your account, log in through the same web interface. \n\n4. Select Tools on top of page, then Import Data on left side. For File format, select Bitwarden(csv) from the drop down.  Then copy all of the data AFTER the line below (including field headers) and paste it into the provided empty text box. Then click Import Data. \n\n5. Download and install Bitwarden plugin/extension for your browser (https://bitwarden.com/download/). \n\n6. In the browser plugin, select Self-hosted for Region. Then enter https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN in both Server URL and Web vault server URL fields, and Save. \n\n7. Log in with email and master password. Go to Settings (bottom right), then Auto-fill, then under Default URI match detection, select Starts with. (You can also check the Auto-fill on page load option, but ensure you know how it works and the risks)\n\n8. Delete this email (and empty it from Trash) once you have imported the passwords into Vaultwarden. There is an option within Script-server or the console UI to send yourself another copy if need be (01 Misc Utils -> 08 Email Vaultwarden Credentials).\n\n9. All of these passwords are randomly generated during install and stored in your configuration file, which is encrypted at rest (thus the need to enter your config decrypt password for nearly every operation). Nota Bene: If you change any of these generated passwords it will not sync back to this source. If you change the Portainer, AdguardHome, or WG Portal admin passwords without also changing them in the configuration file, then you will break any of the script functions that use these utilities (they use API calls that require authorization). There could also be consequences for a few others as well. For more information, ask on the forum (https://forum.homeserverhq.com). To view/edit the configuration file, run the console UI (enter 'bash hshq.sh' on your HomeServer), then go to System Utils -> 1 Edit Encrypted Config File. BE VERY CAREFUL editing anything in this config file, you could break things!!!\n\n10. After any operation that requires the config decrypt password, whether via the console UI or Script-server web interface, you should ALWAYS see a confirmation that the configuration file has been encrypted. If a script function terminates abnormally, ensure to re-run another simple function, for example (01 Misc Utils -> 09 Email Root CA) just to ensure the configuration file is back to an encrypted state."
+  strInstructions=$strInstructions"1. Vaultwarden is only accessible on your private network, so any devices that you wish to access this service with must be correctly added. \n\n2. Upon installation, you should receive a seperate 'Join Vaultwarden' email from the Vaultwarden service. Click the provided 'Join Organization Now' button and create an account. ENSURE you DESELECT 'Check known data breaches for this password'. This option requires the vaultwarden container to have access to the internet, but this has been disabled by default due to the nature of this service. \n\n3. After creating your account, log in through the same web interface. \n\n4. Select Tools on top of page, then Import Data on left side. For File format, select Bitwarden(csv) from the drop down.  Then copy all of the data AFTER the line below (including field headers) and paste it into the provided empty text box. Then click Import Data. \n\n5. Download and install Bitwarden plugin/extension for your browser (https://bitwarden.com/download/). \n\n6. In the browser plugin, select Self-hosted for Region. Then enter https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN in both Server URL and Web vault server URL fields, and Save. \n\n7. Log in with email and master password. Go to Settings (bottom right), then Auto-fill, then under Default URI match detection, select Starts with. (You can also check the Auto-fill on page load option, but ensure you know how it works and the risks)\n\n8. Delete this email (and empty it from Trash) once you have imported the passwords into Vaultwarden. There is an option within Script-server or the console UI to send yourself another copy if need be (01 Misc Utils -> 08 Email Vaultwarden Credentials).\n\n9. All of these passwords are randomly generated during install and stored in your configuration file, which is encrypted at rest (thus the need to enter your config decrypt password for nearly every operation). Nota Bene: If you change any of these generated passwords it will not sync back to this source. If you change the Portainer, AdguardHome, or WG Portal admin passwords without also changing them in the configuration file, then you will break any of the script functions that use these utilities (they use API calls that require authorization). There could also be consequences for a few others as well. For more information, ask on the forum (https://forum.homeserverhq.com). To view/edit the configuration file, run the console UI (enter 'bash hshq.sh' on your HomeServer), then go to System Utils -> 1 Edit Encrypted Config File. BE VERY CAREFUL editing anything in this config file, you could break things!!!\n\n10. After any operation that requires the config decrypt password, whether via the console UI or Script-server web interface, you should ALWAYS see a confirmation that the configuration file has been encrypted. If a script function terminates abnormally, ensure to re-run another simple function, for example (01 Misc Utils -> 09 Email Root CA) just to ensure the configuration file is back to an encrypted state."
   sendEmail -s "Vaultwarden Login Import !!! READ ALL STEPS !!!" -b "$strInstructions\n\n$strOutput" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
 }
 
@@ -43239,6 +43240,9 @@ function getScriptImageByContainerName()
       ;;
     "gitea-app")
       container_image=$IMG_GITEA_APP
+      ;;
+    "gitea-mcp")
+      container_image=$IMG_GITEA_MCP
       ;;
     "mealie-db")
       container_image=mirror.gcr.io/postgres:15.0-bullseye
@@ -66455,6 +66459,10 @@ function installGitea()
   if [ $? -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName gitea-mcp)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/gitea
   mkdir $HSHQ_STACKS_DIR/gitea/app
@@ -66475,6 +66483,7 @@ function installGitea()
   addUserMailu alias $GITEA_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   docker exec -u $USERID gitea-app gitea admin user create --admin --username $GITEA_ADMIN_USERNAME --password $GITEA_ADMIN_PASSWORD --email $GITEA_ADMIN_EMAIL_ADDRESS
   docker exec -u $USERID gitea-app gitea admin auth add-ldap --name OpenLDAP --security-protocol ldaps --host ldapserver --port 636 --bind-dn "$LDAP_READONLY_USER_BIND_DN" --bind-password "$LDAP_READONLY_USER_PASSWORD" --user-search-base "ou=people,$LDAP_BASE_DN" --user-filter "(&(&(uid=%s)(objectClass=person))(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))" --admin-filter "(memberOf=cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)" --username-attribute uid --firstname-attribute givenName --surname-attribute sn --email-attribute mail --avatar-attribute jpegPhoto --synchronize-users --active
+  addMCPServerLiteLLM "gitea" "gte" "http://gitea-mcp:80/mcp" http none ""
   addReadOnlyUserToDatabase Gitea postgres gitea-db $GITEA_DATABASE_NAME $GITEA_DATABASE_USER $GITEA_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/gitea/dbexport $GITEA_DATABASE_READONLYUSER $GITEA_DATABASE_READONLYUSER_PASSWORD
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GITEA.$HOMESERVER_DOMAIN {\n"
@@ -66564,6 +66573,24 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/gitea/app:/data
 
+  gitea-mcp:
+    image: $(getScriptImageByContainerName gitea-mcp)
+    container_name: gitea-mcp
+    hostname: gitea-mcp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-gitea-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
 networks:
   dock-proxy-net:
     name: dock-proxy
@@ -66579,6 +66606,9 @@ networks:
     external: true
   dock-dbs-net:
     name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
     external: true
   int-gitea-net:
     driver: bridge
@@ -66608,6 +66638,12 @@ GITEA__mailer__SMTP_ADDR=$SMTP_HOSTNAME
 GITEA__mailer__SMTP_PORT=$SMTP_HOSTPORT
 GITEA__service__DISABLE_REGISTRATION=true
 GITEA__security__INSTALL_LOCK=true
+GITEA__migrations__ALLOW_LOCALNETWORKS=true
+GITEA__migrations__ALLOWED_HOST_LIST=loopback,private
+GITEA_BASE_URL=http://gitea-app:3000
+MCP_SERVER_PORT=80
+ALLOW_ALL_AGGREGATE=false
+IS_STATEFUL=false
 EOFGL
 }
 
@@ -66673,10 +66709,20 @@ function performUpdateGitea()
       image_update_map[1]="mirror.gcr.io/gitea/gitea:1.24.4,mirror.gcr.io/gitea/gitea:1.25.2"
     ;;
     9)
-      newVer=v9
+      newVer=v10
       curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/gitea/gitea:1.25.2
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
-      image_update_map[1]="mirror.gcr.io/gitea/gitea:1.25.2,mirror.gcr.io/gitea/gitea:1.25.2"
+      image_update_map[1]="mirror.gcr.io/gitea/gitea:1.25.2,mirror.gcr.io/gitea/gitea:28.2.0"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateGiteaV10
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    10)
+      newVer=v10
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/gitea/gitea:28.2.0
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/gitea/gitea:28.2.0,mirror.gcr.io/gitea/gitea:28.2.0"
+      image_update_map[2]="ghcr.io/homeserverhq/gitea-mcp:v1.0.0,ghcr.io/homeserverhq/gitea-mcp:v1.0.0"
     ;;
     *)
       is_upgrade_error=true
@@ -66698,6 +66744,131 @@ function mfGiteaRemoveDeprecatedEnvVars()
   if [ $? -ne 0 ]; then
     echo "GITEA__mailer__PROTOCOL=smtp+starttls" >> $HOME/gitea.env
   fi
+}
+
+function mfUpdateGiteaV10()
+{
+  pullImage $(getScriptImageByContainerName gitea-mcp)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  cat <<EOFGL > $HOME/gitea-compose.yml
+$STACK_VERSION_PREFIX gitea v10
+
+services:
+  gitea-db:
+    image: mirror.gcr.io/postgres:15.0-bullseye
+    container_name: gitea-db
+    hostname: gitea-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-gitea-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/gitea/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/gitea/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.gitea-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.gitea-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.gitea-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.gitea-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.gitea-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.gitea-hourly-db.email-from=Gitea Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.gitea-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.gitea-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.gitea-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.gitea-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.gitea-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.gitea-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.gitea-monthly-db.email-from=Gitea Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.gitea-monthly-db.mail-only-on-error=false"
+
+  gitea-app:
+    image: mirror.gcr.io/gitea/gitea:28.2.0
+    container_name: gitea-app
+    hostname: gitea-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - gitea-db
+    networks:
+      - int-gitea-net
+      - dock-ext-net
+      - dock-ldap-net
+      - dock-internalmail-net
+    #ports:
+    #  - "2222:22"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/gitea/app:/data
+
+  gitea-mcp:
+    image: ghcr.io/homeserverhq/gitea-mcp:v1.0.0
+    container_name: gitea-mcp
+    hostname: gitea-mcp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-gitea-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-gitea-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+EOFGL
+  tee -a $HOME/gitea.env  >/dev/null <<EOFGL
+GITEA__migrations__ALLOW_LOCALNETWORKS=true
+GITEA__migrations__ALLOWED_HOST_LIST=loopback,private
+GITEA_BASE_URL=http://gitea-app:3000
+MCP_SERVER_PORT=80
+ALLOW_ALL_AGGREGATE=false
+IS_STATEFUL=false
+EOFGL
+  addMCPServerLiteLLM "gitea" "gte" "http://gitea-mcp:80/mcp" http none ""
 }
 
 # Mealie
@@ -116238,7 +116409,50 @@ function addMCPServersToLiteLLM()
 
 function addMCPServerLiteLLM()
 {
-  return
+  set +e
+  docker ps | grep -q litellm-proxy
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  mcp_name="$1"
+  mcp_alias="$2"
+  mcp_url="$3"
+  mcp_type="$4"
+  mcp_auth="$5"
+  mcp_key="$6"
+  curl -s -X GET "https://$SUB_LITELLM_APP.$HOMESERVER_DOMAIN/v1/mcp/server" \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" | jq -r .[].server_name | grep -q "$mcp_name"
+  if [ $? -eq 0 ]; then
+    echo "MCP Server ($mcp_name) has already been added to LiteLLM..."
+    return
+  fi
+  if [ "$mcp_auth" = "none" ]; then
+    curl -s -X POST "https://$SUB_LITELLM_APP.$HOMESERVER_DOMAIN/v1/mcp/server" \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"server_name\": \"$mcp_name\",
+    \"alias\": \"$mcp_alias\",
+    \"url\": \"$mcp_url\",
+    \"transport\": \"$mcp_type\",
+    \"auth_type\": \"$mcp_auth\"
+  }" > /dev/null 2>&1
+  else
+    curl -s -X POST "https://$SUB_LITELLM_APP.$HOMESERVER_DOMAIN/v1/mcp/server" \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"server_name\": \"$mcp_name\",
+    \"alias\": \"$mcp_alias\",
+    \"url\": \"$mcp_url\",
+    \"transport\": \"$mcp_type\",
+    \"auth_type\": \"$mcp_auth\",
+    \"credentials\": {
+      \"auth_value\": \"$mcp_key\"
+     }
+  }" > /dev/null 2>&1
+  fi
+  echo
 }
 
 # Langfuse
@@ -119846,7 +120060,7 @@ function performAutoKBInstallIntegrations()
     if ! [ -z "$AKB_WORKFLOW" ]; then
       NEW_ACTION="{ \"type\": 4, \"order\": 99, \"webhook\": { \"url\": \"http://autokb-web/api/subscriptions/$PAPERLESS_SUB_ID/trigger\", \"headers\": { \"Authorization\": \"Bearer $AUTOKB_WEBHOOK_API_KEY\" }, \"include_document\": false } }"
       UPDATED_WF=$(echo "$AKB_WORKFLOW" | jq --argjson action "$NEW_ACTION" '.actions += [$action]')
-      echo "$UPDATED_WF" | docker exec -i paperless-app curl -X PUT http://localhost:8000/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @- > /dev/null 2>&1
+      echo "$UPDATED_WF" | docker exec -i paperless-app curl -s -X PUT http://localhost:8000/api/workflows/$PAPERLESS_AKB_WORKFLOW_ID/ -H "Authorization: Token $PAPERLESS_API_TOKEN" -H "Content-Type: application/json" -d @- > /dev/null 2>&1
     fi
   fi
   docker ps | grep -q openwebui-app > /dev/null 2>&1
