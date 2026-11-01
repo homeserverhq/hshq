@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=245
+HSHQ_LIB_SCRIPT_VERSION=246
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -112831,17 +112831,9 @@ services:
     security_opt:
       - seccomp=unconfined
       - label=disable
-    cap_add:
-      - SYS_PTRACE
-    ipc: host
-    devices:
-      - /dev/dri
-      - /dev/kfd
     stdin_open: true
     tty: true
     command: ["python", "-m", "insanely_fast_whisper_rocm.webui"]
-    group_add:
-      - video
     networks:
       - dock-ext-net
       - dock-aipriv-net
@@ -112866,16 +112858,8 @@ services:
     security_opt:
       - seccomp=unconfined
       - label=disable
-    cap_add:
-      - SYS_PTRACE
-    ipc: host
-    devices:
-      - /dev/dri
-      - /dev/kfd
     stdin_open: true
     tty: true
-    group_add:
-      - video
     networks:
       - dock-ext-net
       - dock-aipriv-net
@@ -112906,9 +112890,8 @@ EOFMT
   cat <<EOFMT > $HOME/insanelyfastwhisper.env
 TZ=\${PORTAINER_TZ}
 APP_TIMEZONE=\${PORTAINER_TZ}
-HSA_OVERRIDE_GFX_VERSION=11.5.1
 WHISPER_MODEL=distil-whisper/distil-large-v3.5
-WHISPER_DEVICE=0
+WHISPER_DEVICE=cpu
 WHISPER_BATCH_SIZE=4
 PROGRESS_GROUP_SIZE=4
 WHISPER_TIMESTAMP_TYPE=chunk
@@ -112945,7 +112928,7 @@ DISPLAY_BUFFER_SEC=0.2
 SOFT_BOUNDARY_WORDS=and,but,or,so,for,nor,yet
 INTERJECTION_WHITELIST=um,uh,ah,er,like
 HF_TOKEN=
-DIARIZATION_DEVICE=cuda
+DIARIZATION_DEVICE=cpu
 DIARIZATION_PRELOAD_AUDIO=true
 DIARIZATION_ALLOW_CPU_FALLBACK=true
 DIARIZATION_DISABLE_MIOPEN=true
@@ -116227,6 +116210,8 @@ services:
     command: [ "--config", "/app/config.yaml" ]
     extra_hosts:
       - host.docker.internal:host-gateway
+    mem_limit: 4g
+    memswap_limit: 4g
     networks:
       - int-litellm-net
       - dock-proxy-net
@@ -116356,6 +116341,7 @@ LITELLM_PROXY_URL=https://$SUB_LITELLM_APP.$HOMESERVER_DOMAIN
 UI_USERNAME=$LITELLM_ADMIN_USERNAME
 UI_PASSWORD=$LITELLM_ADMIN_PASSWORD
 OLLAMA_API_BASE=http://ollama-server:11434
+LITELLM_LOCAL_MODEL_COST_MAP=True
 EOFMT
 }
 
