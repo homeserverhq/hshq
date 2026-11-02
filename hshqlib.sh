@@ -121173,7 +121173,7 @@ function installPresenton()
   addUserMailu alias $PRESENTON_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   PRESENTON_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $PRESENTON_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigPresenton
-  installStack presenton presenton-app "" $HOME/presenton.env
+  installStack presenton presenton-app "Application startup complete" $HOME/presenton.env 3
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
