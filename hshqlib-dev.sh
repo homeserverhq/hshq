@@ -99285,7 +99285,6 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - /opt/amdgpu/share/libdrm/amdgpu.ids:/opt/amdgpu/share/libdrm/amdgpu.ids:ro
       - v-comfyui-models:/opt/ComfyUI/models
       - v-comfyui-input:/opt/ComfyUI/input
       - v-comfyui-output:/opt/ComfyUI/output
@@ -112843,7 +112842,6 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - /opt/amdgpu/share/libdrm/amdgpu.ids:/opt/amdgpu/share/libdrm/amdgpu.ids:ro
       - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/huggingface:/root/.cache/huggingface
       - \${PORTAINER_HSHQ_STACKS_DIR}/insanelyfastwhisper/transcripts:/app/transcripts
       - \${PORTAINER_HSHQ_STACKS_DIR}/insanelyfastwhisper/transcripts-txt:/app/transcripts-txt
@@ -112870,7 +112868,6 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - /opt/amdgpu/share/libdrm/amdgpu.ids:/opt/amdgpu/share/libdrm/amdgpu.ids:ro
       - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/huggingface:/root/.cache/huggingface
       - \${PORTAINER_HSHQ_STACKS_DIR}/insanelyfastwhisper/transcripts:/app/transcripts
       - \${PORTAINER_HSHQ_STACKS_DIR}/insanelyfastwhisper/transcripts-txt:/app/transcripts-txt
