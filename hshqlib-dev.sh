@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=246
+HSHQ_LIB_SCRIPT_VERSION=247
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -166,7 +166,7 @@ function init()
   PAPERLESS_ADMIN_ID=2
   DEFAULT_UNFOUND_IP_ADDRESS=169.254.84.48
   DEFAULT_UNFOUND_IP_SUBNET=169.254.0.0/16
-  MAX_DOCKER_PULL_TRIES=10
+  MAX_DOCKER_PULL_TRIES=20
   MENU_WIDTH=69
   MENU_HEIGHT=24
   MENU_INT_HEIGHT=10
@@ -7650,6 +7650,10 @@ function pullImage()
     docker image inspect \$img_and_version > /dev/null 2>&1
     is_success=\$?
     ((num_tries++))
+    if [ \$is_success -ne 0 ]; then
+      echo "Error pulling image, retrying in 15 seconds..."
+      sleep 15
+    fi
   done
   if [ \$is_success -ne 0 ]; then
     echo "Error pulling docker image: \$img_and_version"
@@ -8327,7 +8331,10 @@ function pullImage()
     docker image inspect \$img_and_version > /dev/null 2>&1
     is_success=\$?
     ((num_tries++))
-    sleep 3
+    if [ \$is_success -ne 0 ]; then
+      echo "Error pulling image, retrying in 15 seconds..."
+      sleep 15
+    fi
   done
   set -e
   if [ \$is_success -ne 0 ]; then
@@ -25186,6 +25193,10 @@ function pullImage()
     docker image inspect \$img_and_version > /dev/null 2>&1
     is_success=\$?
     ((num_tries++))
+    if [ \$is_success -ne 0 ]; then
+      echo "Error pulling image, retrying in 15 seconds..."
+      sleep 15
+    fi
   done
   if [ \$is_success -ne 0 ]; then
     echo "Error pulling docker image: \$img_and_version"
@@ -30335,8 +30346,8 @@ function pullImage()
     fi
     ((num_tries++))
     if [ $is_success -ne 0 ]; then
-      echo "There was an error pulling the image, retrying in 10 seconds..."
-      sleep 10
+      echo "There was an error pulling the image, retrying in 15 seconds..."
+      sleep 15
     fi
   done
   if [ $is_success -ne 0 ]; then
@@ -55551,11 +55562,13 @@ function addSharedDirsNextcloud()
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install files_external
   docker exec -u www-data nextcloud-app php occ --no-warnings app:enable files_external
   curID=$(docker exec -u www-data nextcloud-app php occ files_external:create Images local null::null -c datadir=/shared/Images/\$user/Images | rev | cut -d" " -f1 | rev)
+  docker exec -u www-data -it nextcloud-app php occ files_external:option $curID enable_sharing true > /dev/null 2>&1
   docker exec -u www-data -it nextcloud-app php occ files_external:applicable --remove-all $curID > /dev/null 2>&1
   curID=$(docker exec -u www-data nextcloud-app php occ files_external:create SharedConsume local null::null -c datadir=/shared/SharedConsume/\$user/SharedConsume | rev | cut -d" " -f1 | rev)
   docker exec -u www-data -it nextcloud-app php occ files_external:applicable --remove-all $curID > /dev/null 2>&1
   curID=$(docker exec -u www-data nextcloud-app php occ files_external:create SharedProcessed local null::null -c datadir=/shared/SharedProcessed | rev | cut -d" " -f1 | rev)
   docker exec -u www-data -it nextcloud-app php occ files_external:option $curID readonly true > /dev/null 2>&1
+  docker exec -u www-data -it nextcloud-app php occ files_external:option $curID enable_sharing true > /dev/null 2>&1
   docker exec -u www-data -it nextcloud-app php occ files_external:applicable --remove-all $curID > /dev/null 2>&1
   curID=$(docker exec -u www-data nextcloud-app php occ files_external:create PersonalConsume local null::null -c datadir=/shared/PersonalConsume/\$user/PersonalConsume | rev | cut -d" " -f1 | rev)
   docker exec -u www-data -it nextcloud-app php occ files_external:applicable --remove-all $curID > /dev/null 2>&1
@@ -55563,6 +55576,7 @@ function addSharedDirsNextcloud()
   docker exec -u www-data -it nextcloud-app php occ files_external:applicable --remove-all $curID > /dev/null 2>&1
   curID=$(docker exec -u www-data nextcloud-app php occ files_external:create PersonalProcessed local null::null -c datadir=/shared/PersonalProcessed/\$user/PersonalProcessed | rev | cut -d" " -f1 | rev)
   docker exec -u www-data -it nextcloud-app php occ files_external:option $curID readonly true > /dev/null 2>&1
+  docker exec -u www-data -it nextcloud-app php occ files_external:option $curID enable_sharing true > /dev/null 2>&1
   docker exec -u www-data -it nextcloud-app php occ files_external:applicable --remove-all $curID > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ files:scan --all > /dev/null 2>&1
 }
