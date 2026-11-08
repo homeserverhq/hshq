@@ -30865,7 +30865,6 @@ EOFAU
   fi
   fullName="${addPUFirstName}${addPULastName}"
   cleanName="${fullName//[![:alnum:]]/}"
-  addPrimaryUserAutoKB "$addPUUID" "$cleanName" "$addPUEmailAddress" "$newuser_mailu_app_password" 1
   newuser_immich_api_key=$(pwgen -c -n 41 1)
   addPrimaryUserImmich "${addPUUID}" "$addPUEmailAddress" "$addPUFirstName $addPULastName" "$newuser_immich_api_key"
   docker ps | grep -q linkwarden-app > /dev/null 2>&1
@@ -30876,7 +30875,8 @@ EOFAU
   newuser_mealie_api_key=$(addPrimaryUserMealie "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress false)
   newuser_presenton_api_key=$(addPrimaryUserPresenton "$addPUUID" "$addPUPassword")
   newuser_twenty_api_key=$(addPrimaryUserTwenty "$addPUUID" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName" "$addPULastName" "$newuser_mailu_app_password")
-  newuser_ragflow_api_key=$(addPrimaryUserRAGFlow "$addPUEmailAddress" "$addPUFirstName $addPULastName")
+  newuser_ragflow_api_key=$(addPrimaryUserRAGFlow "$addPUEmailAddress" "$addPUFirstName $addPULastName" "$addPUPassword")
+  addPrimaryUserAutoKB "$addPUUID" "$cleanName" "$addPUEmailAddress" "$newuser_mailu_app_password" 1 "$newuser_ragflow_api_key"
   docker ps | grep -q openwebui-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     echo "Adding primary user MCPs to OpenWebUI..."
@@ -31065,6 +31065,7 @@ function addPrimaryUserAutoKB()
   imap_username="$3"
   imap_password="$4"
   paperless_storage_id="$5"
+  ragflow_api_key="$6"
   docker ps | grep -q autokb-web > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     return
@@ -31113,55 +31114,102 @@ function addPrimaryUserAutoKB()
     fi
   fi
   docker ps | grep -q openwebui-app > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    return
+  if [ $? -eq 0 ]; then
+    echo "Resolving openWebUISink service id..."
+    akbRes="$(docker exec autokb-web curl -sS -X GET \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
+    SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
+    if [ -z "$SINK_ID" ]; then
+      echo "openWebUISink not found among provisioned sinks" >&2
+      return 1
+    fi
+    echo "Creating OpenWebUI target KB ${formal_name}-PKB..."
+    akbRes="$(docker exec autokb-web curl -sS -X POST \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data "{\"name\":\"${formal_name}-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
+    AUTOKB_PKB_REMOTE_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.remote_target_id')"
+    echo "Fetching current links for shared target $AUTOKB_SHARED_OWUI_TARGET_ID..."
+    akbRes="$(docker exec autokb-web curl -sS -X GET \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/targets/$AUTOKB_SHARED_OWUI_TARGET_ID")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target lookup failed: $akbBody" >&2; return 1; }
+    existing="$(printf '%s' "$akbBody" | jq -c '[.subscriptions[].subscription_id | select(. != null)]')"
+    ids="$(printf '%s' "$existing" | jq -c --argjson ns "\"$IMAP_SHARED_SUB_ID\"" '. + [$ns] | unique')"
+    echo "Attaching source $IMAP_SHARED_SUB_ID to shared target $AUTOKB_SHARED_OWUI_TARGET_ID..."
+    akbRes="$(docker exec autokb-web curl -sS -X PUT \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data "{\"subscription_ids\":$ids}" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/targets/$AUTOKB_SHARED_OWUI_TARGET_ID")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target update failed: $akbBody" >&2; return 1; }
   fi
-  echo "Resolving openWebUISink service id..."
-  akbRes="$(docker exec autokb-web curl -sS -X GET \
-    -H "Authorization: Bearer $AUTOKB_API_KEY" \
-    -H "Content-Type: application/json" \
-    -w $'\n%{http_code}' \
-    "http://autokb-web:80/api/sinks")"
-  akbCode="${akbRes##*$'\n'}"
-  akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
-  SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
-  if [ -z "$SINK_ID" ]; then
-    echo "openWebUISink not found among provisioned sinks" >&2
-    return 1
+  docker ps | grep -q ragflow-app > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    echo "Resolving ragflowSink service id..."
+    akbRes="$(docker exec autokb-web curl -sS -X GET \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
+    SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "ragflowSink") | .service_id' | head -n1)"
+    if [ -z "$SINK_ID" ]; then
+      echo "ragflowSink not found among provisioned sinks" >&2
+      return 1
+    fi
+    echo "Creating RAGFlow target KB ${formal_name}-PKB..."
+    akbRes="$(docker exec autokb-web curl -sS -X POST \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data "{\"name\":\"${formal_name}-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$ragflow_api_key\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
+    echo "Fetching current links for shared target $AUTOKB_SHARED_RAGFLOW_TARGET_ID..."
+    akbRes="$(docker exec autokb-web curl -sS -X GET \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/targets/$AUTOKB_SHARED_RAGFLOW_TARGET_ID")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target lookup failed: $akbBody" >&2; return 1; }
+    existing="$(printf '%s' "$akbBody" | jq -c '[.subscriptions[].subscription_id | select(. != null)]')"
+    ids="$(printf '%s' "$existing" | jq -c --argjson ns "\"$IMAP_SHARED_SUB_ID\"" '. + [$ns] | unique')"
+    echo "Attaching source $IMAP_SHARED_SUB_ID to shared target $AUTOKB_SHARED_RAGFLOW_TARGET_ID..."
+    akbRes="$(docker exec autokb-web curl -sS -X PUT \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data "{\"subscription_ids\":$ids}" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/targets/$AUTOKB_SHARED_RAGFLOW_TARGET_ID")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target update failed: $akbBody" >&2; return 1; }
   fi
-  echo "Creating OpenWebUI target KB ${formal_name}-PKB..."
-  akbRes="$(docker exec autokb-web curl -sS -X POST \
-    -H "Authorization: Bearer $AUTOKB_API_KEY" \
-    -H "Content-Type: application/json" \
-    --data "{\"name\":\"${formal_name}-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
-    -w $'\n%{http_code}' \
-    "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
-  akbCode="${akbRes##*$'\n'}"
-  akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
-  AUTOKB_PKB_REMOTE_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.remote_target_id')"
-  echo "Fetching current links for shared target $AUTOKB_SHARED_OWUI_TARGET_ID..."
-  akbRes="$(docker exec autokb-web curl -sS -X GET \
-    -H "Authorization: Bearer $AUTOKB_API_KEY" \
-    -H "Content-Type: application/json" \
-    -w $'\n%{http_code}' \
-    "http://autokb-web:80/api/targets/$AUTOKB_SHARED_OWUI_TARGET_ID")"
-  akbCode="${akbRes##*$'\n'}"
-  akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target lookup failed: $akbBody" >&2; return 1; }
-  existing="$(printf '%s' "$akbBody" | jq -c '[.subscriptions[].subscription_id | select(. != null)]')"
-  ids="$(printf '%s' "$existing" | jq -c --argjson ns "\"$IMAP_SHARED_SUB_ID\"" '. + [$ns] | unique')"
-  echo "Attaching source $IMAP_SHARED_SUB_ID to shared target $AUTOKB_SHARED_OWUI_TARGET_ID..."
-  akbRes="$(docker exec autokb-web curl -sS -X PUT \
-    -H "Authorization: Bearer $AUTOKB_API_KEY" \
-    -H "Content-Type: application/json" \
-    --data "{\"subscription_ids\":$ids}" \
-    -w $'\n%{http_code}' \
-    "http://autokb-web:80/api/targets/$AUTOKB_SHARED_OWUI_TARGET_ID")"
-  akbCode="${akbRes##*$'\n'}"
-  akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target update failed: $akbBody" >&2; return 1; }
   echo "Done."
 }
 
@@ -31632,12 +31680,94 @@ function addPrimaryUserTwenty()
 
 function addPrimaryUserRAGFlow()
 {
-  if ! [ -f "$HSHQ_STACKS_DIR/ragflow/config/ragflowProvisioning.sh" ]; then
+  set +e
+  if ! docker ps | grep -q ragflow-app > /dev/null 2>&1; then
     return
   fi
-  rf_user_email="$1"
-  rf_user_displayname="$2"
-  docker exec ragflow-app python3 /ragflow/conf/ragflowProvisioning.sh "$rf_user_email $rf_user_displayname"
+  rf_email="$1"
+  rf_name="$2"
+  rf_password="$3"
+  rf_password_b64=$(printf '%s' "$rf_password" | base64 | tr -d '\n')
+  rf_admin_password_b64=$(printf '%s' "$RAGFLOW_ADMIN_PASSWORD" | base64 | tr -d '\n')
+  rf_email_q=$(jq -rn --arg v "$rf_email" '$v|@uri')
+  rf_admin_token=$(docker exec -i ragflow-app curl -sS -D - -o /dev/null -X POST "http://127.0.0.1:9381/api/v1/admin/login" -H "Content-Type: application/json" -d "$(jq -n --arg email "$RAGFLOW_ADMIN_EMAIL_ADDRESS" --arg password "$rf_admin_password_b64" '{email:$email,password:$password}')" | tr -d '\r' | awk 'tolower($1)=="authorization:"{print $2; exit}')
+  if [ -z "$rf_admin_token" ]; then
+    echo "ERROR: RAGFlow admin login failed for $RAGFLOW_ADMIN_EMAIL_ADDRESS" >&2
+    return 1
+  fi
+  rf_user_json=$(docker exec -i ragflow-app curl -sS "http://127.0.0.1:9381/api/v1/admin/users/$rf_email_q" -H "Authorization: $rf_admin_token")
+  rf_user_code=$(printf '%s' "$rf_user_json" | jq -r '.code // 1')
+  if [ "$rf_user_code" != "0" ]; then
+    rf_create_json=$(docker exec -i ragflow-app curl -sS -X POST "http://127.0.0.1:9381/api/v1/admin/users" -H "Authorization: $rf_admin_token" -H "Content-Type: application/json" -d "$(jq -n --arg u "$rf_email" --arg p "$rf_password_b64" '{username:$u,password:$p,role:"user"}')")
+    rf_create_code=$(printf '%s' "$rf_create_json" | jq -r '.code // 1')
+    if [ "$rf_create_code" != "0" ]; then
+      echo "ERROR: RAGFlow user create failed: $(printf '%s' "$rf_create_json" | jq -r '.message // empty')" >&2
+      return 1
+    fi
+  fi
+  rf_user_token=$(docker exec -i ragflow-app curl -sS -D - -o /dev/null -X POST "http://127.0.0.1:9380/api/v1/auth/login" -H "Content-Type: application/json" -d "$(jq -n --arg email "$rf_email" --arg password "$rf_password_b64" '{email:$email,password:$password}')" | tr -d '\r' | awk 'tolower($1)=="authorization:"{print $2; exit}')
+  if [ -z "$rf_user_token" ]; then
+    docker exec -i ragflow-app curl -sS -X PUT "http://127.0.0.1:9381/api/v1/admin/users/$rf_email_q/password" -H "Authorization: $rf_admin_token" -H "Content-Type: application/json" -d "$(jq -n --arg p "$rf_password_b64" '{new_password:$p}')" >/dev/null
+    rf_user_token=$(docker exec -i ragflow-app curl -sS -D - -o /dev/null -X POST "http://127.0.0.1:9380/api/v1/auth/login" -H "Content-Type: application/json" -d "$(jq -n --arg email "$rf_email" --arg password "$rf_password_b64" '{email:$email,password:$password}')" | tr -d '\r' | awk 'tolower($1)=="authorization:"{print $2; exit}')
+  fi
+  if [ -z "$rf_user_token" ]; then
+    echo "ERROR: RAGFlow user login failed for $rf_email" >&2
+    return 1
+  fi
+  rf_key_json=$(docker exec -i ragflow-app curl -sS -X POST "http://127.0.0.1:9380/api/v1/system/keys" -H "Authorization: $rf_user_token" -H "Content-Type: application/json" -d '{}')
+  rf_key=$(printf '%s' "$rf_key_json" | jq -r '.data.token // empty')
+  if [ -z "$rf_key" ]; then
+    echo "ERROR: RAGFlow user key mint failed" >&2
+    return 1
+  fi
+  newuser_ragflow_api_key="$rf_key"
+  rf_profile_json=$(jq -n --arg n "$rf_name" --arg tz "$TZ" 'if $tz=="" then {nickname:$n} else {nickname:$n,timezone:$tz} end')
+  docker exec -i ragflow-app curl -sS -X PATCH "http://127.0.0.1:9380/api/v1/users/me" -H "Authorization: $rf_key" -H "Content-Type: application/json" -d "$rf_profile_json" >/dev/null
+  if [ -f "$HSHQ_STACKS_DIR/ragflow/config/ragflow_bootstrap.json" ]; then
+    mapfile -t rf_providers < <(jq -c '.providers[]' "$HSHQ_STACKS_DIR/ragflow/config/ragflow_bootstrap.json")
+    for rf_provider in "${rf_providers[@]}"; do
+      rf_pname=$(printf '%s' "$rf_provider" | jq -r '.name')
+      rf_pname_q=$(jq -rn --arg v "$rf_pname" '$v|@uri')
+      docker exec -i ragflow-app curl -sS -X PUT "http://127.0.0.1:9380/api/v1/providers" -H "Authorization: $rf_key" -H "Content-Type: application/json" -d "$(jq -n --arg p "$rf_pname" '{provider_name:$p}')" >/dev/null
+      rf_existing=$(docker exec -i ragflow-app curl -sS "http://127.0.0.1:9380/api/v1/providers/$rf_pname_q/instances" -H "Authorization: $rf_key")
+      mapfile -t rf_instances < <(printf '%s' "$rf_provider" | jq -c '.instances[]?')
+      for rf_inst in "${rf_instances[@]}"; do
+        rf_iname=$(printf '%s' "$rf_inst" | jq -r '.instance_name')
+        rf_iname_q=$(jq -rn --arg v "$rf_iname" '$v|@uri')
+        rf_payload=$(printf '%s' "$rf_inst" | jq -c '{instance_name:.instance_name,api_key:(.api_key // ""),base_url:(.base_url // ""),region:(.region // ""),model_info:(.models // [])}')
+        if printf '%s' "$rf_existing" | jq -e --arg n "$rf_iname" '.data[]? | select(.instance_name == $n)' >/dev/null 2>&1; then
+          rf_update=$(printf '%s' "$rf_payload" | jq -c '. + {verify:false}')
+          docker exec -i ragflow-app curl -sS -X PUT "http://127.0.0.1:9380/api/v1/providers/$rf_pname_q/instances/$rf_iname_q" -H "Authorization: $rf_key" -H "Content-Type: application/json" -d "$rf_update" >/dev/null
+        else
+          docker exec -i ragflow-app curl -sS -X POST "http://127.0.0.1:9380/api/v1/providers/$rf_pname_q/instances" -H "Authorization: $rf_key" -H "Content-Type: application/json" -d "$rf_payload" >/dev/null
+        fi
+      done
+    done
+    mapfile -t rf_defaults < <(jq -c '.defaults[]' "$HSHQ_STACKS_DIR/ragflow/config/ragflow_bootstrap.json")
+    for rf_default in "${rf_defaults[@]}"; do
+      docker exec -i ragflow-app curl -sS -X PATCH "http://127.0.0.1:9380/api/v1/models/default" -H "Authorization: $rf_key" -H "Content-Type: application/json" -d "$rf_default" >/dev/null
+    done
+  fi
+  rf_team="$RAGFLOW_TEAM_TENANT_ID"
+  if [ -z "$rf_team" ] && [ -n "$RAGFLOW_TEAM_API_KEY" ]; then
+    rf_team_json=$(docker exec -i ragflow-app curl -sS "http://127.0.0.1:9380/api/v1/users/me" -H "Authorization: $RAGFLOW_TEAM_API_KEY")
+    rf_team=$(printf '%s' "$rf_team_json" | jq -r '.data.id // .data.tenant_id // empty')
+  fi
+  if [ -n "$rf_team" ] && [ -n "$RAGFLOW_TEAM_API_KEY" ]; then
+    rf_invite=$(docker exec -i ragflow-app curl -sS -X POST "http://127.0.0.1:9380/api/v1/tenants/$rf_team/users" -H "Authorization: $RAGFLOW_TEAM_API_KEY" -H "Content-Type: application/json" -d "$(jq -n --arg e "$rf_email" '{email:$e}')")
+    rf_invite_code=$(printf '%s' "$rf_invite" | jq -r '.code // empty')
+    if [ -n "$rf_invite_code" ] && [ "$rf_invite_code" != "0" ]; then
+      echo "WARN: RAGFlow team invite: $(printf '%s' "$rf_invite" | jq -r '.message // empty')" >&2
+    fi
+    rf_accept=$(docker exec -i ragflow-app curl -sS -X PATCH "http://127.0.0.1:9380/api/v1/tenants/$rf_team" -H "Authorization: $rf_key")
+    rf_accept_code=$(printf '%s' "$rf_accept" | jq -r '.code // empty')
+    if [ -n "$rf_accept_code" ] && [ "$rf_accept_code" != "0" ]; then
+      echo "WARN: RAGFlow team accept: $(printf '%s' "$rf_accept" | jq -r '.message // empty')" >&2
+    fi
+  else
+    echo "WARN: RAGFlow team not configured; user key created without team access" >&2
+  fi
+  printf '%s\n' "$newuser_ragflow_api_key"
 }
 
 function addPrimaryGroupMCPServerOpenWebUI()
@@ -32144,8 +32274,8 @@ function loadPinnedDockerImages()
   IMG_CRAWL4AI_APP=ghcr.io/homeserverhq/crawl4ai:v0.9.5
   IMG_CRAWL4AI_PROXY=ghcr.io/homeserverhq/crawl4ai-proxy:v0.1
   IMG_OLLAMA_SERVER=mirror.gcr.io/ollama/ollama:0.20.5
-  IMG_OPENWEBUI_APP=ghcr.io/homeserverhq/open-webui:v0.12.0
-  IMG_OPENWEBUI_OPENTERMINAL=ghcr.io/open-webui/open-terminal:0.11.34
+  IMG_OPENWEBUI_APP=ghcr.io/homeserverhq/open-webui:v0.13.0
+  IMG_OPENWEBUI_OPENTERMINAL=ghcr.io/open-webui/open-terminal:0.17.4
   IMG_OPENWEBUI_MCPO=ghcr.io/open-webui/mcpo:main
   IMG_OPENWEBUI_PIPELINES=ghcr.io/open-webui/pipelines:main
   IMG_OPENWEBUI_MCP=hshq/openwebui-mcp:v1
@@ -32154,14 +32284,14 @@ function loadPinnedDockerImages()
   IMG_KHOJ_SERVER=ghcr.io/khoj-ai/khoj:1.42.10
   IMG_LOBECHAT_APP=mirror.gcr.io/lobehub/lobe-chat-database:1.143.3
   IMG_INVOKEAI_APP=ghcr.io/invoke-ai/invokeai:6.12-cpu
-  IMG_RAGFLOW_INFINITY=mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3
-  IMG_RAGFLOW_APP=ghcr.io/homeserverhq/ragflow:v0.27.3.1
+  IMG_RAGFLOW_INFINITY=mirror.gcr.io/infiniflow/infinity:v0.7.5-x64-v3
+  IMG_RAGFLOW_APP=mirror.gcr.io/infiniflow/ragflow:v1.0.0
   IMG_RAGFLOW_SANDBOX=mirror.gcr.io/infiniflow/sandbox-executor-manager:latest
   IMG_RAGFLOW_SB_NODEJS=mirror.gcr.io/infiniflow/sandbox-base-nodejs:latest
   IMG_RAGFLOW_SB_PYTHON=mirror.gcr.io/infiniflow/sandbox-base-python:latest
   IMG_TABBYML_APP=mirror.gcr.io/tabbyml/tabby:0.31.2
   IMG_DEEPWIKIOPEN_APP=ghcr.io/asyncfuncai/deepwiki-open:sha-d48f5bc
-  IMG_DOCLING_APP=hshq/docling-serve:v1.38.1
+  IMG_DOCLING_APP=hshq/docling-serve:v1.38.1.1
   IMG_DIFY_SSRF=mirror.gcr.io/ubuntu/squid:latest
   IMG_DIFY_API=mirror.gcr.io/langgenius/dify-api:1.11.2
   IMG_DIFY_PLUGIND=mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local
@@ -32204,7 +32334,7 @@ function loadPinnedDockerImages()
   IMG_KOKORO_TTS=ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0
   IMG_KOKORO_WEB=ghcr.io/remsky/kokoro-fastapi-ui:v0.1.0
   IMG_CHATTERBOX_APP=hshq/chatterbox:v1
-  IMG_LITELLM_APP=ghcr.io/homeserverhq/litellm:v1.108.0
+  IMG_LITELLM_APP=ghcr.io/berriai/litellm:v1.108.2
   IMG_LANGFUSE_WORKER=langfuse/langfuse-worker:3.213.0
   IMG_LANGFUSE_APP=mirror.gcr.io/langfuse/langfuse:3.213.0
   IMG_SKYVERN_API=mirror.gcr.io/skyvern/skyvern:v1.0.13
@@ -32518,7 +32648,7 @@ function getScriptStackVersion()
     ollama)
       echo "v2" ;;
     openwebui)
-      echo "v6" ;;
+      echo "v7" ;;
     khoj)
       echo "v1" ;;
     lobechat)
@@ -32526,13 +32656,13 @@ function getScriptStackVersion()
     invokeai)
       echo "v1" ;;
     ragflow)
-      echo "v5" ;;
+      echo "v6" ;;
     tabbyml)
       echo "v1" ;;
     deepwikiopen)
       echo "v1" ;;
     docling)
-      echo "v3" ;;
+      echo "v4" ;;
     dify)
       echo "v2" ;;
     mindsdb)
@@ -32582,7 +32712,7 @@ function getScriptStackVersion()
     chatterbox)
       echo "v1" ;;
     litellm)
-      echo "v4" ;;
+      echo "v5" ;;
     langfuse)
       echo "v3" ;;
     skyvern)
@@ -34615,6 +34745,8 @@ RAGFLOW_MCPSERVER_API_KEY=
 RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=
 RAGFLOW_DATABASE_READONLYUSER=
 RAGFLOW_DATABASE_READONLYUSER_PASSWORD=
+RAGFLOW_TEAM_API_KEY=
+RAGFLOW_TEAM_TENANT_ID=
 # RAGFlow (Service Details) END
 
 # TabbyML (Service Details) BEGIN
@@ -35089,6 +35221,7 @@ AUTOKB_WEBHOOK_API_KEY=
 AUTOKB_ENCRYPTION_KEY=
 AUTOKB_ENCRYPTION_SALT=
 AUTOKB_SHARED_OWUI_TARGET_ID=
+AUTOKB_SHARED_RAGFLOW_TARGET_ID=
 # AutoKB (Service Details) END
 
 # SuiteCRM (Service Details) BEGIN
@@ -40528,8 +40661,8 @@ function checkCreateNonbackupDirByStack()
     "morphic")
       mkdir -p $HSHQ_NONBACKUP_DIR/morphic/redis
       ;;
-    "whiteboardrt")
-      mkdir -p $HSHQ_NONBACKUP_DIR/whiteboardrt/redis
+    "ragflow")
+      mkdir -p $HSHQ_NONBACKUP_DIR/ragflow/kvrocks
       ;;
 #ADD_NEW_NONBACKUP_DIRS_HERE
     *)
@@ -40671,7 +40804,7 @@ function initServiceVars()
   checkAddSvc "SVCD_OPENPROJECT_APP=openproject,openproject,primary,user,OpenProject,openproject,hshq"
   sed -i "s/SVCD_PAPERLESS=/SVCD_PAPERLESS_APP=/" $CONFIG_FILE
   checkAddSvc "SVCD_PAPERLESS_APP=paperless,paperless,primary,user,Paperless-ngx,paperless,hshq"
-  checkAddSvc "SVCD_PAPERLESS_AI_WEB=paperless,paperless-ai,primary,user,Paperless-AI,paperless-ai,hshq"
+  checkAddSvc "SVCD_PAPERLESS_AI_WEB=paperless,paperless-ai,primary,user,Zettelrobbe,paperless-ai,hshq"
   checkAddSvc "SVCD_PAPERLESS_GPT_WEB=paperless,paperless-gpt,primary,user,Paperless-GPT,paperless-gpt,hshq"
   checkAddSvc "SVCD_PASTEFY=pastefy,pastefy,primary,user,Pastefy,pastefy,hshq"
   checkAddSvc "SVCD_PEERTUBE=peertube,peertube,other,user,PeerTube,peertube,hshq"
@@ -40755,6 +40888,7 @@ function initServiceVars()
   checkAddSvc "SVCD_RAGFLOW_ADMIN=ragflow,ragflow-admin,primary,admin,RAGFlow Admin,ragflow-admin,hshq"
   checkAddSvc "SVCD_RAGFLOW_MCP=ragflow,ragflow-mcp,primary,user,RAGFlow MCP,ragflow-mcp,hshq"
   checkAddSvc "SVCD_RAGFLOW_MINIO=ragflow,ragflow-minio,primary,admin,MinIO (RAGFlow),ragflow-minio,hshq"
+  checkAddSvc "SVCD_RAGFLOW_RUSTFS=ragflow,ragflow-rustfs,primary,admin,RustFS (RAGFlow),ragflow-rustfs,hshq"
   checkAddSvc "SVCD_RAGFLOW_INFINITY_WEB=ragflow,ragflow-infinity,primary,admin,RAGFlow Infinity,ragflow-infinity,hshq"
   checkAddSvc "SVCD_TABBYML_APP=tabbyml,tabbyml,primary,admin,TabbyML,tabbyml,hshq"
   checkAddSvc "SVCD_DEEPWIKI_OPEN_APP=deepwikiopen,deepwikiopen,primary,admin,DeepWiki-Open,deepwikiopen,hshq"
@@ -41862,7 +41996,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_DEEPWIKI_OPEN_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MINDSDB_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MORPHIC_SUPABASE.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_RAGFLOW_RUSTFS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LEMONADE_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SUPERSET_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENRAG_OPENSEARCH.$HOMESERVER_DOMAIN\n"
@@ -42017,7 +42151,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_MINIO}-Admin" https://$SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_SECRET)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_RUSTFS}-Admin" https://$SUB_RAGFLOW_RUSTFS.$HOMESERVER_DOMAIN/rustfs/console/auth/login/ $HOMESERVER_ABBREV $RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_SECRET)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TABBYML_APP}-Admin" https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN/auth/signin $HOMESERVER_ABBREV $TABBYML_ADMIN_EMAIL_ADDRESS $TABBYML_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DIFY_APP}-Admin" https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $DIFY_ADMIN_EMAIL_ADDRESS $DIFY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MINDSDB_APP}-Admin" https://$SUB_MINDSDB_APP.$HOMESERVER_DOMAIN/local-login $HOMESERVER_ABBREV $MINDSDB_ADMIN_USERNAME $MINDSDB_ADMIN_PASSWORD)"\n"
@@ -42233,7 +42367,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_MINIO}-Admin" https://$SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_SECRET)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_RUSTFS}-Admin" https://$SUB_RAGFLOW_RUSTFS.$HOMESERVER_DOMAIN/rustfs/console/auth/login/ $HOMESERVER_ABBREV $RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_SECRET)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TABBYML_APP}-Admin" https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN/auth/signin $HOMESERVER_ABBREV $TABBYML_ADMIN_EMAIL_ADDRESS $TABBYML_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DIFY_APP}-Admin" https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $DIFY_ADMIN_EMAIL_ADDRESS $DIFY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MINDSDB_APP}-Admin" https://$SUB_MINDSDB_APP.$HOMESERVER_DOMAIN/local-login $HOMESERVER_ABBREV $MINDSDB_ADMIN_USERNAME $MINDSDB_ADMIN_PASSWORD)"\n"
@@ -42846,6 +42980,9 @@ function getHeimdallOrderFromSub()
       order_num=151
       ;;
     "$SUB_RAGFLOW_APP")
+      order_num=152
+      ;;
+    "$SUB_RAGFLOW_RUSTFS")
       order_num=152
       ;;
     "$SUB_TABBYML_APP")
@@ -44299,7 +44436,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/valkey/valkey:alpine3.23
       ;;
     "openwebui-qdrant")
-      container_image=mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged
+      container_image=mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged
       ;;
     "openwebui-openterminal")
       container_image=$IMG_OPENWEBUI_OPENTERMINAL
@@ -44363,6 +44500,15 @@ function getScriptImageByContainerName()
       ;;
     "ragflow-sandbox-python")
       container_image=$IMG_RAGFLOW_SB_PYTHON
+      ;;
+    "ragflow-rustfs")
+      container_image=mirror.gcr.io/rustfs/rustfs:1.0.4
+      ;;
+    "ragflow-kvrocks")
+      container_image=mirror.gcr.io/apache/kvrocks:2.16.0
+      ;;
+    "ragflow-nats")
+      container_image=mirror.gcr.io/nats:2.14.2
       ;;
     "tabbyml-app")
       container_image=$IMG_TABBYML_APP
@@ -45028,7 +45174,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "OpenWebUI" "OPENWEBUI_INIT_ENV=false,OPENWEBUI_ADMIN_USERNAME=,OPENWEBUI_ADMIN_EMAIL_ADDRESS=,OPENWEBUI_ADMIN_PASSWORD=,OPENWEBUI_DATABASE_NAME=,OPENWEBUI_DATABASE_USER=,OPENWEBUI_DATABASE_USER_PASSWORD=,OPENWEBUI_REDIS_PASSWORD=,OPENWEBUI_OIDC_CLIENT_ID=,OPENWEBUI_OIDC_CLIENT_SECRET=,OPENWEBUI_SECRET_KEY=,OPENWEBUI_ADMIN_API_KEY=,OPENWEBUI_QDRANT_API_KEY=,OPENWEBUI_OPENTERMINAL_API_KEY=,OPENWEBUI_MCPO_API_KEY=,OPENWEBUI_PIPELINES_API_KEY=,OPENWEBUI_ADMIN_UUID=,OPENWEBUI_PRIMARYUSERS_UUID=" $CONFIG_FILE false
   checkAddServiceToConfig "Khoj" "KHOJ_INIT_ENV=false,KHOJ_ADMIN_USERNAME=,KHOJ_ADMIN_EMAIL_ADDRESS=,KHOJ_ADMIN_PASSWORD=,KHOJ_DATABASE_NAME=,KHOJ_DATABASE_USER=,KHOJ_DATABASE_USER_PASSWORD=,KHOJ_DJANGO_SECRET_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "LobeChat" "LOBECHAT_INIT_ENV=false,LOBECHAT_ADMIN_USERNAME=,LOBECHAT_ADMIN_EMAIL_ADDRESS=,LOBECHAT_ADMIN_PASSWORD=,LOBECHAT_DATABASE_NAME=,LOBECHAT_DATABASE_USER=,LOBECHAT_DATABASE_USER_PASSWORD=,LOBECHAT_REDIS_PASSWORD=,LOBECHAT_NEXTAUTH_SECRET=,LOBECHAT_KEYVAULTS_SECRET=,LOBECHAT_MINIO_KEY=,LOBECHAT_MINIO_SECRET=,LOBECHAT_OIDC_CLIENT_ID=,LOBECHAT_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
-  checkAddServiceToConfig "RAGFlow" "RAGFLOW_INIT_ENV=false,RAGFLOW_ADMIN_USERNAME=,RAGFLOW_ADMIN_EMAIL_ADDRESS=,RAGFLOW_ADMIN_PASSWORD=,RAGFLOW_ADMIN_API_KEY=,RAGFLOW_DATABASE_NAME=,RAGFLOW_DATABASE_USER=,RAGFLOW_DATABASE_USER_PASSWORD=,RAGFLOW_DATABASE_ROOT_PASSWORD=,RAGFLOW_REDIS_PASSWORD=,RAGFLOW_MINIO_KEY=,RAGFLOW_MINIO_SECRET=,RAGFLOW_SECRET_KEY=,RAGFLOW_OIDC_CLIENT_ID=,RAGFLOW_OIDC_CLIENT_SECRET=,RAGFLOW_MCPSERVER_API_KEY=,RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=" $CONFIG_FILE false
+  checkAddServiceToConfig "RAGFlow" "RAGFLOW_INIT_ENV=false,RAGFLOW_ADMIN_USERNAME=,RAGFLOW_ADMIN_EMAIL_ADDRESS=,RAGFLOW_ADMIN_PASSWORD=,RAGFLOW_ADMIN_API_KEY=,RAGFLOW_DATABASE_NAME=,RAGFLOW_DATABASE_USER=,RAGFLOW_DATABASE_USER_PASSWORD=,RAGFLOW_DATABASE_ROOT_PASSWORD=,RAGFLOW_REDIS_PASSWORD=,RAGFLOW_MINIO_KEY=,RAGFLOW_MINIO_SECRET=,RAGFLOW_SECRET_KEY=,RAGFLOW_OIDC_CLIENT_ID=,RAGFLOW_OIDC_CLIENT_SECRET=,RAGFLOW_MCPSERVER_API_KEY=,RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=,RAGFLOW_TEAM_API_KEY=,RAGFLOW_TEAM_TENANT_ID=" $CONFIG_FILE false
   checkAddServiceToConfig "TabbyML" "TABBYML_INIT_ENV=false,TABBYML_ADMIN_USERNAME=,TABBYML_ADMIN_EMAIL_ADDRESS=,TABBYML_ADMIN_PASSWORD=,TABBYML_JWT_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "DeepWikiOpen" "DEEPWIKI_OPEN_INIT_ENV=false,DEEPWIKI_OPEN_AUTH_CODE=" $CONFIG_FILE false
   checkAddServiceToConfig "Docling" "DOCLING_INIT_ENV=false,DOCLING_REDIS_PASSWORD=,DOCLING_API_KEY=" $CONFIG_FILE false
@@ -45067,7 +45213,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "OpenSkills" "OPENSKILLS_INIT_ENV=false,OPENSKILLS_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "EmailClassifierAI" "EMAILCLASSIFIERAI_INIT_ENV=false,EMAILCLASSIFIERAI_ADMIN_USERNAME=,EMAILCLASSIFIERAI_ADMIN_PASSWORD=,EMAILCLASSIFIERAI_REDIS_PASSWORD=,EMAILCLASSIFIERAI_FLASK_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "HermesAgent" "HERMES_AGENT_INIT_ENV=false,HERMES_AGENT_ADMIN_USERNAME=,HERMES_AGENT_ADMIN_PASSWORD=,HERMES_AGENT_SUDO_PASSWORD=,HERMES_AGENT_API_KEY=,HERMES_AGENT_WEBUI_PASSWORD=" $CONFIG_FILE false
-  checkAddServiceToConfig "AutoKB" "AUTOKB_INIT_ENV=false,AUTOKB_ADMIN_USERNAME=,AUTOKB_ADMIN_PASSWORD=,AUTOKB_DATABASE_NAME=,AUTOKB_DATABASE_USER=,AUTOKB_DATABASE_USER_PASSWORD=,AUTOKB_DATABASE_READONLYUSER=,AUTOKB_DATABASE_READONLYUSER_PASSWORD=,AUTOKB_REDIS_PASSWORD=,AUTOKB_API_KEY=,AUTOKB_BACKEND_API_KEY=,AUTOKB_WEBHOOK_API_KEY=,AUTOKB_ENCRYPTION_KEY=,AUTOKB_ENCRYPTION_SALT=,AUTOKB_SHARED_OWUI_TARGET_ID=" $CONFIG_FILE false
+  checkAddServiceToConfig "AutoKB" "AUTOKB_INIT_ENV=false,AUTOKB_ADMIN_USERNAME=,AUTOKB_ADMIN_PASSWORD=,AUTOKB_DATABASE_NAME=,AUTOKB_DATABASE_USER=,AUTOKB_DATABASE_USER_PASSWORD=,AUTOKB_DATABASE_READONLYUSER=,AUTOKB_DATABASE_READONLYUSER_PASSWORD=,AUTOKB_REDIS_PASSWORD=,AUTOKB_API_KEY=,AUTOKB_BACKEND_API_KEY=,AUTOKB_WEBHOOK_API_KEY=,AUTOKB_ENCRYPTION_KEY=,AUTOKB_ENCRYPTION_SALT=,AUTOKB_SHARED_OWUI_TARGET_ID=,AUTOKB_SHARED_RAGFLOW_TARGET_ID=" $CONFIG_FILE false
   checkAddServiceToConfig "SuiteCRM" "SUITECRM_INIT_ENV=false,SUITECRM_ADMIN_USERNAME=,SUITECRM_ADMIN_EMAIL_ADDRESS=,SUITECRM_ADMIN_PASSWORD=,SUITECRM_DATABASE_NAME=,SUITECRM_DATABASE_ROOT_PASSWORD=,SUITECRM_DATABASE_USER=,SUITECRM_DATABASE_USER_PASSWORD=,SUITECRM_DATABASE_READONLYUSER=,SUITECRM_DATABASE_READONLYUSER_PASSWORD=,SUITECRM_REDIS_PASSWORD=,SUITECRM_APP_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "HedgeDoc" "HEDGEDOC_INIT_ENV=false,HEDGEDOC_ADMIN_USERNAME=,HEDGEDOC_ADMIN_EMAIL_ADDRESS=,HEDGEDOC_ADMIN_PASSWORD=,HEDGEDOC_DATABASE_NAME=,HEDGEDOC_DATABASE_USER=,HEDGEDOC_DATABASE_USER_PASSWORD=,HEDGEDOC_DATABASE_READONLYUSER=,HEDGEDOC_DATABASE_READONLYUSER_PASSWORD=,HEDGEDOC_SESSION_SECRET=,HEDGEDOC_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "Presenton" "PRESENTON_INIT_ENV=false,PRESENTON_ADMIN_USERNAME=,PRESENTON_ADMIN_EMAIL_ADDRESS=,PRESENTON_ADMIN_PASSWORD=,PRESENTON_ADMIN_API_KEY=" $CONFIG_FILE false
@@ -45126,7 +45272,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Paperless" "PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=,PAPERLESS_KNOWLEDGEBASE_TAG_NAME=,PAPERLESS_KNOWLEDGEBASE_TAG_ID=,PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME=,PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=,PAPERLESS_AKB_WORKFLOW_ID=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Mailu" "EMAIL_JOINT_USERNAME=,EMAIL_JOINT_PASSWORD=,EMAIL_JOINT_EMAIL_ADDRESS=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "OpenWebUI" "OPENWEBUI_ADMIN_UUID=,OPENWEBUI_PRIMARYUSERS_UUID=" $CONFIG_FILE false
-  checkAddVarsToServiceConfig "AutoKB" "AUTOKB_SHARED_OWUI_TARGET_ID=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "AutoKB" "AUTOKB_SHARED_OWUI_TARGET_ID=,AUTOKB_SHARED_RAGFLOW_TARGET_ID=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Wordpress" "WORDPRESS_APP_PASSWORD=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "InvoiceShelf" "INVOICESHELF_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Keila" "KEILA_ADMIN_API_KEY=" $CONFIG_FILE false
@@ -45135,7 +45281,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "HedgeDoc" "HEDGEDOC_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Mealie" "MEALIE_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Presenton" "PRESENTON_ADMIN_API_KEY=" $CONFIG_FILE false
-  checkAddVarsToServiceConfig "RAGFlow" "RAGFLOW_DATABASE_ROOT_PASSWORD=,RAGFLOW_ADMIN_API_KEY=,RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "RAGFlow" "RAGFLOW_DATABASE_ROOT_PASSWORD=,RAGFLOW_ADMIN_API_KEY=,RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=,RAGFLOW_TEAM_API_KEY=,RAGFLOW_TEAM_TENANT_ID=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "AutoKB" "AUTOKB_ENCRYPTION_SALT=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "SysUtils" "ALLOY_ADMIN_USERNAME=,ALLOY_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "LightRAG" "LIGHTRAG_NEO4J_DATABASE=,LIGHTRAG_NEO4J_USER=,LIGHTRAG_NEO4J_PASSWORD=" $CONFIG_FILE false
@@ -45200,6 +45346,9 @@ function buildOrPullImage()
       ;;
     "hshq/docling-serve:v1.38.1")
       buildImageDoclingV3
+      ;;
+    "hshq/docling-serve:v1.38.1.1")
+      buildImageDoclingV4
       ;;
     "hshq/ente-server:v1")
       buildImageEnteServerV1
@@ -72142,7 +72291,7 @@ function installPaperless()
   set +e
   addUserMailu alias $PAPERLESS_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   if ! [ "$PAPERLESS_INIT_ENV" = "true" ]; then
-    sendEmail -s "Paperless Admin Login Info" -b "Paperless Admin Username: $PAPERLESS_ADMIN_USERNAME\nPaperless Admin Password: $PAPERLESS_ADMIN_PASSWORD\nPaperless-AI Admin Username: $PAPERLESS_AI_ADMIN_USERNAME\nPaperless-AI Admin Password: $PAPERLESS_AI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Paperless Admin Login Info" -b "Paperless Admin Username: $PAPERLESS_ADMIN_USERNAME\nPaperless Admin Password: $PAPERLESS_ADMIN_PASSWORD\nZettelrobbe Admin Username: $PAPERLESS_AI_ADMIN_USERNAME\nZettelrobbe Admin Password: $PAPERLESS_AI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     PAPERLESS_INIT_ENV=true
     updateConfigVar PAPERLESS_INIT_ENV $PAPERLESS_INIT_ENV
   fi
@@ -72220,7 +72369,7 @@ function installPaperless()
   updateCaddyBlocks $SUB_PAPERLESS_GPT_WEB $MANAGETLS_PAPERLESS_GPT_WEB "$is_integrate_hshq" $NETDEFAULT_PAPERLESS_GPT_WEB "$inner_block"
   insertSubAuthelia $SUB_PAPERLESS_GPT_WEB.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll paperless "$FMLNAME_PAPERLESS_AI_WEB" $USERTYPE_PAPERLESS_AI_WEB "https://$SUB_PAPERLESS_AI_WEB.$HOMESERVER_DOMAIN" "paperless-ai.png" "$(getHeimdallOrderFromSub $SUB_PAPERLESS_AI_WEB $USERTYPE_PAPERLESS_AI_WEB)"
+    insertEnableSvcAll paperless "$FMLNAME_PAPERLESS_AI_WEB" $USERTYPE_PAPERLESS_AI_WEB "https://$SUB_PAPERLESS_AI_WEB.$HOMESERVER_DOMAIN" "zettelrobbe.png" "$(getHeimdallOrderFromSub $SUB_PAPERLESS_AI_WEB $USERTYPE_PAPERLESS_AI_WEB)"
     insertEnableSvcAll paperless "$FMLNAME_PAPERLESS_APP" $USERTYPE_PAPERLESS_APP "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN" "paperless.png" "$(getHeimdallOrderFromSub $SUB_PAPERLESS_APP $USERTYPE_PAPERLESS_APP)"
     insertEnableSvcHeimdall paperless "$FMLNAME_PAPERLESS_GPT_WEB" $USERTYPE_PAPERLESS_GPT_WEB "https://$SUB_PAPERLESS_GPT_WEB.$HOMESERVER_DOMAIN" "paperless-gpt.png" true "$(getHeimdallOrderFromSub $SUB_PAPERLESS_GPT_WEB $USERTYPE_PAPERLESS_GPT_WEB)"
     restartAllCaddyContainers
@@ -72985,7 +73134,7 @@ function buildImagePaperlessAINextV1()
 {
   set +e
   echo -e "\n========================================================================"
-  echo -e "  The Paperless-AI-Next image is being built. It can take a bit"
+  echo -e "  The Zettelrobbe image is being built. It can take a bit"
   echo -e "  for the process to complete, so please be patient."
   echo -e "========================================================================\n"
   sudo rm -fr $HSHQ_BUILD_DIR/paperless-ai-next
@@ -73070,7 +73219,7 @@ function mfPaperlessV7AddAI()
   insertSubAuthelia $SUB_PAPERLESS_AI_WEB.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   insertEnableSvcAll paperless "$FMLNAME_PAPERLESS_AI_WEB" $USERTYPE_PAPERLESS_AI_WEB "https://$SUB_PAPERLESS_AI_WEB.$HOMESERVER_DOMAIN" "paperless-ai.png" "$(getHeimdallOrderFromSub $SUB_PAPERLESS_AI_WEB $USERTYPE_PAPERLESS_AI_WEB)"
   restartAllCaddyContainers
-  sendEmail -s "Paperless-AI Admin Login Info" -b "Paperless-AI Admin Username: $PAPERLESS_AI_ADMIN_USERNAME\nPaperless-AI Admin Password: $PAPERLESS_AI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  sendEmail -s "Zettelrobbe Admin Login Info" -b "Zettelrobbe Admin Username: $PAPERLESS_AI_ADMIN_USERNAME\nZettelrobbe Admin Password: $PAPERLESS_AI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
 }
 
 function outputComposeV7Paperless()
@@ -101954,6 +102103,7 @@ ENABLE_RAG_LOCAL_WEB_FETCH=True
 VECTOR_DB=qdrant
 QDRANT_URI=http://openwebui-qdrant:6333
 QDRANT_API_KEY=$OPENWEBUI_QDRANT_API_KEY
+QDRANT__TELEMETRY_DISABLED=true
 OPEN_TERMINAL_MULTI_USER=true
 OPEN_TERMINAL_API_KEY=$OPENWEBUI_OPENTERMINAL_API_KEY
 OPENWEBUI_MCPO_API_KEY=$OPENWEBUI_MCPO_API_KEY
@@ -102050,16 +102200,30 @@ function performUpdateOpenWebUI()
       image_update_map[7]="hshq/openwebui-mcp:v1,hshq/openwebui-mcp:v1"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/open-webui:v0.12.0,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,ghcr.io/open-webui/open-terminal:0.11.34,ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/pipelines:main,hshq/openwebui-mcp:v1
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
-      image_update_map[1]="ghcr.io/homeserverhq/open-webui:v0.12.0,ghcr.io/homeserverhq/open-webui:v0.12.0"
+      image_update_map[1]="ghcr.io/homeserverhq/open-webui:v0.12.0,ghcr.io/homeserverhq/open-webui:v0.13.0"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[3]="mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged"
-      image_update_map[4]="ghcr.io/open-webui/open-terminal:0.11.34,ghcr.io/open-webui/open-terminal:0.11.34"
+      image_update_map[3]="mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged"
+      image_update_map[4]="ghcr.io/open-webui/open-terminal:0.11.34,ghcr.io/open-webui/open-terminal:0.17.4"
       image_update_map[5]="ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/mcpo:main"
       image_update_map[6]="ghcr.io/open-webui/pipelines:main,ghcr.io/open-webui/pipelines:main"
       image_update_map[7]="hshq/openwebui-mcp:v1,hshq/openwebui-mcp:v1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateOpenWebUIV7
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    7)
+      newVer=v7
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/open-webui:v0.13.0,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged,ghcr.io/open-webui/open-terminal:0.11.34,ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/pipelines:main,hshq/openwebui-mcp:v1
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="ghcr.io/homeserverhq/open-webui:v0.13.0,ghcr.io/homeserverhq/open-webui:v0.13.0"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[3]="mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged,mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged"
+      image_update_map[4]="ghcr.io/open-webui/open-terminal:0.17.4,ghcr.io/open-webui/open-terminal:0.17.4"
+      image_update_map[5]="ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/mcpo:main"
+      image_update_map[6]="hshq/openwebui-mcp:v1,hshq/openwebui-mcp:v1"
     ;;
     *)
       is_upgrade_error=true
@@ -102612,6 +102776,208 @@ function buildImageOpenWebUIMCPV1()
   cd
   sudo rm -fr $HSHQ_BUILD_DIR/open-webui-mcp-server
   return $rtval
+}
+
+function mfUpdateOpenWebUIV7()
+{
+  set +e
+  grep -q "QDRANT__TELEMETRY_DISABLED" $HOME/openwebui.env
+  if [ $? -ne 0 ]; then
+    echo "QDRANT__TELEMETRY_DISABLED=true" >> $HOME/openwebui.env
+  fi
+  cat <<EOFMT > $HOME/openwebui-compose.yml
+$STACK_VERSION_PREFIX openwebui v7
+
+services:
+  openwebui-db:
+    image: mirror.gcr.io/postgres:16.9-bookworm
+    container_name: openwebui-db
+    hostname: openwebui-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-openwebui-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.openwebui-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.openwebui-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.openwebui-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.openwebui-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.openwebui-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.openwebui-hourly-db.email-from=OpenWebUI Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.openwebui-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.openwebui-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.openwebui-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.openwebui-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.openwebui-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.openwebui-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.openwebui-monthly-db.email-from=OpenWebUI Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.openwebui-monthly-db.mail-only-on-error=false"
+
+  openwebui-qdrant:
+    image: mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged
+    container_name: openwebui-qdrant
+    hostname: openwebui-qdrant
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-openwebui-net
+      - dock-dbs-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/qdrant:/qdrant/storage
+
+  openwebui-app:
+    image: ghcr.io/homeserverhq/open-webui:v0.13.0
+    container_name: openwebui-app
+    hostname: openwebui-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - openwebui-db
+    networks:
+      - int-openwebui-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/data:/app/backend/data
+
+  openwebui-openterminal:
+    image: ghcr.io/open-webui/open-terminal:0.17.4
+    container_name: openwebui-openterminal
+    hostname: openwebui-openterminal
+    restart: unless-stopped
+    env_file: stack.env
+    networks:
+      - int-openwebui-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-openwebui-openterminal:/home
+
+  openwebui-mcpo:
+    image: ghcr.io/open-webui/mcpo:main
+    container_name: openwebui-mcpo
+    hostname: openwebui-mcpo
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: --config /app/config/config.json --api-key "$OPENWEBUI_MCPO_API_KEY" --hot-reload
+    networks:
+      - int-openwebui-net
+      - dock-aipriv-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/mcpo:/app/config
+
+  openwebui-mcp:
+    image: hshq/openwebui-mcp:v1
+    container_name: openwebui-mcp
+    hostname: openwebui-mcp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-openwebui-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  openwebui-redis:
+    image: mirror.gcr.io/valkey/valkey:alpine3.23
+    container_name: openwebui-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $OPENWEBUI_REDIS_PASSWORD
+      --appendonly no
+    networks:
+      - int-openwebui-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+volumes:
+  v-openwebui-openterminal:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/openterminal
+  v-openwebui-pipelines:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/pipelines
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-openwebui-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
 }
 
 # Khoj
@@ -103362,11 +103728,15 @@ function installRAGFlow()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName ragflow-minio)
+  pullImage $(getScriptImageByContainerName ragflow-rustfs)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName ragflow-redis)
+  pullImage $(getScriptImageByContainerName ragflow-kvrocks)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-nats)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -103376,10 +103746,13 @@ function installRAGFlow()
   mkdir $HSHQ_STACKS_DIR/ragflow/logs
   mkdir $HSHQ_STACKS_DIR/ragflow/nginx
   mkdir $HSHQ_STACKS_DIR/ragflow/infinity
-  mkdir $HSHQ_STACKS_DIR/ragflow/minio
+  mkdir $HSHQ_STACKS_DIR/ragflow/rustfs
   mkdir $HSHQ_STACKS_DIR/ragflow/db
   mkdir $HSHQ_STACKS_DIR/ragflow/dbexport
   mkdir $HSHQ_STACKS_DIR/ragflow/misc
+  mkdir $HSHQ_STACKS_DIR/ragflow/nats
+  mkdir -p $HSHQ_NONBACKUP_DIR/ragflow/kvrocks
+  sudo chown 10001:10001 $HSHQ_STACKS_DIR/ragflow/rustfs
   chmod 777 $HSHQ_STACKS_DIR/ragflow/dbexport
   initServicesCredentials
   set +e
@@ -103482,24 +103855,24 @@ function installRAGFlow()
   updateCaddyBlocks $SUB_RAGFLOW_MCP $MANAGETLS_RAGFLOW_MCP "$is_integrate_hshq" $NETDEFAULT_RAGFLOW_MCP "$inner_block"
   insertSubAuthelia $SUB_RAGFLOW_MCP.$HOMESERVER_DOMAIN bypass
   inner_block=""
-  inner_block=$inner_block">>https://$SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>https://$SUB_RAGFLOW_RUSTFS.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://ragflow-minio:9001 {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://ragflow-rustfs:9001 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
-  updateCaddyBlocks $SUB_RAGFLOW_MINIO $MANAGETLS_RAGFLOW_MINIO "$is_integrate_hshq" $NETDEFAULT_RAGFLOW_MINIO "$inner_block"
-  insertSubAuthelia $SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  updateCaddyBlocks $SUB_RAGFLOW_RUSTFS $MANAGETLS_RAGFLOW_RUSTFS "$is_integrate_hshq" $NETDEFAULT_RAGFLOW_RUSTFS "$inner_block"
+  insertSubAuthelia $SUB_RAGFLOW_RUSTFS.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll ragflow "$FMLNAME_RAGFLOW_APP" $USERTYPE_RAGFLOW_APP "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN" "ragflow.png" "$(getHeimdallOrderFromSub $SUB_RAGFLOW_APP $USERTYPE_RAGFLOW_APP)"
-    insertEnableSvcAll ragflow "$FMLNAME_RAGFLOW_MINIO" $USERTYPE_RAGFLOW_MINIO "https://$SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN" "minio.png" "$(getHeimdallOrderFromSub $SUB_RAGFLOW_MINIO $USERTYPE_RAGFLOW_MINIO)"
+    insertEnableSvcAll ragflow "$FMLNAME_RAGFLOW_RUSTFS" $USERTYPE_RAGFLOW_RUSTFS "https://$SUB_RAGFLOW_RUSTFS.$HOMESERVER_DOMAIN" "rustfs.png" "$(getHeimdallOrderFromSub $SUB_RAGFLOW_RUSTFS $USERTYPE_RAGFLOW_RUSTFS)"
     restartAllCaddyContainers
     checkAddDBConnection true ragflow "$FMLNAME_RAGFLOW_APP" mysql ragflow-db $RAGFLOW_DATABASE_NAME $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_USER_PASSWORD
   fi
@@ -103507,7 +103880,7 @@ function installRAGFlow()
 
 function outputConfigRAGFlow()
 {
-  outputComposeRAGFlow
+  set +e
   cat <<EOFMT > $HOME/ragflow.env
 TZ=\${PORTAINER_TZ}
 TIMEZONE='UTC-6\tAmerica/Chicago'
@@ -103536,16 +103909,21 @@ INFINITY_HOST=ragflow-infinity
 INFINITY_THRIFT_PORT=23817
 INFINITY_HTTP_PORT=23820
 INFINITY_PSQL_PORT=5432
-MINIO_HOST=ragflow-minio
+MINIO_HOST=ragflow-rustfs
 MINIO_CONSOLE_PORT=9001
 MINIO_PORT=9000
 MINIO_USER=$RAGFLOW_MINIO_KEY
 MINIO_PASSWORD=$RAGFLOW_MINIO_SECRET
 MINIO_ROOT_USER=$RAGFLOW_MINIO_KEY
 MINIO_ROOT_PASSWORD=$RAGFLOW_MINIO_SECRET
-REDIS_HOST=ragflow-redis
-REDIS_PORT=6379
+RUSTFS_ACCESS_KEY=$RAGFLOW_MINIO_KEY
+RUSTFS_SECRET_KEY=$RAGFLOW_MINIO_SECRET
+RUSTFS_AUTO_CREATE_BUCKETS=ragflow
+KVROCKS_HOST=ragflow-kvrocks
+KVROCKS_PORT=6379
 REDIS_PASSWORD=$RAGFLOW_REDIS_PASSWORD
+NATS_HOST=ragflow-nats
+NATS_PORT=4222
 SVR_WEB_HTTP_PORT=80
 SVR_WEB_HTTPS_PORT=443
 SVR_HTTP_PORT=9380
@@ -103555,8 +103933,9 @@ MAX_CONTENT_LENGTH=1073741824
 DOC_BULK_SIZE=4
 EMBEDDING_BATCH_SIZE=8
 REGISTER_ENABLED=1
-USE_DOCLING=false
+USE_DOCLING=true
 DOCLING_SERVER_URL=http://docling-app:5001
+DOCLING_API_KEY=$DOCLING_API_KEY
 DOCLING_PICTURE_DESCRIPTION=1
 DOCLING_PICTURE_DESCRIPTION_PRESET=external_vlm
 DOCLING_PICTURE_DESCRIPTION_AREA_THRESHOLD=0.025
@@ -103568,7 +103947,14 @@ DEFAULT_SUPERUSER_NICKNAME="RAGFlow $(getAdminEmailName)"
 DEFAULT_SUPERUSER_EMAIL=$RAGFLOW_ADMIN_EMAIL_ADDRESS
 DEFAULT_SUPERUSER_PASSWORD=$RAGFLOW_ADMIN_PASSWORD
 ADMIN_DEFAULT_PASSWORD=$RAGFLOW_ADMIN_PASSWORD
-API_PROXY_SCHEME=python
+RAGFLOW_MCP_ENABLED=true
+RAGFLOW_MCP_HOST=0.0.0.0
+RAGFLOW_MCP_PORT=9382
+RAGFLOW_MCP_LAUNCH_MODE=host
+RAGFLOW_MCP_TRANSPORT_STREAMABLE_ENABLED=true
+RAGFLOW_MCP_TRANSPORT_SSE_ENABLED=true
+RAGFLOW_MCP_JSON_RESPONSE=true
+ALLOW_ANY_HOST=true
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/nginx/nginx.conf
 user  root;
@@ -103586,9 +103972,7 @@ http {
                       '"\$http_user_agent" "\$http_x_forwarded_for"';
     access_log  /var/log/nginx/access.log  main;
     sendfile        on;
-    #tcp_nopush     on;
     keepalive_timeout  65;
-    #gzip  on;
     client_max_body_size 1024M;
     include /etc/nginx/conf.d/ragflow.conf;
 }
@@ -103630,13 +104014,11 @@ server {
         include proxy.conf;
     }
 
-
     location / {
         index index.html;
         try_files \$uri \$uri/ /index.html;
     }
 
-    # Cache-Control: max-age Expires
     location ~ ^/static/(css|js|media)/ {
         expires 10y;
         access_log off;
@@ -103661,7 +104043,6 @@ log_dir                  = "/var/infinity/log"
 log_to_stdout            = true
 log_file_max_size        = "100MB"
 log_file_rotate_count    = 10
-
 log_level               = "info"
 
 [storage]
@@ -103671,7 +104052,6 @@ optimize_interval        = "10s"
 cleanup_interval         = "60s"
 compact_interval         = "120s"
 storage_type             = "local"
-
 mem_index_capacity       = 65536
 
 [buffer]
@@ -103697,17 +104077,22 @@ admin:
 minio:
   user: '$RAGFLOW_MINIO_KEY'
   password: '$RAGFLOW_MINIO_SECRET'
-  host: 'ragflow-minio:9000'
-  bucket: 'ragflow'
+  host: 'ragflow-rustfs:9000'
+  bucket: ''
   prefix_path: ''
 infinity:
   uri: 'ragflow-infinity:23817'
   db_name: 'default_db'
-redis:
+kvrocks:
   db: 1
   username: ''
   password: '$RAGFLOW_REDIS_PASSWORD'
-  host: 'ragflow-redis:6379'
+  host: 'ragflow-kvrocks:6379'
+nats:
+  host: 'ragflow-nats'
+  port: 4222
+ingestor:
+  mq_type: 'nats'
 mysql:
   name: '$RAGFLOW_DATABASE_NAME'
   user: '$RAGFLOW_DATABASE_USER'
@@ -103735,19 +104120,6 @@ smtp:
     - "RAGFlow $(getAdminEmailName)"
     - "$EMAIL_ADMIN_EMAIL_ADDRESS"
   mail_frontend_url: "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN"
-user_default_llm:
-  factory: 'OpenAI-API-Compatible'
-  base_url: 'http://litellm-proxy:4000/v1'
-  api_key: '$LITELLM_AUTH_KEY'
-  default_models:
-    chat_model:
-      name: 'LongContext'
-    embedding_model:
-      name: 'Embed'
-    rerank_model:
-      name: 'Rerank'
-    vision_model:
-      name: 'Vision'
 EOFMT
   RAGFLOW_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $RAGFLOW_OIDC_CLIENT_SECRET | tr -d ':\n')
   cat <<EOFMT > $HOME/ragflow.oidc
@@ -103768,10 +104140,6 @@ EOFMT
         token_endpoint_auth_method: client_secret_post
 # Authelia OIDC Client ragflow END
 EOFMT
-}
-
-function outputComposeRAGFlow()
-{
   cat <<EOFMT > $HOME/ragflow-compose.yml
 $STACK_VERSION_PREFIX ragflow $(getScriptStackVersion ragflow)
 
@@ -103847,11 +104215,11 @@ services:
     depends_on:
       - ragflow-db
       - ragflow-infinity
-      - ragflow-minio
-      - ragflow-redis
+      - ragflow-rustfs
+      - ragflow-kvrocks
+      - ragflow-nats
     command:
       - --enable-adminserver
-      - --init-model-provider-tables
       - --init-superuser
     networks:
       - int-ragflow-net
@@ -103877,54 +104245,77 @@ services:
       retries: 5
       start_period: 60s
 
-  ragflow-minio:
-    image: $(getScriptImageByContainerName ragflow-minio)
-    container_name: ragflow-minio
-    hostname: ragflow-minio
+  ragflow-rustfs:
+    image: $(getScriptImageByContainerName ragflow-rustfs)
+    container_name: ragflow-rustfs
+    hostname: ragflow-rustfs
     restart: unless-stopped
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
     depends_on:
       - ragflow-db
-    entrypoint: >
-      /bin/sh -c "
-        minio server /data --address ':9000' --console-address ':9001' &
-        MINIO_PID=\$\$!
-        while ! curl -s http://localhost:9000/minio/health/live; do
-          echo 'Waiting for MinIO to start...'
-          sleep 1
-        done
-        sleep 5
-        mc alias set minio http://localhost:9000 ${RAGFLOW_MINIO_KEY} ${RAGFLOW_MINIO_SECRET}
-        echo 'Creating bucket ragflow'
-        mc mb minio/ragflow || true
-        wait \$\$MINIO_PID
-      "
     networks:
       - int-ragflow-net
       - dock-proxy-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/minio:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/rustfs:/data
 
-  ragflow-redis:
-    image: $(getScriptImageByContainerName ragflow-redis)
-    container_name: ragflow-redis
+  ragflow-kvrocks:
+    image: $(getScriptImageByContainerName ragflow-kvrocks)
+    container_name: ragflow-kvrocks
+    hostname: ragflow-kvrocks
     restart: unless-stopped
+    env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    command: redis-server
-      --requirepass $RAGFLOW_REDIS_PASSWORD
-      --appendonly no
-      --maxmemory 128mb
-      --maxmemory-policy allkeys-lru
+    user: "0:0"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /var/lib/kvrocks
+        {
+          echo "bind 0.0.0.0"
+          echo "port 6379"
+          echo "dir /var/lib/kvrocks"
+          printf 'requirepass %s\n' "\$\$REDIS_PASSWORD"
+        } > /var/lib/kvrocks/kvrocks.conf
+        exec kvrocks -c /var/lib/kvrocks/kvrocks.conf --dir /var/lib/kvrocks
     networks:
       - int-ragflow-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+      - v-ragflow-kvrocks:/var/lib/kvrocks
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"\$\$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+
+  ragflow-nats:
+    image: $(getScriptImageByContainerName ragflow-nats)
+    container_name: ragflow-nats
+    hostname: ragflow-nats
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: ["-js", "-sd", "/data", "--http_port", "8222"]
+    networks:
+      - int-ragflow-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-ragflow-nats:/data
+    healthcheck:
+      test: ["CMD", "nats-server", "--health-check"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
 
 volumes:
   v-ragflow-config:
@@ -103945,6 +104336,18 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/infinity
+  v-ragflow-kvrocks:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/ragflow/kvrocks
+  v-ragflow-nats:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nats
 
 networks:
   dock-proxy-net:
@@ -104028,13 +104431,29 @@ function performUpdateRAGFlow()
       image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,ghcr.io/homeserverhq/ragflow:v0.27.3.1,ghcr.io/homeserverhq/minio:v1.0,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/mariadb:11.4.12"
       image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3"
       image_update_map[2]="ghcr.io/homeserverhq/ragflow:v0.27.3.1,ghcr.io/homeserverhq/ragflow:v0.27.3.1"
       image_update_map[3]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
       image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): This version of RAGFlow cannot be upgraded to the next version. You must first backup your data, uninstall and reinstall RAGFlow and import your data back in."
+      return
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/infiniflow/infinity:v0.7.5-x64-v3,mirror.gcr.io/infiniflow/ragflow:v1.0.0,rustfs/rustfs:1.0.4,mirror.gcr.io/apache/kvrocks:2.16.0,mirror.gcr.io/nats:2.14.2
+      image_update_map[0]="mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/mariadb:11.4.12"
+      image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.7.5-x64-v3,mirror.gcr.io/infiniflow/infinity:v0.7.5-x64-v3"
+      image_update_map[2]="mirror.gcr.io/infiniflow/ragflow:v1.0.0,mirror.gcr.io/infiniflow/ragflow:v1.0.0"
+      image_update_map[3]="mirror.gcr.io/rustfs/rustfs:1.0.4,mirror.gcr.io/rustfs/rustfs:1.0.4"
+      image_update_map[4]="mirror.gcr.io/apache/kvrocks:2.16.0,mirror.gcr.io/apache/kvrocks:2.16.0"
+      image_update_map[5]="mirror.gcr.io/nats:2.14.2,mirror.gcr.io/nats:2.14.2"
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): This version of RAGFlow cannot be upgraded to the next version. You must first backup your data, uninstall and reinstall RAGFlow and import your data back in."
+      return
     ;;
     *)
       is_upgrade_error=true
@@ -104599,7 +105018,204 @@ wait
 EOFMT
   chmod 755 $HSHQ_STACKS_DIR/ragflow/misc/entrypoint.sh
   rm -f $HOME/ragflow-compose.yml
-  outputComposeRAGFlow
+  cat <<EOFMT > $HOME/ragflow-compose.yml
+$STACK_VERSION_PREFIX ragflow $(getScriptStackVersion ragflow)
+
+services:
+  ragflow-db:
+    image: $(getScriptImageByContainerName ragflow-db)
+    container_name: ragflow-db
+    hostname: ragflow-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mariadbd --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120 --skip-name-resolve
+    networks:
+      - int-ragflow-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-ragflow-db:/var/lib/mysql
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMariaDB.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.ragflow-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.ragflow-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.ragflow-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.ragflow-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.ragflow-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.ragflow-hourly-db.email-from=RAGFlow Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.ragflow-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.ragflow-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.ragflow-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.ragflow-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.ragflow-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.ragflow-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.ragflow-monthly-db.email-from=RAGFlow Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.ragflow-monthly-db.mail-only-on-error=false"
+
+  ragflow-infinity:
+    image: $(getScriptImageByContainerName ragflow-infinity)
+    container_name: ragflow-infinity
+    hostname: ragflow-infinity
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ragflow-db
+    command: ["-f", "/infinity_conf.toml"]
+    mem_limit: 8g
+    ulimits:
+      nofile:
+        soft: 500000
+        hard: 500000
+    networks:
+      - int-ragflow-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-ragflow-infinity:/var/infinity
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/misc/infinity_conf.toml:/infinity_conf.toml
+
+  ragflow-app:
+    image: $(getScriptImageByContainerName ragflow-app)
+    container_name: ragflow-app
+    hostname: ragflow-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ragflow-db
+      - ragflow-infinity
+      - ragflow-minio
+      - ragflow-redis
+    command:
+      - --enable-adminserver
+      - --init-model-provider-tables
+      - --init-superuser
+    networks:
+      - int-ragflow-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-ragflow-config:/ragflow/conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/logs:/ragflow/logs
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nginx/ragflow.conf:/etc/nginx/conf.d/ragflow.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nginx/proxy.conf:/etc/nginx/proxy.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - /etc/ssl/certs/ca-certificates.crt:/ragflow/.venv/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9380/api/v1/system/healthz"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  ragflow-minio:
+    image: $(getScriptImageByContainerName ragflow-minio)
+    container_name: ragflow-minio
+    hostname: ragflow-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ragflow-db
+    entrypoint: >
+      /bin/sh -c "
+        minio server /data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\$\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        mc alias set minio http://localhost:9000 ${RAGFLOW_MINIO_KEY} ${RAGFLOW_MINIO_SECRET}
+        echo 'Creating bucket ragflow'
+        mc mb minio/ragflow || true
+        wait \$\$MINIO_PID
+      "
+    networks:
+      - int-ragflow-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/minio:/data
+
+  ragflow-redis:
+    image: $(getScriptImageByContainerName ragflow-redis)
+    container_name: ragflow-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $RAGFLOW_REDIS_PASSWORD
+      --appendonly no
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+    networks:
+      - int-ragflow-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+volumes:
+  v-ragflow-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/config
+  v-ragflow-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/db
+  v-ragflow-infinity:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/infinity
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-ragflow-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+
 }
 
 # TabbyML
@@ -105122,9 +105738,15 @@ function performUpdateDocling()
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=hshq/docling-serve:v1.38.1,mirror.gcr.io/valkey/valkey:alpine3.23
-      image_update_map[0]="hshq/docling-serve:v1.38.1,hshq/docling-serve:v1.38.1"
+      image_update_map[0]="hshq/docling-serve:v1.38.1,hshq/docling-serve:v1.38.1.1"
+      image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    4)
+      newVer=v4
+      curImageList=hshq/docling-serve:v1.38.1.1,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="hshq/docling-serve:v1.38.1.1,hshq/docling-serve:v1.38.1.1"
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
@@ -105166,6 +105788,11 @@ function buildImageDoclingV2()
 function buildImageDoclingV3()
 {
   buildImageDoclingHSHQ v1.38.1
+}
+
+function buildImageDoclingV4()
+{
+  buildImageDoclingHSHQ v1.38.1.1
 }
 
 function buildImageDoclingHSHQ()
@@ -116674,24 +117301,31 @@ function performUpdateLiteLLM()
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     2)
-      newVer=v3
+      newVer=v5
       curImageList=mirror.gcr.io/pgvector/pgvector:pg17,ghcr.io/berriai/litellm:v1.92.0,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
-      image_update_map[1]="ghcr.io/berriai/litellm:v1.92.0,ghcr.io/homeserverhq/litellm:v1.106.4"
+      image_update_map[1]="ghcr.io/berriai/litellm:v1.92.0,ghcr.io/berriai/litellm:v1.108.2"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     3)
-      newVer=v4
+      newVer=v5
       curImageList=mirror.gcr.io/pgvector/pgvector:pg17,ghcr.io/homeserverhq/litellm:v1.106.4,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
-      image_update_map[1]="ghcr.io/homeserverhq/litellm:v1.106.4,ghcr.io/homeserverhq/litellm:v1.108.0"
+      image_update_map[1]="ghcr.io/homeserverhq/litellm:v1.106.4,ghcr.io/berriai/litellm:v1.108.2"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=mirror.gcr.io/pgvector/pgvector:pg17,ghcr.io/homeserverhq/litellm:v1.108.0,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
-      image_update_map[1]="ghcr.io/homeserverhq/litellm:v1.108.0,ghcr.io/homeserverhq/litellm:v1.108.0"
+      image_update_map[1]="ghcr.io/homeserverhq/litellm:v1.108.0,ghcr.io/berriai/litellm:v1.108.2"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    5)
+      newVer=v5
+      curImageList=mirror.gcr.io/pgvector/pgvector:pg17,ghcr.io/berriai/litellm:v1.108.2,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
+      image_update_map[1]="ghcr.io/berriai/litellm:v1.108.2,ghcr.io/berriai/litellm:v1.108.2"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
@@ -120495,7 +121129,7 @@ PAPERLESS_TOKEN=$PAPERLESS_API_TOKEN
 DOCLING_API_KEY=$DOCLING_API_KEY
 OPENWEBUI_API_KEY=$OPENWEBUI_ADMIN_API_KEY
 LIGHTRAG_API_KEY=$LIGHTRAG_API_KEY
-RAGFLOW_API_KEY=$RAGFLOW_ADMIN_API_KEY
+RAGFLOW_API_KEY=$RAGFLOW_TEAM_API_KEY
 EOFMT
 }
 
@@ -120608,37 +121242,65 @@ function addSharedPipelinesAutoKB()
   akbBody="${akbRes%$'\n'*}"
   [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Contact sync subscription failed: $akbBody" >&2; return 1; }
   docker ps | grep -q openwebui-app > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    return
+  if [ $? -eq 0 ]; then
+    echo "Resolving openWebUISink service id..."
+    akbRes="$(docker exec autokb-web curl -sS -X GET \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
+    SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
+    if [ -z "$SINK_ID" ]; then
+      echo "openWebUISink not found among provisioned sinks" >&2
+      return 1
+    fi
+    echo "Creating OpenWebUI target KB Shared-SKB..."
+    akbRes="$(docker exec autokb-web curl -sS -X POST \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data "{\"name\":\"Shared-SKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$IMAP_SHARED_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
+    AUTOKB_SHARED_OWUI_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.target_id')"
+    updateConfigVar AUTOKB_SHARED_OWUI_TARGET_ID $AUTOKB_SHARED_OWUI_TARGET_ID
+    AUTOKB_SHARED_OWUI_REMOTE_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.remote_target_id')"
+    docker exec openwebui-db bash -lc "PGPASSWORD=\"\$POSTGRES_PASSWORD\" psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -v ON_ERROR_STOP=1 -c \"INSERT INTO access_grant (id, resource_type, resource_id, principal_type, principal_id, permission, created_at) VALUES (gen_random_uuid()::text, 'knowledge', '$AUTOKB_SHARED_OWUI_REMOTE_TARGET_ID', 'group', '$OPENWEBUI_PRIMARYUSERS_UUID', 'read', EXTRACT(EPOCH FROM NOW())::bigint);\""
   fi
-  echo "Resolving openWebUISink service id..."
-  akbRes="$(docker exec autokb-web curl -sS -X GET \
-    -H "Authorization: Bearer $AUTOKB_API_KEY" \
-    -H "Content-Type: application/json" \
-    -w $'\n%{http_code}' \
-    "http://autokb-web:80/api/sinks")"
-  akbCode="${akbRes##*$'\n'}"
-  akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
-  SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
-  if [ -z "$SINK_ID" ]; then
-    echo "openWebUISink not found among provisioned sinks" >&2
-    return 1
+  docker ps | grep -q ragflow-app > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    echo "Resolving ragflowSink service id..."
+    akbRes="$(docker exec autokb-web curl -sS -X GET \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
+    SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "ragflowSink") | .service_id' | head -n1)"
+    if [ -z "$SINK_ID" ]; then
+      echo "ragflowSink not found among provisioned sinks" >&2
+      return 1
+    fi
+    echo "Creating RAGFlow target KB Shared-SKB..."
+    akbRes="$(docker exec autokb-web curl -sS -X POST \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data "{\"name\":\"Shared-SKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$RAGFLOW_TEAM_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PUBLIC\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$IMAP_SHARED_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
+    AUTOKB_SHARED_RAGFLOW_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.target_id')"
+    updateConfigVar AUTOKB_SHARED_RAGFLOW_TARGET_ID $AUTOKB_SHARED_RAGFLOW_TARGET_ID
   fi
-  echo "Creating OpenWebUI target KB Shared-SKB..."
-  akbRes="$(docker exec autokb-web curl -sS -X POST \
-    -H "Authorization: Bearer $AUTOKB_API_KEY" \
-    -H "Content-Type: application/json" \
-    --data "{\"name\":\"Shared-SKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$IMAP_SHARED_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
-    -w $'\n%{http_code}' \
-    "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
-  akbCode="${akbRes##*$'\n'}"
-  akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
-  AUTOKB_SHARED_OWUI_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.target_id')"
-  updateConfigVar AUTOKB_SHARED_OWUI_TARGET_ID $AUTOKB_SHARED_OWUI_TARGET_ID
-  AUTOKB_SHARED_OWUI_REMOTE_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.remote_target_id')"
-  docker exec openwebui-db bash -lc "PGPASSWORD=\"\$POSTGRES_PASSWORD\" psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -v ON_ERROR_STOP=1 -c \"INSERT INTO access_grant (id, resource_type, resource_id, principal_type, principal_id, permission, created_at) VALUES (gen_random_uuid()::text, 'knowledge', '$AUTOKB_SHARED_OWUI_REMOTE_TARGET_ID', 'group', '$OPENWEBUI_PRIMARYUSERS_UUID', 'read', EXTRACT(EPOCH FROM NOW())::bigint);\""
   echo "Done."
 }
 
