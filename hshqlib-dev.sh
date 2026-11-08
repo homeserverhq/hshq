@@ -35405,10 +35405,10 @@ CERTS_IS_CA_INIT="false"
 CERTS_ROOT_CA_NAME=
 CERTS_EMAIL_ADDRESS=
 CERTS_INTERNAL_DHPARAMS_KEYLENGTH="2048"
-CERTS_INTERNAL_COUNTRY=
-CERTS_INTERNAL_STATE=
-CERTS_INTERNAL_LOCALITY=
-CERTS_INTERNAL_ORG_NAME=
+CERTS_INTERNAL_COUNTRY="$CERTS_INTERNAL_COUNTRY"
+CERTS_INTERNAL_STATE="$CERTS_INTERNAL_STATE"
+CERTS_INTERNAL_LOCALITY="$CERTS_INTERNAL_LOCALITY"
+CERTS_INTERNAL_ORG_NAME="$HOMESERVER_NAME"
 CERTS_INTERNAL_OU_NAME="HomeServerHQ"
 CERTS_INTERNAL_ROOT_CN=
 CERTS_INTERNAL_INTERMEDIATE_CN=
@@ -104445,7 +104445,7 @@ function performUpdateRAGFlow()
     ;;
     6)
       newVer=v6
-      curImageList=mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/infiniflow/infinity:v0.7.5-x64-v3,mirror.gcr.io/infiniflow/ragflow:v1.0.0,rustfs/rustfs:1.0.4,mirror.gcr.io/apache/kvrocks:2.16.0,mirror.gcr.io/nats:2.14.2
+      curImageList=mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/infiniflow/infinity:v0.7.5-x64-v3,mirror.gcr.io/infiniflow/ragflow:v1.0.0,mirror.gcr.io/rustfs/rustfs:1.0.4,mirror.gcr.io/apache/kvrocks:2.16.0,mirror.gcr.io/nats:2.14.2
       image_update_map[0]="mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/mariadb:11.4.12"
       image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.7.5-x64-v3,mirror.gcr.io/infiniflow/infinity:v0.7.5-x64-v3"
       image_update_map[2]="mirror.gcr.io/infiniflow/ragflow:v1.0.0,mirror.gcr.io/infiniflow/ragflow:v1.0.0"
