@@ -53512,7 +53512,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ --no-warnings app:enable spreed
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install integration_excalidraw
   docker exec -u www-data nextcloud-app php occ --no-warnings app:enable integration_excalidraw
-  docker exec -u www-data nextcloud-app php occ config:app:set integration_excalidraw base_url --value="https://$SUB_EXCALIDRAW_WEB.$HOMESERVER_DOMAIN"
+  docker exec -u www-data nextcloud-app php occ config:app:set integration_excalidraw base_url --value="https://$SUB_WHITEBOARDRT_WEB.$HOMESERVER_DOMAIN"
   docker exec -u www-data nextcloud-app php occ config:app:set integration_excalidraw enabled --value="yes"
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install integration_mastodon
   docker exec -u www-data nextcloud-app php occ --no-warnings app:enable integration_mastodon
@@ -122329,6 +122329,7 @@ function installPresenton()
     updateConfigVar PRESENTON_INIT_ENV $PRESENTON_INIT_ENV
   fi
   sleep 3
+  set +e
   PRESENTON_ADMIN_API_KEY=$(addPrimaryUserPresenton "$PRESENTON_ADMIN_USERNAME" "PRESENTON_ADMIN_PASSWORD")
   updateConfigVar PRESENTON_ADMIN_API_KEY "$PRESENTON_ADMIN_API_KEY"
   if [ -z "$FMLNAME_PRESENTON_APP" ]; then
