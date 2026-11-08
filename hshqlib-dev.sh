@@ -105648,7 +105648,7 @@ function installDocling()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_DOCLING_APP $MANAGETLS_DOCLING_APP "$is_integrate_hshq" $NETDEFAULT_DOCLING_APP "$inner_block"
-  insertSubAuthelia $SUB_DOCLING_APP.$HOMESERVER_DOMAIN bypass
+  insertSubAuthelia $SUB_DOCLING_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll docling "$FMLNAME_DOCLING_APP" $USERTYPE_DOCLING_APP "https://$SUB_DOCLING_APP.$HOMESERVER_DOMAIN/ui/" "docling.png" "$(getHeimdallOrderFromSub $SUB_DOCLING_APP $USERTYPE_DOCLING_APP)"
     restartAllCaddyContainers
