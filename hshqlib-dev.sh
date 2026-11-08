@@ -31463,7 +31463,7 @@ async def main() -> None:
             user_id=user.id,
             created_by_id=user.id,
             label="CLI provisioned key",
-            expiry_days=14892,
+            expiry_days=365,
         )
         print(token)
 
