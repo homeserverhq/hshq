@@ -30083,7 +30083,7 @@ subjectKeyIdentifier=hash
 authorityKeyIdentifier=keyid:always,issuer
 keyUsage = critical, cRLSign, keyCertSign
 EOFCA
-  totDays=$(echo "($(if (( $(echo "$(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N) < 3137754960" | bc -l) )); then echo 3137754960; else echo $(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N); fi)-1559365200)/86400" | bc)
+  totDays=$(echo "($(if (( $(echo "$(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N) < 3074607481" | bc -l) )); then echo 3074607481; else echo $(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N); fi)-1559365200)/86400" | bc)
   # Certificate Authority Certificate
   # Regarding faketime, see https://support.apple.com/en-us/HT210176
   faketime '2019-06-01 16:38:01 GMT' openssl req -new -x509 -sha256 -nodes -days $totDays -key $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.key -out $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -config $HOME/ca.conf
@@ -31407,17 +31407,25 @@ function addPrimaryUserPresenton()
   docker exec -i -w /app/servers/fastapi -e USERNAME="$pres_username" -e PASSWORD="$pres_password" presenton-app python - <<'PYEOF'
 import asyncio
 import os
-import sys
+
+os.environ.setdefault(
+    "USER_CONFIG_PATH",
+    os.path.join(os.getenv("APP_DATA_DIRECTORY", "/app_data"), "userConfig.json"),
+)
+
 from sqlalchemy import select
+
 from api.v1.auth.users import PASSWORD_HELPER
-from models.sql.access_token import AccessToken
+from models.sql.api_key import ApiKey
 from models.sql.user import User
+from services.api_keys import issue_api_key, reveal_api_key
 from services.database import async_session_maker
 
 async def main() -> None:
     username = os.environ["USERNAME"].strip()
     password = os.environ["PASSWORD"]
     admin = True
+
     async with async_session_maker() as session:
         user = await session.scalar(select(User).where(User.username == username))
         if user is None:
@@ -31432,21 +31440,33 @@ async def main() -> None:
             session.add(user)
             await session.commit()
             await session.refresh(user)
+
         existing = (
             await session.scalars(
-                select(AccessToken)
-                .where(AccessToken.user_id == user.id)
-                .order_by(AccessToken.created_at.desc())
+                select(ApiKey)
+                .where(
+                    ApiKey.user_id == user.id,
+                    ApiKey.revoked_at.is_(None),
+                )
+                .order_by(ApiKey.created_at.desc())
             )
         ).all()
-        if existing:
-            print(existing[0].token)
-            sys.exit(0)
-        key = AccessToken(user_id=user.id)
-        session.add(key)
-        await session.commit()
-        await session.refresh(key)
-        print(key.token)
+
+        for api_key in existing:
+            token = reveal_api_key(api_key)
+            if token is not None:
+                print(token)
+                return
+
+        _, token = await issue_api_key(
+            session,
+            user_id=user.id,
+            created_by_id=user.id,
+            label="CLI provisioned key",
+            expiry_days=14892,
+        )
+        print(token)
+
 asyncio.run(main())
 PYEOF
 }
@@ -42150,7 +42170,8 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENWEBUI_QDRANT}-Admin" https://$SUB_OPENWEBUI_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $OPENWEBUI_ADMIN_EMAIL_ADDRESS $OPENWEBUI_QDRANT_API_KEY)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/admin $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_APP}-TeamAdmin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_RUSTFS}-Admin" https://$SUB_RAGFLOW_RUSTFS.$HOMESERVER_DOMAIN/rustfs/console/auth/login/ $HOMESERVER_ABBREV $RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_SECRET)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TABBYML_APP}-Admin" https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN/auth/signin $HOMESERVER_ABBREV $TABBYML_ADMIN_EMAIL_ADDRESS $TABBYML_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DIFY_APP}-Admin" https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $DIFY_ADMIN_EMAIL_ADDRESS $DIFY_ADMIN_PASSWORD)"\n"
@@ -42366,7 +42387,8 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENWEBUI_QDRANT}-Admin" https://$SUB_OPENWEBUI_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $OPENWEBUI_ADMIN_EMAIL_ADDRESS $OPENWEBUI_QDRANT_API_KEY)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/admin $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_APP}-TeamAdmin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_RUSTFS}-Admin" https://$SUB_RAGFLOW_RUSTFS.$HOMESERVER_DOMAIN/rustfs/console/auth/login/ $HOMESERVER_ABBREV $RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_SECRET)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TABBYML_APP}-Admin" https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN/auth/signin $HOMESERVER_ABBREV $TABBYML_ADMIN_EMAIL_ADDRESS $TABBYML_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DIFY_APP}-Admin" https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $DIFY_ADMIN_EMAIL_ADDRESS $DIFY_ADMIN_PASSWORD)"\n"
@@ -43151,6 +43173,9 @@ function getHeimdallOrderFromSub()
       order_num=208
       ;;
     "$SUB_WHITEBOARDRT_WEB")
+      order_num=209
+      ;;
+    "$SUB_WHITEBOARDRT_AGENT")
       order_num=209
       ;;
     "$SUB_MDCOLLAB_APP")
