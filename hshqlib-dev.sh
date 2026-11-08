@@ -101932,6 +101932,7 @@ services:
     env_file: stack.env
     networks:
       - int-openwebui-net
+      - dock-aipriv-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
