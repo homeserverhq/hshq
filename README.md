@@ -6,14 +6,13 @@
 
 ### For full instructions, see <a href="https://wiki.homeserverhq.com/getting-started" target="_blank">https://wiki.homeserverhq.com/getting-started</a>
 ### To verify source code, see <a href="https://wiki.homeserverhq.com/tutorials/source-code-verification" target="_blank">https://wiki.homeserverhq.com/tutorials/source-code-verification</a> 
-##
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/homeserverhq/hshq)
+
 ## Table of Contents
 - [Quick Start](#quick-start)
 - [Supported Distributions](#supported-distributions)
 - [Installation](#installation)
 - [Setup A Demo](#setup-a-demo)
-- [Custom ISOs](#custom-isos)
+- [Custom ISO](#custom-iso)
 - [Comparison of Features](#comparison-of-features)
   - [Home Server](#home-server)
   - [Networking](#networking)
@@ -48,15 +47,13 @@ bash hshq.sh
 ## Setup a Demo
 #### See https://wiki.homeserverhq.com/en/tutorials/setup-demo for instructions on how to setup a demo environment.
 
-## Custom ISOs
+## Custom ISO
 
 ![image](https://raw.githubusercontent.com/homeserverhq/custom-iso/refs/heads/main/assets/LinuxDEPreview.gif)
 
-Server builds are lightweight with command-line only (experienced users)
+The custom ISO provides an easy-to-use graphical user interface and implement the latest updates from [XLibre](https://github.com/X11Libre/xserver) (See animation above).
 
-Desktop builds provide an easy-to-use graphical user interface and implement the latest updates from [XLibre](https://github.com/X11Libre/xserver) (See animation above).
-
-They contain the following environments:
+It contains the following environments:
  - [Budgie](https://wiki.homeserverhq.com/foss-projects/budgie)
  - [Cinnamon](https://wiki.homeserverhq.com/foss-projects/cinnamon)
  - [GNOME](https://wiki.homeserverhq.com/foss-projects/gnome)
@@ -64,14 +61,11 @@ They contain the following environments:
  - [MATE](https://wiki.homeserverhq.com/foss-projects/mate)
  - [XFCE](https://wiki.homeserverhq.com/foss-projects/xfce)
 
-Description | Underlying Distro | Custom ISO |
-:------ | :------: | :------:
-Debian 12 Desktop | [Debian 12.9](https://wiki.homeserverhq.com/foss-projects/debian) | <a href="https://links.homeserverhq.com/debian-12-oliver-hshq.iso" target="_blank">Download (4.5 GB)</a> [ <a href="https://links.homeserverhq.com/debian-12-oliver-hshq.sha256" target="_blank">sha256</a> ]
-Ubuntu 24 Desktop | [Ubuntu 24.04](https://wiki.homeserverhq.com/foss-projects/ubuntu) | <a href="https://links.homeserverhq.com/ubuntu-24-oliver-hshq.iso" target="_blank">Download (5.5 GB)</a> [ <a href="https://links.homeserverhq.com/ubuntu-24-oliver-hshq.sha256" target="_blank">sha256</a> ]
-Debian 12 Server | [Debian 12.9](https://wiki.homeserverhq.com/foss-projects/debian) | <a href="https://links.homeserverhq.com/debian-12-server-hshq.iso" target="_blank">Download (2.0 GB)</a> [ <a href="https://links.homeserverhq.com/debian-12-server-hshq.sha256" target="_blank">sha256</a> ]
-Ubuntu 24 Server | [Ubuntu 24.04](https://wiki.homeserverhq.com/foss-projects/ubuntu) | <a href="https://links.homeserverhq.com/ubuntu-24-server-hshq.iso" target="_blank">Download (3.2 GB)</a> [ <a href="https://links.homeserverhq.com/ubuntu-24-server-hshq.sha256" target="_blank">sha256</a> ]
+<a href="https://links.homeserverhq.com/hshq-24.04-oliver.iso" target="_blank">Download (5.3 GB)</a> [ <a href="https://links.homeserverhq.com/hshq-24.04-oliver.sha256" target="_blank">sha256</a> ]
 
-Each of the above custom ISOs provide an Easy Installation method that requires around 5 simple questions and results in a very quick (and painless) 5-10 minute Linux OS installation - start to finish. See [this](https://wiki.homeserverhq.com/en/tutorials/install-linux) link for more detailed instructions.
+This ISO provides an Easy Installation method that requires around 5 simple questions and results in a very quick (and painless) 5-10 minute Linux OS installation - start to finish. See [this](https://wiki.homeserverhq.com/en/tutorials/install-linux) link for more detailed instructions.
+
+The "Oliver" build is a custom, modified and debranded Ubuntu 24.04 image from HomeServerHQ. It is not affiliated with, endorsed by, sponsored by, or certified by Canonical Ltd.; "Ubuntu" and "Canonical" are trademarks of Canonical Ltd. and are used only to describe the base distribution. Other third-party names and logos remain the property of their respective owners. FOSS licenses ship in `/usr/share/licenses/hshq/`, with corresponding source listed in `SOURCE-URLS.html`.
 
 To create a bootable USB:
   1) Download and run <a href="https://etcher.balena.io/#download-etcher" target="_blank">Balena Etcher</a>
