@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=247
+HSHQ_LIB_SCRIPT_VERSION=248
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -67118,7 +67118,6 @@ GITEA__mailer__SMTP_ADDR=$SMTP_HOSTNAME
 GITEA__mailer__SMTP_PORT=$SMTP_HOSTPORT
 GITEA__service__DISABLE_REGISTRATION=true
 GITEA__security__INSTALL_LOCK=true
-GITEA__migrations__ALLOW_LOCALNETWORKS=true
 GITEA__migrations__ALLOWED_HOST_LIST=loopback,private
 GITEA_BASE_URL=http://gitea-app:3000
 MCP_SERVER_PORT=80
@@ -67341,7 +67340,6 @@ networks:
       driver: default
 EOFGL
   tee -a $HOME/gitea.env  >/dev/null <<EOFGL
-GITEA__migrations__ALLOW_LOCALNETWORKS=true
 GITEA__migrations__ALLOWED_HOST_LIST=loopback,private
 GITEA_BASE_URL=http://gitea-app:3000
 MCP_SERVER_PORT=80
@@ -102119,7 +102117,7 @@ REDIS_HOST=openwebui-redis
 REDIS_PORT=6379
 REDIS_PASSWORD=$OPENWEBUI_REDIS_PASSWORD
 REDIS_CONNECTION_STRING=redis://:$OPENWEBUI_REDIS_PASSWORD@openwebui-redis:6379/0
-PYTHON_VER=python3.11
+PYTHON_VER=python3.12
 DEFAULT_LOCALE=en
 GLOBAL_LOG_LEVEL=INFO
 ENABLE_FS_SKILLS=true
