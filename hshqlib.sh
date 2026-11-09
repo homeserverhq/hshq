@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=246
+HSHQ_LIB_SCRIPT_VERSION=247
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -166,7 +166,7 @@ function init()
   PAPERLESS_ADMIN_ID=2
   DEFAULT_UNFOUND_IP_ADDRESS=169.254.84.48
   DEFAULT_UNFOUND_IP_SUBNET=169.254.0.0/16
-  MAX_DOCKER_PULL_TRIES=10
+  MAX_DOCKER_PULL_TRIES=20
   MENU_WIDTH=69
   MENU_HEIGHT=24
   MENU_INT_HEIGHT=10
@@ -7650,6 +7650,10 @@ function pullImage()
     docker image inspect \$img_and_version > /dev/null 2>&1
     is_success=\$?
     ((num_tries++))
+    if [ \$is_success -ne 0 ]; then
+      echo "Error pulling image, retrying in 15 seconds..."
+      sleep 15
+    fi
   done
   if [ \$is_success -ne 0 ]; then
     echo "Error pulling docker image: \$img_and_version"
@@ -8327,7 +8331,10 @@ function pullImage()
     docker image inspect \$img_and_version > /dev/null 2>&1
     is_success=\$?
     ((num_tries++))
-    sleep 3
+    if [ \$is_success -ne 0 ]; then
+      echo "Error pulling image, retrying in 15 seconds..."
+      sleep 15
+    fi
   done
   set -e
   if [ \$is_success -ne 0 ]; then
@@ -21422,6 +21429,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=244
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 247 ]; then
+    echo "Updating to Version 247..."
+    version247Update
+    HSHQ_VERSION=247
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -24851,6 +24864,11 @@ function version244Update()
   updateSysctl
 }
 
+function version247Update()
+{
+  setAuthKeyLiteLLM
+}
+
 function getNextHSVPNRoutingTable()
 {
   curTableList=($(sqlite3 $HSHQ_DB "select VPNRoutingTable from hsvpn_connections where CA_IP is not null;"))
@@ -25186,6 +25204,10 @@ function pullImage()
     docker image inspect \$img_and_version > /dev/null 2>&1
     is_success=\$?
     ((num_tries++))
+    if [ \$is_success -ne 0 ]; then
+      echo "Error pulling image, retrying in 15 seconds..."
+      sleep 15
+    fi
   done
   if [ \$is_success -ne 0 ]; then
     echo "Error pulling docker image: \$img_and_version"
@@ -30061,7 +30083,7 @@ subjectKeyIdentifier=hash
 authorityKeyIdentifier=keyid:always,issuer
 keyUsage = critical, cRLSign, keyCertSign
 EOFCA
-  totDays=$(echo "($(if (( $(echo "$(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N) < 3137754960" | bc -l) )); then echo 3137754960; else echo $(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N); fi)-1559365200)/86400" | bc)
+  totDays=$(echo "($(if (( $(echo "$(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N) < 3074607481" | bc -l) )); then echo 3074607481; else echo $(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N); fi)-1559365200)/86400" | bc)
   # Certificate Authority Certificate
   # Regarding faketime, see https://support.apple.com/en-us/HT210176
   faketime '2019-06-01 16:38:01 GMT' openssl req -new -x509 -sha256 -nodes -days $totDays -key $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.key -out $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -config $HOME/ca.conf
@@ -30335,8 +30357,8 @@ function pullImage()
     fi
     ((num_tries++))
     if [ $is_success -ne 0 ]; then
-      echo "There was an error pulling the image, retrying in 10 seconds..."
-      sleep 10
+      echo "There was an error pulling the image, retrying in 15 seconds..."
+      sleep 15
     fi
   done
   if [ $is_success -ne 0 ]; then
@@ -30746,6 +30768,7 @@ function addPrimaryUser()
     addPUIsLDAPAdmin=false
   elif [ "$addPUIsLDAPAdmin" = "true" ]; then
     addPUEmailAddress="$EMAIL_ADMIN_EMAIL_ADDRESS"
+    newuser_ragflow_api_key="$RAGFLOW_TEAM_API_KEY"
   fi
   set +e
   newuser_mailu_app_password=abcd
@@ -30843,18 +30866,20 @@ EOFAU
   fi
   fullName="${addPUFirstName}${addPULastName}"
   cleanName="${fullName//[![:alnum:]]/}"
-  addPrimaryUserAutoKB "$addPUUID" "$cleanName" "$addPUEmailAddress" "$newuser_mailu_app_password" 1
   newuser_immich_api_key=$(pwgen -c -n 41 1)
   addPrimaryUserImmich "${addPUUID}" "$addPUEmailAddress" "$addPUFirstName $addPULastName" "$newuser_immich_api_key"
   docker ps | grep -q linkwarden-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     newuser_linkwarden_api_key=$(docker exec linkwarden-app node /data/data/provision-user.mjs $addPUEmailAddress "${addPUFirstName} ${addPULastName}" "MCP" $addPUUID)
   fi
-  newuser_hedgedoc_api_key=$(addPrimaryUserHedgeDoc "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress)
+  newuser_mdcollab_api_key=$(addPrimaryUsermdCollab "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress)
   newuser_mealie_api_key=$(addPrimaryUserMealie "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress false)
   newuser_presenton_api_key=$(addPrimaryUserPresenton "$addPUUID" "$addPUPassword")
   newuser_twenty_api_key=$(addPrimaryUserTwenty "$addPUUID" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName" "$addPULastName" "$newuser_mailu_app_password")
-  newuser_ragflow_api_key=$(addPrimaryUserRAGFlow "$addPUEmailAddress" "$addPUFirstName $addPULastName")
+  if ! [ "$addPUIsLDAPAdmin" = "true" ]; then
+    newuser_ragflow_api_key=$(addPrimaryUserRAGFlow "$addPUEmailAddress" "$addPUFirstName $addPULastName" "$addPUPassword")
+  fi
+  addPrimaryUserAutoKB "$addPUUID" "$cleanName" "$addPUEmailAddress" "$newuser_mailu_app_password" 1 "$newuser_ragflow_api_key"
   docker ps | grep -q openwebui-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     echo "Adding primary user MCPs to OpenWebUI..."
@@ -30897,7 +30922,7 @@ EOFIM
         --arg paperless_api_key "$newuser_paperless_apitoken" \
         --arg opennotebook_api_key "$OPENNOTEBOOK_ADMIN_PASSWORD" \
         --arg linkwarden_api_key "$newuser_linkwarden_api_key" \
-        --arg hedgedoc_api_key "$newuser_hedgedoc_api_key" \
+        --arg hedgedoc_api_key "$newuser_mdcollab_api_key" \
         --arg mealie_api_key "$newuser_mealie_api_key" \
         --arg presenton_api_key "$newuser_presenton_api_key" \
         --arg twenty_api_key "$newuser_twenty_api_key" \
@@ -31043,6 +31068,7 @@ function addPrimaryUserAutoKB()
   imap_username="$3"
   imap_password="$4"
   paperless_storage_id="$5"
+  ragflow_api_key="$6"
   docker ps | grep -q autokb-web > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     return
@@ -31091,55 +31117,102 @@ function addPrimaryUserAutoKB()
     fi
   fi
   docker ps | grep -q openwebui-app > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    return
+  if [ $? -eq 0 ]; then
+    echo "Resolving openWebUISink service id..."
+    akbRes="$(docker exec autokb-web curl -sS -X GET \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
+    SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
+    if [ -z "$SINK_ID" ]; then
+      echo "openWebUISink not found among provisioned sinks" >&2
+      return 1
+    fi
+    echo "Creating OpenWebUI target KB ${formal_name}-PKB..."
+    akbRes="$(docker exec autokb-web curl -sS -X POST \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data "{\"name\":\"${formal_name}-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
+    AUTOKB_PKB_REMOTE_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.remote_target_id')"
+    echo "Fetching current links for shared target $AUTOKB_SHARED_OWUI_TARGET_ID..."
+    akbRes="$(docker exec autokb-web curl -sS -X GET \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/targets/$AUTOKB_SHARED_OWUI_TARGET_ID")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target lookup failed: $akbBody" >&2; return 1; }
+    existing="$(printf '%s' "$akbBody" | jq -c '[.subscriptions[].subscription_id | select(. != null)]')"
+    ids="$(printf '%s' "$existing" | jq -c --argjson ns "\"$IMAP_SHARED_SUB_ID\"" '. + [$ns] | unique')"
+    echo "Attaching source $IMAP_SHARED_SUB_ID to shared target $AUTOKB_SHARED_OWUI_TARGET_ID..."
+    akbRes="$(docker exec autokb-web curl -sS -X PUT \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data "{\"subscription_ids\":$ids}" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/targets/$AUTOKB_SHARED_OWUI_TARGET_ID")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target update failed: $akbBody" >&2; return 1; }
   fi
-  echo "Resolving openWebUISink service id..."
-  akbRes="$(docker exec autokb-web curl -sS -X GET \
-    -H "Authorization: Bearer $AUTOKB_API_KEY" \
-    -H "Content-Type: application/json" \
-    -w $'\n%{http_code}' \
-    "http://autokb-web:80/api/sinks")"
-  akbCode="${akbRes##*$'\n'}"
-  akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
-  SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
-  if [ -z "$SINK_ID" ]; then
-    echo "openWebUISink not found among provisioned sinks" >&2
-    return 1
+  docker ps | grep -q ragflow-app > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    echo "Resolving ragflowSink service id..."
+    akbRes="$(docker exec autokb-web curl -sS -X GET \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
+    SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "ragflowSink") | .service_id' | head -n1)"
+    if [ -z "$SINK_ID" ]; then
+      echo "ragflowSink not found among provisioned sinks" >&2
+      return 1
+    fi
+    echo "Creating RAGFlow target KB ${formal_name}-PKB..."
+    akbRes="$(docker exec autokb-web curl -sS -X POST \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data "{\"name\":\"${formal_name}-PKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$ragflow_api_key\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
+    echo "Fetching current links for shared target $AUTOKB_SHARED_RAGFLOW_TARGET_ID..."
+    akbRes="$(docker exec autokb-web curl -sS -X GET \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/targets/$AUTOKB_SHARED_RAGFLOW_TARGET_ID")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target lookup failed: $akbBody" >&2; return 1; }
+    existing="$(printf '%s' "$akbBody" | jq -c '[.subscriptions[].subscription_id | select(. != null)]')"
+    ids="$(printf '%s' "$existing" | jq -c --argjson ns "\"$IMAP_SHARED_SUB_ID\"" '. + [$ns] | unique')"
+    echo "Attaching source $IMAP_SHARED_SUB_ID to shared target $AUTOKB_SHARED_RAGFLOW_TARGET_ID..."
+    akbRes="$(docker exec autokb-web curl -sS -X PUT \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data "{\"subscription_ids\":$ids}" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/targets/$AUTOKB_SHARED_RAGFLOW_TARGET_ID")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target update failed: $akbBody" >&2; return 1; }
   fi
-  echo "Creating OpenWebUI target KB ${formal_name}-PKB..."
-  akbRes="$(docker exec autokb-web curl -sS -X POST \
-    -H "Authorization: Bearer $AUTOKB_API_KEY" \
-    -H "Content-Type: application/json" \
-    --data "{\"name\":\"${formal_name}-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
-    -w $'\n%{http_code}' \
-    "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
-  akbCode="${akbRes##*$'\n'}"
-  akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
-  AUTOKB_PKB_REMOTE_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.remote_target_id')"
-  echo "Fetching current links for shared target $AUTOKB_SHARED_OWUI_TARGET_ID..."
-  akbRes="$(docker exec autokb-web curl -sS -X GET \
-    -H "Authorization: Bearer $AUTOKB_API_KEY" \
-    -H "Content-Type: application/json" \
-    -w $'\n%{http_code}' \
-    "http://autokb-web:80/api/targets/$AUTOKB_SHARED_OWUI_TARGET_ID")"
-  akbCode="${akbRes##*$'\n'}"
-  akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target lookup failed: $akbBody" >&2; return 1; }
-  existing="$(printf '%s' "$akbBody" | jq -c '[.subscriptions[].subscription_id | select(. != null)]')"
-  ids="$(printf '%s' "$existing" | jq -c --argjson ns "\"$IMAP_SHARED_SUB_ID\"" '. + [$ns] | unique')"
-  echo "Attaching source $IMAP_SHARED_SUB_ID to shared target $AUTOKB_SHARED_OWUI_TARGET_ID..."
-  akbRes="$(docker exec autokb-web curl -sS -X PUT \
-    -H "Authorization: Bearer $AUTOKB_API_KEY" \
-    -H "Content-Type: application/json" \
-    --data "{\"subscription_ids\":$ids}" \
-    -w $'\n%{http_code}' \
-    "http://autokb-web:80/api/targets/$AUTOKB_SHARED_OWUI_TARGET_ID")"
-  akbCode="${akbRes##*$'\n'}"
-  akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target update failed: $akbBody" >&2; return 1; }
   echo "Done."
 }
 
@@ -31162,6 +31235,66 @@ function addPrimaryUserHedgeDoc()
     psql -q -v ON_ERROR_STOP=1 \
       -U "${HEDGEDOC_DATABASE_USER}" \
       -d "${HEDGEDOC_DATABASE_NAME}" \
+      -v v_username="$username" \
+      -v v_uid="$username" \
+      -v v_display_name="$display_name" \
+      -v v_email="$email" \
+      -v v_label="MCP" \
+      -v v_key_id="$hd_key_id" \
+      -v v_secret_hash="$(printf '%s' "$hd_secret" | openssl dgst -sha512 | awk '{print $2}')" \
+      -v v_now="$dtNow" \
+      -v v_valid="$(date -u -d "+88 year" '+%Y-%m-%d %H:%M:%S.000')" \
+      -v v_provider_id="hshq" >/dev/null <<'SQL'
+BEGIN;
+
+INSERT INTO "user" (username, display_name, photo_url, email, author_style, guest_uuid, created_at)
+VALUES (:'v_username', :'v_display_name', NULL, NULLIF(:'v_email', ''), 1, NULL, :'v_now')
+ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username;
+
+INSERT INTO identity (user_id, provider_type, provider_identifier, provider_user_id, password_hash, created_at, updated_at)
+SELECT id, 'ldap', :'v_provider_id', :'v_uid', NULL, :'v_now', :'v_now'
+FROM "user"
+WHERE username = :'v_username'
+ON CONFLICT (user_id, provider_type, provider_identifier)
+DO UPDATE SET provider_user_id = EXCLUDED.provider_user_id, updated_at = EXCLUDED.updated_at;
+
+DELETE FROM api_token
+WHERE user_id = (SELECT id FROM "user" WHERE username = :'v_username')
+  AND label = :'v_label';
+
+INSERT INTO api_token (id, user_id, label, secret_hash, valid_until, created_at, last_used_at)
+VALUES (:'v_key_id',
+        (SELECT id FROM "user" WHERE username = :'v_username'),
+        :'v_label',
+        :'v_secret_hash',
+        :'v_valid',
+        :'v_now',
+        NULL);
+
+COMMIT;
+SQL
+  printf '%s\n' "$hd_full_token"
+}
+
+function addPrimaryUsermdCollab()
+{
+  local username="$1"
+  local display_name="$2"
+  local email="$3"
+  docker ps | grep -q mdcollab-db > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  hd_key_id="$(openssl rand 8 | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')"
+  hd_secret="$(openssl rand 64 | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')"
+  hd_full_token="hd2.${hd_key_id}.${hd_secret}"
+  dtNow="$(date -u '+%Y-%m-%d %H:%M:%S.000')"
+  docker exec -i \
+    -e "PGPASSWORD=${MDCOLLAB_DATABASE_USER_PASSWORD}" \
+    "mdcollab-db" \
+    psql -q -v ON_ERROR_STOP=1 \
+      -U "${MDCOLLAB_DATABASE_USER}" \
+      -d "${MDCOLLAB_DATABASE_NAME}" \
       -v v_username="$username" \
       -v v_uid="$username" \
       -v v_display_name="$display_name" \
@@ -31277,17 +31410,25 @@ function addPrimaryUserPresenton()
   docker exec -i -w /app/servers/fastapi -e USERNAME="$pres_username" -e PASSWORD="$pres_password" presenton-app python - <<'PYEOF'
 import asyncio
 import os
-import sys
+
+os.environ.setdefault(
+    "USER_CONFIG_PATH",
+    os.path.join(os.getenv("APP_DATA_DIRECTORY", "/app_data"), "userConfig.json"),
+)
+
 from sqlalchemy import select
+
 from api.v1.auth.users import PASSWORD_HELPER
-from models.sql.access_token import AccessToken
+from models.sql.api_key import ApiKey
 from models.sql.user import User
+from services.api_keys import issue_api_key, reveal_api_key
 from services.database import async_session_maker
 
 async def main() -> None:
     username = os.environ["USERNAME"].strip()
     password = os.environ["PASSWORD"]
     admin = True
+
     async with async_session_maker() as session:
         user = await session.scalar(select(User).where(User.username == username))
         if user is None:
@@ -31302,21 +31443,33 @@ async def main() -> None:
             session.add(user)
             await session.commit()
             await session.refresh(user)
+
         existing = (
             await session.scalars(
-                select(AccessToken)
-                .where(AccessToken.user_id == user.id)
-                .order_by(AccessToken.created_at.desc())
+                select(ApiKey)
+                .where(
+                    ApiKey.user_id == user.id,
+                    ApiKey.revoked_at.is_(None),
+                )
+                .order_by(ApiKey.created_at.desc())
             )
         ).all()
-        if existing:
-            print(existing[0].token)
-            sys.exit(0)
-        key = AccessToken(user_id=user.id)
-        session.add(key)
-        await session.commit()
-        await session.refresh(key)
-        print(key.token)
+
+        for api_key in existing:
+            token = reveal_api_key(api_key)
+            if token is not None:
+                print(token)
+                return
+
+        _, token = await issue_api_key(
+            session,
+            user_id=user.id,
+            created_by_id=user.id,
+            label="CLI provisioned key",
+            expiry_days=365,
+        )
+        print(token)
+
 asyncio.run(main())
 PYEOF
 }
@@ -31550,12 +31703,94 @@ function addPrimaryUserTwenty()
 
 function addPrimaryUserRAGFlow()
 {
-  if ! [ -f "$HSHQ_STACKS_DIR/ragflow/config/ragflowProvisioning.sh" ]; then
+  set +e
+  if ! docker ps | grep -q ragflow-app > /dev/null 2>&1; then
     return
   fi
-  rf_user_email="$1"
-  rf_user_displayname="$2"
-  docker exec ragflow-app python3 /ragflow/conf/ragflowProvisioning.sh "$rf_user_email $rf_user_displayname"
+  rf_email="$1"
+  rf_name="$2"
+  rf_password="$3"
+  rf_password_b64=$(printf '%s' "$rf_password" | base64 | tr -d '\n')
+  rf_admin_password_b64=$(printf '%s' "$RAGFLOW_ADMIN_PASSWORD" | base64 | tr -d '\n')
+  rf_email_q=$(jq -rn --arg v "$rf_email" '$v|@uri')
+  rf_admin_token=$(docker exec -i ragflow-app curl -sS -D - -o /dev/null -X POST "http://127.0.0.1:9381/api/v1/admin/login" -H "Content-Type: application/json" -d "$(jq -n --arg email "$RAGFLOW_ADMIN_EMAIL_ADDRESS" --arg password "$rf_admin_password_b64" '{email:$email,password:$password}')" | tr -d '\r' | awk 'tolower($1)=="authorization:"{print $2; exit}')
+  if [ -z "$rf_admin_token" ]; then
+    echo "ERROR: RAGFlow admin login failed for $RAGFLOW_ADMIN_EMAIL_ADDRESS" >&2
+    return 1
+  fi
+  rf_user_json=$(docker exec -i ragflow-app curl -sS "http://127.0.0.1:9381/api/v1/admin/users/$rf_email_q" -H "Authorization: $rf_admin_token")
+  rf_user_code=$(printf '%s' "$rf_user_json" | jq -r '.code // 1')
+  if [ "$rf_user_code" != "0" ]; then
+    rf_create_json=$(docker exec -i ragflow-app curl -sS -X POST "http://127.0.0.1:9381/api/v1/admin/users" -H "Authorization: $rf_admin_token" -H "Content-Type: application/json" -d "$(jq -n --arg u "$rf_email" --arg p "$rf_password_b64" '{username:$u,password:$p,role:"user"}')")
+    rf_create_code=$(printf '%s' "$rf_create_json" | jq -r '.code // 1')
+    if [ "$rf_create_code" != "0" ]; then
+      echo "ERROR: RAGFlow user create failed: $(printf '%s' "$rf_create_json" | jq -r '.message // empty')" >&2
+      return 1
+    fi
+  fi
+  rf_user_token=$(docker exec -i ragflow-app curl -sS -D - -o /dev/null -X POST "http://127.0.0.1:9380/api/v1/auth/login" -H "Content-Type: application/json" -d "$(jq -n --arg email "$rf_email" --arg password "$rf_password_b64" '{email:$email,password:$password}')" | tr -d '\r' | awk 'tolower($1)=="authorization:"{print $2; exit}')
+  if [ -z "$rf_user_token" ]; then
+    docker exec -i ragflow-app curl -sS -X PUT "http://127.0.0.1:9381/api/v1/admin/users/$rf_email_q/password" -H "Authorization: $rf_admin_token" -H "Content-Type: application/json" -d "$(jq -n --arg p "$rf_password_b64" '{new_password:$p}')" >/dev/null
+    rf_user_token=$(docker exec -i ragflow-app curl -sS -D - -o /dev/null -X POST "http://127.0.0.1:9380/api/v1/auth/login" -H "Content-Type: application/json" -d "$(jq -n --arg email "$rf_email" --arg password "$rf_password_b64" '{email:$email,password:$password}')" | tr -d '\r' | awk 'tolower($1)=="authorization:"{print $2; exit}')
+  fi
+  if [ -z "$rf_user_token" ]; then
+    echo "ERROR: RAGFlow user login failed for $rf_email" >&2
+    return 1
+  fi
+  rf_key_json=$(docker exec -i ragflow-app curl -sS -X POST "http://127.0.0.1:9380/api/v1/system/keys" -H "Authorization: $rf_user_token" -H "Content-Type: application/json" -d '{}')
+  rf_key=$(printf '%s' "$rf_key_json" | jq -r '.data.token // empty')
+  if [ -z "$rf_key" ]; then
+    echo "ERROR: RAGFlow user key mint failed" >&2
+    return 1
+  fi
+  newuser_ragflow_api_key="$rf_key"
+  rf_profile_json=$(jq -n --arg n "$rf_name" --arg tz "$TZ" 'if $tz=="" then {nickname:$n} else {nickname:$n,timezone:$tz} end')
+  docker exec -i ragflow-app curl -sS -X PATCH "http://127.0.0.1:9380/api/v1/users/me" -H "Authorization: $rf_key" -H "Content-Type: application/json" -d "$rf_profile_json" >/dev/null
+  if [ -f "$HSHQ_STACKS_DIR/ragflow/config/ragflow_bootstrap.json" ]; then
+    mapfile -t rf_providers < <(jq -c '.providers[]' "$HSHQ_STACKS_DIR/ragflow/config/ragflow_bootstrap.json")
+    for rf_provider in "${rf_providers[@]}"; do
+      rf_pname=$(printf '%s' "$rf_provider" | jq -r '.name')
+      rf_pname_q=$(jq -rn --arg v "$rf_pname" '$v|@uri')
+      docker exec -i ragflow-app curl -sS -X PUT "http://127.0.0.1:9380/api/v1/providers" -H "Authorization: $rf_key" -H "Content-Type: application/json" -d "$(jq -n --arg p "$rf_pname" '{provider_name:$p}')" >/dev/null
+      rf_existing=$(docker exec -i ragflow-app curl -sS "http://127.0.0.1:9380/api/v1/providers/$rf_pname_q/instances" -H "Authorization: $rf_key")
+      mapfile -t rf_instances < <(printf '%s' "$rf_provider" | jq -c '.instances[]?')
+      for rf_inst in "${rf_instances[@]}"; do
+        rf_iname=$(printf '%s' "$rf_inst" | jq -r '.instance_name')
+        rf_iname_q=$(jq -rn --arg v "$rf_iname" '$v|@uri')
+        rf_payload=$(printf '%s' "$rf_inst" | jq -c '{instance_name:.instance_name,api_key:(.api_key // ""),base_url:(.base_url // ""),region:(.region // ""),model_info:(.models // [])}')
+        if printf '%s' "$rf_existing" | jq -e --arg n "$rf_iname" '.data[]? | select(.instance_name == $n)' >/dev/null 2>&1; then
+          rf_update=$(printf '%s' "$rf_payload" | jq -c '. + {verify:false}')
+          docker exec -i ragflow-app curl -sS -X PUT "http://127.0.0.1:9380/api/v1/providers/$rf_pname_q/instances/$rf_iname_q" -H "Authorization: $rf_key" -H "Content-Type: application/json" -d "$rf_update" >/dev/null
+        else
+          docker exec -i ragflow-app curl -sS -X POST "http://127.0.0.1:9380/api/v1/providers/$rf_pname_q/instances" -H "Authorization: $rf_key" -H "Content-Type: application/json" -d "$rf_payload" >/dev/null
+        fi
+      done
+    done
+    mapfile -t rf_defaults < <(jq -c '.defaults[]' "$HSHQ_STACKS_DIR/ragflow/config/ragflow_bootstrap.json")
+    for rf_default in "${rf_defaults[@]}"; do
+      docker exec -i ragflow-app curl -sS -X PATCH "http://127.0.0.1:9380/api/v1/models/default" -H "Authorization: $rf_key" -H "Content-Type: application/json" -d "$rf_default" >/dev/null
+    done
+  fi
+  rf_team="$RAGFLOW_TEAM_TENANT_ID"
+  if [ -z "$rf_team" ] && [ -n "$RAGFLOW_TEAM_API_KEY" ]; then
+    rf_team_json=$(docker exec -i ragflow-app curl -sS "http://127.0.0.1:9380/api/v1/users/me" -H "Authorization: $RAGFLOW_TEAM_API_KEY")
+    rf_team=$(printf '%s' "$rf_team_json" | jq -r '.data.id // .data.tenant_id // empty')
+  fi
+  if [ -n "$rf_team" ] && [ -n "$RAGFLOW_TEAM_API_KEY" ]; then
+    rf_invite=$(docker exec -i ragflow-app curl -sS -X POST "http://127.0.0.1:9380/api/v1/tenants/$rf_team/users" -H "Authorization: $RAGFLOW_TEAM_API_KEY" -H "Content-Type: application/json" -d "$(jq -n --arg e "$rf_email" '{email:$e}')")
+    rf_invite_code=$(printf '%s' "$rf_invite" | jq -r '.code // empty')
+    if [ -n "$rf_invite_code" ] && [ "$rf_invite_code" != "0" ]; then
+      echo "WARN: RAGFlow team invite: $(printf '%s' "$rf_invite" | jq -r '.message // empty')" >&2
+    fi
+    rf_accept=$(docker exec -i ragflow-app curl -sS -X PATCH "http://127.0.0.1:9380/api/v1/tenants/$rf_team" -H "Authorization: $rf_key")
+    rf_accept_code=$(printf '%s' "$rf_accept" | jq -r '.code // empty')
+    if [ -n "$rf_accept_code" ] && [ "$rf_accept_code" != "0" ]; then
+      echo "WARN: RAGFlow team accept: $(printf '%s' "$rf_accept" | jq -r '.message // empty')" >&2
+    fi
+  else
+    echo "WARN: RAGFlow team not configured; user key created without team access" >&2
+  fi
+  printf '%s\n' "$newuser_ragflow_api_key"
 }
 
 function addPrimaryGroupMCPServerOpenWebUI()
@@ -31569,7 +31804,7 @@ function addPrimaryGroupMCPServerOpenWebUI()
   mcp_function_list="$8"
   mcp_new_connection=$(jq -n \
       --arg url "http://litellm-proxy:4000/mcp/$mcp_svc_name" \
-      --arg auth_key "$LITELLM_MASTER_KEY" \
+      --arg auth_key "$LITELLM_AUTH_KEY" \
       --arg mcp_header_type "$mcp_header_type" \
       --arg mcp_header_val "$mcp_header_val" \
       --arg mcp_enabled "$mcp_enabled" \
@@ -31842,7 +32077,7 @@ function loadPinnedDockerImages()
   IMG_DBGATE_APP=mirror.gcr.io/dbgate/dbgate:6.7.3-alpine
   IMG_DISCOURSE=mirror.gcr.io/bitnami/discourse:3.4.7
   IMG_DNSMASQ=mirror.gcr.io/jpillora/dnsmasq:1.1
-  IMG_DOLIBARR_APP=ghcr.io/homeserverhq/dolibarr:v23.0.4
+  IMG_DOLIBARR_APP=mirror.gcr.io/dolibarr/dolibarr:23.0.4
   IMG_DOLIBARR_MCP=ghcr.io/homeserverhq/dolibarr-mcp:v2
   IMG_DOZZLE=mirror.gcr.io/amir20/dozzle:v6.1.1
   IMG_DRAWIO_PLANTUML=mirror.gcr.io/jgraph/plantuml-server
@@ -32062,8 +32297,8 @@ function loadPinnedDockerImages()
   IMG_CRAWL4AI_APP=ghcr.io/homeserverhq/crawl4ai:v0.9.5
   IMG_CRAWL4AI_PROXY=ghcr.io/homeserverhq/crawl4ai-proxy:v0.1
   IMG_OLLAMA_SERVER=mirror.gcr.io/ollama/ollama:0.20.5
-  IMG_OPENWEBUI_APP=ghcr.io/homeserverhq/open-webui:v0.12.0
-  IMG_OPENWEBUI_OPENTERMINAL=ghcr.io/open-webui/open-terminal:0.11.34
+  IMG_OPENWEBUI_APP=ghcr.io/homeserverhq/open-webui:v0.13.0
+  IMG_OPENWEBUI_OPENTERMINAL=ghcr.io/open-webui/open-terminal:0.17.4
   IMG_OPENWEBUI_MCPO=ghcr.io/open-webui/mcpo:main
   IMG_OPENWEBUI_PIPELINES=ghcr.io/open-webui/pipelines:main
   IMG_OPENWEBUI_MCP=hshq/openwebui-mcp:v1
@@ -32072,14 +32307,14 @@ function loadPinnedDockerImages()
   IMG_KHOJ_SERVER=ghcr.io/khoj-ai/khoj:1.42.10
   IMG_LOBECHAT_APP=mirror.gcr.io/lobehub/lobe-chat-database:1.143.3
   IMG_INVOKEAI_APP=ghcr.io/invoke-ai/invokeai:6.12-cpu
-  IMG_RAGFLOW_INFINITY=mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3
-  IMG_RAGFLOW_APP=ghcr.io/homeserverhq/ragflow:v0.27.3.1
+  IMG_RAGFLOW_INFINITY=mirror.gcr.io/infiniflow/infinity:v0.7.5-x64-v3
+  IMG_RAGFLOW_APP=mirror.gcr.io/infiniflow/ragflow:v1.0.0
   IMG_RAGFLOW_SANDBOX=mirror.gcr.io/infiniflow/sandbox-executor-manager:latest
   IMG_RAGFLOW_SB_NODEJS=mirror.gcr.io/infiniflow/sandbox-base-nodejs:latest
   IMG_RAGFLOW_SB_PYTHON=mirror.gcr.io/infiniflow/sandbox-base-python:latest
   IMG_TABBYML_APP=mirror.gcr.io/tabbyml/tabby:0.31.2
   IMG_DEEPWIKIOPEN_APP=ghcr.io/asyncfuncai/deepwiki-open:sha-d48f5bc
-  IMG_DOCLING_APP=hshq/docling-serve:v1.38.1
+  IMG_DOCLING_APP=hshq/docling-serve:v1.38.1.1
   IMG_DIFY_SSRF=mirror.gcr.io/ubuntu/squid:latest
   IMG_DIFY_API=mirror.gcr.io/langgenius/dify-api:1.11.2
   IMG_DIFY_PLUGIND=mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local
@@ -32122,7 +32357,7 @@ function loadPinnedDockerImages()
   IMG_KOKORO_TTS=ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0
   IMG_KOKORO_WEB=ghcr.io/remsky/kokoro-fastapi-ui:v0.1.0
   IMG_CHATTERBOX_APP=hshq/chatterbox:v1
-  IMG_LITELLM_APP=ghcr.io/homeserverhq/litellm:v1.106.4
+  IMG_LITELLM_APP=ghcr.io/berriai/litellm:v1.108.2
   IMG_LANGFUSE_WORKER=langfuse/langfuse-worker:3.213.0
   IMG_LANGFUSE_APP=mirror.gcr.io/langfuse/langfuse:3.213.0
   IMG_SKYVERN_API=mirror.gcr.io/skyvern/skyvern:v1.0.13
@@ -32149,7 +32384,7 @@ function loadPinnedDockerImages()
   IMG_HEDGEDOC_FRONTEND=ghcr.io/homeserverhq/hedgedoc-frontend:v2.0.1-alpha
   IMG_HEDGEDOC_BACKEND=ghcr.io/homeserverhq/hedgedoc-backend:v2.0.1-alpha
   IMG_HEDGEDOC_MCP=ghcr.io/homeserverhq/hedgedoc-mcp:v2
-  IMG_PRESENTON_APP=ghcr.io/homeserverhq/presenton:v0.9.7-beta
+  IMG_PRESENTON_APP=ghcr.io/presenton/presenton:v0.9.12-beta
   IMG_PRESENTON_MCP=ghcr.io/homeserverhq/presenton-mcp:v2
   IMG_BASICMEMORY_APP=ghcr.io/basicmachines-co/basic-memory:0.22.1
   IMG_COGNEE_APP=ghcr.io/homeserverhq/cognee-app:v1.4.2
@@ -32161,6 +32396,19 @@ function loadPinnedDockerImages()
   IMG_SURICATA_WEB=mirror.gcr.io/jasonish/evebox:0.29.0
   IMG_CROWDSEC_APP=ghcr.io/crowdsecurity/crowdsec:v1.8.1
   IMG_CROWDSEC_WEB=ghcr.io/theduffman85/crowdsec-web-ui:2026.10.3
+  IMG_FASTCRW_APP=ghcr.io/fastcrw/crw:0.41.0
+  IMG_LIGHTPANDA=mirror.gcr.io/lightpanda/browser:1.0.2
+  IMG_FASTCRW_PROXY=ghcr.io/homeserverhq/crawl4ai-proxy:v0.1.0
+  IMG_HEADLESS_BROWSER=ghcr.io/homeserverhq/headless-browser:v0.1
+  IMG_WHITEBOARDRT_WEB=ghcr.io/homeserverhq/whiteboardrt:v0.2
+  IMG_WHITEBOARDRT_AGENT=ghcr.io/homeserverhq/whiteboardrt-agent-canvas:v0.2
+  IMG_WHITEBOARDRT_MCP=ghcr.io/homeserverhq/whiteboardrt-agent-mcp:v0.2
+  IMG_WHITEBOARDRT_STORAGE=ghcr.io/homeserverhq/whiteboardrt-storage-backend:v0.2
+  IMG_WHITEBOARDRT_SERVER=ghcr.io/homeserverhq/whiteboardrt-server:v0.2
+  IMG_MDCOLLAB_BACKEND=ghcr.io/homeserverhq/mdcollab-backend:v2.1
+  IMG_MDCOLLAB_FRONTEND=ghcr.io/homeserverhq/mdcollab-frontend:v2.1
+  IMG_MDCOLLAB_MCP=ghcr.io/homeserverhq/mdcollab-mcp:v3.0
+  IMG_HALOSPEAK_APP=hshq/halospeak:v3.0
 #ADD_NEW_IMAGES_HERE
 }
 
@@ -32363,7 +32611,7 @@ function getScriptStackVersion()
     invoiceninja)
       echo "v4" ;;
     dolibarr)
-      echo "v5" ;;
+      echo "v6" ;;
     n8n)
       echo "v2" ;;
     automatisch)
@@ -32423,7 +32671,7 @@ function getScriptStackVersion()
     ollama)
       echo "v2" ;;
     openwebui)
-      echo "v6" ;;
+      echo "v7" ;;
     khoj)
       echo "v1" ;;
     lobechat)
@@ -32431,13 +32679,13 @@ function getScriptStackVersion()
     invokeai)
       echo "v1" ;;
     ragflow)
-      echo "v5" ;;
+      echo "v6" ;;
     tabbyml)
       echo "v1" ;;
     deepwikiopen)
       echo "v1" ;;
     docling)
-      echo "v3" ;;
+      echo "v4" ;;
     dify)
       echo "v2" ;;
     mindsdb)
@@ -32487,7 +32735,7 @@ function getScriptStackVersion()
     chatterbox)
       echo "v1" ;;
     litellm)
-      echo "v3" ;;
+      echo "v5" ;;
     langfuse)
       echo "v3" ;;
     skyvern)
@@ -32515,7 +32763,7 @@ function getScriptStackVersion()
     hedgedoc)
       echo "v1" ;;
     presenton)
-      echo "v2" ;;
+      echo "v3" ;;
     basicmemory)
       echo "v1" ;;
     cognee)
@@ -32527,6 +32775,14 @@ function getScriptStackVersion()
     suricata)
       echo "v1" ;;
     crowdsec)
+      echo "v1" ;;
+    fastcrw)
+      echo "v1" ;;
+    whiteboardrt)
+      echo "v1" ;;
+    mdcollab)
+      echo "v1" ;;
+    halospeak)
       echo "v1" ;;
 #ADD_NEW_SCRIPT_STACK_VERSION_HERE
   esac
@@ -32865,6 +33121,19 @@ function pullDockerImages()
   buildOrPullImage $IMG_SURICATA_WEB
   buildOrPullImage $IMG_CROWDSEC_APP
   buildOrPullImage $IMG_CROWDSEC_WEB
+  buildOrPullImage $IMG_FASTCRW_APP
+  buildOrPullImage $IMG_LIGHTPANDA
+  buildOrPullImage $IMG_FASTCRW_PROXY
+  buildOrPullImage $IMG_HEADLESS_BROWSER
+  buildOrPullImage $IMG_WHITEBOARDRT_WEB
+  buildOrPullImage $IMG_WHITEBOARDRT_AGENT
+  buildOrPullImage $IMG_WHITEBOARDRT_MCP
+  buildOrPullImage $IMG_WHITEBOARDRT_STORAGE
+  buildOrPullImage $IMG_WHITEBOARDRT_SERVER
+  buildOrPullImage $IMG_MDCOLLAB_BACKEND
+  buildOrPullImage $IMG_MDCOLLAB_FRONTEND
+  buildOrPullImage $IMG_MDCOLLAB_MCP
+  buildOrPullImage $IMG_HALOSPEAK_APP
 #ADD_NEW_PULL_DOCKER_IMAGES_HERE
 }
 
@@ -34499,6 +34768,8 @@ RAGFLOW_MCPSERVER_API_KEY=
 RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=
 RAGFLOW_DATABASE_READONLYUSER=
 RAGFLOW_DATABASE_READONLYUSER_PASSWORD=
+RAGFLOW_TEAM_API_KEY=
+RAGFLOW_TEAM_TENANT_ID=
 # RAGFlow (Service Details) END
 
 # TabbyML (Service Details) BEGIN
@@ -34834,6 +35105,7 @@ LITELLM_MASTER_KEY=
 LITELLM_OIDC_CLIENT_ID=
 LITELLM_OIDC_CLIENT_SECRET=
 LITELLM_SALT_KEY=
+LITELLM_AUTH_KEY=
 # LiteLLM (Service Details) END
 
 # Langfuse (Service Details) BEGIN
@@ -34972,6 +35244,7 @@ AUTOKB_WEBHOOK_API_KEY=
 AUTOKB_ENCRYPTION_KEY=
 AUTOKB_ENCRYPTION_SALT=
 AUTOKB_SHARED_OWUI_TARGET_ID=
+AUTOKB_SHARED_RAGFLOW_TARGET_ID=
 # AutoKB (Service Details) END
 
 # SuiteCRM (Service Details) BEGIN
@@ -35076,6 +35349,35 @@ CROWDSEC_LAPI_PASSWORD=
 CROWDSEC_API_KEY=
 # CrowdSec (Service Details) END
 
+# fastCRW (Service Details) BEGIN
+FASTCRW_INIT_ENV=true
+FASTCRW_API_KEY=
+# fastCRW (Service Details) END
+
+# WhiteboardRT (Service Details) BEGIN
+WHITEBOARDRT_INIT_ENV=true
+WHITEBOARDRT_REDIS_PASSWORD=
+# WhiteboardRT (Service Details) END
+
+# mdCollab (Service Details) BEGIN
+MDCOLLAB_INIT_ENV=true
+MDCOLLAB_ADMIN_USERNAME=
+MDCOLLAB_ADMIN_EMAIL_ADDRESS=
+MDCOLLAB_ADMIN_PASSWORD=
+MDCOLLAB_DATABASE_NAME=
+MDCOLLAB_DATABASE_USER=
+MDCOLLAB_DATABASE_USER_PASSWORD=
+MDCOLLAB_DATABASE_READONLYUSER=
+MDCOLLAB_DATABASE_READONLYUSER_PASSWORD=
+MDCOLLAB_SESSION_SECRET=
+MDCOLLAB_ADMIN_API_KEY=
+# mdCollab (Service Details) END
+
+# HaloSpeak (Service Details) BEGIN
+HALOSPEAK_INIT_ENV=true
+HALOSPEAK_API_KEY=
+# HaloSpeak (Service Details) END
+
 # Service Details END
 EOFCF
 }
@@ -35126,10 +35428,10 @@ CERTS_IS_CA_INIT="false"
 CERTS_ROOT_CA_NAME=
 CERTS_EMAIL_ADDRESS=
 CERTS_INTERNAL_DHPARAMS_KEYLENGTH="2048"
-CERTS_INTERNAL_COUNTRY=
-CERTS_INTERNAL_STATE=
-CERTS_INTERNAL_LOCALITY=
-CERTS_INTERNAL_ORG_NAME=
+CERTS_INTERNAL_COUNTRY="$CERTS_INTERNAL_COUNTRY"
+CERTS_INTERNAL_STATE="$CERTS_INTERNAL_STATE"
+CERTS_INTERNAL_LOCALITY="$CERTS_INTERNAL_LOCALITY"
+CERTS_INTERNAL_ORG_NAME="$HOMESERVER_NAME"
 CERTS_INTERNAL_OU_NAME="HomeServerHQ"
 CERTS_INTERNAL_ROOT_CN=
 CERTS_INTERNAL_INTERMEDIATE_CN=
@@ -40183,6 +40485,54 @@ function initServicesCredentials()
     CROWDSEC_API_KEY=$(openssl rand -hex 16)
     updateConfigVar CROWDSEC_API_KEY $CROWDSEC_API_KEY
   fi
+  if [ -z "$FASTCRW_API_KEY" ]; then
+    FASTCRW_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar FASTCRW_API_KEY $FASTCRW_API_KEY
+  fi
+  if [ -z "$WHITEBOARDRT_REDIS_PASSWORD" ]; then
+    WHITEBOARDRT_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar WHITEBOARDRT_REDIS_PASSWORD $WHITEBOARDRT_REDIS_PASSWORD
+  fi
+  if [ -z "$MDCOLLAB_ADMIN_USERNAME" ]; then
+    MDCOLLAB_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_mdcollab"
+    updateConfigVar MDCOLLAB_ADMIN_USERNAME $MDCOLLAB_ADMIN_USERNAME
+  fi
+  if [ -z "$MDCOLLAB_ADMIN_EMAIL_ADDRESS" ]; then
+    MDCOLLAB_ADMIN_EMAIL_ADDRESS=$MDCOLLAB_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar MDCOLLAB_ADMIN_EMAIL_ADDRESS $MDCOLLAB_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$MDCOLLAB_ADMIN_PASSWORD" ]; then
+    MDCOLLAB_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MDCOLLAB_ADMIN_PASSWORD $MDCOLLAB_ADMIN_PASSWORD
+  fi
+  if [ -z "$MDCOLLAB_DATABASE_NAME" ]; then
+    MDCOLLAB_DATABASE_NAME=mdcollabdb
+    updateConfigVar MDCOLLAB_DATABASE_NAME $MDCOLLAB_DATABASE_NAME
+  fi
+  if [ -z "$MDCOLLAB_DATABASE_USER" ]; then
+    MDCOLLAB_DATABASE_USER=mdcollab-user
+    updateConfigVar MDCOLLAB_DATABASE_USER $MDCOLLAB_DATABASE_USER
+  fi
+  if [ -z "$MDCOLLAB_DATABASE_USER_PASSWORD" ]; then
+    MDCOLLAB_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MDCOLLAB_DATABASE_USER_PASSWORD $MDCOLLAB_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$MDCOLLAB_DATABASE_READONLYUSER" ]; then
+    MDCOLLAB_DATABASE_READONLYUSER=mdcollab-readonly
+    updateConfigVar MDCOLLAB_DATABASE_READONLYUSER $MDCOLLAB_DATABASE_READONLYUSER
+  fi
+  if [ -z "$MDCOLLAB_DATABASE_READONLYUSER_PASSWORD" ]; then
+    MDCOLLAB_DATABASE_READONLYUSER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MDCOLLAB_DATABASE_READONLYUSER_PASSWORD $MDCOLLAB_DATABASE_READONLYUSER_PASSWORD
+  fi
+  if [ -z "$MDCOLLAB_SESSION_SECRET" ]; then
+    MDCOLLAB_SESSION_SECRET=$(openssl rand -hex 32)
+    updateConfigVar MDCOLLAB_SESSION_SECRET $MDCOLLAB_SESSION_SECRET
+  fi
+  if [ -z "$HALOSPEAK_API_KEY" ]; then
+    HALOSPEAK_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar HALOSPEAK_API_KEY $HALOSPEAK_API_KEY
+  fi
 #ADD_NEW_SVC_CREDENTIALS_HERE
   # RelayServer credentials
   if [ -z "$CLIENTDNS_USER1_ADMIN_USERNAME" ]; then
@@ -40334,6 +40684,9 @@ function checkCreateNonbackupDirByStack()
     "morphic")
       mkdir -p $HSHQ_NONBACKUP_DIR/morphic/redis
       ;;
+    "ragflow")
+      mkdir -p $HSHQ_NONBACKUP_DIR/ragflow/kvrocks
+      ;;
 #ADD_NEW_NONBACKUP_DIRS_HERE
     *)
       ;;
@@ -40474,7 +40827,7 @@ function initServiceVars()
   checkAddSvc "SVCD_OPENPROJECT_APP=openproject,openproject,primary,user,OpenProject,openproject,hshq"
   sed -i "s/SVCD_PAPERLESS=/SVCD_PAPERLESS_APP=/" $CONFIG_FILE
   checkAddSvc "SVCD_PAPERLESS_APP=paperless,paperless,primary,user,Paperless-ngx,paperless,hshq"
-  checkAddSvc "SVCD_PAPERLESS_AI_WEB=paperless,paperless-ai,primary,user,Paperless-AI,paperless-ai,hshq"
+  checkAddSvc "SVCD_PAPERLESS_AI_WEB=paperless,paperless-ai,primary,user,Zettelrobbe,paperless-ai,hshq"
   checkAddSvc "SVCD_PAPERLESS_GPT_WEB=paperless,paperless-gpt,primary,user,Paperless-GPT,paperless-gpt,hshq"
   checkAddSvc "SVCD_PASTEFY=pastefy,pastefy,primary,user,Pastefy,pastefy,hshq"
   checkAddSvc "SVCD_PEERTUBE=peertube,peertube,other,user,PeerTube,peertube,hshq"
@@ -40558,6 +40911,7 @@ function initServiceVars()
   checkAddSvc "SVCD_RAGFLOW_ADMIN=ragflow,ragflow-admin,primary,admin,RAGFlow Admin,ragflow-admin,hshq"
   checkAddSvc "SVCD_RAGFLOW_MCP=ragflow,ragflow-mcp,primary,user,RAGFlow MCP,ragflow-mcp,hshq"
   checkAddSvc "SVCD_RAGFLOW_MINIO=ragflow,ragflow-minio,primary,admin,MinIO (RAGFlow),ragflow-minio,hshq"
+  checkAddSvc "SVCD_RAGFLOW_RUSTFS=ragflow,ragflow-rustfs,primary,admin,RustFS (RAGFlow),ragflow-rustfs,hshq"
   checkAddSvc "SVCD_RAGFLOW_INFINITY_WEB=ragflow,ragflow-infinity,primary,admin,RAGFlow Infinity,ragflow-infinity,hshq"
   checkAddSvc "SVCD_TABBYML_APP=tabbyml,tabbyml,primary,admin,TabbyML,tabbyml,hshq"
   checkAddSvc "SVCD_DEEPWIKI_OPEN_APP=deepwikiopen,deepwikiopen,primary,admin,DeepWiki-Open,deepwikiopen,hshq"
@@ -40631,6 +40985,14 @@ function initServiceVars()
   checkAddSvc "SVCD_OPENSERP_APP=openserp,openserp,primary,user,OpenSERP,openserp,hshq"
   checkAddSvc "SVCD_SURICATA_APP=suricata,suricata,primary,admin,Suricata,suricata,hshq"
   checkAddSvc "SVCD_CROWDSEC_WEB=crowdsec,crowdsec,primary,admin,CrowdSec Web UI,crowdsec,hshq"
+  checkAddSvc "SVCD_FASTCRW_APP=fastcrw,fastcrw,primary,user,fastCRW,fastcrw,hshq"
+  checkAddSvc "SVCD_WHITEBOARDRT_WEB=whiteboardrt,whiteboardrt,primary,user,WhiteboardRT,whiteboardrt,hshq"
+  checkAddSvc "SVCD_WHITEBOARDRT_SERVER=whiteboardrt,whiteboardrt-server,primary,user,WhiteboardRT Server,whiteboardrt-server,hshq"
+  checkAddSvc "SVCD_WHITEBOARDRT_STORAGE=whiteboardrt,whiteboardrt-storage,primary,user,WhiteboardRT Storage,whiteboardrt-storage,hshq"
+  checkAddSvc "SVCD_WHITEBOARDRT_AGENT=whiteboardrt,whiteboardrt-agent,primary,user,WhiteboardRT Agent,whiteboardrt-agent,hshq"
+  checkAddSvc "SVCD_MDCOLLAB_APP=mdcollab,mdcollab,primary,user,mdCollab,mdcollab,hshq"
+  checkAddSvc "SVCD_HALOSPEAK_APP=halospeak,halospeak,primary,user,HaloSpeak,halospeak,hshq"
+  checkAddSvc "SVCD_HALOSPEAK_API=halospeak,halospeak-api,primary,user,HaloSpeak API,halospeak-api,hshq"
 #ADD_NEW_SVC_VARS_HERE
   set -e
 }
@@ -40997,6 +41359,14 @@ function installStackByName()
       installSuricata $is_integrate ;;
     crowdsec)
       installCrowdSec $is_integrate ;;
+    fastcrw)
+      installfastCRW $is_integrate ;;
+    whiteboardrt)
+      installWhiteboardRT $is_integrate ;;
+    mdcollab)
+      installmdCollab $is_integrate ;;
+    halospeak)
+      installHaloSpeak $is_integrate ;;
 #ADD_NEW_INSTALL_STACK_HERE
   esac
   stack_install_retval=$?
@@ -41377,6 +41747,14 @@ function performUpdateStackByName()
       performUpdateSuricata ;;
     crowdsec)
       performUpdateCrowdSec ;;
+    fastcrw)
+      performUpdatefastCRW ;;
+    whiteboardrt)
+      performUpdateWhiteboardRT ;;
+    mdcollab)
+      performUpdatemdCollab ;;
+    halospeak)
+      performUpdateHaloSpeak ;;
 #ADD_NEW_PERFORM_UPDATE_STACK_HERE
   esac
 }
@@ -41579,6 +41957,12 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_SUITECRM_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PRESENTON_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_FASTCRW_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_WHITEBOARDRT_WEB.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_WHITEBOARDRT_AGENT.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_MDCOLLAB_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_HALOSPEAK_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_HALOSPEAK_API.$HOMESERVER_DOMAIN\n"
 #ADD_NEW_AUTHELIA_PRIMARY_HERE
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
@@ -41635,7 +42019,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_DEEPWIKI_OPEN_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MINDSDB_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MORPHIC_SUPABASE.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_RAGFLOW_RUSTFS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LEMONADE_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SUPERSET_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENRAG_OPENSEARCH.$HOMESERVER_DOMAIN\n"
@@ -41789,8 +42173,9 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENWEBUI_QDRANT}-Admin" https://$SUB_OPENWEBUI_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $OPENWEBUI_ADMIN_EMAIL_ADDRESS $OPENWEBUI_QDRANT_API_KEY)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_MINIO}-Admin" https://$SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_SECRET)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/admin $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_APP}-TeamAdmin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RAGFLOW_RUSTFS}-Admin" https://$SUB_RAGFLOW_RUSTFS.$HOMESERVER_DOMAIN/rustfs/console/auth/login/ $HOMESERVER_ABBREV $RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_SECRET)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TABBYML_APP}-Admin" https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN/auth/signin $HOMESERVER_ABBREV $TABBYML_ADMIN_EMAIL_ADDRESS $TABBYML_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DIFY_APP}-Admin" https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $DIFY_ADMIN_EMAIL_ADDRESS $DIFY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MINDSDB_APP}-Admin" https://$SUB_MINDSDB_APP.$HOMESERVER_DOMAIN/local-login $HOMESERVER_ABBREV $MINDSDB_ADMIN_USERNAME $MINDSDB_ADMIN_PASSWORD)"\n"
@@ -41836,6 +42221,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_LIGHTRAG_QDRANT}-Admin" https://$SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_EMAIL_ADDRESS $LIGHTRAG_QDRANT_API_KEY)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SURICATA_APP}-Admin" https://$SUB_SURICATA_APP.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $SURICATA_ADMIN_USERNAME $SURICATA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CROWDSEC_WEB}-Admin" https://$SUB_CROWDSEC_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CROWDSEC_ADMIN_USERNAME $CROWDSEC_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MDCOLLAB_APP}-Admin" https://$SUB_MDCOLLAB_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MDCOLLAB_ADMIN_USERNAME $MDCOLLAB_ADMIN_PASSWORD)"\n"
 #ADD_NEW_VW_CREDS_HERE
 
   # RelayServer
@@ -42004,8 +42390,9 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENWEBUI_QDRANT}-Admin" https://$SUB_OPENWEBUI_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $OPENWEBUI_ADMIN_EMAIL_ADDRESS $OPENWEBUI_QDRANT_API_KEY)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KHOJ_SERVER}-Admin" https://$SUB_KHOJ_SERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KHOJ_ADMIN_EMAIL_ADDRESS $KHOJ_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LOBECHAT_APP}-Admin" https://$SUB_LOBECHAT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LOBECHAT_ADMIN_USERNAME $LOBECHAT_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_MINIO}-Admin" https://$SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_SECRET)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_APP}-Admin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/admin $HOMESERVER_ABBREV $RAGFLOW_ADMIN_EMAIL_ADDRESS $RAGFLOW_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_APP}-TeamAdmin" https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RAGFLOW_RUSTFS}-Admin" https://$SUB_RAGFLOW_RUSTFS.$HOMESERVER_DOMAIN/rustfs/console/auth/login/ $HOMESERVER_ABBREV $RAGFLOW_MINIO_KEY $RAGFLOW_MINIO_SECRET)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TABBYML_APP}-Admin" https://$SUB_TABBYML_APP.$HOMESERVER_DOMAIN/auth/signin $HOMESERVER_ABBREV $TABBYML_ADMIN_EMAIL_ADDRESS $TABBYML_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DIFY_APP}-Admin" https://$SUB_DIFY_APP.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $DIFY_ADMIN_EMAIL_ADDRESS $DIFY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MINDSDB_APP}-Admin" https://$SUB_MINDSDB_APP.$HOMESERVER_DOMAIN/local-login $HOMESERVER_ABBREV $MINDSDB_ADMIN_USERNAME $MINDSDB_ADMIN_PASSWORD)"\n"
@@ -42050,6 +42437,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_LIGHTRAG_QDRANT}-Admin" https://$SUB_LIGHTRAG_QDRANT.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $LIGHTRAG_ADMIN_EMAIL_ADDRESS $LIGHTRAG_QDRANT_API_KEY)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SURICATA_APP}-Admin" https://$SUB_SURICATA_APP.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $SURICATA_ADMIN_USERNAME $SURICATA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CROWDSEC_WEB}-Admin" https://$SUB_CROWDSEC_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CROWDSEC_ADMIN_USERNAME $CROWDSEC_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MDCOLLAB_APP}-Admin" https://$SUB_MDCOLLAB_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MDCOLLAB_ADMIN_USERNAME $MDCOLLAB_ADMIN_PASSWORD)"\n"
 #ADD_NEW_FMT_CREDS_HERE
 
   # RelayServer
@@ -42619,6 +43007,9 @@ function getHeimdallOrderFromSub()
     "$SUB_RAGFLOW_APP")
       order_num=152
       ;;
+    "$SUB_RAGFLOW_RUSTFS")
+      order_num=152
+      ;;
     "$SUB_TABBYML_APP")
       order_num=153
       ;;
@@ -42781,6 +43172,21 @@ function getHeimdallOrderFromSub()
     "$SUB_CROWDSEC_WEB")
       order_num=207
       ;;
+    "$SUB_FASTCRW_APP")
+      order_num=208
+      ;;
+    "$SUB_WHITEBOARDRT_WEB")
+      order_num=209
+      ;;
+    "$SUB_WHITEBOARDRT_AGENT")
+      order_num=209
+      ;;
+    "$SUB_MDCOLLAB_APP")
+      order_num=210
+      ;;
+    "$SUB_HALOSPEAK_APP")
+      order_num=211
+      ;;
 #ADD_NEW_HEIMDALL_ORDER_HERE
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=900
@@ -42831,21 +43237,21 @@ function initServiceDefaults()
 {
 #INIT_SERVICE_DEFAULTS_BEGIN
   HSHQ_REQUIRED_STACKS=adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma
-  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,opennotebook,appsmith,trilium,memos,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,insanelyfastwhisper,ivbox,wger,workoutcool,voicebox,opencode,emailclassifierai,hermes-agent,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
+  HSHQ_OPTIONAL_STACKS=vaultwarden,sysutils,beszel,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,dbgate,sqlpad,taiga,opensign,docuseal,controlr,convertx,kopia,localai,langflow,anythingllm,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,opennotebook,appsmith,trilium,memos,lemonade,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,speakr,insanelyfastwhisper,ivbox,wger,workoutcool,voicebox,opencode,emailclassifierai,hermes-agent,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec,fastcrw,whiteboardrt,mdcollab,halospeak
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
-  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
-  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
-  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec,fastcrw,whiteboardrt,mdcollab,halospeak
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec,fastcrw,whiteboardrt,mdcollab,halospeak
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,wazuh,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec,fastcrw,whiteboardrt,mdcollab,halospeak
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,wazuh,kasm,penpot,espocrm,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec,fastcrw,whiteboardrt,mdcollab,halospeak
+  DS_MEM_HIGH=discourse,netdata,photoprism,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec,fastcrw,whiteboardrt,mdcollab,halospeak
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec,fastcrw,whiteboardrt,mdcollab,halospeak
+  BDS_MEM_16=wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec,fastcrw,whiteboardrt,mdcollab,halospeak
+  BDS_MEM_22=wazuh,matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja,n8n,automatisch,activepieces,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec,fastcrw,whiteboardrt,mdcollab,halospeak
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill,invoiceninja,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec,fastcrw,whiteboardrt,mdcollab,halospeak
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,discourse,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill,taiga,opensign,docuseal,controlr,akaunting,axelor,convertx,kopia,localai,comfyui,langflow,anythingllm,perplexica,firecrawl,librechat,crawl4ai,ollama,openwebui,khoj,lobechat,invokeai,ragflow,tabbyml,deepwikiopen,docling,dify,mindsdb,watercrawl,flowise,nocodb,surfsense,ente,morphic,opennotebook,appsmith,trilium,docsgpt,memos,sillytavern,lemonade,speakr,insanelyfastwhisper,ivbox,monica,affine,joplin,superset,kokoro,chatterbox,litellm,langfuse,skyvern,wger,workoutcool,openrag,voicebox,opencode,openskills,emailclassifierai,hermes-agent,autokb,suitecrm,hedgedoc,presenton,basicmemory,cognee,lightrag,openserp,suricata,crowdsec,fastcrw,whiteboardrt,mdcollab,halospeak
 #INIT_SERVICE_DEFAULTS_END
   if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
-    HSHQ_OPTIONAL_STACKS=${HSHQ_OPTIONAL_STACKS},surfsense,ente,comfyui,perplexica,morphic,skyvern,openrag,openskills,sillytavern
+    HSHQ_OPTIONAL_STACKS=${HSHQ_OPTIONAL_STACKS},surfsense,ente,comfyui,perplexica,morphic,skyvern,openrag,openskills,sillytavern,suitecrm
   fi
 }
 
@@ -44058,7 +44464,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/valkey/valkey:alpine3.23
       ;;
     "openwebui-qdrant")
-      container_image=mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged
+      container_image=mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged
       ;;
     "openwebui-openterminal")
       container_image=$IMG_OPENWEBUI_OPENTERMINAL
@@ -44122,6 +44528,15 @@ function getScriptImageByContainerName()
       ;;
     "ragflow-sandbox-python")
       container_image=$IMG_RAGFLOW_SB_PYTHON
+      ;;
+    "ragflow-rustfs")
+      container_image=mirror.gcr.io/rustfs/rustfs:1.0.4
+      ;;
+    "ragflow-kvrocks")
+      container_image=mirror.gcr.io/apache/kvrocks:2.16.0
+      ;;
+    "ragflow-nats")
+      container_image=mirror.gcr.io/nats:2.14.2
       ;;
     "tabbyml-app")
       container_image=$IMG_TABBYML_APP
@@ -44630,6 +45045,54 @@ function getScriptImageByContainerName()
     "crowdsec-web")
       container_image=$IMG_CROWDSEC_WEB
       ;;
+    "fastcrw-app")
+      container_image=$IMG_FASTCRW_APP
+      ;;
+    "lightpanda")
+      container_image=$IMG_LIGHTPANDA
+      ;;
+    "fastcrw-proxy")
+      container_image=$IMG_FASTCRW_PROXY
+      ;;
+    "headless-browser")
+      container_image=$IMG_HEADLESS_BROWSER
+      ;;
+    "whiteboardrt-web")
+      container_image=$IMG_WHITEBOARDRT_WEB
+      ;;
+    "whiteboardrt-agent")
+      container_image=$IMG_WHITEBOARDRT_AGENT
+      ;;
+    "whiteboardrt-mcp")
+      container_image=$IMG_WHITEBOARDRT_MCP
+      ;;
+    "whiteboardrt-storage")
+      container_image=$IMG_WHITEBOARDRT_STORAGE
+      ;;
+    "whiteboardrt-server")
+      container_image=$IMG_WHITEBOARDRT_SERVER
+      ;;
+    "whiteboardrt-redis")
+      container_image=mirror.gcr.io/valkey/valkey:alpine3.23
+      ;;
+    "mdcollab-db")
+      container_image=mirror.gcr.io/postgres:17.6
+      ;;
+    "mdcollab-backend")
+      container_image=$IMG_MDCOLLAB_BACKEND
+      ;;
+    "mdcollab-frontend")
+      container_image=$IMG_MDCOLLAB_FRONTEND
+      ;;
+    "mdcollab-mcp")
+      container_image=$IMG_MDCOLLAB_MCP
+      ;;
+    "halospeak-app")
+      container_image=$IMG_HALOSPEAK_APP
+      ;;
+    "halospeak-api")
+      container_image=$IMG_HALOSPEAK_APP
+      ;;
 #ADD_NEW_SCRIPT_IMG_BY_NAME_HERE
     *)
       ;;
@@ -44739,7 +45202,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "OpenWebUI" "OPENWEBUI_INIT_ENV=false,OPENWEBUI_ADMIN_USERNAME=,OPENWEBUI_ADMIN_EMAIL_ADDRESS=,OPENWEBUI_ADMIN_PASSWORD=,OPENWEBUI_DATABASE_NAME=,OPENWEBUI_DATABASE_USER=,OPENWEBUI_DATABASE_USER_PASSWORD=,OPENWEBUI_REDIS_PASSWORD=,OPENWEBUI_OIDC_CLIENT_ID=,OPENWEBUI_OIDC_CLIENT_SECRET=,OPENWEBUI_SECRET_KEY=,OPENWEBUI_ADMIN_API_KEY=,OPENWEBUI_QDRANT_API_KEY=,OPENWEBUI_OPENTERMINAL_API_KEY=,OPENWEBUI_MCPO_API_KEY=,OPENWEBUI_PIPELINES_API_KEY=,OPENWEBUI_ADMIN_UUID=,OPENWEBUI_PRIMARYUSERS_UUID=" $CONFIG_FILE false
   checkAddServiceToConfig "Khoj" "KHOJ_INIT_ENV=false,KHOJ_ADMIN_USERNAME=,KHOJ_ADMIN_EMAIL_ADDRESS=,KHOJ_ADMIN_PASSWORD=,KHOJ_DATABASE_NAME=,KHOJ_DATABASE_USER=,KHOJ_DATABASE_USER_PASSWORD=,KHOJ_DJANGO_SECRET_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "LobeChat" "LOBECHAT_INIT_ENV=false,LOBECHAT_ADMIN_USERNAME=,LOBECHAT_ADMIN_EMAIL_ADDRESS=,LOBECHAT_ADMIN_PASSWORD=,LOBECHAT_DATABASE_NAME=,LOBECHAT_DATABASE_USER=,LOBECHAT_DATABASE_USER_PASSWORD=,LOBECHAT_REDIS_PASSWORD=,LOBECHAT_NEXTAUTH_SECRET=,LOBECHAT_KEYVAULTS_SECRET=,LOBECHAT_MINIO_KEY=,LOBECHAT_MINIO_SECRET=,LOBECHAT_OIDC_CLIENT_ID=,LOBECHAT_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
-  checkAddServiceToConfig "RAGFlow" "RAGFLOW_INIT_ENV=false,RAGFLOW_ADMIN_USERNAME=,RAGFLOW_ADMIN_EMAIL_ADDRESS=,RAGFLOW_ADMIN_PASSWORD=,RAGFLOW_ADMIN_API_KEY=,RAGFLOW_DATABASE_NAME=,RAGFLOW_DATABASE_USER=,RAGFLOW_DATABASE_USER_PASSWORD=,RAGFLOW_DATABASE_ROOT_PASSWORD=,RAGFLOW_REDIS_PASSWORD=,RAGFLOW_MINIO_KEY=,RAGFLOW_MINIO_SECRET=,RAGFLOW_SECRET_KEY=,RAGFLOW_OIDC_CLIENT_ID=,RAGFLOW_OIDC_CLIENT_SECRET=,RAGFLOW_MCPSERVER_API_KEY=,RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=" $CONFIG_FILE false
+  checkAddServiceToConfig "RAGFlow" "RAGFLOW_INIT_ENV=false,RAGFLOW_ADMIN_USERNAME=,RAGFLOW_ADMIN_EMAIL_ADDRESS=,RAGFLOW_ADMIN_PASSWORD=,RAGFLOW_ADMIN_API_KEY=,RAGFLOW_DATABASE_NAME=,RAGFLOW_DATABASE_USER=,RAGFLOW_DATABASE_USER_PASSWORD=,RAGFLOW_DATABASE_ROOT_PASSWORD=,RAGFLOW_REDIS_PASSWORD=,RAGFLOW_MINIO_KEY=,RAGFLOW_MINIO_SECRET=,RAGFLOW_SECRET_KEY=,RAGFLOW_OIDC_CLIENT_ID=,RAGFLOW_OIDC_CLIENT_SECRET=,RAGFLOW_MCPSERVER_API_KEY=,RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=,RAGFLOW_TEAM_API_KEY=,RAGFLOW_TEAM_TENANT_ID=" $CONFIG_FILE false
   checkAddServiceToConfig "TabbyML" "TABBYML_INIT_ENV=false,TABBYML_ADMIN_USERNAME=,TABBYML_ADMIN_EMAIL_ADDRESS=,TABBYML_ADMIN_PASSWORD=,TABBYML_JWT_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "DeepWikiOpen" "DEEPWIKI_OPEN_INIT_ENV=false,DEEPWIKI_OPEN_AUTH_CODE=" $CONFIG_FILE false
   checkAddServiceToConfig "Docling" "DOCLING_INIT_ENV=false,DOCLING_REDIS_PASSWORD=,DOCLING_API_KEY=" $CONFIG_FILE false
@@ -44767,7 +45230,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Superset" "SUPERSET_INIT_ENV=false,SUPERSET_ADMIN_USERNAME=,SUPERSET_ADMIN_EMAIL_ADDRESS=,SUPERSET_ADMIN_PASSWORD=,SUPERSET_DATABASE_NAME=,SUPERSET_DATABASE_USER=,SUPERSET_DATABASE_USER_PASSWORD=,SUPERSET_DATABASE_READONLYUSER=,SUPERSET_DATABASE_READONLYUSER_PASSWORD=,SUPERSET_SECRET_KEY=,SUPERSET_JWT_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "Kokoro" "KOKORO_INIT_ENV=false,KOKORO_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "Chatterbox" "CHATTERBOX_INIT_ENV=false,CHATTERBOX_API_KEY=" $CONFIG_FILE false
-  checkAddServiceToConfig "LiteLLM" "LITELLM_INIT_ENV=false,LITELLM_ADMIN_USERNAME=,LITELLM_ADMIN_EMAIL_ADDRESS=,LITELLM_ADMIN_PASSWORD=,LITELLM_DATABASE_NAME=,LITELLM_DATABASE_USER=,LITELLM_DATABASE_USER_PASSWORD=,LITELLM_DATABASE_READONLYUSER=,LITELLM_DATABASE_READONLYUSER_PASSWORD=,LITELLM_REDIS_PASSWORD=,LITELLM_MASTER_KEY=,LITELLM_OIDC_CLIENT_ID=,LITELLM_OIDC_CLIENT_SECRET=,LITELLM_SALT_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "LiteLLM" "LITELLM_INIT_ENV=false,LITELLM_ADMIN_USERNAME=,LITELLM_ADMIN_EMAIL_ADDRESS=,LITELLM_ADMIN_PASSWORD=,LITELLM_DATABASE_NAME=,LITELLM_DATABASE_USER=,LITELLM_DATABASE_USER_PASSWORD=,LITELLM_DATABASE_READONLYUSER=,LITELLM_DATABASE_READONLYUSER_PASSWORD=,LITELLM_REDIS_PASSWORD=,LITELLM_MASTER_KEY=,LITELLM_OIDC_CLIENT_ID=,LITELLM_OIDC_CLIENT_SECRET=,LITELLM_SALT_KEY=,LITELLM_AUTH_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "Langfuse" "LANGFUSE_INIT_ENV=false,LANGFUSE_ADMIN_USERNAME=,LANGFUSE_ADMIN_EMAIL_ADDRESS=,LANGFUSE_ADMIN_PASSWORD=,LANGFUSE_DATABASE_NAME=,LANGFUSE_DATABASE_USER=,LANGFUSE_DATABASE_USER_PASSWORD=,LANGFUSE_DATABASE_READONLYUSER=,LANGFUSE_DATABASE_READONLYUSER_PASSWORD=,LANGFUSE_REDIS_PASSWORD=,LANGFUSE_PUBLIC_KEY=,LANGFUSE_SECRET_KEY=,LANGFUSE_INIT_PROJECT_ID=,LANGFUSE_MINIO_KEY=,LANGFUSE_MINIO_SECRET=,LANGFUSE_OIDC_CLIENT_ID=,LANGFUSE_OIDC_CLIENT_SECRET=,LANGFUSE_SALT=,LANGFUSE_ENCRYPTION_KEY=,LANGFUSE_NEXTAUTH_SECRET=,LANGFUSE_CLICKHOUSE_DB=,LANGFUSE_CLICKHOUSE_USER=,LANGFUSE_CLICKHOUSE_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Skyvern" "SKYVERN_INIT_ENV=false,SKYVERN_ADMIN_USERNAME=,SKYVERN_ADMIN_EMAIL_ADDRESS=,SKYVERN_ADMIN_PASSWORD=,SKYVERN_DATABASE_NAME=,SKYVERN_DATABASE_USER=,SKYVERN_DATABASE_USER_PASSWORD=,SKYVERN_DATABASE_READONLYUSER=,SKYVERN_DATABASE_READONLYUSER_PASSWORD=,SKYVERN_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "Wger" "WGER_INIT_ENV=false,WGER_ADMIN_USERNAME=,WGER_ADMIN_EMAIL_ADDRESS=,WGER_ADMIN_PASSWORD=,WGER_DATABASE_NAME=,WGER_DATABASE_USER=,WGER_DATABASE_USER_PASSWORD=,WGER_DATABASE_READONLYUSER=,WGER_DATABASE_READONLYUSER_PASSWORD=,WGER_REDIS_PASSWORD=,WGER_SECRET_KEY=,WGER_SIGNING_KEY=,WGER_CELERY_FLOWER_PASSWORD=" $CONFIG_FILE false
@@ -44778,7 +45241,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "OpenSkills" "OPENSKILLS_INIT_ENV=false,OPENSKILLS_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "EmailClassifierAI" "EMAILCLASSIFIERAI_INIT_ENV=false,EMAILCLASSIFIERAI_ADMIN_USERNAME=,EMAILCLASSIFIERAI_ADMIN_PASSWORD=,EMAILCLASSIFIERAI_REDIS_PASSWORD=,EMAILCLASSIFIERAI_FLASK_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "HermesAgent" "HERMES_AGENT_INIT_ENV=false,HERMES_AGENT_ADMIN_USERNAME=,HERMES_AGENT_ADMIN_PASSWORD=,HERMES_AGENT_SUDO_PASSWORD=,HERMES_AGENT_API_KEY=,HERMES_AGENT_WEBUI_PASSWORD=" $CONFIG_FILE false
-  checkAddServiceToConfig "AutoKB" "AUTOKB_INIT_ENV=false,AUTOKB_ADMIN_USERNAME=,AUTOKB_ADMIN_PASSWORD=,AUTOKB_DATABASE_NAME=,AUTOKB_DATABASE_USER=,AUTOKB_DATABASE_USER_PASSWORD=,AUTOKB_DATABASE_READONLYUSER=,AUTOKB_DATABASE_READONLYUSER_PASSWORD=,AUTOKB_REDIS_PASSWORD=,AUTOKB_API_KEY=,AUTOKB_BACKEND_API_KEY=,AUTOKB_WEBHOOK_API_KEY=,AUTOKB_ENCRYPTION_KEY=,AUTOKB_ENCRYPTION_SALT=,AUTOKB_SHARED_OWUI_TARGET_ID=" $CONFIG_FILE false
+  checkAddServiceToConfig "AutoKB" "AUTOKB_INIT_ENV=false,AUTOKB_ADMIN_USERNAME=,AUTOKB_ADMIN_PASSWORD=,AUTOKB_DATABASE_NAME=,AUTOKB_DATABASE_USER=,AUTOKB_DATABASE_USER_PASSWORD=,AUTOKB_DATABASE_READONLYUSER=,AUTOKB_DATABASE_READONLYUSER_PASSWORD=,AUTOKB_REDIS_PASSWORD=,AUTOKB_API_KEY=,AUTOKB_BACKEND_API_KEY=,AUTOKB_WEBHOOK_API_KEY=,AUTOKB_ENCRYPTION_KEY=,AUTOKB_ENCRYPTION_SALT=,AUTOKB_SHARED_OWUI_TARGET_ID=,AUTOKB_SHARED_RAGFLOW_TARGET_ID=" $CONFIG_FILE false
   checkAddServiceToConfig "SuiteCRM" "SUITECRM_INIT_ENV=false,SUITECRM_ADMIN_USERNAME=,SUITECRM_ADMIN_EMAIL_ADDRESS=,SUITECRM_ADMIN_PASSWORD=,SUITECRM_DATABASE_NAME=,SUITECRM_DATABASE_ROOT_PASSWORD=,SUITECRM_DATABASE_USER=,SUITECRM_DATABASE_USER_PASSWORD=,SUITECRM_DATABASE_READONLYUSER=,SUITECRM_DATABASE_READONLYUSER_PASSWORD=,SUITECRM_REDIS_PASSWORD=,SUITECRM_APP_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "HedgeDoc" "HEDGEDOC_INIT_ENV=false,HEDGEDOC_ADMIN_USERNAME=,HEDGEDOC_ADMIN_EMAIL_ADDRESS=,HEDGEDOC_ADMIN_PASSWORD=,HEDGEDOC_DATABASE_NAME=,HEDGEDOC_DATABASE_USER=,HEDGEDOC_DATABASE_USER_PASSWORD=,HEDGEDOC_DATABASE_READONLYUSER=,HEDGEDOC_DATABASE_READONLYUSER_PASSWORD=,HEDGEDOC_SESSION_SECRET=,HEDGEDOC_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddServiceToConfig "Presenton" "PRESENTON_INIT_ENV=false,PRESENTON_ADMIN_USERNAME=,PRESENTON_ADMIN_EMAIL_ADDRESS=,PRESENTON_ADMIN_PASSWORD=,PRESENTON_ADMIN_API_KEY=" $CONFIG_FILE false
@@ -44788,6 +45251,10 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "OpenSERP" "OPENSERP_INIT_ENV=false" $CONFIG_FILE false
   checkAddServiceToConfig "Suricata" "SURICATA_INIT_ENV=false,SURICATA_ADMIN_USERNAME=,SURICATA_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "CrowdSec" "CROWDSEC_INIT_ENV=false,CROWDSEC_ADMIN_USERNAME=,CROWDSEC_ADMIN_PASSWORD=,CROWDSEC_LAPI_USERNAME=,CROWDSEC_LAPI_PASSWORD=,CROWDSEC_API_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "fastCRW" "FASTCRW_INIT_ENV=false,FASTCRW_API_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "WhiteboardRT" "WHITEBOARDRT_INIT_ENV=false,WHITEBOARDRT_REDIS_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "mdCollab" "MDCOLLAB_INIT_ENV=false,MDCOLLAB_ADMIN_USERNAME=,MDCOLLAB_ADMIN_EMAIL_ADDRESS=,MDCOLLAB_ADMIN_PASSWORD=,MDCOLLAB_DATABASE_NAME=,MDCOLLAB_DATABASE_USER=,MDCOLLAB_DATABASE_USER_PASSWORD=,MDCOLLAB_DATABASE_READONLYUSER=,MDCOLLAB_DATABASE_READONLYUSER_PASSWORD=,MDCOLLAB_SESSION_SECRET=,MDCOLLAB_ADMIN_API_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "HaloSpeak" "HALOSPEAK_INIT_ENV=false,HALOSPEAK_API_KEY=" $CONFIG_FILE false
 #ADD_NEW_ADD_SVC_CONFIG_HERE
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -44833,7 +45300,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Paperless" "PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_PERSONAL_TAG_ID=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_NAME=,PAPERLESS_EMAIL_PROCESSED_SHARED_TAG_ID=,PAPERLESS_KNOWLEDGEBASE_TAG_NAME=,PAPERLESS_KNOWLEDGEBASE_TAG_ID=,PAPERLESS_TRANSCRIPTION_DOCTYPE_NAME=,PAPERLESS_TRANSCRIPTION_DOCTYPE_ID=,PAPERLESS_AKB_WORKFLOW_ID=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Mailu" "EMAIL_JOINT_USERNAME=,EMAIL_JOINT_PASSWORD=,EMAIL_JOINT_EMAIL_ADDRESS=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "OpenWebUI" "OPENWEBUI_ADMIN_UUID=,OPENWEBUI_PRIMARYUSERS_UUID=" $CONFIG_FILE false
-  checkAddVarsToServiceConfig "AutoKB" "AUTOKB_SHARED_OWUI_TARGET_ID=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "AutoKB" "AUTOKB_SHARED_OWUI_TARGET_ID=,AUTOKB_SHARED_RAGFLOW_TARGET_ID=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Wordpress" "WORDPRESS_APP_PASSWORD=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "InvoiceShelf" "INVOICESHELF_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Keila" "KEILA_ADMIN_API_KEY=" $CONFIG_FILE false
@@ -44842,10 +45309,11 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "HedgeDoc" "HEDGEDOC_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Mealie" "MEALIE_ADMIN_API_KEY=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Presenton" "PRESENTON_ADMIN_API_KEY=" $CONFIG_FILE false
-  checkAddVarsToServiceConfig "RAGFlow" "RAGFLOW_DATABASE_ROOT_PASSWORD=,RAGFLOW_ADMIN_API_KEY=,RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "RAGFlow" "RAGFLOW_DATABASE_ROOT_PASSWORD=,RAGFLOW_ADMIN_API_KEY=,RAGFLOW_SANDBOX_EXECUTOR_MANAGER_API_TOKEN=,RAGFLOW_TEAM_API_KEY=,RAGFLOW_TEAM_TENANT_ID=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "AutoKB" "AUTOKB_ENCRYPTION_SALT=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "SysUtils" "ALLOY_ADMIN_USERNAME=,ALLOY_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "LightRAG" "LIGHTRAG_NEO4J_DATABASE=,LIGHTRAG_NEO4J_USER=,LIGHTRAG_NEO4J_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "LiteLLM" "LITELLM_AUTH_KEY=" $CONFIG_FILE false
   initServicesCredentials
 }
 
@@ -44906,6 +45374,9 @@ function buildOrPullImage()
       ;;
     "hshq/docling-serve:v1.38.1")
       buildImageDoclingV3
+      ;;
+    "hshq/docling-serve:v1.38.1.1")
+      buildImageDoclingV4
       ;;
     "hshq/ente-server:v1")
       buildImageEnteServerV1
@@ -49146,7 +49617,7 @@ scrape_configs:
       - targets: ['litellm-proxy:4000']
     authorization:
       type: Bearer
-      credentials: "$LITELLM_MASTER_KEY"
+      credentials: "$LITELLM_AUTH_KEY"
   - job_name: 'crowdsec'
     static_configs:
       - targets: ['crowdsec-app:6060']
@@ -53069,7 +53540,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ --no-warnings app:enable spreed
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install integration_excalidraw
   docker exec -u www-data nextcloud-app php occ --no-warnings app:enable integration_excalidraw
-  docker exec -u www-data nextcloud-app php occ config:app:set integration_excalidraw base_url --value="https://$SUB_EXCALIDRAW_WEB.$HOMESERVER_DOMAIN"
+  docker exec -u www-data nextcloud-app php occ config:app:set integration_excalidraw base_url --value="https://$SUB_WHITEBOARDRT_WEB.$HOMESERVER_DOMAIN"
   docker exec -u www-data nextcloud-app php occ config:app:set integration_excalidraw enabled --value="yes"
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install integration_mastodon
   docker exec -u www-data nextcloud-app php occ --no-warnings app:enable integration_mastodon
@@ -55551,11 +56022,13 @@ function addSharedDirsNextcloud()
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install files_external
   docker exec -u www-data nextcloud-app php occ --no-warnings app:enable files_external
   curID=$(docker exec -u www-data nextcloud-app php occ files_external:create Images local null::null -c datadir=/shared/Images/\$user/Images | rev | cut -d" " -f1 | rev)
+  docker exec -u www-data -it nextcloud-app php occ files_external:option $curID enable_sharing true > /dev/null 2>&1
   docker exec -u www-data -it nextcloud-app php occ files_external:applicable --remove-all $curID > /dev/null 2>&1
   curID=$(docker exec -u www-data nextcloud-app php occ files_external:create SharedConsume local null::null -c datadir=/shared/SharedConsume/\$user/SharedConsume | rev | cut -d" " -f1 | rev)
   docker exec -u www-data -it nextcloud-app php occ files_external:applicable --remove-all $curID > /dev/null 2>&1
   curID=$(docker exec -u www-data nextcloud-app php occ files_external:create SharedProcessed local null::null -c datadir=/shared/SharedProcessed | rev | cut -d" " -f1 | rev)
   docker exec -u www-data -it nextcloud-app php occ files_external:option $curID readonly true > /dev/null 2>&1
+  docker exec -u www-data -it nextcloud-app php occ files_external:option $curID enable_sharing true > /dev/null 2>&1
   docker exec -u www-data -it nextcloud-app php occ files_external:applicable --remove-all $curID > /dev/null 2>&1
   curID=$(docker exec -u www-data nextcloud-app php occ files_external:create PersonalConsume local null::null -c datadir=/shared/PersonalConsume/\$user/PersonalConsume | rev | cut -d" " -f1 | rev)
   docker exec -u www-data -it nextcloud-app php occ files_external:applicable --remove-all $curID > /dev/null 2>&1
@@ -55563,6 +56036,7 @@ function addSharedDirsNextcloud()
   docker exec -u www-data -it nextcloud-app php occ files_external:applicable --remove-all $curID > /dev/null 2>&1
   curID=$(docker exec -u www-data nextcloud-app php occ files_external:create PersonalProcessed local null::null -c datadir=/shared/PersonalProcessed/\$user/PersonalProcessed | rev | cut -d" " -f1 | rev)
   docker exec -u www-data -it nextcloud-app php occ files_external:option $curID readonly true > /dev/null 2>&1
+  docker exec -u www-data -it nextcloud-app php occ files_external:option $curID enable_sharing true > /dev/null 2>&1
   docker exec -u www-data -it nextcloud-app php occ files_external:applicable --remove-all $curID > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ files:scan --all > /dev/null 2>&1
 }
@@ -64919,6 +65393,10 @@ function mfFireflyAdd2ndImporter()
 function installExcalidraw()
 {
   set +e
+  echo "************************************************************************"
+  echo "This stack has been deprecated, please install WhiteboardRT instead."
+  echo "************************************************************************"
+  return
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory excalidraw "Excalidraw"
   cdRes=$?
@@ -64970,6 +65448,7 @@ function installExcalidraw()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://excalidraw-web {\n"
@@ -65019,6 +65498,7 @@ function installExcalidraw()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
   inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
@@ -65751,7 +66231,7 @@ NEXT_PUBLIC_DRAWIO_BASE_URL=http://drawio-web:8080
 AI_PROVIDER=openai
 AI_MODEL=Thinking
 OPENAI_BASE_URL=http://litellm-proxy:4000/v1
-OPENAI_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_API_KEY=$LITELLM_AUTH_KEY
 OPENAI_REASONING_EFFORT=low
 OPENAI_REASONING_SUMMARY=detailed
 TEMPERATURE=0.3
@@ -65953,7 +66433,7 @@ NEXT_PUBLIC_DRAWIO_BASE_URL=http://drawio-web:8080
 AI_PROVIDER=openai
 AI_MODEL=reason
 OPENAI_BASE_URL=http://litellm-proxy:4000/v1
-OPENAI_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_API_KEY=$LITELLM_AUTH_KEY
 OPENAI_REASONING_EFFORT=low
 OPENAI_REASONING_SUMMARY=detailed
 TEMPERATURE=0.3
@@ -67088,7 +67568,7 @@ LDAP_ADMIN_FILTER=(memberOf=cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_
 LDAP_ID_ATTRIBUTE=uid
 LDAP_NAME_ATTRIBUTE=cn
 LDAP_MAIL_ATTRIBUTE=mail
-OPENAI_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_API_KEY=$LITELLM_AUTH_KEY
 OPENAI_MODEL=Vision
 OPENAI_BASE_URL=http://litellm-proxy:4000/v1
 OPENAI_ENABLE_IMAGE_SERVICES=True
@@ -67378,7 +67858,7 @@ LDAP_ADMIN_FILTER=(memberOf=cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_
 LDAP_ID_ATTRIBUTE=uid
 LDAP_NAME_ATTRIBUTE=cn
 LDAP_MAIL_ATTRIBUTE=mail
-OPENAI_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_API_KEY=$LITELLM_AUTH_KEY
 OPENAI_MODEL=Vision
 OPENAI_BASE_URL=http://litellm-proxy:4000/v1
 OPENAI_ENABLE_IMAGE_SERVICES=True
@@ -71839,7 +72319,7 @@ function installPaperless()
   set +e
   addUserMailu alias $PAPERLESS_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   if ! [ "$PAPERLESS_INIT_ENV" = "true" ]; then
-    sendEmail -s "Paperless Admin Login Info" -b "Paperless Admin Username: $PAPERLESS_ADMIN_USERNAME\nPaperless Admin Password: $PAPERLESS_ADMIN_PASSWORD\nPaperless-AI Admin Username: $PAPERLESS_AI_ADMIN_USERNAME\nPaperless-AI Admin Password: $PAPERLESS_AI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Paperless Admin Login Info" -b "Paperless Admin Username: $PAPERLESS_ADMIN_USERNAME\nPaperless Admin Password: $PAPERLESS_ADMIN_PASSWORD\nZettelrobbe Admin Username: $PAPERLESS_AI_ADMIN_USERNAME\nZettelrobbe Admin Password: $PAPERLESS_AI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     PAPERLESS_INIT_ENV=true
     updateConfigVar PAPERLESS_INIT_ENV $PAPERLESS_INIT_ENV
   fi
@@ -71917,7 +72397,7 @@ function installPaperless()
   updateCaddyBlocks $SUB_PAPERLESS_GPT_WEB $MANAGETLS_PAPERLESS_GPT_WEB "$is_integrate_hshq" $NETDEFAULT_PAPERLESS_GPT_WEB "$inner_block"
   insertSubAuthelia $SUB_PAPERLESS_GPT_WEB.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll paperless "$FMLNAME_PAPERLESS_AI_WEB" $USERTYPE_PAPERLESS_AI_WEB "https://$SUB_PAPERLESS_AI_WEB.$HOMESERVER_DOMAIN" "paperless-ai.png" "$(getHeimdallOrderFromSub $SUB_PAPERLESS_AI_WEB $USERTYPE_PAPERLESS_AI_WEB)"
+    insertEnableSvcAll paperless "$FMLNAME_PAPERLESS_AI_WEB" $USERTYPE_PAPERLESS_AI_WEB "https://$SUB_PAPERLESS_AI_WEB.$HOMESERVER_DOMAIN" "zettelrobbe.png" "$(getHeimdallOrderFromSub $SUB_PAPERLESS_AI_WEB $USERTYPE_PAPERLESS_AI_WEB)"
     insertEnableSvcAll paperless "$FMLNAME_PAPERLESS_APP" $USERTYPE_PAPERLESS_APP "https://$SUB_PAPERLESS_APP.$HOMESERVER_DOMAIN" "paperless.png" "$(getHeimdallOrderFromSub $SUB_PAPERLESS_APP $USERTYPE_PAPERLESS_APP)"
     insertEnableSvcHeimdall paperless "$FMLNAME_PAPERLESS_GPT_WEB" $USERTYPE_PAPERLESS_GPT_WEB "https://$SUB_PAPERLESS_GPT_WEB.$HOMESERVER_DOMAIN" "paperless-gpt.png" true "$(getHeimdallOrderFromSub $SUB_PAPERLESS_GPT_WEB $USERTYPE_PAPERLESS_GPT_WEB)"
     restartAllCaddyContainers
@@ -71968,7 +72448,7 @@ MANUAL_TAG=paperless-gpt
 AUTO_TAG=paperless-gpt-auto
 LLM_PROVIDER=openai
 LLM_MODEL=Vision
-OPENAI_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_API_KEY=$LITELLM_AUTH_KEY
 OPENAI_BASE_URL=http://litellm-proxy:4000/v1
 OCR_PROVIDER=docling
 DOCLING_URL=http://docling-app:5001
@@ -72012,7 +72492,7 @@ PAPERLESS_AI_LLM_EMBEDDING_MODEL=Embed
 PAPERLESS_AI_LLM_EMBEDDING_ENDPOINT=http://litellm-proxy:4000/v1
 PAPERLESS_AI_LLM_BACKEND=openai-like
 PAPERLESS_AI_LLM_MODEL=LongContext
-PAPERLESS_AI_LLM_API_KEY=$LITELLM_MASTER_KEY
+PAPERLESS_AI_LLM_API_KEY=$LITELLM_AUTH_KEY
 PAPERLESS_AI_LLM_ENDPOINT=http://litellm-proxy:4000/v1
 PAPERLESS_AI_LLM_ALLOW_INTERNAL_ENDPOINTS=true
 PAPERLESS_OCR_USER_ARGS='{"invalidate_digital_signatures": true}'
@@ -72316,7 +72796,7 @@ USE_EXISTING_DATA=yes
 PRE_EXISTING_DATA_PROMPT=\`Available document types: {{ALL_DOCUMENT_TYPES}}\`
 API_KEY=$PAPERLESS_AI_API_KEY
 JWT_SECRET=$PAPERLESS_AI_JWT_SECRET
-CUSTOM_API_KEY=$LITELLM_MASTER_KEY
+CUSTOM_API_KEY=$LITELLM_AUTH_KEY
 CUSTOM_BASE_URL=http://litellm-proxy:4000/v1
 CUSTOM_MODEL=Vision
 PAPERLESS_AI_INITIAL_SETUP=yes
@@ -72335,7 +72815,7 @@ AZURE_API_VERSION=
 MISTRAL_OCR_ENABLED=yes
 OCR_PROVIDER=custom
 OCR_API_URL=http://litellm-proxy:4000/v1
-OCR_API_KEY=$LITELLM_MASTER_KEY
+OCR_API_KEY=$LITELLM_AUTH_KEY
 MISTRAL_OCR_MODEL=Vision
 EOFPA
 }
@@ -72682,7 +73162,7 @@ function buildImagePaperlessAINextV1()
 {
   set +e
   echo -e "\n========================================================================"
-  echo -e "  The Paperless-AI-Next image is being built. It can take a bit"
+  echo -e "  The Zettelrobbe image is being built. It can take a bit"
   echo -e "  for the process to complete, so please be patient."
   echo -e "========================================================================\n"
   sudo rm -fr $HSHQ_BUILD_DIR/paperless-ai-next
@@ -72767,7 +73247,7 @@ function mfPaperlessV7AddAI()
   insertSubAuthelia $SUB_PAPERLESS_AI_WEB.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   insertEnableSvcAll paperless "$FMLNAME_PAPERLESS_AI_WEB" $USERTYPE_PAPERLESS_AI_WEB "https://$SUB_PAPERLESS_AI_WEB.$HOMESERVER_DOMAIN" "paperless-ai.png" "$(getHeimdallOrderFromSub $SUB_PAPERLESS_AI_WEB $USERTYPE_PAPERLESS_AI_WEB)"
   restartAllCaddyContainers
-  sendEmail -s "Paperless-AI Admin Login Info" -b "Paperless-AI Admin Username: $PAPERLESS_AI_ADMIN_USERNAME\nPaperless-AI Admin Password: $PAPERLESS_AI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  sendEmail -s "Zettelrobbe Admin Login Info" -b "Zettelrobbe Admin Username: $PAPERLESS_AI_ADMIN_USERNAME\nZettelrobbe Admin Password: $PAPERLESS_AI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
 }
 
 function outputComposeV7Paperless()
@@ -73451,7 +73931,7 @@ function mfPaperlessV8AddGPT()
     echo "AUTO_TAG=paperless-gpt-auto" >> $HOME/paperless.env
     echo "LLM_PROVIDER=openai" >> $HOME/paperless.env
     echo "LLM_MODEL=Vision" >> $HOME/paperless.env
-    echo "OPENAI_API_KEY=$LITELLM_MASTER_KEY" >> $HOME/paperless.env
+    echo "OPENAI_API_KEY=$LITELLM_AUTH_KEY" >> $HOME/paperless.env
     echo "OPENAI_BASE_URL=http://litellm-proxy:4000/v1" >> $HOME/paperless.env
     echo "OCR_PROVIDER=docling" >> $HOME/paperless.env
     echo "DOCLING_URL=http://docling-app:5001" >> $HOME/paperless.env
@@ -73596,7 +74076,7 @@ MANUAL_TAG=paperless-gpt
 AUTO_TAG=paperless-gpt-auto
 LLM_PROVIDER=openai
 LLM_MODEL=Vision
-OPENAI_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_API_KEY=$LITELLM_AUTH_KEY
 OPENAI_BASE_URL=http://litellm-proxy:4000/v1
 OCR_PROVIDER=docling
 DOCLING_URL=http://docling-app:5001
@@ -73655,7 +74135,7 @@ USE_EXISTING_DATA=yes
 PRE_EXISTING_DATA_PROMPT=\`Available document types: {{ALL_DOCUMENT_TYPES}}\`
 API_KEY=$PAPERLESS_AI_API_KEY
 JWT_SECRET=$PAPERLESS_AI_JWT_SECRET
-CUSTOM_API_KEY=$LITELLM_MASTER_KEY
+CUSTOM_API_KEY=$LITELLM_AUTH_KEY
 CUSTOM_BASE_URL=http://litellm-proxy:4000/v1
 CUSTOM_MODEL=Vision
 PAPERLESS_AI_INITIAL_SETUP=yes
@@ -73674,7 +74154,7 @@ AZURE_API_VERSION=
 MISTRAL_OCR_ENABLED=yes
 OCR_PROVIDER=custom
 OCR_API_URL=http://litellm-proxy:4000/v1
-OCR_API_KEY=$LITELLM_MASTER_KEY
+OCR_API_KEY=$LITELLM_AUTH_KEY
 MISTRAL_OCR_MODEL=Vision
 EOFPA
   mv $HSHQ_STACKS_DIR/paperless/ai.env $HSHQ_STACKS_DIR/paperless/ai/.env
@@ -73933,7 +74413,7 @@ function mfPaperlessV12Update()
     echo "PAPERLESS_AI_LLM_EMBEDDING_ENDPOINT=http://litellm-proxy:4000/v1" >> $HOME/paperless.env
     echo "PAPERLESS_AI_LLM_BACKEND=openai-like" >> $HOME/paperless.env
     echo "PAPERLESS_AI_LLM_MODEL=LongContext" >> $HOME/paperless.env
-    echo "PAPERLESS_AI_LLM_API_KEY=$LITELLM_MASTER_KEY" >> $HOME/paperless.env
+    echo "PAPERLESS_AI_LLM_API_KEY=$LITELLM_AUTH_KEY" >> $HOME/paperless.env
     echo "PAPERLESS_AI_LLM_ENDPOINT=http://litellm-proxy:4000/v1" >> $HOME/paperless.env
     echo "PAPERLESS_AI_LLM_ALLOW_INTERNAL_ENDPOINTS=true" >> $HOME/paperless.env
     echo "PAPERLESS_OCR_USER_ARGS='{\"invalidate_digital_signatures\": true}'" >> $HOME/paperless.env
@@ -87011,7 +87491,7 @@ IS_IMAP_SMTP_CALDAV_ENABLED=true
 CALENDAR_PROVIDER_CALENDAR_ENABLED=true
 MESSAGING_PROVIDER_IMAP_ENABLED=true
 CALENDAR_PROVIDER_GOOGLE_ENABLED=false
-AI_PROVIDERS='{"litellm-proxy":{"npm":"@ai-sdk/openai-compatible","label":"LiteLLM Proxy","baseUrl":"http://litellm-proxy:4000/v1","apiKey":"$LITELLM_MASTER_KEY","models":[{"name":"LongContext","label":"LongContext"}]}}'
+AI_PROVIDERS='{"litellm-proxy":{"npm":"@ai-sdk/openai-compatible","label":"LiteLLM Proxy","baseUrl":"http://litellm-proxy:4000/v1","apiKey":"$LITELLM_AUTH_KEY","models":[{"name":"LongContext","label":"LongContext"}]}}'
 AI_MODELS_DEFAULT_RECOMMENDED='["litellm-proxy/LongContext"]'
 TWENTY_BASE_URL=http://twenty-app:3000
 MCP_SERVER_PORT=80
@@ -87814,7 +88294,7 @@ IS_IMAP_SMTP_CALDAV_ENABLED=true
 CALENDAR_PROVIDER_CALENDAR_ENABLED=true
 MESSAGING_PROVIDER_IMAP_ENABLED=true
 CALENDAR_PROVIDER_GOOGLE_ENABLED=false
-AI_PROVIDERS='{"litellm-proxy":{"npm":"@ai-sdk/openai-compatible","label":"LiteLLM Proxy","baseUrl":"http://litellm-proxy:4000/v1","apiKey":"$LITELLM_MASTER_KEY","models":[{"name":"LongContext","label":"LongContext"}]}}'
+AI_PROVIDERS='{"litellm-proxy":{"npm":"@ai-sdk/openai-compatible","label":"LiteLLM Proxy","baseUrl":"http://litellm-proxy:4000/v1","apiKey":"$LITELLM_AUTH_KEY","models":[{"name":"LongContext","label":"LongContext"}]}}'
 TWENTY_BASE_URL=http://twenty-app:3000
 MCP_SERVER_PORT=80
 ALLOW_ALL_AGGREGATE=false
@@ -95161,10 +95641,18 @@ function performUpdateDolibarr()
       image_update_map[3]="ghcr.io/homeserverhq/dolibarr-mcp:v2,ghcr.io/homeserverhq/dolibarr-mcp:v2"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=mirror.gcr.io/mariadb:10.7.3,ghcr.io/homeserverhq/dolibarr:v23.0.4,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/dolibarr-mcp:v2
       image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
-      image_update_map[1]="ghcr.io/homeserverhq/dolibarr:v23.0.4,ghcr.io/homeserverhq/dolibarr:v23.0.4"
+      image_update_map[1]="ghcr.io/homeserverhq/dolibarr:v23.0.4,mirror.gcr.io/dolibarr/dolibarr:23.0.4"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[3]="ghcr.io/homeserverhq/dolibarr-mcp:v2,ghcr.io/homeserverhq/dolibarr-mcp:v2"
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/dolibarr/dolibarr:23.0.4,mirror.gcr.io/valkey/valkey:alpine3.23,ghcr.io/homeserverhq/dolibarr-mcp:v2
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/dolibarr/dolibarr:23.0.4,mirror.gcr.io/dolibarr/dolibarr:23.0.4"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[3]="ghcr.io/homeserverhq/dolibarr-mcp:v2,ghcr.io/homeserverhq/dolibarr-mcp:v2"
     ;;
@@ -100722,7 +101210,7 @@ USE_REDIS=true
 REDIS_URI=redis://:$LIBRECHAT_REDIS_PASSWORD@librechat-redis:6379
 ENDPOINTS=custom,agents
 OPENAI_API_KEY=user_provided
-RAG_OPENAI_API_KEY=$LITELLM_MASTER_KEY
+RAG_OPENAI_API_KEY=$LITELLM_AUTH_KEY
 RAG_OPENAI_BASEURL=http://litellm-proxy:4000
 EMBEDDINGS_PROVIDER=openai
 EMBEDDINGS_MODEL=text-embedding-ada-002
@@ -100733,7 +101221,7 @@ SEARXNG_API_KEY=nokey
 FIRECRAWL_API_URL=http://firecrawl-api:3002
 FIRECRAWL_API_KEY=$FIRECRAWL_API_KEY
 FIRECRAWL_VERSION=v2
-JINA_API_KEY=$LITELLM_MASTER_KEY
+JINA_API_KEY=$LITELLM_AUTH_KEY
 JINA_API_URL=http://litellm-proxy:4000/v1/rerank
 EOFMT
   cp $HOME/librechat.env $HSHQ_STACKS_DIR/librechat/config/env
@@ -100795,7 +101283,7 @@ interface:
 endpoints:
   custom:
     - name: "LiteLLM"
-      apiKey: "$LITELLM_MASTER_KEY"
+      apiKey: "$LITELLM_AUTH_KEY"
       baseURL: "http://litellm-proxy:4000/v1"
       models:
         default:
@@ -100978,7 +101466,7 @@ EOFMT
   cat <<EOFMT > $HOME/crawl4ai.env
 TZ=\${PORTAINER_TZ}
 OPENAI_BASE_URL=http://litellm-proxy:4000
-OPENAI_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_API_KEY=$LITELLM_AUTH_KEY
 LLM_PROVIDER=Chat
 LLM_TEMPERATURE=0.5
 LISTEN_PORT=8000
@@ -101030,7 +101518,7 @@ function mfUpdateCrawl4AIV3()
   cat <<EOFMT > $HOME/crawl4ai.env
 TZ=\${PORTAINER_TZ}
 OPENAI_BASE_URL=http://litellm-proxy:4000
-OPENAI_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_API_KEY=$LITELLM_AUTH_KEY
 LLM_PROVIDER=Chat
 LLM_TEMPERATURE=0.5
 CRAWL4AI_URL=http://crawl4ai-app:11235
@@ -101472,6 +101960,7 @@ services:
     env_file: stack.env
     networks:
       - int-openwebui-net
+      - dock-aipriv-net
       - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -101615,7 +102104,7 @@ RAG_EMBEDDING_ENGINE=openai
 RAG_EMBEDDING_MODEL=Embed
 ENABLE_KB_EXEC=true
 OPENAI_API_BASE_URL=http://litellm-proxy:4000/v1
-OPENAI_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_API_KEY=$LITELLM_AUTH_KEY
 OAUTH_MERGE_ACCOUNTS_BY_EMAIL=true
 OAUTH_PROVIDER_NAME=Authelia
 OPENID_PROVIDER_URL=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/.well-known/openid-configuration
@@ -101643,6 +102132,7 @@ ENABLE_RAG_LOCAL_WEB_FETCH=True
 VECTOR_DB=qdrant
 QDRANT_URI=http://openwebui-qdrant:6333
 QDRANT_API_KEY=$OPENWEBUI_QDRANT_API_KEY
+QDRANT__TELEMETRY_DISABLED=true
 OPEN_TERMINAL_MULTI_USER=true
 OPEN_TERMINAL_API_KEY=$OPENWEBUI_OPENTERMINAL_API_KEY
 OPENWEBUI_MCPO_API_KEY=$OPENWEBUI_MCPO_API_KEY
@@ -101739,16 +102229,30 @@ function performUpdateOpenWebUI()
       image_update_map[7]="hshq/openwebui-mcp:v1,hshq/openwebui-mcp:v1"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/open-webui:v0.12.0,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,ghcr.io/open-webui/open-terminal:0.11.34,ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/pipelines:main,hshq/openwebui-mcp:v1
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
-      image_update_map[1]="ghcr.io/homeserverhq/open-webui:v0.12.0,ghcr.io/homeserverhq/open-webui:v0.12.0"
+      image_update_map[1]="ghcr.io/homeserverhq/open-webui:v0.12.0,ghcr.io/homeserverhq/open-webui:v0.13.0"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
-      image_update_map[3]="mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged"
-      image_update_map[4]="ghcr.io/open-webui/open-terminal:0.11.34,ghcr.io/open-webui/open-terminal:0.11.34"
+      image_update_map[3]="mirror.gcr.io/qdrant/qdrant:v1.17.1-unprivileged,mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged"
+      image_update_map[4]="ghcr.io/open-webui/open-terminal:0.11.34,ghcr.io/open-webui/open-terminal:0.17.4"
       image_update_map[5]="ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/mcpo:main"
       image_update_map[6]="ghcr.io/open-webui/pipelines:main,ghcr.io/open-webui/pipelines:main"
       image_update_map[7]="hshq/openwebui-mcp:v1,hshq/openwebui-mcp:v1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateOpenWebUIV7
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    7)
+      newVer=v7
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/open-webui:v0.13.0,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged,ghcr.io/open-webui/open-terminal:0.11.34,ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/pipelines:main,hshq/openwebui-mcp:v1
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="ghcr.io/homeserverhq/open-webui:v0.13.0,ghcr.io/homeserverhq/open-webui:v0.13.0"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[3]="mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged,mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged"
+      image_update_map[4]="ghcr.io/open-webui/open-terminal:0.17.4,ghcr.io/open-webui/open-terminal:0.17.4"
+      image_update_map[5]="ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/mcpo:main"
+      image_update_map[6]="hshq/openwebui-mcp:v1,hshq/openwebui-mcp:v1"
     ;;
     *)
       is_upgrade_error=true
@@ -102303,6 +102807,208 @@ function buildImageOpenWebUIMCPV1()
   return $rtval
 }
 
+function mfUpdateOpenWebUIV7()
+{
+  set +e
+  grep -q "QDRANT__TELEMETRY_DISABLED" $HOME/openwebui.env
+  if [ $? -ne 0 ]; then
+    echo "QDRANT__TELEMETRY_DISABLED=true" >> $HOME/openwebui.env
+  fi
+  cat <<EOFMT > $HOME/openwebui-compose.yml
+$STACK_VERSION_PREFIX openwebui v7
+
+services:
+  openwebui-db:
+    image: mirror.gcr.io/postgres:16.9-bookworm
+    container_name: openwebui-db
+    hostname: openwebui-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-openwebui-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.openwebui-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.openwebui-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.openwebui-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.openwebui-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.openwebui-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.openwebui-hourly-db.email-from=OpenWebUI Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.openwebui-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.openwebui-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.openwebui-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.openwebui-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.openwebui-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.openwebui-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.openwebui-monthly-db.email-from=OpenWebUI Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.openwebui-monthly-db.mail-only-on-error=false"
+
+  openwebui-qdrant:
+    image: mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged
+    container_name: openwebui-qdrant
+    hostname: openwebui-qdrant
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-openwebui-net
+      - dock-dbs-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/qdrant:/qdrant/storage
+
+  openwebui-app:
+    image: ghcr.io/homeserverhq/open-webui:v0.13.0
+    container_name: openwebui-app
+    hostname: openwebui-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - openwebui-db
+    networks:
+      - int-openwebui-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/data:/app/backend/data
+
+  openwebui-openterminal:
+    image: ghcr.io/open-webui/open-terminal:0.17.4
+    container_name: openwebui-openterminal
+    hostname: openwebui-openterminal
+    restart: unless-stopped
+    env_file: stack.env
+    networks:
+      - int-openwebui-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-openwebui-openterminal:/home
+
+  openwebui-mcpo:
+    image: ghcr.io/open-webui/mcpo:main
+    container_name: openwebui-mcpo
+    hostname: openwebui-mcpo
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: --config /app/config/config.json --api-key "$OPENWEBUI_MCPO_API_KEY" --hot-reload
+    networks:
+      - int-openwebui-net
+      - dock-aipriv-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/mcpo:/app/config
+
+  openwebui-mcp:
+    image: hshq/openwebui-mcp:v1
+    container_name: openwebui-mcp
+    hostname: openwebui-mcp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-openwebui-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  openwebui-redis:
+    image: mirror.gcr.io/valkey/valkey:alpine3.23
+    container_name: openwebui-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $OPENWEBUI_REDIS_PASSWORD
+      --appendonly no
+    networks:
+      - int-openwebui-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+volumes:
+  v-openwebui-openterminal:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/openterminal
+  v-openwebui-pipelines:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/openwebui/pipelines
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-openwebui-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+}
+
 # Khoj
 function installKhoj()
 {
@@ -102545,7 +103251,7 @@ KHOJ_ADMIN_EMAIL=$KHOJ_ADMIN_EMAIL_ADDRESS
 KHOJ_ADMIN_PASSWORD=$KHOJ_ADMIN_PASSWORD
 KHOJ_TERRARIUM_URL=http://khoj-sandbox:8080
 OPENAI_BASE_URL=http://litellm-proxy:4000/v1
-OPENAI_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_API_KEY=$LITELLM_AUTH_KEY
 KHOJ_DEFAULT_CHAT_MODEL=Chat
 KHOJ_OPERATOR_ENABLED=True
 KHOJ_NO_HTTPS=True
@@ -102809,7 +103515,7 @@ MINIO_ROOT_PASSWORD=$LOBECHAT_MINIO_SECRET
 S3_PUBLIC_DOMAIN=http://lobechat-minio:9000
 S3_ENDPOINT=http://lobechat-minio:9000
 MINIO_LOBE_BUCKET=lobechat
-OPENAI_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_API_KEY=$LITELLM_AUTH_KEY
 OPENAI_PROXY_URL=http://litellm-proxy:4000/v1
 KEY_VAULTS_SECRET=$LOBECHAT_KEYVAULTS_SECRET
 NEXT_AUTH_SECRET=$LOBECHAT_NEXTAUTH_SECRET
@@ -103051,11 +103757,15 @@ function installRAGFlow()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName ragflow-minio)
+  pullImage $(getScriptImageByContainerName ragflow-rustfs)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $(getScriptImageByContainerName ragflow-redis)
+  pullImage $(getScriptImageByContainerName ragflow-kvrocks)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ragflow-nats)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -103065,10 +103775,13 @@ function installRAGFlow()
   mkdir $HSHQ_STACKS_DIR/ragflow/logs
   mkdir $HSHQ_STACKS_DIR/ragflow/nginx
   mkdir $HSHQ_STACKS_DIR/ragflow/infinity
-  mkdir $HSHQ_STACKS_DIR/ragflow/minio
+  mkdir $HSHQ_STACKS_DIR/ragflow/rustfs
   mkdir $HSHQ_STACKS_DIR/ragflow/db
   mkdir $HSHQ_STACKS_DIR/ragflow/dbexport
   mkdir $HSHQ_STACKS_DIR/ragflow/misc
+  mkdir $HSHQ_STACKS_DIR/ragflow/nats
+  mkdir -p $HSHQ_NONBACKUP_DIR/ragflow/kvrocks
+  sudo chown 10001:10001 $HSHQ_STACKS_DIR/ragflow/rustfs
   chmod 777 $HSHQ_STACKS_DIR/ragflow/dbexport
   initServicesCredentials
   set +e
@@ -103171,24 +103884,24 @@ function installRAGFlow()
   updateCaddyBlocks $SUB_RAGFLOW_MCP $MANAGETLS_RAGFLOW_MCP "$is_integrate_hshq" $NETDEFAULT_RAGFLOW_MCP "$inner_block"
   insertSubAuthelia $SUB_RAGFLOW_MCP.$HOMESERVER_DOMAIN bypass
   inner_block=""
-  inner_block=$inner_block">>https://$SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>https://$SUB_RAGFLOW_RUSTFS.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://ragflow-minio:9001 {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://ragflow-rustfs:9001 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
-  updateCaddyBlocks $SUB_RAGFLOW_MINIO $MANAGETLS_RAGFLOW_MINIO "$is_integrate_hshq" $NETDEFAULT_RAGFLOW_MINIO "$inner_block"
-  insertSubAuthelia $SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  updateCaddyBlocks $SUB_RAGFLOW_RUSTFS $MANAGETLS_RAGFLOW_RUSTFS "$is_integrate_hshq" $NETDEFAULT_RAGFLOW_RUSTFS "$inner_block"
+  insertSubAuthelia $SUB_RAGFLOW_RUSTFS.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll ragflow "$FMLNAME_RAGFLOW_APP" $USERTYPE_RAGFLOW_APP "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN" "ragflow.png" "$(getHeimdallOrderFromSub $SUB_RAGFLOW_APP $USERTYPE_RAGFLOW_APP)"
-    insertEnableSvcAll ragflow "$FMLNAME_RAGFLOW_MINIO" $USERTYPE_RAGFLOW_MINIO "https://$SUB_RAGFLOW_MINIO.$HOMESERVER_DOMAIN" "minio.png" "$(getHeimdallOrderFromSub $SUB_RAGFLOW_MINIO $USERTYPE_RAGFLOW_MINIO)"
+    insertEnableSvcAll ragflow "$FMLNAME_RAGFLOW_RUSTFS" $USERTYPE_RAGFLOW_RUSTFS "https://$SUB_RAGFLOW_RUSTFS.$HOMESERVER_DOMAIN" "rustfs.png" "$(getHeimdallOrderFromSub $SUB_RAGFLOW_RUSTFS $USERTYPE_RAGFLOW_RUSTFS)"
     restartAllCaddyContainers
     checkAddDBConnection true ragflow "$FMLNAME_RAGFLOW_APP" mysql ragflow-db $RAGFLOW_DATABASE_NAME $RAGFLOW_DATABASE_USER $RAGFLOW_DATABASE_USER_PASSWORD
   fi
@@ -103196,7 +103909,7 @@ function installRAGFlow()
 
 function outputConfigRAGFlow()
 {
-  outputComposeRAGFlow
+  set +e
   cat <<EOFMT > $HOME/ragflow.env
 TZ=\${PORTAINER_TZ}
 TIMEZONE='UTC-6\tAmerica/Chicago'
@@ -103225,16 +103938,21 @@ INFINITY_HOST=ragflow-infinity
 INFINITY_THRIFT_PORT=23817
 INFINITY_HTTP_PORT=23820
 INFINITY_PSQL_PORT=5432
-MINIO_HOST=ragflow-minio
+MINIO_HOST=ragflow-rustfs
 MINIO_CONSOLE_PORT=9001
 MINIO_PORT=9000
 MINIO_USER=$RAGFLOW_MINIO_KEY
 MINIO_PASSWORD=$RAGFLOW_MINIO_SECRET
 MINIO_ROOT_USER=$RAGFLOW_MINIO_KEY
 MINIO_ROOT_PASSWORD=$RAGFLOW_MINIO_SECRET
-REDIS_HOST=ragflow-redis
-REDIS_PORT=6379
+RUSTFS_ACCESS_KEY=$RAGFLOW_MINIO_KEY
+RUSTFS_SECRET_KEY=$RAGFLOW_MINIO_SECRET
+RUSTFS_AUTO_CREATE_BUCKETS=ragflow
+KVROCKS_HOST=ragflow-kvrocks
+KVROCKS_PORT=6379
 REDIS_PASSWORD=$RAGFLOW_REDIS_PASSWORD
+NATS_HOST=ragflow-nats
+NATS_PORT=4222
 SVR_WEB_HTTP_PORT=80
 SVR_WEB_HTTPS_PORT=443
 SVR_HTTP_PORT=9380
@@ -103244,8 +103962,9 @@ MAX_CONTENT_LENGTH=1073741824
 DOC_BULK_SIZE=4
 EMBEDDING_BATCH_SIZE=8
 REGISTER_ENABLED=1
-USE_DOCLING=false
+USE_DOCLING=true
 DOCLING_SERVER_URL=http://docling-app:5001
+DOCLING_API_KEY=$DOCLING_API_KEY
 DOCLING_PICTURE_DESCRIPTION=1
 DOCLING_PICTURE_DESCRIPTION_PRESET=external_vlm
 DOCLING_PICTURE_DESCRIPTION_AREA_THRESHOLD=0.025
@@ -103257,7 +103976,14 @@ DEFAULT_SUPERUSER_NICKNAME="RAGFlow $(getAdminEmailName)"
 DEFAULT_SUPERUSER_EMAIL=$RAGFLOW_ADMIN_EMAIL_ADDRESS
 DEFAULT_SUPERUSER_PASSWORD=$RAGFLOW_ADMIN_PASSWORD
 ADMIN_DEFAULT_PASSWORD=$RAGFLOW_ADMIN_PASSWORD
-API_PROXY_SCHEME=python
+RAGFLOW_MCP_ENABLED=true
+RAGFLOW_MCP_HOST=0.0.0.0
+RAGFLOW_MCP_PORT=9382
+RAGFLOW_MCP_LAUNCH_MODE=host
+RAGFLOW_MCP_TRANSPORT_STREAMABLE_ENABLED=true
+RAGFLOW_MCP_TRANSPORT_SSE_ENABLED=true
+RAGFLOW_MCP_JSON_RESPONSE=true
+ALLOW_ANY_HOST=true
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/ragflow/nginx/nginx.conf
 user  root;
@@ -103275,9 +104001,7 @@ http {
                       '"\$http_user_agent" "\$http_x_forwarded_for"';
     access_log  /var/log/nginx/access.log  main;
     sendfile        on;
-    #tcp_nopush     on;
     keepalive_timeout  65;
-    #gzip  on;
     client_max_body_size 1024M;
     include /etc/nginx/conf.d/ragflow.conf;
 }
@@ -103319,13 +104043,11 @@ server {
         include proxy.conf;
     }
 
-
     location / {
         index index.html;
         try_files \$uri \$uri/ /index.html;
     }
 
-    # Cache-Control: max-age Expires
     location ~ ^/static/(css|js|media)/ {
         expires 10y;
         access_log off;
@@ -103350,7 +104072,6 @@ log_dir                  = "/var/infinity/log"
 log_to_stdout            = true
 log_file_max_size        = "100MB"
 log_file_rotate_count    = 10
-
 log_level               = "info"
 
 [storage]
@@ -103360,7 +104081,6 @@ optimize_interval        = "10s"
 cleanup_interval         = "60s"
 compact_interval         = "120s"
 storage_type             = "local"
-
 mem_index_capacity       = 65536
 
 [buffer]
@@ -103386,17 +104106,22 @@ admin:
 minio:
   user: '$RAGFLOW_MINIO_KEY'
   password: '$RAGFLOW_MINIO_SECRET'
-  host: 'ragflow-minio:9000'
-  bucket: 'ragflow'
+  host: 'ragflow-rustfs:9000'
+  bucket: ''
   prefix_path: ''
 infinity:
   uri: 'ragflow-infinity:23817'
   db_name: 'default_db'
-redis:
+kvrocks:
   db: 1
   username: ''
   password: '$RAGFLOW_REDIS_PASSWORD'
-  host: 'ragflow-redis:6379'
+  host: 'ragflow-kvrocks:6379'
+nats:
+  host: 'ragflow-nats'
+  port: 4222
+ingestor:
+  mq_type: 'nats'
 mysql:
   name: '$RAGFLOW_DATABASE_NAME'
   user: '$RAGFLOW_DATABASE_USER'
@@ -103424,19 +104149,6 @@ smtp:
     - "RAGFlow $(getAdminEmailName)"
     - "$EMAIL_ADMIN_EMAIL_ADDRESS"
   mail_frontend_url: "https://$SUB_RAGFLOW_APP.$HOMESERVER_DOMAIN"
-user_default_llm:
-  factory: 'OpenAI-API-Compatible'
-  base_url: 'http://litellm-proxy:4000/v1'
-  api_key: '$LITELLM_MASTER_KEY'
-  default_models:
-    chat_model:
-      name: 'LongContext'
-    embedding_model:
-      name: 'Embed'
-    rerank_model:
-      name: 'Rerank'
-    vision_model:
-      name: 'Vision'
 EOFMT
   RAGFLOW_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $RAGFLOW_OIDC_CLIENT_SECRET | tr -d ':\n')
   cat <<EOFMT > $HOME/ragflow.oidc
@@ -103457,10 +104169,6 @@ EOFMT
         token_endpoint_auth_method: client_secret_post
 # Authelia OIDC Client ragflow END
 EOFMT
-}
-
-function outputComposeRAGFlow()
-{
   cat <<EOFMT > $HOME/ragflow-compose.yml
 $STACK_VERSION_PREFIX ragflow $(getScriptStackVersion ragflow)
 
@@ -103536,11 +104244,11 @@ services:
     depends_on:
       - ragflow-db
       - ragflow-infinity
-      - ragflow-minio
-      - ragflow-redis
+      - ragflow-rustfs
+      - ragflow-kvrocks
+      - ragflow-nats
     command:
       - --enable-adminserver
-      - --init-model-provider-tables
       - --init-superuser
     networks:
       - int-ragflow-net
@@ -103566,54 +104274,77 @@ services:
       retries: 5
       start_period: 60s
 
-  ragflow-minio:
-    image: $(getScriptImageByContainerName ragflow-minio)
-    container_name: ragflow-minio
-    hostname: ragflow-minio
+  ragflow-rustfs:
+    image: $(getScriptImageByContainerName ragflow-rustfs)
+    container_name: ragflow-rustfs
+    hostname: ragflow-rustfs
     restart: unless-stopped
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
     depends_on:
       - ragflow-db
-    entrypoint: >
-      /bin/sh -c "
-        minio server /data --address ':9000' --console-address ':9001' &
-        MINIO_PID=\$\$!
-        while ! curl -s http://localhost:9000/minio/health/live; do
-          echo 'Waiting for MinIO to start...'
-          sleep 1
-        done
-        sleep 5
-        mc alias set minio http://localhost:9000 ${RAGFLOW_MINIO_KEY} ${RAGFLOW_MINIO_SECRET}
-        echo 'Creating bucket ragflow'
-        mc mb minio/ragflow || true
-        wait \$\$MINIO_PID
-      "
     networks:
       - int-ragflow-net
       - dock-proxy-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/minio:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/rustfs:/data
 
-  ragflow-redis:
-    image: $(getScriptImageByContainerName ragflow-redis)
-    container_name: ragflow-redis
+  ragflow-kvrocks:
+    image: $(getScriptImageByContainerName ragflow-kvrocks)
+    container_name: ragflow-kvrocks
+    hostname: ragflow-kvrocks
     restart: unless-stopped
+    env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    command: redis-server
-      --requirepass $RAGFLOW_REDIS_PASSWORD
-      --appendonly no
-      --maxmemory 128mb
-      --maxmemory-policy allkeys-lru
+    user: "0:0"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /var/lib/kvrocks
+        {
+          echo "bind 0.0.0.0"
+          echo "port 6379"
+          echo "dir /var/lib/kvrocks"
+          printf 'requirepass %s\n' "\$\$REDIS_PASSWORD"
+        } > /var/lib/kvrocks/kvrocks.conf
+        exec kvrocks -c /var/lib/kvrocks/kvrocks.conf --dir /var/lib/kvrocks
     networks:
       - int-ragflow-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+      - v-ragflow-kvrocks:/var/lib/kvrocks
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"\$\$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+
+  ragflow-nats:
+    image: $(getScriptImageByContainerName ragflow-nats)
+    container_name: ragflow-nats
+    hostname: ragflow-nats
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: ["-js", "-sd", "/data", "--http_port", "8222"]
+    networks:
+      - int-ragflow-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-ragflow-nats:/data
+    healthcheck:
+      test: ["CMD", "nats-server", "--health-check"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
 
 volumes:
   v-ragflow-config:
@@ -103634,6 +104365,18 @@ volumes:
       type: none
       o: bind
       device: \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/infinity
+  v-ragflow-kvrocks:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/ragflow/kvrocks
+  v-ragflow-nats:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nats
 
 networks:
   dock-proxy-net:
@@ -103717,13 +104460,29 @@ function performUpdateRAGFlow()
       image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,ghcr.io/homeserverhq/ragflow:v0.27.3.1,ghcr.io/homeserverhq/minio:v1.0,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/mariadb:11.4.12"
       image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3,mirror.gcr.io/infiniflow/infinity:v0.7.3-x64-v3"
       image_update_map[2]="ghcr.io/homeserverhq/ragflow:v0.27.3.1,ghcr.io/homeserverhq/ragflow:v0.27.3.1"
       image_update_map[3]="ghcr.io/homeserverhq/minio:v1.0,ghcr.io/homeserverhq/minio:v1.0"
       image_update_map[4]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): This version of RAGFlow cannot be upgraded to the next version. You must first backup your data, uninstall and reinstall RAGFlow and import your data back in."
+      return
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/infiniflow/infinity:v0.7.5-x64-v3,mirror.gcr.io/infiniflow/ragflow:v1.0.0,mirror.gcr.io/rustfs/rustfs:1.0.4,mirror.gcr.io/apache/kvrocks:2.16.0,mirror.gcr.io/nats:2.14.2
+      image_update_map[0]="mirror.gcr.io/mariadb:11.4.12,mirror.gcr.io/mariadb:11.4.12"
+      image_update_map[1]="mirror.gcr.io/infiniflow/infinity:v0.7.5-x64-v3,mirror.gcr.io/infiniflow/infinity:v0.7.5-x64-v3"
+      image_update_map[2]="mirror.gcr.io/infiniflow/ragflow:v1.0.0,mirror.gcr.io/infiniflow/ragflow:v1.0.0"
+      image_update_map[3]="mirror.gcr.io/rustfs/rustfs:1.0.4,mirror.gcr.io/rustfs/rustfs:1.0.4"
+      image_update_map[4]="mirror.gcr.io/apache/kvrocks:2.16.0,mirror.gcr.io/apache/kvrocks:2.16.0"
+      image_update_map[5]="mirror.gcr.io/nats:2.14.2,mirror.gcr.io/nats:2.14.2"
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): This version of RAGFlow cannot be upgraded to the next version. You must first backup your data, uninstall and reinstall RAGFlow and import your data back in."
+      return
     ;;
     *)
       is_upgrade_error=true
@@ -104288,7 +105047,204 @@ wait
 EOFMT
   chmod 755 $HSHQ_STACKS_DIR/ragflow/misc/entrypoint.sh
   rm -f $HOME/ragflow-compose.yml
-  outputComposeRAGFlow
+  cat <<EOFMT > $HOME/ragflow-compose.yml
+$STACK_VERSION_PREFIX ragflow $(getScriptStackVersion ragflow)
+
+services:
+  ragflow-db:
+    image: $(getScriptImageByContainerName ragflow-db)
+    container_name: ragflow-db
+    hostname: ragflow-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mariadbd --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120 --skip-name-resolve
+    networks:
+      - int-ragflow-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-ragflow-db:/var/lib/mysql
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMariaDB.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.ragflow-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.ragflow-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.ragflow-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.ragflow-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.ragflow-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.ragflow-hourly-db.email-from=RAGFlow Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.ragflow-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.ragflow-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.ragflow-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.ragflow-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.ragflow-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.ragflow-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.ragflow-monthly-db.email-from=RAGFlow Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.ragflow-monthly-db.mail-only-on-error=false"
+
+  ragflow-infinity:
+    image: $(getScriptImageByContainerName ragflow-infinity)
+    container_name: ragflow-infinity
+    hostname: ragflow-infinity
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ragflow-db
+    command: ["-f", "/infinity_conf.toml"]
+    mem_limit: 8g
+    ulimits:
+      nofile:
+        soft: 500000
+        hard: 500000
+    networks:
+      - int-ragflow-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-ragflow-infinity:/var/infinity
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/misc/infinity_conf.toml:/infinity_conf.toml
+
+  ragflow-app:
+    image: $(getScriptImageByContainerName ragflow-app)
+    container_name: ragflow-app
+    hostname: ragflow-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ragflow-db
+      - ragflow-infinity
+      - ragflow-minio
+      - ragflow-redis
+    command:
+      - --enable-adminserver
+      - --init-model-provider-tables
+      - --init-superuser
+    networks:
+      - int-ragflow-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-ragflow-config:/ragflow/conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/logs:/ragflow/logs
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nginx/ragflow.conf:/etc/nginx/conf.d/ragflow.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nginx/proxy.conf:/etc/nginx/proxy.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - /etc/ssl/certs/ca-certificates.crt:/ragflow/.venv/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9380/api/v1/system/healthz"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  ragflow-minio:
+    image: $(getScriptImageByContainerName ragflow-minio)
+    container_name: ragflow-minio
+    hostname: ragflow-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ragflow-db
+    entrypoint: >
+      /bin/sh -c "
+        minio server /data --address ':9000' --console-address ':9001' &
+        MINIO_PID=\$\$!
+        while ! curl -s http://localhost:9000/minio/health/live; do
+          echo 'Waiting for MinIO to start...'
+          sleep 1
+        done
+        sleep 5
+        mc alias set minio http://localhost:9000 ${RAGFLOW_MINIO_KEY} ${RAGFLOW_MINIO_SECRET}
+        echo 'Creating bucket ragflow'
+        mc mb minio/ragflow || true
+        wait \$\$MINIO_PID
+      "
+    networks:
+      - int-ragflow-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/minio:/data
+
+  ragflow-redis:
+    image: $(getScriptImageByContainerName ragflow-redis)
+    container_name: ragflow-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $RAGFLOW_REDIS_PASSWORD
+      --appendonly no
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+    networks:
+      - int-ragflow-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+volumes:
+  v-ragflow-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/config
+  v-ragflow-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/db
+  v-ragflow-infinity:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ragflow/infinity
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-ragflow-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+
 }
 
 # TabbyML
@@ -104398,13 +105354,13 @@ EOFMT
 kind = "openai/completion"
 model_name = "Chat"
 api_endpoint = "http://litellm-proxy:4000/v1"
-api_key = "$LITELLM_MASTER_KEY"
+api_key = "$LITELLM_AUTH_KEY"
 prompt_template = "<PRE> {prefix} <SUF>{suffix} <MID>"
 
 [model.chat.http]
 kind = "openai/chat"
 model_name = "Chat"
-api_key = "$LITELLM_MASTER_KEY"
+api_key = "$LITELLM_AUTH_KEY"
 api_endpoint = "http://litellm-proxy:4000/v1"
 chat_template = "<s>{% for message in messages %}{% if (message['role'] == 'user') != (loop.index0 % 2 == 0) %}{{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}{% endif %}{% if message['role'] == 'user' %}{{ '[INST] ' + message['content'] + ' [/INST]' }}{% elif message['role'] == 'assistant' %}{{ message['content'] + '</s> ' }}{% else %}{{ raise_exception('Only user and assistant roles are supported!') }}{% endif %}{% endfor %}"
 
@@ -104412,7 +105368,7 @@ chat_template = "<s>{% for message in messages %}{% if (message['role'] == 'user
 kind = "openai/embedding"
 model_name = "Embed"
 api_endpoint = "http://litellm-proxy:4000/v1"
-api_key = "$LITELLM_MASTER_KEY"
+api_key = "$LITELLM_AUTH_KEY"
 EOFMT
   cat <<EOFDS > $HOME/setupDBSettings.sh
 #!/bin/bash
@@ -104578,8 +105534,8 @@ DEEPWIKI_AUTH_MODE=1
 DEEPWIKI_AUTH_CODE=$DEEPWIKI_OPEN_AUTH_CODE
 OPENAI_BASE_URL=http://litellm-proxy:4000/v1
 OPENAI_API_BASE_URLS=http://litellm-proxy:4000/v1
-OPENAI_API_KEY=$LITELLM_MASTER_KEY
-OPENAI_API_KEYS=$LITELLM_MASTER_KEY
+OPENAI_API_KEY=$LITELLM_AUTH_KEY
+OPENAI_API_KEYS=$LITELLM_AUTH_KEY
 ENABLE_OPENAI_API=true
 NODE_ENV=production
 NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
@@ -104720,7 +105676,7 @@ function installDocling()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_DOCLING_APP $MANAGETLS_DOCLING_APP "$is_integrate_hshq" $NETDEFAULT_DOCLING_APP "$inner_block"
-  insertSubAuthelia $SUB_DOCLING_APP.$HOMESERVER_DOMAIN bypass
+  insertSubAuthelia $SUB_DOCLING_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll docling "$FMLNAME_DOCLING_APP" $USERTYPE_DOCLING_APP "https://$SUB_DOCLING_APP.$HOMESERVER_DOMAIN/ui/" "docling.png" "$(getHeimdallOrderFromSub $SUB_DOCLING_APP $USERTYPE_DOCLING_APP)"
     restartAllCaddyContainers
@@ -104811,9 +105767,15 @@ function performUpdateDocling()
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=hshq/docling-serve:v1.38.1,mirror.gcr.io/valkey/valkey:alpine3.23
-      image_update_map[0]="hshq/docling-serve:v1.38.1,hshq/docling-serve:v1.38.1"
+      image_update_map[0]="hshq/docling-serve:v1.38.1,hshq/docling-serve:v1.38.1.1"
+      image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    4)
+      newVer=v4
+      curImageList=hshq/docling-serve:v1.38.1.1,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="hshq/docling-serve:v1.38.1.1,hshq/docling-serve:v1.38.1.1"
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
@@ -104855,6 +105817,11 @@ function buildImageDoclingV2()
 function buildImageDoclingV3()
 {
   buildImageDoclingHSHQ v1.38.1
+}
+
+function buildImageDoclingV4()
+{
+  buildImageDoclingHSHQ v1.38.1.1
 }
 
 function buildImageDoclingHSHQ()
@@ -105505,7 +106472,7 @@ SECRET_KEY=$DIFY_SECRET_KEY
 INIT_PASSWORD=
 DEPLOY_ENV=PRODUCTION
 OPENAI_API_BASE=http://litellm-proxy:4000/v1
-OPENAI_OPENAI_KEY=$LITELLM_MASTER_KEY
+OPENAI_OPENAI_KEY=$LITELLM_AUTH_KEY
 ENABLE_WEBSITE_JINAREADER=true
 ENABLE_WEBSITE_FIRECRAWL=true
 ENABLE_WEBSITE_WATERCRAWL=true
@@ -106428,6 +107395,7 @@ function outputDBsList()
 "BasicMemory" postgres basicmemory-db $BASICMEMORY_DATABASE_NAME $BASICMEMORY_DATABASE_READONLYUSER $BASICMEMORY_DATABASE_READONLYUSER_PASSWORD
 "Cognee" postgres cognee-db $COGNEE_DATABASE_NAME $COGNEE_DATABASE_READONLYUSER $COGNEE_DATABASE_READONLYUSER_PASSWORD
 "LightRAG" postgres lightrag-db $LIGHTRAG_DATABASE_NAME $LIGHTRAG_DATABASE_READONLYUSER $LIGHTRAG_DATABASE_READONLYUSER_PASSWORD
+"mdCollab" postgres mdcollab-db $MDCOLLAB_DATABASE_NAME $MDCOLLAB_DATABASE_READONLYUSER $MDCOLLAB_DATABASE_READONLYUSER_PASSWORD
 #ADD_NEW_AISTACK_DB_IMPORT_HERE
 EOFAS
 }
@@ -109055,9 +110023,9 @@ BASE_URL=https://$SUB_MORPHIC_APP.$HOMESERVER_DOMAIN
 ENABLE_SAVE_CHAT_HISTORY=true
 USE_LOCAL_REDIS=true
 LOCAL_REDIS_URL=redis://:$MORPHIC_REDIS_PASSWORD@morphic-redis:6379
-OPENAI_COMPATIBLE_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_COMPATIBLE_API_KEY=$LITELLM_AUTH_KEY
 OPENAI_COMPATIBLE_API_BASE_URL=http://litellm-proxy:4000
-OPENAI_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_API_KEY=$LITELLM_AUTH_KEY
 OPENAI_BASE_URL=http://litellm-proxy:4000
 SEARCH_API=searxng
 SEARXNG_API_URL=http://searxng-app:8080
@@ -110397,7 +111365,7 @@ API_URL=https://$SUB_OPENNOTEBOOK_APP.$HOMESERVER_DOMAIN
 INTERNAL_API_URL=http://opennotebook-app:5055
 ESPERANTO_SSL_CA_BUNDLE=/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
 OPEN_NOTEBOOK_PASSWORD=$OPENNOTEBOOK_ADMIN_PASSWORD
-OPENAI_COMPATIBLE_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_COMPATIBLE_API_KEY=$LITELLM_AUTH_KEY
 OPENAI_COMPATIBLE_BASE_URL=http://litellm-proxy:4000/v1
 SURREAL_URL=ws://opennotebook-db/rpc:8000
 SURREAL_USER=$OPENNOTEBOOK_SURREALDB_USER
@@ -110555,7 +111523,7 @@ API_URL=https://$SUB_OPENNOTEBOOK_APP.$HOMESERVER_DOMAIN
 INTERNAL_API_URL=http://opennotebook-app:5055
 ESPERANTO_SSL_CA_BUNDLE=/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
 OPEN_NOTEBOOK_PASSWORD=$OPENNOTEBOOK_ADMIN_PASSWORD
-OPENAI_COMPATIBLE_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_COMPATIBLE_API_KEY=$LITELLM_AUTH_KEY
 OPENAI_COMPATIBLE_BASE_URL=http://litellm-proxy:4000/v1
 SURREAL_URL=ws://opennotebook-db/rpc:8000
 SURREAL_USER=$OPENNOTEBOOK_SURREALDB_USER
@@ -111246,9 +112214,9 @@ VITE_ALLOWED_HOSTS=$SUB_DOCSGPT_APP.$HOMESERVER_DOMAIN
 VITE_API_STREAMING=true
 LLM_PROVIDER=openai
 OPENAI_BASE_URL=http://litellm-proxy:4000/v1
-OPENAI_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_API_KEY=$LITELLM_AUTH_KEY
 EMBEDDINGS_BASE_URL=http://litellm-proxy:4000/v1
-EMBEDDINGS_KEY=$LITELLM_MASTER_KEY
+EMBEDDINGS_KEY=$LITELLM_AUTH_KEY
 EMBEDDINGS_NAME=Embed
 SELF_HOSTED_MODEL=true
 EOFMT
@@ -112145,15 +113113,15 @@ POSTGRES_USER=$SPEAKR_DATABASE_USER
 POSTGRES_PASSWORD=$SPEAKR_DATABASE_USER_PASSWORD
 GPT5_REASONING_EFFORT=medium
 GPT5_VERBOSITY=medium
-CHAT_MODEL_API_KEY=$LITELLM_MASTER_KEY
+CHAT_MODEL_API_KEY=$LITELLM_AUTH_KEY
 CHAT_MODEL_BASE_URL=http://litellm-proxy:4000/v1
 CHAT_MODEL_NAME=LongContext
 ENABLE_STREAM_OPTIONS=false
-TEXT_MODEL_API_KEY=$LITELLM_MASTER_KEY
+TEXT_MODEL_API_KEY=$LITELLM_AUTH_KEY
 TEXT_MODEL_BASE_URL=http://litellm-proxy:4000/v1
 TEXT_MODEL_NAME=LongContext
 TRANSCRIPTION_API_KEY=abcd
-TRANSCRIPTION_BASE_URL=http://insanelyfastwhisper-api:8888/v1
+TRANSCRIPTION_BASE_URL=http://halospeak-api:8888/v1
 TRANSCRIPTION_MODEL=distil-whisper/distil-large-v3.5
 ALLOW_REGISTRATION=false
 REGISTRATION_ALLOWED_DOMAINS=
@@ -112213,7 +113181,7 @@ SMTP_USE_SSL=false
 SMTP_FROM_ADDRESS=$EMAIL_SMTP_EMAIL_ADDRESS
 SMTP_FROM_NAME=Speakr $(getAdminEmailName)
 TRANSCRIPTION_CONNECTOR=asr_endpoint
-ASR_BASE_URL=http://insanelyfastwhisper-api:8888
+ASR_BASE_URL=http://halospeak-api:8888
 ASR_DIARIZE=true
 ASR_RETURN_SPEAKER_EMBEDDINGS=true
 ASR_TIMEOUT=1800
@@ -112639,15 +113607,15 @@ POSTGRES_USER=$SPEAKR_DATABASE_USER
 POSTGRES_PASSWORD=$SPEAKR_DATABASE_USER_PASSWORD
 GPT5_REASONING_EFFORT=medium
 GPT5_VERBOSITY=medium
-CHAT_MODEL_API_KEY=$LITELLM_MASTER_KEY
+CHAT_MODEL_API_KEY=$LITELLM_AUTH_KEY
 CHAT_MODEL_BASE_URL=http://litellm-proxy:4000/v1
 CHAT_MODEL_NAME=LongContext
 ENABLE_STREAM_OPTIONS=false
-TEXT_MODEL_API_KEY=$LITELLM_MASTER_KEY
+TEXT_MODEL_API_KEY=$LITELLM_AUTH_KEY
 TEXT_MODEL_BASE_URL=http://litellm-proxy:4000/v1
 TEXT_MODEL_NAME=LongContext
 TRANSCRIPTION_API_KEY=abcd
-TRANSCRIPTION_BASE_URL=http://insanelyfastwhisper-api:8888/v1
+TRANSCRIPTION_BASE_URL=http://halospeak-api:8888/v1
 TRANSCRIPTION_MODEL=distil-whisper/distil-large-v3.5
 ALLOW_REGISTRATION=false
 REGISTRATION_ALLOWED_DOMAINS=
@@ -112707,7 +113675,7 @@ SMTP_USE_SSL=false
 SMTP_FROM_ADDRESS=$EMAIL_SMTP_EMAIL_ADDRESS
 SMTP_FROM_NAME=Speakr $(getAdminEmailName)
 TRANSCRIPTION_CONNECTOR=asr_endpoint
-ASR_BASE_URL=http://insanelyfastwhisper-api:8888
+ASR_BASE_URL=http://halospeak-api:8888
 ASR_DIARIZE=true
 ASR_RETURN_SPEAKER_EMBEDDINGS=true
 ASR_TIMEOUT=1800
@@ -112718,6 +113686,10 @@ EOFMT
 function installInsanelyFastWhisper()
 {
   set +e
+  echo "************************************************************************"
+  echo "This stack has been deprecated, please install HaloSpeak instead."
+  echo "************************************************************************"
+  return
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory insanelyfastwhisper "InsanelyFastWhisper"
   cdRes=$?
@@ -116106,6 +117078,7 @@ function installLiteLLM()
   sleep 3
   addReadOnlyUserToDatabase LiteLLM postgres litellm-db $LITELLM_DATABASE_NAME $LITELLM_DATABASE_USER $LITELLM_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/litellm/dbexport $LITELLM_DATABASE_READONLYUSER $LITELLM_DATABASE_READONLYUSER_PASSWORD
   set +e
+  setAuthKeyLiteLLM
   if [ -f $HSHQ_STACKS_DIR/sysutils/prometheus/prometheus.yml ]; then
     grep -q litellm $HSHQ_STACKS_DIR/sysutils/prometheus/prometheus.yml
     if [ $? -ne 0 ]; then
@@ -116357,17 +117330,31 @@ function performUpdateLiteLLM()
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     2)
-      newVer=v3
+      newVer=v5
       curImageList=mirror.gcr.io/pgvector/pgvector:pg17,ghcr.io/berriai/litellm:v1.92.0,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
-      image_update_map[1]="ghcr.io/berriai/litellm:v1.92.0,ghcr.io/homeserverhq/litellm:v1.106.4"
+      image_update_map[1]="ghcr.io/berriai/litellm:v1.92.0,ghcr.io/berriai/litellm:v1.108.2"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     3)
-      newVer=v3
+      newVer=v5
       curImageList=mirror.gcr.io/pgvector/pgvector:pg17,ghcr.io/homeserverhq/litellm:v1.106.4,mirror.gcr.io/valkey/valkey:alpine3.23
       image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
-      image_update_map[1]="ghcr.io/homeserverhq/litellm:v1.106.4,ghcr.io/homeserverhq/litellm:v1.106.4"
+      image_update_map[1]="ghcr.io/homeserverhq/litellm:v1.106.4,ghcr.io/berriai/litellm:v1.108.2"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    4)
+      newVer=v5
+      curImageList=mirror.gcr.io/pgvector/pgvector:pg17,ghcr.io/homeserverhq/litellm:v1.108.0,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
+      image_update_map[1]="ghcr.io/homeserverhq/litellm:v1.108.0,ghcr.io/berriai/litellm:v1.108.2"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    5)
+      newVer=v5
+      curImageList=mirror.gcr.io/pgvector/pgvector:pg17,ghcr.io/berriai/litellm:v1.108.2,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="mirror.gcr.io/pgvector/pgvector:pg17,mirror.gcr.io/pgvector/pgvector:pg17"
+      image_update_map[1]="ghcr.io/berriai/litellm:v1.108.2,ghcr.io/berriai/litellm:v1.108.2"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
@@ -116378,6 +117365,106 @@ function performUpdateLiteLLM()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function setAuthKeyLiteLLM()
+{
+  set +e
+  docker ps | grep -q litellm-proxy > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  if [ -n "$LITELLM_AUTH_KEY" ]; then
+    return
+  fi
+  key_output="$(docker exec -i litellm-proxy python3 - <<'PY'
+import json
+import os
+import urllib.error
+import urllib.parse
+import urllib.request
+
+BASE = "http://127.0.0.1:4000"
+MASTER = os.environ.get("LITELLM_MASTER_KEY")
+if not MASTER:
+    raise SystemExit("LITELLM_MASTER_KEY is not set in this container")
+
+def request(method, path, token, body=None, timeout=120):
+    headers = {"Authorization": "Bearer " + token}
+    data = None
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+        data = json.dumps(body).encode()
+    req = urllib.request.Request(BASE + path, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", "replace")
+            try:
+                return resp.status, json.loads(raw)
+            except Exception:
+                return resp.status, raw
+    except urllib.error.HTTPError as e:
+        raw = e.read().decode("utf-8", "replace")
+        try:
+            return e.code, json.loads(raw)
+        except Exception:
+            return e.code, raw
+    except Exception as e:
+        return "ERR", repr(e)
+
+
+# 1. Get every currently registered MCP server ID.
+status, servers = request("GET", "/v1/mcp/server", MASTER)
+if status != 200 or not isinstance(servers, list):
+    raise SystemExit("Could not list MCP servers: %s %s" % (status, servers))
+
+mcp_servers = [s.get("server_id") for s in servers if s.get("server_id")]
+print("MCP servers found:", len(mcp_servers))
+
+# 2. Create the restricted key.
+body = {
+    "key_alias": "fastcrw-llm",
+    "models": ["all-proxy-models"],
+    "object_permission": {
+        "mcp_servers": mcp_servers
+    },
+    "allowed_routes": [
+        "llm_api_routes",
+        "mcp_routes",
+        "/chat/completions",
+        "/v1/chat/completions",
+        "/models",
+        "/v1/models",
+        "/mcp",
+        "/mcp-rest/tools/list",
+        "/mcp-rest/tools/call"
+    ],
+    "metadata": {
+        "service": "fastcrw"
+    }
+
+    # Optional limits. Uncomment any you want:
+    # "max_budget": 50,
+    # "budget_duration": "30d",
+    # "rpm_limit": 120,
+    # "tpm_limit": 200000,
+    # "duration": "90d"
+}
+
+status, created = request("POST", "/key/generate", MASTER, body)
+if status != 200 or not isinstance(created, dict) or not created.get("key"):
+    raise SystemExit("Could not create key: %s %s" % (status, created))
+
+key = created["key"]
+print()
+print("NEW_KEY=" + key)
+print("MCP servers granted:", len(mcp_servers))
+print("Models: all-proxy-models")
+print("Allowed routes: llm_api_routes, mcp_routes")
+PY
+)"
+  LITELLM_AUTH_KEY="$(printf '%s\n' "$key_output" | sed -n 's/^NEW_KEY=//p' | tail -n1)"
+  updateConfigVar LITELLM_AUTH_KEY "$LITELLM_AUTH_KEY"
 }
 
 function addListOfModelsToLiteLLM()
@@ -116404,13 +117491,13 @@ function addMCPServerLiteLLM()
   mcp_auth="$5"
   mcp_key="$6"
   curl -s -X GET "https://$SUB_LITELLM_APP.$HOMESERVER_DOMAIN/v1/mcp/server" \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" | jq -r .[].server_name | grep -q "$mcp_name"
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" | jq -r '.[].server_name' | grep -q "$mcp_name"
   if [ $? -eq 0 ]; then
     echo "MCP Server ($mcp_name) has already been added to LiteLLM..."
     return
   fi
   if [ "$mcp_auth" = "none" ]; then
-    curl -s -X POST "https://$SUB_LITELLM_APP.$HOMESERVER_DOMAIN/v1/mcp/server" \
+    response=$(curl -s -X POST "https://$SUB_LITELLM_APP.$HOMESERVER_DOMAIN/v1/mcp/server" \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H "Content-Type: application/json" \
   -d "{
@@ -116419,9 +117506,9 @@ function addMCPServerLiteLLM()
     \"url\": \"$mcp_url\",
     \"transport\": \"$mcp_type\",
     \"auth_type\": \"$mcp_auth\"
-  }" > /dev/null 2>&1
+  }")
   else
-    curl -s -X POST "https://$SUB_LITELLM_APP.$HOMESERVER_DOMAIN/v1/mcp/server" \
+    response=$(curl -s -X POST "https://$SUB_LITELLM_APP.$HOMESERVER_DOMAIN/v1/mcp/server" \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   -H "Content-Type: application/json" \
   -d "{
@@ -116433,7 +117520,66 @@ function addMCPServerLiteLLM()
     \"credentials\": {
       \"auth_value\": \"$mcp_key\"
      }
-  }" > /dev/null 2>&1
+  }")
+  fi
+  new_server_id=$(printf '%s' "$response" | jq -r '.server_id // empty')
+  if [ -z "$new_server_id" ]; then
+    new_server_id=$(
+      curl -s -X GET "https://$SUB_LITELLM_APP.$HOMESERVER_DOMAIN/v1/mcp/server" \
+        -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+      | jq -r --arg name "$mcp_name" --arg alias "$mcp_alias" \
+          '.[] | select(.server_name == $name or .alias == $alias) | .server_id' \
+      | head -n1
+    )
+  fi
+  if [ -z "$new_server_id" ]; then
+    echo "Could not determine server_id for $mcp_name"
+    return
+  fi
+  current_json=$(
+    curl -fsS -G "https://$SUB_LITELLM_APP.$HOMESERVER_DOMAIN/key/info" \
+      --data-urlencode "key=$LITELLM_AUTH_KEY" \
+      -H "Authorization: Bearer $LITELLM_MASTER_KEY"
+  )
+  if [ $? -ne 0 ]; then
+    echo "Could not read current MCP authorization for the key"
+    return
+  fi
+  current_mcp_servers=$(
+    printf '%s' "$current_json" \
+    | jq -ce '((.info // .).object_permission // {}).mcp_servers // []'
+  )
+  if [ $? -ne 0 ]; then
+    echo "Could not parse current MCP authorization for the key"
+    return
+  fi
+  updated_mcp_servers=$(
+    jq -ce -n \
+      --argjson current "$current_mcp_servers" \
+      --arg id "$new_server_id" \
+      '$current + [$id] | unique'
+  )
+  if [ $? -ne 0 ]; then
+    echo "Could not build updated MCP authorization list"
+    return
+  fi
+  update_body=$(
+    jq -n \
+      --arg key "$LITELLM_AUTH_KEY" \
+      --argjson servers "$updated_mcp_servers" \
+      '{key: $key, object_permission: {mcp_servers: $servers}}'
+  )
+  if [ $? -ne 0 ]; then
+    echo "Could not build key update request"
+    return
+  fi
+  curl -fsS -X POST "https://$SUB_LITELLM_APP.$HOMESERVER_DOMAIN/key/update" \
+    -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+    -H "Content-Type: application/json" \
+    -d "$update_body" > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "Could not add $mcp_name to the key authorization"
+    return
   fi
   echo
 }
@@ -117173,7 +118319,7 @@ ENABLE_CODE_BLOCK=true
 LLM_KEY=OPENAI_COMPATIBLE
 ENABLE_OPENAI_COMPATIBLE=true
 OPENAI_COMPATIBLE_MODEL_NAME=Thinking
-OPENAI_COMPATIBLE_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_COMPATIBLE_API_KEY=$LITELLM_AUTH_KEY
 OPENAI_COMPATIBLE_API_BASE=http://litellm-proxy:4000/v1
 OPENAI_COMPATIBLE_SUPPORTS_VISION=true
 ENABLE_OPENAI=false
@@ -118241,7 +119387,7 @@ OPENSEARCH_DATA_PATH=./opensearch-data
 OPENSEARCH_INDEX_NAME=documents
 WEBHOOK_BASE_URL=https://$SUB_OPENRAG_APP.$HOMESERVER_DOMAIN
 LITELLM_PROXY_API_BASE=http://litellm-proxy:4000/v1
-LITELLM_PROXY_API_KEY=$LITELLM_MASTER_KEY
+LITELLM_PROXY_API_KEY=$LITELLM_AUTH_KEY
 LANGFLOW_PUBLIC_URL=https://$SUB_OPENRAG_LANGFLOW.$HOMESERVER_DOMAIN
 DOCLING_SERVE_URL=http://docling-app:5001
 DOCLING_WORKERS=4
@@ -118794,7 +119940,7 @@ EOFMT
       "name": "LiteLLM",
       "options": {
         "baseURL": "http://litellm-proxy:4000/v1",
-        "apiKey": "$LITELLM_MASTER_KEY"
+        "apiKey": "$LITELLM_AUTH_KEY"
       },
       "models": {
         "longcontext": {
@@ -119209,7 +120355,7 @@ EOFMT
 TZ=\${PORTAINER_TZ}
 REDIS_URL=redis://:${EMAILCLASSIFIERAI_REDIS_PASSWORD}@emailclassifierai-redis:6379/0
 MODEL_NAME=Vision
-API_KEY=$LITELLM_MASTER_KEY
+API_KEY=$LITELLM_AUTH_KEY
 API_BASE=http://litellm-proxy:4000/v1
 ADMIN_USERNAME=$EMAILCLASSIFIERAI_ADMIN_USERNAME
 ADMIN_PASSWORD=$EMAILCLASSIFIERAI_ADMIN_PASSWORD
@@ -119565,7 +120711,7 @@ TERMINAL_PUBLIC_KEY="$(cat $HSHQ_STACKS_DIR/hermes-agent/config/term_ed25519.pub
 CAMOFOX_URL=http://hermes-agent-camofox:9377
 CAMOFOX_PORT=9377
 STT_OPENAI_MODEL=distil-whisper/distil-large-v3.5
-STT_OPENAI_BASE_URL=http://insanelyfastwhisper-api:8888/v1
+STT_OPENAI_BASE_URL=http://halospeak-api:8888/v1
 HERMES_WEBUI_PASSWORD=$HERMES_AGENT_WEBUI_PASSWORD
 HERMES_WEBUI_HOST=0.0.0.0
 HERMES_WEBUI_PORT=8787
@@ -119573,7 +120719,7 @@ HERMES_HOME=/opt/data
 HERMES_WEBUI_STATE_DIR=/home/hermeswebui/.hermes/webui
 WANTED_UID=\${PORTAINER_UID}
 WANTED_GID=\${PORTAINER_GID}
-OPENAI_API_KEY=$LITELLM_MASTER_KEY
+OPENAI_API_KEY=$LITELLM_AUTH_KEY
 OPENAI_BASE_URL=http://litellm-proxy:4000/v1
 HERMES_DASHBOARD_BASIC_AUTH_USERNAME=$HERMES_AGENT_ADMIN_USERNAME
 HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=$HERMES_AGENT_ADMIN_PASSWORD
@@ -119583,7 +120729,7 @@ HERMES_MODEL_DEFAULT=LongContext
 HERMES_MODEL_CONTEXT_LENGTH=100000
 HERMES_MODEL=LongContext
 HERMES_PROVIDER=custom
-CUSTOM_API_KEY=$LITELLM_MASTER_KEY
+CUSTOM_API_KEY=$LITELLM_AUTH_KEY
 TIRITH_ENABLED=false
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/hermes-agent/config/config.yaml
@@ -119592,7 +120738,7 @@ model:
   base_url: "http://litellm-proxy:4000/v1"
   default: "LongContext"
   context_length: 100000
-  api_key: "$LITELLM_MASTER_KEY"
+  api_key: "$LITELLM_AUTH_KEY"
 security:
   allow_lazy_installs: false
 EOFMT
@@ -120017,7 +121163,7 @@ PAPERLESS_TOKEN=$PAPERLESS_API_TOKEN
 DOCLING_API_KEY=$DOCLING_API_KEY
 OPENWEBUI_API_KEY=$OPENWEBUI_ADMIN_API_KEY
 LIGHTRAG_API_KEY=$LIGHTRAG_API_KEY
-RAGFLOW_API_KEY=$RAGFLOW_ADMIN_API_KEY
+RAGFLOW_API_KEY=$RAGFLOW_TEAM_API_KEY
 EOFMT
 }
 
@@ -120047,33 +121193,60 @@ function performAutoKBInstallIntegrations()
     fi
   fi
   docker ps | grep -q openwebui-app > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    return
+  if [ $? -eq 0 ]; then
+    echo "Resolving openWebUISink service id..."
+    akbRes="$(docker exec autokb-web curl -sS -X GET \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
+    SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
+    if [ -z "$SINK_ID" ]; then
+      echo "openWebUISink not found among provisioned sinks" >&2
+      return 1
+    fi
+    echo "Creating OpenWebUI target KB HSHQSuperAdmin-PKB..."
+    akbRes="$(docker exec autokb-web curl -sS -X POST \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data "{\"name\":\"HSHQSuperAdmin-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$PAPERLESS_SUB_ID\"]}" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
   fi
-  echo "Resolving openWebUISink service id..."
-  akbRes="$(docker exec autokb-web curl -sS -X GET \
-    -H "Authorization: Bearer $AUTOKB_API_KEY" \
-    -H "Content-Type: application/json" \
-    -w $'\n%{http_code}' \
-    "http://autokb-web:80/api/sinks")"
-  akbCode="${akbRes##*$'\n'}"
-  akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
-  SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
-  if [ -z "$SINK_ID" ]; then
-    echo "openWebUISink not found among provisioned sinks" >&2
-    return 1
+
+  docker ps | grep -q ragflow-app > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    echo "Resolving ragflowSink service id..."
+    akbRes="$(docker exec autokb-web curl -sS -X GET \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
+    SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "ragflowSink") | .service_id' | head -n1)"
+    if [ -z "$SINK_ID" ]; then
+      echo "ragflowSink not found among provisioned sinks" >&2
+      return 1
+    fi
+    echo "Creating RAGFlow target KB HSHQSuperAdmin-PKB..."
+    akbRes="$(docker exec autokb-web curl -sS -X POST \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data "{\"name\":\"HSHQSuperAdmin-PKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$RAGFLOW_TEAM_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$PAPERLESS_SUB_ID\"]}" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
   fi
-  echo "Creating OpenWebUI target KB HSHQSuperAdmin-PKB..."
-  akbRes="$(docker exec autokb-web curl -sS -X POST \
-    -H "Authorization: Bearer $AUTOKB_API_KEY" \
-    -H "Content-Type: application/json" \
-    --data "{\"name\":\"HSHQSuperAdmin-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$PAPERLESS_SUB_ID\"]}" \
-    -w $'\n%{http_code}' \
-    "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
-  akbCode="${akbRes##*$'\n'}"
-  akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
   echo "Done."
 }
 
@@ -120130,37 +121303,65 @@ function addSharedPipelinesAutoKB()
   akbBody="${akbRes%$'\n'*}"
   [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Contact sync subscription failed: $akbBody" >&2; return 1; }
   docker ps | grep -q openwebui-app > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    return
+  if [ $? -eq 0 ]; then
+    echo "Resolving openWebUISink service id..."
+    akbRes="$(docker exec autokb-web curl -sS -X GET \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
+    SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
+    if [ -z "$SINK_ID" ]; then
+      echo "openWebUISink not found among provisioned sinks" >&2
+      return 1
+    fi
+    echo "Creating OpenWebUI target KB Shared-SKB..."
+    akbRes="$(docker exec autokb-web curl -sS -X POST \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data "{\"name\":\"Shared-SKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$IMAP_SHARED_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
+    AUTOKB_SHARED_OWUI_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.target_id')"
+    updateConfigVar AUTOKB_SHARED_OWUI_TARGET_ID $AUTOKB_SHARED_OWUI_TARGET_ID
+    AUTOKB_SHARED_OWUI_REMOTE_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.remote_target_id')"
+    docker exec openwebui-db bash -lc "PGPASSWORD=\"\$POSTGRES_PASSWORD\" psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -v ON_ERROR_STOP=1 -c \"INSERT INTO access_grant (id, resource_type, resource_id, principal_type, principal_id, permission, created_at) VALUES (gen_random_uuid()::text, 'knowledge', '$AUTOKB_SHARED_OWUI_REMOTE_TARGET_ID', 'group', '$OPENWEBUI_PRIMARYUSERS_UUID', 'read', EXTRACT(EPOCH FROM NOW())::bigint);\""
   fi
-  echo "Resolving openWebUISink service id..."
-  akbRes="$(docker exec autokb-web curl -sS -X GET \
-    -H "Authorization: Bearer $AUTOKB_API_KEY" \
-    -H "Content-Type: application/json" \
-    -w $'\n%{http_code}' \
-    "http://autokb-web:80/api/sinks")"
-  akbCode="${akbRes##*$'\n'}"
-  akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
-  SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
-  if [ -z "$SINK_ID" ]; then
-    echo "openWebUISink not found among provisioned sinks" >&2
-    return 1
+  docker ps | grep -q ragflow-app > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    echo "Resolving ragflowSink service id..."
+    akbRes="$(docker exec autokb-web curl -sS -X GET \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
+    SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "ragflowSink") | .service_id' | head -n1)"
+    if [ -z "$SINK_ID" ]; then
+      echo "ragflowSink not found among provisioned sinks" >&2
+      return 1
+    fi
+    echo "Creating RAGFlow target KB Shared-SKB..."
+    akbRes="$(docker exec autokb-web curl -sS -X POST \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data "{\"name\":\"Shared-SKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$RAGFLOW_TEAM_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PUBLIC\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$IMAP_SHARED_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
+    AUTOKB_SHARED_RAGFLOW_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.target_id')"
+    updateConfigVar AUTOKB_SHARED_RAGFLOW_TARGET_ID $AUTOKB_SHARED_RAGFLOW_TARGET_ID
   fi
-  echo "Creating OpenWebUI target KB Shared-SKB..."
-  akbRes="$(docker exec autokb-web curl -sS -X POST \
-    -H "Authorization: Bearer $AUTOKB_API_KEY" \
-    -H "Content-Type: application/json" \
-    --data "{\"name\":\"Shared-SKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$IMAP_SHARED_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
-    -w $'\n%{http_code}' \
-    "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
-  akbCode="${akbRes##*$'\n'}"
-  akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
-  AUTOKB_SHARED_OWUI_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.target_id')"
-  updateConfigVar AUTOKB_SHARED_OWUI_TARGET_ID $AUTOKB_SHARED_OWUI_TARGET_ID
-  AUTOKB_SHARED_OWUI_REMOTE_TARGET_ID="$(printf '%s' "$akbBody" | jq -r '.remote_target_id')"
-  docker exec openwebui-db bash -lc "PGPASSWORD=\"\$POSTGRES_PASSWORD\" psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -v ON_ERROR_STOP=1 -c \"INSERT INTO access_grant (id, resource_type, resource_id, principal_type, principal_id, permission, created_at) VALUES (gen_random_uuid()::text, 'knowledge', '$AUTOKB_SHARED_OWUI_REMOTE_TARGET_ID', 'group', '$OPENWEBUI_PRIMARYUSERS_UUID', 'read', EXTRACT(EPOCH FROM NOW())::bigint);\""
   echo "Done."
 }
 
@@ -120758,6 +121959,10 @@ EOFMT
 function installHedgeDoc()
 {
   set +e
+  echo "************************************************************************"
+  echo "This stack has been deprecated, please install mdCollab instead."
+  echo "************************************************************************"
+  return
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory hedgedoc "HedgeDoc"
   cdRes=$?
@@ -121184,6 +122389,7 @@ function installPresenton()
     updateConfigVar PRESENTON_INIT_ENV $PRESENTON_INIT_ENV
   fi
   sleep 3
+  set +e
   PRESENTON_ADMIN_API_KEY=$(addPrimaryUserPresenton "$PRESENTON_ADMIN_USERNAME" "PRESENTON_ADMIN_PASSWORD")
   updateConfigVar PRESENTON_ADMIN_API_KEY "$PRESENTON_ADMIN_API_KEY"
   if [ -z "$FMLNAME_PRESENTON_APP" ]; then
@@ -121288,7 +122494,7 @@ AUTH_USERNAME=$PRESENTON_ADMIN_USERNAME
 AUTH_PASSWORD=$PRESENTON_ADMIN_PASSWORD
 LLM=litellm
 LITELLM_BASE_URL=http://litellm-proxy:4000/v1
-LITELLM_API_KEY=$LITELLM_MASTER_KEY
+LITELLM_API_KEY=$LITELLM_AUTH_KEY
 LITELLM_MODEL=LongContext
 VISION_MODEL=Vision
 IMAGE_PROVIDER=comfyui
@@ -121321,9 +122527,15 @@ function performUpdatePresenton()
       image_update_map[1]="ghcr.io/homeserverhq/presenton-mcp:v2,ghcr.io/homeserverhq/presenton-mcp:v2"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=ghcr.io/homeserverhq/presenton:v0.9.7-beta,ghcr.io/homeserverhq/presenton-mcp:v2
-      image_update_map[0]="ghcr.io/homeserverhq/presenton:v0.9.7-beta,ghcr.io/homeserverhq/presenton:v0.9.7-beta"
+      image_update_map[0]="ghcr.io/homeserverhq/presenton:v0.9.7-beta,ghcr.io/presenton/presenton:v0.9.12-beta"
+      image_update_map[1]="ghcr.io/homeserverhq/presenton-mcp:v2,ghcr.io/homeserverhq/presenton-mcp:v2"
+    ;;
+    3)
+      newVer=v3
+      curImageList=ghcr.io/presenton/presenton:v0.9.12-beta,ghcr.io/homeserverhq/presenton-mcp:v2
+      image_update_map[0]="ghcr.io/presenton/presenton:v0.9.12-beta,ghcr.io/presenton/presenton:v0.9.12-beta"
       image_update_map[1]="ghcr.io/homeserverhq/presenton-mcp:v2,ghcr.io/homeserverhq/presenton-mcp:v2"
     ;;
     *)
@@ -121856,11 +123068,11 @@ NEXT_PUBLIC_IS_CLOUD_ENVIRONMENT=false
 LLM_PROVIDER=openai
 LLM_MODEL=openai/LongContext
 LLM_ENDPOINT=http://litellm-proxy:4000/v1
-LLM_API_KEY=$LITELLM_MASTER_KEY
+LLM_API_KEY=$LITELLM_AUTH_KEY
 EMBEDDING_PROVIDER=openai_compatible
 EMBEDDING_MODEL=embedding
 EMBEDDING_ENDPOINT=http://llamacpp-embedding-server:8080/v1
-EMBEDDING_API_KEY=$LITELLM_MASTER_KEY
+EMBEDDING_API_KEY=$LITELLM_AUTH_KEY
 EMBEDDING_DIMENSIONS=1024
 GRAPH_DATABASE_PROVIDER=ladybug
 VECTOR_DB_PROVIDER=pgvector
@@ -121873,15 +123085,15 @@ LLM_INSTRUCTOR_MODE=json_mode
 LLM_EXTRACTION_PROVIDER=openai
 LLM_EXTRACTION_MODEL=openai/LongContext
 LLM_EXTRACTION_ENDPOINT=http://litellm-proxy:4000/v1
-LLM_EXTRACTION_API_KEY=$LITELLM_MASTER_KEY
+LLM_EXTRACTION_API_KEY=$LITELLM_AUTH_KEY
 LLM_SUMMARIZATION_PROVIDER=openai
 LLM_SUMMARIZATION_MODEL=openai/LongContext
 LLM_SUMMARIZATION_ENDPOINT=http://litellm-proxy:4000/v1
-LLM_SUMMARIZATION_API_KEY=$LITELLM_MASTER_KEY
+LLM_SUMMARIZATION_API_KEY=$LITELLM_AUTH_KEY
 LLM_QUERY_PROVIDER=openai
 LLM_QUERY_MODEL=openai/LongContext
 LLM_QUERY_ENDPOINT=http://litellm-proxy:4000/v1
-LLM_QUERY_API_KEY=$LITELLM_MASTER_KEY
+LLM_QUERY_API_KEY=$LITELLM_AUTH_KEY
 STORAGE_BACKEND=local
 TRANSLATION_PROVIDER=llm
 TARGET_LANGUAGE=en
@@ -122208,12 +123420,12 @@ ENABLE_CONTENT_HEADINGS=True
 RERANK_BINDING=cohere
 RERANK_MODEL=Rerank
 RERANK_BINDING_HOST=http://litellm-proxy:4000/v1/rerank
-RERANK_BINDING_API_KEY=$LITELLM_MASTER_KEY
+RERANK_BINDING_API_KEY=$LITELLM_AUTH_KEY
 EMBEDDING_BINDING=openai
 EMBEDDING_MODEL=Embed
 EMBEDDING_DIM=1024
 EMBEDDING_BINDING_HOST=http://litellm-proxy:4000/v1
-EMBEDDING_BINDING_API_KEY=$LITELLM_MASTER_KEY
+EMBEDDING_BINDING_API_KEY=$LITELLM_AUTH_KEY
 SUMMARY_LANGUAGE=English
 ENTITY_EXTRACTION_USE_JSON=true
 LIGHTRAG_PARSER=*:docling-iteP;*:native-teP;*:legacy-R
@@ -122233,14 +123445,14 @@ VLM_PROCESS_ENABLE=true
 VLM_LLM_BINDING=openai
 VLM_LLM_MODEL=Vision
 VLM_LLM_BINDING_HOST=http://litellm-proxy:4000/v1
-VLM_LLM_BINDING_API_KEY=$LITELLM_MASTER_KEY
+VLM_LLM_BINDING_API_KEY=$LITELLM_AUTH_KEY
 VLM_MAX_ASYNC_LLM=1
 VLM_LLM_TIMEOUT=120
 VLM_MAX_IMAGE_BYTES=5242880
 VLM_MIN_IMAGE_PIXEL=16
 LLM_BINDING=openai
 LLM_BINDING_HOST=http://litellm-proxy:4000/v1
-LLM_BINDING_API_KEY=$LITELLM_MASTER_KEY
+LLM_BINDING_API_KEY=$LITELLM_AUTH_KEY
 LLM_MODEL=LongContext
 LIGHTRAG_KV_STORAGE=PGKVStorage
 LIGHTRAG_DOC_STATUS_STORAGE=PGDocStatusStorage
@@ -123208,6 +124420,10 @@ SecRule SERVER_NAME "@rx ^($SUB_INSANELYFASTWHISPER_API|$SUB_INSANELYFASTWHISPER
 
 SecRule SERVER_NAME "@rx ^$SUB_LITELLM_APP\." "id:9101700,phase:1,pass,nolog,ctl:ruleRemoveTargetById=930120;ARGS:json.litellm_params.api_base"
 
+SecRule SERVER_NAME "@rx ^($SUB_WHITEBOARDRT_WEB|$SUB_WHITEBOARDRT_AGENT)\." "id:9101500,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
+
+SecRule SERVER_NAME "@rx ^($SUB_HALOSPEAK_API|$SUB_HALOSPEAK_APP)\." "id:9101600,phase:1,pass,nolog,ctl:ruleRemoveTargetById=930120;ARGS:/^json\.data\./"
+
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-behavior.yaml
 # =====================================================================
@@ -123573,6 +124789,1197 @@ function performUpdateCrowdSec()
       curImageList=ghcr.io/crowdsecurity/crowdsec:v1.8.1,ghcr.io/theduffman85/crowdsec-web-ui:2026.10.3
       image_update_map[0]="ghcr.io/crowdsecurity/crowdsec:v1.8.1,ghcr.io/crowdsecurity/crowdsec:v1.8.1"
       image_update_map[1]="ghcr.io/theduffman85/crowdsec-web-ui:2026.10.3,ghcr.io/theduffman85/crowdsec-web-ui:2026.10.3"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# fastCRW
+function installfastCRW()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory fastcrw "fastCRW"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName fastcrw-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName lightpanda)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName fastcrw-proxy)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName headless-browser)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/fastcrw
+  initServicesCredentials
+  set +e
+  outputConfigfastCRW
+  installStack fastcrw fastcrw-app "" $HOME/fastcrw.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$FASTCRW_INIT_ENV" = "true" ]; then
+    FASTCRW_INIT_ENV=true
+    updateConfigVar FASTCRW_INIT_ENV $FASTCRW_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_FASTCRW_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is empty, returning..."
+    return 1
+  fi
+  set -e
+}
+
+function outputConfigfastCRW()
+{
+  cat <<EOFMT > $HOME/fastcrw-compose.yml
+$STACK_VERSION_PREFIX fastcrw $(getScriptStackVersion fastcrw)
+
+services:
+  fastcrw-app:
+    image: $(getScriptImageByContainerName fastcrw-app)
+    container_name: fastcrw-app
+    hostname: fastcrw-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    networks:
+      - int-fastcrw-net
+      - dock-aipriv-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  lightpanda:
+    image: $(getScriptImageByContainerName lightpanda)
+    container_name: lightpanda
+    hostname: lightpanda
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: >
+      /bin/lightpanda
+      serve
+      --host
+      0.0.0.0
+      --port
+      9222
+      --log-level
+      info
+      --advertise-host
+      lightpanda
+      --block-private-networks
+      --block-cidrs
+      "0.0.0.0/8,10.0.0.0/8,127.0.0.0/8,169.254.0.0/16,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,224.0.0.0/4,240.0.0.0/4,192.0.0.0/24,192.0.2.0/24,198.18.0.0/15,198.51.100.0/24,203.0.113.0/24,fc00::/7,fe80::/10,fec0::/10,ff00::/8,::/96,64:ff9b:1::/48,2002::/16"
+    mem_limit: 2g
+    memswap_limit: 2g
+    networks:
+      - int-fastcrw-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9222"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  fastcrw-proxy:
+    image: $(getScriptImageByContainerName fastcrw-proxy)
+    container_name: fastcrw-proxy
+    hostname: fastcrw-proxy
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-fastcrw-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  headless-browser:
+    image: $(getScriptImageByContainerName headless-browser)
+    container_name: headless-browser
+    hostname: headless-browser
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 2g
+    mem_limit: 4g
+    networks:
+      - int-fastcrw-net
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+networks:
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-fastcrw-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+EOFMT
+  cat <<EOFMT > $HOME/fastcrw.env
+TZ=\${PORTAINER_TZ}
+CRW_CONFIG=config.docker
+CRW_RENDERER__LIGHTPANDA__WS_URL=ws://lightpanda:9222/
+CRW_RENDERER__LIGHTPANDA_TIMEOUT_MS=10000
+CRW_RENDERER__CHROME__WS_URL=ws://headless-browser:9222/
+CRW_RENDERER__CHROME_BACKEND=vanilla
+CRW_RENDERER__CHROME_CONTEXT_POOL_ENABLED=true
+CRW_SEARCH__SEARXNG_URL=http://searxng-app:8080
+CRW_AUTH__API_KEYS=$FASTCRW_API_KEY
+CRW_SERVER__RATE_LIMIT_RPS=100
+CRW_EXTRACTION__LLM__PROVIDER=openai-compatible
+CRW_EXTRACTION__LLM__API_KEY=$LITELLM_AUTH_KEY
+CRW_EXTRACTION__LLM__MODEL=LongContext
+CRW_EXTRACTION__LLM__BASE_URL=http://litellm-proxy:4000/v1
+CRW_EXTRACTION__LLM__MAX_TOKENS=32768
+CRW_EXTRACTION__LLM__RESERVED_INTERACTIVE_LLM=1
+CRW_EXTRACTION__LLM__MAX_HTML_BYTES=100000
+CRW_EXTRACTION__LLM__TIMEOUT_MS=120000
+CRW_EXTRACTION__LLM__FALLBACK__ENABLE=true
+CRW_EXTRACTION__LLM__FALLBACK__QUALITY_THRESHOLD=0.3
+CRW_EXTRACTION__LLM__FALLBACK__MAX_HTML_BYTES=100000
+CRW_EXTRACTION__LLM__FALLBACK__ALWAYS_RUN=false
+LIGHTPANDA_DISABLE_TELEMETRY=true
+CHROMIUM_FLAGS="--ignore-certificate-errors --disable-http2 --disable-blink-features=AutomationControlled"
+UPSTREAM_URL=http://fastcrw-app:3000
+UPSTREAM_API_KEY=$FASTCRW_API_KEY
+EOFMT
+}
+
+function performUpdatefastCRW()
+{
+  perform_stack_name=fastcrw
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=ghcr.io/fastcrw/crw:0.41.0,mirror.gcr.io/lightpanda/browser:1.0.2,ghcr.io/homeserverhq/crawl4ai-proxy:v0.1.0,ghcr.io/homeserverhq/headless-browser:v0.1
+      image_update_map[0]="ghcr.io/fastcrw/crw:0.41.0,ghcr.io/fastcrw/crw:0.41.0"
+      image_update_map[1]="mirror.gcr.io/lightpanda/browser:1.0.2,mirror.gcr.io/lightpanda/browser:1.0.2"
+      image_update_map[2]="ghcr.io/homeserverhq/crawl4ai-proxy:v0.1.0,ghcr.io/homeserverhq/crawl4ai-proxy:v0.1.0"
+      image_update_map[3]="ghcr.io/homeserverhq/headless-browser:v0.1,ghcr.io/homeserverhq/headless-browser:v0.1"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# WhiteboardRT
+function installWhiteboardRT()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory whiteboardrt "WhiteboardRT"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName whiteboardrt-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName whiteboardrt-agent)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName whiteboardrt-mcp)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName whiteboardrt-storage)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName whiteboardrt-server)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName whiteboardrt-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/whiteboardrt
+  mkdir $HSHQ_STACKS_DIR/whiteboardrt/redis
+  initServicesCredentials
+  set +e
+  outputConfigWhiteboardRT
+  installStack whiteboardrt whiteboardrt-app "" $HOME/whiteboardrt.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$WHITEBOARDRT_INIT_ENV" = "true" ]; then
+    WHITEBOARDRT_INIT_ENV=true
+    updateConfigVar WHITEBOARDRT_INIT_ENV $WHITEBOARDRT_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_WHITEBOARDRT_WEB" ]; then
+    set +e
+    echo "ERROR: Formal name is empty, returning..."
+    return 1
+  fi
+  set +e
+  addMCPServerLiteLLM "whiteboardrt" "wrt" "http://whiteboardrt-mcp:3100/mcp" http none ""
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_WHITEBOARDRT_WEB.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://whiteboardrt-web {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_WHITEBOARDRT_WEB $MANAGETLS_WHITEBOARDRT_WEB "$is_integrate_hshq" $NETDEFAULT_WHITEBOARDRT_WEB "$inner_block"
+  insertSubAuthelia $SUB_WHITEBOARDRT_WEB.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_WHITEBOARDRT_SERVER.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://whiteboardrt-server:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_WHITEBOARDRT_SERVER $MANAGETLS_WHITEBOARDRT_SERVER "$is_integrate_hshq" $NETDEFAULT_WHITEBOARDRT_SERVER "$inner_block"
+  insertSubAuthelia $SUB_WHITEBOARDRT_SERVER.$HOMESERVER_DOMAIN bypass
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_WHITEBOARDRT_STORAGE.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://whiteboardrt-storage:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_WHITEBOARDRT_STORAGE $MANAGETLS_WHITEBOARDRT_STORAGE "$is_integrate_hshq" $NETDEFAULT_WHITEBOARDRT_STORAGE "$inner_block"
+  insertSubAuthelia $SUB_WHITEBOARDRT_STORAGE.$HOMESERVER_DOMAIN bypass
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_WHITEBOARDRT_AGENT.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
+  inner_block=$inner_block">>>>>>forward_auth https://authelia:9091 {\n"
+  inner_block=$inner_block">>>>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://whiteboardrt-agent:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_WHITEBOARDRT_AGENT $MANAGETLS_WHITEBOARDRT_AGENT "$is_integrate_hshq" $NETDEFAULT_WHITEBOARDRT_AGENT "$inner_block"
+  insertSubAuthelia $SUB_WHITEBOARDRT_AGENT.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll whiteboardrt "$FMLNAME_WHITEBOARDRT_WEB" $USERTYPE_WHITEBOARDRT_WEB "https://$SUB_WHITEBOARDRT_WEB.$HOMESERVER_DOMAIN" "whiteboardrt.png" "$(getHeimdallOrderFromSub $SUB_WHITEBOARDRT_WEB $USERTYPE_WHITEBOARDRT_WEB)"
+    insertEnableSvcUptimeKuma whiteboardrt "$FMLNAME_WHITEBOARDRT_WEB Server" $USERTYPE_WHITEBOARDRT_WEB "https://$SUB_WHITEBOARDRT_SERVER.$HOMESERVER_DOMAIN" true
+    insertEnableSvcHeimdall whiteboardrt "$FMLNAME_WHITEBOARDRT_AGENT" $USERTYPE_WHITEBOARDRT_AGENT "https://$SUB_WHITEBOARDRT_AGENT.$HOMESERVER_DOMAIN" "whiteboardrt-agent.png" true "$(getHeimdallOrderFromSub $SUB_WHITEBOARDRT_AGENT $USERTYPE_WHITEBOARDRT_AGENT)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigWhiteboardRT()
+{
+  cat <<EOFEX > $HOME/whiteboardrt-compose.yml
+$STACK_VERSION_PREFIX whiteboardrt $(getScriptStackVersion whiteboardrt)
+
+services:
+  whiteboardrt-storage:
+    image: $(getScriptImageByContainerName whiteboardrt-storage)
+    container_name: whiteboardrt-storage
+    hostname: whiteboardrt-storage
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - int-whiteboardrt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  whiteboardrt-server:
+    image: $(getScriptImageByContainerName whiteboardrt-server)
+    container_name: whiteboardrt-server
+    hostname: whiteboardrt-server
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - int-whiteboardrt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  whiteboardrt-web:
+    image: $(getScriptImageByContainerName whiteboardrt-web)
+    container_name: whiteboardrt-web
+    hostname: whiteboardrt-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on: 
+      - whiteboardrt-storage
+    networks:
+      - dock-ext-net
+      - int-whiteboardrt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  whiteboardrt-agent:
+    image: $(getScriptImageByContainerName whiteboardrt-agent)
+    container_name: whiteboardrt-agent
+    hostname: whiteboardrt-agent
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on: 
+      - whiteboardrt-storage
+    networks:
+      - dock-proxy-net
+      - int-whiteboardrt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  whiteboardrt-mcp:
+    image: $(getScriptImageByContainerName whiteboardrt-mcp)
+    container_name: whiteboardrt-mcp
+    hostname: whiteboardrt-mcp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-whiteboardrt-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  whiteboardrt-redis:
+    image: $(getScriptImageByContainerName whiteboardrt-redis)
+    container_name: whiteboardrt-redis
+    hostname: whiteboardrt-redis
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $WHITEBOARDRT_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-whiteboardrt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-whiteboardrt-redis:/data
+
+volumes:
+  v-whiteboardrt-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/whiteboardrt/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-whiteboardrt-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFEX
+  cat <<EOFMT > $HOME/whiteboardrt.env
+TZ=\${PORTAINER_TZ}
+STORAGE_URI=redis://:$WHITEBOARDRT_REDIS_PASSWORD@whiteboardrt-redis:6379
+VITE_APP_WS_SERVER_URL=https://$SUB_WHITEBOARDRT_SERVER.$HOMESERVER_DOMAIN
+VITE_APP_STORAGE_BACKEND=http
+VITE_APP_HTTP_STORAGE_BACKEND_URL=https://$SUB_WHITEBOARDRT_STORAGE.$HOMESERVER_DOMAIN/api/v2
+VITE_APP_BACKEND_V2_GET_URL=https://$SUB_WHITEBOARDRT_STORAGE.$HOMESERVER_DOMAIN/api/v2/scenes
+VITE_APP_BACKEND_V2_POST_URL=https://$SUB_WHITEBOARDRT_STORAGE.$HOMESERVER_DOMAIN/api/v2/scenes
+EXPRESS_SERVER_URL=http://whiteboardrt-agent:3000
+ENABLE_CANVAS_SYNC=true
+WHITEBOARD_RT_AGENT_PUBLIC_URL=https://$SUB_WHITEBOARDRT_AGENT.$HOMESERVER_DOMAIN/
+WHITEBOARD_RT_AGENT_PERSISTENCE=remote
+WHITEBOARD_RT_AGENT_STORAGE_URL=http://whiteboardrt-storage:8080/api/v2
+MCP_PORT=3100
+MCP_TRANSPORT=http
+DISABLED_TOOLS=get_canvas_screenshot,export_to_image
+EOFMT
+}
+
+function performUpdateWhiteboardRT()
+{
+  perform_stack_name=whiteboardrt
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=ghcr.io/homeserverhq/whiteboardrt:v0.2,ghcr.io/homeserverhq/whiteboardrt-agent-canvas:v0.2,ghcr.io/homeserverhq/whiteboardrt-agent-mcp:v0.2,ghcr.io/homeserverhq/whiteboardrt-storage-backend:v0.2,ghcr.io/homeserverhq/whiteboardrt-server:v0.2,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="ghcr.io/homeserverhq/whiteboardrt:v0.2,ghcr.io/homeserverhq/whiteboardrt:v0.2"
+      image_update_map[1]="ghcr.io/homeserverhq/whiteboardrt-agent-canvas:v0.2,ghcr.io/homeserverhq/whiteboardrt-agent-canvas:v0.2"
+      image_update_map[2]="ghcr.io/homeserverhq/whiteboardrt-agent-mcp:v0.2,ghcr.io/homeserverhq/whiteboardrt-agent-mcp:v0.2"
+      image_update_map[3]="ghcr.io/homeserverhq/whiteboardrt-storage-backend:v0.2,ghcr.io/homeserverhq/whiteboardrt-storage-backend:v0.2"
+      image_update_map[4]="ghcr.io/homeserverhq/whiteboardrt-server:v0.2,ghcr.io/homeserverhq/whiteboardrt-server:v0.2"
+      image_update_map[5]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# mdCollab
+function installmdCollab()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory mdcollab "mdCollab"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName mdcollab-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName mdcollab-backend)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName mdcollab-frontend)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName mdcollab-mcp)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/mdcollab
+  mkdir $HSHQ_STACKS_DIR/mdcollab/uploads
+  mkdir $HSHQ_STACKS_DIR/mdcollab/db
+  mkdir $HSHQ_STACKS_DIR/mdcollab/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/mdcollab/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $MDCOLLAB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  MDCOLLAB_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $MDCOLLAB_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigmdCollab
+  installStack mdcollab mdcollab-app "" $HOME/mdcollab.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$MDCOLLAB_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_MDCOLLAB_APP Admin Login Info" -b "$FMLNAME_MDCOLLAB_APP Admin Username: $MDCOLLAB_ADMIN_USERNAME\n$FMLNAME_MDCOLLAB_APP Admin Email: $MDCOLLAB_ADMIN_EMAIL_ADDRESS\n$FMLNAME_MDCOLLAB_APP Admin Password: $MDCOLLAB_ADMIN_PASSWORD\n$FMLNAME_MDCOLLAB_APP Admin API Key: $MDCOLLAB_ADMIN_API_KEY\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    MDCOLLAB_INIT_ENV=true
+    updateConfigVar MDCOLLAB_INIT_ENV $MDCOLLAB_INIT_ENV
+  fi
+  sleep 3
+  addReadOnlyUserToDatabase mdCollab postgres mdcollab-db $MDCOLLAB_DATABASE_NAME $MDCOLLAB_DATABASE_USER $MDCOLLAB_DATABASE_USER_PASSWORD $HSHQ_STACKS_DIR/mdcollab/dbexport $MDCOLLAB_DATABASE_READONLYUSER $MDCOLLAB_DATABASE_READONLYUSER_PASSWORD
+  addMCPServerLiteLLM "mdcollab" "mdc" "http://mdcollab-mcp:80/mcp" http none ""
+  addAdminUsermdCollab
+  if [ -z "$FMLNAME_MDCOLLAB_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is empty, returning..."
+    return 1
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_MDCOLLAB_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RELAXEDCSP\n"
+  inner_block=$inner_block">>>>header /media/* Content-Disposition inline\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
+  inner_block=$inner_block">>>>>>@mdcollab-backend {\n"
+  inner_block=$inner_block">>>>>>>>path /realtime /api/* /public/* /uploads/* /apidoc/* /media/*\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>reverse_proxy @mdcollab-backend http://mdcollab-backend:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>reverse_proxy /* http://mdcollab-frontend:3001 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_MDCOLLAB_APP $MANAGETLS_MDCOLLAB_APP "$is_integrate_hshq" $NETDEFAULT_MDCOLLAB_APP "$inner_block"
+  insertSubAuthelia $SUB_MDCOLLAB_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll mdcollab "$FMLNAME_MDCOLLAB_APP" $USERTYPE_MDCOLLAB_APP "https://$SUB_MDCOLLAB_APP.$HOMESERVER_DOMAIN" "mdcollab.png" "$(getHeimdallOrderFromSub $SUB_MDCOLLAB_APP $USERTYPE_MDCOLLAB_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true mdcollab "$FMLNAME_MDCOLLAB_APP" postgres mdcollab-db $MDCOLLAB_DATABASE_NAME $MDCOLLAB_DATABASE_USER $MDCOLLAB_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigmdCollab()
+{
+  cat <<EOFMT > $HOME/mdcollab-compose.yml
+$STACK_VERSION_PREFIX mdcollab $(getScriptStackVersion mdcollab)
+
+services:
+  mdcollab-db:
+    image: $(getScriptImageByContainerName mdcollab-db)
+    container_name: mdcollab-db
+    hostname: mdcollab-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-mdcollab-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mdcollab/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mdcollab/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.mdcollab-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.mdcollab-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.mdcollab-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.mdcollab-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.mdcollab-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.mdcollab-hourly-db.email-from=mdCollab Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.mdcollab-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.mdcollab-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.mdcollab-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.mdcollab-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.mdcollab-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.mdcollab-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.mdcollab-monthly-db.email-from=mdCollab Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.mdcollab-monthly-db.mail-only-on-error=false"
+
+  mdcollab-frontend:
+    image: $(getScriptImageByContainerName mdcollab-frontend)
+    container_name: mdcollab-frontend
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - mdcollab-db
+    networks:
+      - int-mdcollab-net
+      - dock-proxy-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  mdcollab-backend:
+    image: $(getScriptImageByContainerName mdcollab-backend)
+    container_name: mdcollab-backend
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - mdcollab-db
+    networks:
+      - int-mdcollab-net
+      - dock-proxy-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-mdcollab-uploads:/mdcollab/public/uploads
+
+  mdcollab-mcp:
+    image: $(getScriptImageByContainerName mdcollab-mcp)
+    container_name: mdcollab-mcp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    pull_policy: always
+    networks:
+      - int-mdcollab-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+volumes:
+  v-mdcollab-uploads:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/mdcollab/uploads
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  int-mdcollab-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/mdcollab.env
+TZ=\${PORTAINER_TZ}
+HOSTNAME=0.0.0.0
+MDCOLLAB_RATE_LIMIT_GLOBAL_MAX=0
+MDCOLLAB_RATE_LIMIT_AUTH_MAX=0
+MDCOLLAB_RATE_LIMIT_NOTES_MAX=0
+MDCOLLAB_BACKEND_BIND_IP=0.0.0.0
+POSTGRES_DB=$MDCOLLAB_DATABASE_NAME
+POSTGRES_USER=$MDCOLLAB_DATABASE_USER
+POSTGRES_PASSWORD=$MDCOLLAB_DATABASE_USER_PASSWORD
+NODE_ENV=production
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+MDCOLLAB_NOTE_PERMISSIONS_MAX_GUEST_LEVEL=read
+MDCOLLAB_NOTE_PERMISSIONS_DEFAULT_EVERYONE=deny
+MDCOLLAB_PERMISSION_DEFAULT_EVERYONE=deny
+MDCOLLAB_PERMISSION_DEFAULT_LOGGED_IN=deny
+MDCOLLAB_BASE_URL=https://$SUB_MDCOLLAB_APP.$HOMESERVER_DOMAIN
+MDCOLLAB_SESSION_SECRET=$MDCOLLAB_SESSION_SECRET
+MDCOLLAB_AUTH_SESSION_SECRET=$MDCOLLAB_SESSION_SECRET
+MDCOLLAB_DATABASE_TYPE=postgres
+MDCOLLAB_DATABASE_HOST=mdcollab-db
+MDCOLLAB_DATABASE_PORT=5432
+MDCOLLAB_DATABASE_NAME=$MDCOLLAB_DATABASE_NAME
+MDCOLLAB_DATABASE_USERNAME=$MDCOLLAB_DATABASE_USER
+MDCOLLAB_DATABASE_PASSWORD=$MDCOLLAB_DATABASE_USER_PASSWORD
+MDCOLLAB_DATABASE_USER=$MDCOLLAB_DATABASE_USER
+MDCOLLAB_DATABASE_PASS=$MDCOLLAB_DATABASE_USER_PASSWORD
+MDCOLLAB_MEDIA_BACKEND_TYPE=filesystem
+MDCOLLAB_MEDIA_BACKEND=filesystem
+MDCOLLAB_MEDIA_BACKEND_FILESYSTEM_UPLOAD_PATH=uploads/
+MDCOLLAB_INTERNAL_API_URL=http://mdcollab-backend:3000
+MDCOLLAB_RENDERER_BASE_URL=https://$SUB_MDCOLLAB_APP.$HOMESERVER_DOMAIN
+MDCOLLAB_AUTH_LOCAL_ENABLE_LOGIN=true
+MDCOLLAB_AUTH_LOCAL_ENABLE_REGISTER=false
+MDCOLLAB_AUTH_SYNC_SOURCE=HSHQ
+MDCOLLAB_AUTH_LDAP_SERVERS=HSHQ
+MDCOLLAB_AUTH_LDAP_HSHQ_URL=ldaps://ldapserver:636
+MDCOLLAB_AUTH_LDAP_HSHQ_SEARCH_BASE=ou=people,$LDAP_BASE_DN
+MDCOLLAB_AUTH_LDAP_HSHQ_BIND_DN=$LDAP_READONLY_USER_BIND_DN
+MDCOLLAB_AUTH_LDAP_HSHQ_BIND_CREDENTIALS=$LDAP_READONLY_USER_PASSWORD
+MDCOLLAB_AUTH_LDAP_HSHQ_PROVIDER_NAME=LDAP
+MDCOLLAB_AUTH_LDAP_HSHQ_SEARCH_FILTER=(&(uid={{username}})(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
+MDCOLLAB_AUTH_LDAP_HSHQ_SEARCH_ATTRIBUTES=uid,cn,mail,jpegPhoto
+MDCOLLAB_AUTH_LDAP_HSHQ_TLS_CERT_PATHS=/etc/ssl/certs/ca-certificates.crt
+MDCOLLAB_AUTH_LDAP_HSHQ_DISPLAY_NAME_FIELD=cn
+MDCOLLAB_AUTH_LDAP_HSHQ_PROFILE_PICTURE_FIELD=jpegPhoto
+MDCOLLAB_INTERNAL_URL=http://mdcollab-backend:3000
+MCP_SERVER_PORT=80
+ALLOW_ALL_AGGREGATE=false
+IS_STATEFUL=false
+MDCOLLAB_PUBLIC_URL=https://$SUB_MDCOLLAB_APP.$HOMESERVER_DOMAIN
+EOFMT
+}
+
+function addAdminUsermdCollab()
+{
+  local username="$MDCOLLAB_ADMIN_USERNAME"
+  local password="$MDCOLLAB_ADMIN_PASSWORD"
+  local display_name="mdCollab $(getAdminEmailName)"
+  local email="$MDCOLLAB_ADMIN_EMAIL_ADDRESS"
+  local label="MCP"
+  local existing_key_id
+  existing_key_id="$(PGPASSWORD="${MDCOLLAB_DATABASE_USER_PASSWORD}" docker exec "mdcollab-db" \
+    psql -q -t -A -v ON_ERROR_STOP=1 -U "${MDCOLLAB_DATABASE_USER}" -d "${MDCOLLAB_DATABASE_NAME}" \
+    -c "SELECT id FROM \"user\" WHERE username = '${username}';")"
+  if [[ -n "$existing_key_id" ]]; then
+    echo "Error: a user with username '${username}' already exists (id=${existing_key_id})" >&2
+    return 1
+  fi
+  local author_style photo_url password_hash node_out
+  node_out="$(
+    PGPASSWORD="${MDCOLLAB_DATABASE_USER_PASSWORD}" docker exec -i \
+      -e "HD_UNAME=${username}" \
+      -e "HD_EMAIL=${email}" \
+      -e "HD_PASS=${password}" \
+      mdcollab-backend node <<'NODE'
+const { hash } = require("@node-rs/argon2");
+const { createHash } = require("crypto");
+const username = process.env.HD_UNAME;
+const email = process.env.HD_EMAIL;
+const password = process.env.HD_PASS;
+let authHash = 0;
+for (let i = 0; i < username.length; i++) {
+  authHash = username.charCodeAt(i) + ((authHash << 5) - authHash);
+}
+const authorStyle = Math.abs(authHash % 9);
+let photoUrl;
+if (email && email.length > 0) {
+  photoUrl = "https://seccdn.libravatar.org/avatar/" + createHash("sha256").update(email.toLowerCase()).digest("hex");
+} else {
+  photoUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAA1JREFUGFdj+L+E8T8ABu4CpDyuE+YAAAAASUVORK5CYII=";
+}
+hash(password, { memoryCost: 19456, timeCost: 2, parallelism: 1 })
+  .then((h) => console.log(authorStyle + "\n" + photoUrl + "\n" + h))
+  .catch((e) => { console.error(e); process.exit(1); });
+NODE
+  )"
+  mapfile -t node_out_lines <<<"${node_out}"
+  author_style="${node_out_lines[0]}"
+  photo_url="${node_out_lines[1]}"
+  password_hash="${node_out_lines[2]}"
+  local key_id secret full_token secret_hash now valid
+  key_id="$(openssl rand 8 | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')"
+  secret="$(openssl rand 64 | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')"
+  full_token="hd2.${key_id}.${secret}"
+  secret_hash="$(printf '%s' "$secret" | openssl dgst -sha512 | awk '{print $2}')"
+  now="$(date -u '+%Y-%m-%d %H:%M:%S.000')"
+  valid="$(date -u -d "+88 year" '+%Y-%m-%d %H:%M:%S.000')"
+  PGPASSWORD="${MDCOLLAB_DATABASE_USER_PASSWORD}" docker exec -i \
+    "mdcollab-db" \
+    psql -q -v ON_ERROR_STOP=1 \
+      -U "${MDCOLLAB_DATABASE_USER}" \
+      -d "${MDCOLLAB_DATABASE_NAME}" \
+      -v v_username="$username" \
+      -v v_display_name="$display_name" \
+      -v v_email="$email" \
+      -v v_label="$label" \
+      -v v_key_id="$key_id" \
+      -v v_secret_hash="$secret_hash" \
+      -v v_password_hash="$password_hash" \
+      -v v_photo_url="$photo_url" \
+      -v v_author_style="$author_style" \
+      -v v_now="$now" \
+      -v v_valid="$valid" >/dev/null <<'SQL'
+BEGIN;
+
+INSERT INTO "user" (username, display_name, photo_url, email, author_style, guest_uuid, created_at)
+VALUES (:'v_username', :'v_display_name', :'v_photo_url', :'v_email', :'v_author_style', NULL, :'v_now');
+
+INSERT INTO identity (user_id, provider_type, provider_identifier, provider_user_id, password_hash, created_at, updated_at)
+SELECT id, 'local', NULL, :'v_username', :'v_password_hash', :'v_now', :'v_now'
+FROM "user"
+WHERE username = :'v_username';
+
+DELETE FROM api_token
+WHERE user_id = (SELECT id FROM "user" WHERE username = :'v_username')
+  AND label = :'v_label';
+
+INSERT INTO api_token (id, user_id, label, secret_hash, valid_until, created_at, last_used_at)
+VALUES (:'v_key_id',
+        (SELECT id FROM "user" WHERE username = :'v_username'),
+        :'v_label',
+        :'v_secret_hash',
+        :'v_valid',
+        :'v_now',
+        NULL);
+
+COMMIT;
+SQL
+  MDCOLLAB_ADMIN_API_KEY=$(printf '%s\n' "$full_token")
+  updateConfigVar MDCOLLAB_ADMIN_API_KEY "$MDCOLLAB_ADMIN_API_KEY"
+}
+
+function performUpdatemdCollab()
+{
+  perform_stack_name=mdcollab
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:17.6,ghcr.io/homeserverhq/mdcollab-backend:v2.1,ghcr.io/homeserverhq/mdcollab-frontend:v2.1,ghcr.io/homeserverhq/mdcollab-mcp:v3.0
+      image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
+      image_update_map[1]="ghcr.io/homeserverhq/mdcollab-backend:v2.1,ghcr.io/homeserverhq/mdcollab-backend:v2.1"
+      image_update_map[2]="ghcr.io/homeserverhq/mdcollab-frontend:v2.1,ghcr.io/homeserverhq/mdcollab-frontend:v2.1"
+      image_update_map[3]="ghcr.io/homeserverhq/mdcollab-mcp:v3.0,ghcr.io/homeserverhq/mdcollab-mcp:v3.0"
+
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# HaloSpeak
+function installHaloSpeak()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory halospeak "HaloSpeak"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  buildOrPullImage $(getScriptImageByContainerName halospeak-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/halospeak
+  mkdir $HSHQ_STACKS_DIR/halospeak/config
+  mkdir $HSHQ_STACKS_DIR/halospeak/data
+  initServicesCredentials
+  set +e
+  outputConfigHaloSpeak
+  installStack halospeak halospeak-app "" $HOME/halospeak.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$HALOSPEAK_INIT_ENV" = "true" ]; then
+    HALOSPEAK_INIT_ENV=true
+    updateConfigVar HALOSPEAK_INIT_ENV $HALOSPEAK_INIT_ENV
+  fi
+  sleep 3
+  if [ -z "$FMLNAME_HALOSPEAK_APP" ]; then
+    set +e
+    echo "ERROR: Formal name is empty, returning..."
+    return 1
+  fi
+  set -e
+    inner_block=""
+  inner_block=$inner_block">>https://$SUB_HALOSPEAK_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://halospeak-app:7860 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_HALOSPEAK_APP $MANAGETLS_HALOSPEAK_APP "$is_integrate_hshq" $NETDEFAULT_HALOSPEAK_APP "$inner_block"
+  insertSubAuthelia $SUB_HALOSPEAK_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_HALOSPEAK_API.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>@auth_bearer {\n"
+  inner_block=$inner_block">>>>>>header Authorization \"Bearer $HALOSPEAK_API_KEY\"\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>@auth_query {\n"
+  inner_block=$inner_block">>>>>>query api-key=$HALOSPEAK_API_KEY\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>@auth_header {\n"
+  inner_block=$inner_block">>>>>>header X-API-Key $HALOSPEAK_API_KEY\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
+  inner_block=$inner_block">>>>>>handle @auth_bearer {\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://halospeak-api:8888 {\n"
+  inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>>>}\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>handle @auth_query {\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://halospeak-api:8888 {\n"
+  inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>>>}\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>handle @auth_header {\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://halospeak-api:8888 {\n"
+  inner_block=$inner_block">>>>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>>>}\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>respond 403 {\n"
+  inner_block=$inner_block">>>>>>>>body \"Forbidden: Invalid API Key\"\n"
+  inner_block=$inner_block">>>>>>>>close\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_HALOSPEAK_API $MANAGETLS_HALOSPEAK_API "$is_integrate_hshq" $NETDEFAULT_HALOSPEAK_API "$inner_block"
+  insertSubAuthelia $SUB_HALOSPEAK_API.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll halospeak "$FMLNAME_HALOSPEAK_APP" $USERTYPE_HALOSPEAK_APP "https://$SUB_HALOSPEAK_APP.$HOMESERVER_DOMAIN" "halospeak.png" "$(getHeimdallOrderFromSub $SUB_HALOSPEAK_APP $USERTYPE_HALOSPEAK_APP)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigHaloSpeak()
+{
+  cat <<EOFMT > $HOME/halospeak-compose.yml
+$STACK_VERSION_PREFIX halospeak $(getScriptStackVersion halospeak)
+
+services:
+  halospeak-app:
+    image: $(getScriptImageByContainerName halospeak-app)
+    container_name: halospeak-app
+    hostname: halospeak-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - seccomp=unconfined
+      - label=disable
+    stdin_open: true
+    tty: true
+    command: ["python", "-m", "halospeak.webui"]
+    networks:
+      - dock-ext-net
+      - dock-aipriv-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/huggingface:/root/.cache/huggingface
+      - \${PORTAINER_HSHQ_STACKS_DIR}/halospeak/transcripts:/app/transcripts
+      - \${PORTAINER_HSHQ_STACKS_DIR}/halospeak/transcripts-txt:/app/transcripts-txt
+      - \${PORTAINER_HSHQ_STACKS_DIR}/halospeak/transcripts-srt:/app/transcripts-srt
+
+  halospeak-api:
+    image: $(getScriptImageByContainerName halospeak-api)
+    container_name: halospeak-api
+    hostname: halospeak-api
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - seccomp=unconfined
+      - label=disable
+    stdin_open: true
+    tty: true
+    networks:
+      - dock-ext-net
+      - dock-aipriv-net
+      - dock-ailimit-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/aimodels/huggingface:/root/.cache/huggingface
+      - \${PORTAINER_HSHQ_STACKS_DIR}/halospeak/transcripts:/app/transcripts
+      - \${PORTAINER_HSHQ_STACKS_DIR}/halospeak/transcripts-txt:/app/transcripts-txt
+      - \${PORTAINER_HSHQ_STACKS_DIR}/halospeak/transcripts-srt:/app/transcripts-srt
+
+networks:
+  dock-aipriv-net:
+    name: dock-aipriv
+    external: true
+  dock-ailimit-net:
+    name: dock-ailimit
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+EOFMT
+  cat <<EOFMT > $HOME/halospeak.env
+TZ=\${PORTAINER_TZ}
+APP_TIMEZONE=\${PORTAINER_TZ}
+WHISPER_MODEL=distil-whisper/distil-large-v3.5
+WHISPER_DEVICE=cpu
+WHISPER_BATCH_SIZE=4
+PROGRESS_GROUP_SIZE=4
+WHISPER_TIMESTAMP_TYPE=chunk
+WHISPER_LANGUAGE=None
+WHISPER_DTYPE=float16
+WHISPER_BETTER_TRANSFORMER=false
+WHISPER_CHUNK_LENGTH=30
+STABILIZE_DEFAULT=false
+DEMUCS_DEFAULT=false
+VAD_DEFAULT=false
+VAD_THRESHOLD_DEFAULT=0.35
+WHISPER_DIARIZATION_MODEL=pyannote/speaker-diarization-community-1
+WHISPER_UPLOAD_DIR=temp_uploads
+WHISPER_TRANSCRIPTS_DIR=transcripts
+AUDIO_CHUNK_DURATION=600
+AUDIO_CHUNK_OVERLAP=1.0
+AUDIO_CHUNK_MIN_DURATION=5.0
+SAVE_TRANSCRIPTIONS=true
+API_HOST=0.0.0.0
+API_PORT=8888
+WEBUI_HOST=0.0.0.0
+WEBUI_PORT=7860
+LOG_LEVEL=INFO
+USE_READABLE_SUBTITLES=true
+MAX_LINE_CHARS=42
+MAX_LINES_PER_BLOCK=2
+MAX_BLOCK_CHARS=84
+MAX_BLOCK_CHARS_SOFT=90
+MIN_CPS=12.0
+MAX_CPS=17.0
+MIN_SEGMENT_DURATION_SEC=1.2
+MAX_SEGMENT_DURATION_SEC=5.5
+DISPLAY_BUFFER_SEC=0.2
+SOFT_BOUNDARY_WORDS=and,but,or,so,for,nor,yet
+INTERJECTION_WHITELIST=um,uh,ah,er,like
+HF_TOKEN=
+DIARIZATION_DEVICE=cpu
+DIARIZATION_PRELOAD_AUDIO=true
+DIARIZATION_ALLOW_CPU_FALLBACK=true
+DIARIZATION_DISABLE_MIOPEN=true
+DIARIZATION_EMBEDDING_CLUSTERING=true
+DIARIZE_DEFAULT=true
+MIOPEN_FIND_MODE=2
+EOFMT
+}
+
+function performUpdateHaloSpeak()
+{
+  perform_stack_name=halospeak
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=hshq/halospeak:v3.0
+      image_update_map[0]="hshq/halospeak:v3.0,hshq/halospeak:v3.0"
     ;;
     *)
       is_upgrade_error=true
@@ -132791,7 +135198,7 @@ EOFMT
 TZ=\${PORTAINER_TZ}
 LOGIN=$DBGATE_ADMIN_USERNAME
 PASSWORD=$DBGATE_ADMIN_PASSWORD
-CONNECTIONS=ActivePieces,Adminer,Automatisch,Budibase,Calcom,Discourse,Dolibarr,EasyAppointments,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,InvoiceNinja,InvoiceShelf,Kanboard,Keila,KillBill,KillBillAPI,Langfuse,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MindsDB,MintHCM,n8n,Nextcloud,Odoo,Ombi,OpenProject,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Rallly,Revolt,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Twenty,Vaultwarden,Wallabag,Wekan,Wikijs,WordPress,Yamtrack,Zammad,Zulip,Taiga,OpenSign,DocuSeal,ControlR,Akaunting,Axelor,Langflow,Firecrawl,LibreChat,OpenWebUI,Khoj,LobeChat,RAGFlow,Dify,MindsDB,WaterCrawl,Flowise,NocoDB,Ente,Morphic,DocsGPT,Memos,Speakr,Monica,AFFiNE,Joplin,Superset,LiteLLM,Langfuse,Skyvern,Wger,WorkoutCool,SuiteCRM,HedgeDoc,BasicMemory,Cognee,LightRAG
+CONNECTIONS=ActivePieces,Adminer,Automatisch,Budibase,Calcom,Discourse,Dolibarr,EasyAppointments,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,InvoiceNinja,InvoiceShelf,Kanboard,Keila,KillBill,KillBillAPI,Langfuse,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MindsDB,MintHCM,n8n,Nextcloud,Odoo,Ombi,OpenProject,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Rallly,Revolt,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Twenty,Vaultwarden,Wallabag,Wekan,Wikijs,WordPress,Yamtrack,Zammad,Zulip,Taiga,OpenSign,DocuSeal,ControlR,Akaunting,Axelor,Langflow,Firecrawl,LibreChat,OpenWebUI,Khoj,LobeChat,RAGFlow,Dify,MindsDB,WaterCrawl,Flowise,NocoDB,Ente,Morphic,DocsGPT,Memos,Speakr,Monica,AFFiNE,Joplin,Superset,LiteLLM,Langfuse,Skyvern,Wger,WorkoutCool,SuiteCRM,HedgeDoc,BasicMemory,Cognee,LightRAG,mdCollab
 LABEL_ActivePieces=ActivePieces
 ENGINE_ActivePieces=postgres@dbgate-plugin-postgres
 SERVER_ActivePieces=activepieces-db
@@ -133478,6 +135885,13 @@ DATABASE_LightRAG=LIGHTRAG_DATABASE_NAME
 USER_LightRAG=LIGHTRAG_DATABASE_USER
 PASSWORD_LightRAG=LIGHTRAG_DATABASE_USER_PASSWORD
 PORT_LightRAG=5432
+LABEL_mdCollab=mdCollab
+ENGINE_mdCollab=postgres@dbgate-plugin-postgres
+SERVER_mdCollab=mdcollab-db
+DATABASE_mdCollab=MDCOLLAB_DATABASE_NAME
+USER_mdCollab=MDCOLLAB_DATABASE_USER
+PASSWORD_mdCollab=MDCOLLAB_DATABASE_USER_PASSWORD
+PORT_mdCollab=5432
 EOFMT
 #DBGATE_OUTPUT_CONFIG_ENV_END
 }
@@ -134387,6 +136801,14 @@ SQLPAD_CONNECTIONS__lightrag__username=$LIGHTRAG_DATABASE_USER
 SQLPAD_CONNECTIONS__lightrag__password=$LIGHTRAG_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__lightrag__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__lightrag__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__mdcollab__name=mdCollab
+SQLPAD_CONNECTIONS__mdcollab__driver=postgres
+SQLPAD_CONNECTIONS__mdcollab__host=mdcollab-db
+SQLPAD_CONNECTIONS__mdcollab__database=$MDCOLLAB_DATABASE_NAME
+SQLPAD_CONNECTIONS__mdcollab__username=$MDCOLLAB_DATABASE_USER
+SQLPAD_CONNECTIONS__mdcollab__password=$MDCOLLAB_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__mdcollab__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__mdcollab__idleTimeoutSeconds=900
 EOFSP
 #SQLPAD_OUTPUT_CONFIG_ENV_END
 }
