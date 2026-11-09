@@ -32398,7 +32398,7 @@ function loadPinnedDockerImages()
   IMG_CROWDSEC_WEB=ghcr.io/theduffman85/crowdsec-web-ui:2026.10.3
   IMG_FASTCRW_APP=ghcr.io/fastcrw/crw:0.41.0
   IMG_LIGHTPANDA=mirror.gcr.io/lightpanda/browser:1.0.2
-  IMG_FASTCRW_PROXY=ghcr.io/homeserverhq/crawl4ai-proxy:v0.1.0
+  IMG_FASTCRW_PROXY=ghcr.io/homeserverhq/webloader-proxy:v0.1
   IMG_HEADLESS_BROWSER=ghcr.io/homeserverhq/headless-browser:v0.1
   IMG_WHITEBOARDRT_WEB=ghcr.io/homeserverhq/whiteboardrt:v0.2
   IMG_WHITEBOARDRT_AGENT=ghcr.io/homeserverhq/whiteboardrt-agent-canvas:v0.2
@@ -124994,6 +124994,7 @@ CRW_EXTRACTION__LLM__FALLBACK__MAX_HTML_BYTES=100000
 CRW_EXTRACTION__LLM__FALLBACK__ALWAYS_RUN=false
 LIGHTPANDA_DISABLE_TELEMETRY=true
 CHROMIUM_FLAGS="--ignore-certificate-errors --disable-http2 --disable-blink-features=AutomationControlled"
+UPSTREAM_KIND=crw
 UPSTREAM_URL=http://fastcrw-app:3000
 UPSTREAM_API_KEY=$FASTCRW_API_KEY
 EOFMT
@@ -125008,10 +125009,10 @@ function performUpdatefastCRW()
   case "$perform_stack_ver" in
     1)
       newVer=v1
-      curImageList=ghcr.io/fastcrw/crw:0.41.0,mirror.gcr.io/lightpanda/browser:1.0.2,ghcr.io/homeserverhq/crawl4ai-proxy:v0.1.0,ghcr.io/homeserverhq/headless-browser:v0.1
+      curImageList=ghcr.io/fastcrw/crw:0.41.0,mirror.gcr.io/lightpanda/browser:1.0.2,ghcr.io/homeserverhq/webloader-proxy:v0.1,ghcr.io/homeserverhq/headless-browser:v0.1
       image_update_map[0]="ghcr.io/fastcrw/crw:0.41.0,ghcr.io/fastcrw/crw:0.41.0"
       image_update_map[1]="mirror.gcr.io/lightpanda/browser:1.0.2,mirror.gcr.io/lightpanda/browser:1.0.2"
-      image_update_map[2]="ghcr.io/homeserverhq/crawl4ai-proxy:v0.1.0,ghcr.io/homeserverhq/crawl4ai-proxy:v0.1.0"
+      image_update_map[2]="ghcr.io/homeserverhq/webloader-proxy:v0.1,ghcr.io/homeserverhq/webloader-proxy:v0.1"
       image_update_map[3]="ghcr.io/homeserverhq/headless-browser:v0.1,ghcr.io/homeserverhq/headless-browser:v0.1"
     ;;
     *)
