@@ -117369,6 +117369,11 @@ function performUpdateLiteLLM()
 
 function setAuthKeyLiteLLM()
 {
+  set +e
+  docker ps | grep -q litellm-proxy > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    return
+  fi
   if [ -n "$LITELLM_AUTH_KEY" ]; then
     return
   fi
