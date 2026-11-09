@@ -30768,6 +30768,7 @@ function addPrimaryUser()
     addPUIsLDAPAdmin=false
   elif [ "$addPUIsLDAPAdmin" = "true" ]; then
     addPUEmailAddress="$EMAIL_ADMIN_EMAIL_ADDRESS"
+    newuser_ragflow_api_key="$RAGFLOW_TEAM_API_KEY"
   fi
   set +e
   newuser_mailu_app_password=abcd
@@ -30875,7 +30876,9 @@ EOFAU
   newuser_mealie_api_key=$(addPrimaryUserMealie "$addPUUID" "${addPUFirstName} ${addPULastName}" $addPUEmailAddress false)
   newuser_presenton_api_key=$(addPrimaryUserPresenton "$addPUUID" "$addPUPassword")
   newuser_twenty_api_key=$(addPrimaryUserTwenty "$addPUUID" "$addPUEmailAddress" "$addPUPassword" "$addPUFirstName" "$addPULastName" "$newuser_mailu_app_password")
-  newuser_ragflow_api_key=$(addPrimaryUserRAGFlow "$addPUEmailAddress" "$addPUFirstName $addPULastName" "$addPUPassword")
+  if ! [ "$addPUIsLDAPAdmin" = "true" ]; then
+    newuser_ragflow_api_key=$(addPrimaryUserRAGFlow "$addPUEmailAddress" "$addPUFirstName $addPULastName" "$addPUPassword")
+  fi
   addPrimaryUserAutoKB "$addPUUID" "$cleanName" "$addPUEmailAddress" "$newuser_mailu_app_password" 1 "$newuser_ragflow_api_key"
   docker ps | grep -q openwebui-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
@@ -31182,7 +31185,7 @@ function addPrimaryUserAutoKB()
     akbRes="$(docker exec autokb-web curl -sS -X POST \
       -H "Authorization: Bearer $AUTOKB_API_KEY" \
       -H "Content-Type: application/json" \
-      --data "{\"name\":\"${formal_name}-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$ragflow_api_key\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+      --data "{\"name\":\"${formal_name}-PKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$ragflow_api_key\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
       -w $'\n%{http_code}' \
       "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
     akbCode="${akbRes##*$'\n'}"
@@ -121185,33 +121188,60 @@ function performAutoKBInstallIntegrations()
     fi
   fi
   docker ps | grep -q openwebui-app > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    return
+  if [ $? -eq 0 ]; then
+    echo "Resolving openWebUISink service id..."
+    akbRes="$(docker exec autokb-web curl -sS -X GET \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
+    SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
+    if [ -z "$SINK_ID" ]; then
+      echo "openWebUISink not found among provisioned sinks" >&2
+      return 1
+    fi
+    echo "Creating OpenWebUI target KB HSHQSuperAdmin-PKB..."
+    akbRes="$(docker exec autokb-web curl -sS -X POST \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data "{\"name\":\"HSHQSuperAdmin-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$PAPERLESS_SUB_ID\"]}" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
   fi
-  echo "Resolving openWebUISink service id..."
-  akbRes="$(docker exec autokb-web curl -sS -X GET \
-    -H "Authorization: Bearer $AUTOKB_API_KEY" \
-    -H "Content-Type: application/json" \
-    -w $'\n%{http_code}' \
-    "http://autokb-web:80/api/sinks")"
-  akbCode="${akbRes##*$'\n'}"
-  akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
-  SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "openWebUISink") | .service_id' | head -n1)"
-  if [ -z "$SINK_ID" ]; then
-    echo "openWebUISink not found among provisioned sinks" >&2
-    return 1
+
+  docker ps | grep -q ragflow-app > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    echo "Resolving ragflowSink service id..."
+    akbRes="$(docker exec autokb-web curl -sS -X GET \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Sinks lookup failed: $akbBody" >&2; return 1; }
+    SINK_ID="$(printf '%s' "$akbBody" | jq -r '.[] | select(.name == "ragflowSink") | .service_id' | head -n1)"
+    if [ -z "$SINK_ID" ]; then
+      echo "ragflowSink not found among provisioned sinks" >&2
+      return 1
+    fi
+    echo "Creating RAGFlow target KB HSHQSuperAdmin-PKB..."
+    akbRes="$(docker exec autokb-web curl -sS -X POST \
+      -H "Authorization: Bearer $AUTOKB_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data "{\"name\":\"HSHQSuperAdmin-PKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$RAGFLOW_TEAM_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$PAPERLESS_SUB_ID\"]}" \
+      -w $'\n%{http_code}' \
+      "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
+    akbCode="${akbRes##*$'\n'}"
+    akbBody="${akbRes%$'\n'*}"
+    [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
   fi
-  echo "Creating OpenWebUI target KB HSHQSuperAdmin-PKB..."
-  akbRes="$(docker exec autokb-web curl -sS -X POST \
-    -H "Authorization: Bearer $AUTOKB_API_KEY" \
-    -H "Content-Type: application/json" \
-    --data "{\"name\":\"HSHQSuperAdmin-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$PAPERLESS_SUB_ID\"]}" \
-    -w $'\n%{http_code}' \
-    "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
-  akbCode="${akbRes##*$'\n'}"
-  akbBody="${akbRes%$'\n'*}"
-  [ "$akbCode" -ge 200 ] && [ "$akbCode" -lt 300 ] || { echo "Target creation failed: $akbBody" >&2; return 1; }
   echo "Done."
 }
 
