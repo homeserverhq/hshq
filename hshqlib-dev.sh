@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=248
+HSHQ_LIB_SCRIPT_VERSION=249
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -121162,6 +121162,7 @@ DOCLING_API_KEY=$DOCLING_API_KEY
 OPENWEBUI_API_KEY=$OPENWEBUI_ADMIN_API_KEY
 LIGHTRAG_API_KEY=$LIGHTRAG_API_KEY
 RAGFLOW_API_KEY=$RAGFLOW_TEAM_API_KEY
+FASTCRW_API_KEY=$FASTCRW_API_KEY
 EOFMT
 }
 
@@ -124418,9 +124419,9 @@ SecRule SERVER_NAME "@rx ^($SUB_INSANELYFASTWHISPER_API|$SUB_INSANELYFASTWHISPER
 
 SecRule SERVER_NAME "@rx ^$SUB_LITELLM_APP\." "id:9101700,phase:1,pass,nolog,ctl:ruleRemoveTargetById=930120;ARGS:json.litellm_params.api_base"
 
-SecRule SERVER_NAME "@rx ^($SUB_WHITEBOARDRT_WEB|$SUB_WHITEBOARDRT_AGENT)\." "id:9101500,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
+SecRule SERVER_NAME "@rx ^($SUB_WHITEBOARDRT_WEB|$SUB_WHITEBOARDRT_AGENT)\." "id:9101800,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
 
-SecRule SERVER_NAME "@rx ^($SUB_HALOSPEAK_API|$SUB_HALOSPEAK_APP)\." "id:9101600,phase:1,pass,nolog,ctl:ruleRemoveTargetById=930120;ARGS:/^json\.data\./"
+SecRule SERVER_NAME "@rx ^($SUB_HALOSPEAK_API|$SUB_HALOSPEAK_APP)\." "id:9101900,phase:1,pass,nolog,ctl:ruleRemoveTargetById=930120;ARGS:/^json\.data\./"
 
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-behavior.yaml
