@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=249
+HSHQ_LIB_SCRIPT_VERSION=250
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -30083,7 +30083,7 @@ subjectKeyIdentifier=hash
 authorityKeyIdentifier=keyid:always,issuer
 keyUsage = critical, cRLSign, keyCertSign
 EOFCA
-  totDays=$(echo "($(if (( $(echo "$(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N) < 3074607481" | bc -l) )); then echo 3074607481; else echo $(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N); fi)-1559365200)/86400" | bc)
+  totDays=$(echo "($(if (( $(echo "$(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N) < 3074562000" | bc -l) )); then echo 3074562000; else echo $(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N); fi)-1559365200)/86400" | bc)
   # Certificate Authority Certificate
   # Regarding faketime, see https://support.apple.com/en-us/HT210176
   faketime '2019-06-01 16:38:01 GMT' openssl req -new -x509 -sha256 -nodes -days $totDays -key $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.key -out $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -config $HOME/ca.conf
@@ -41839,7 +41839,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_YAMTRACK.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ZULIP_APP.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_BESZEL_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_METABASE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN\n"
@@ -41850,10 +41849,8 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_RAGFLOW_MCP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OLLAMA_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_OPENCODE_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_COMFYUI_API.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DEEPWIKI_OPEN_API.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_DOCLING_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SURFSENSE_BACKEND.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ENTE_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DOCSGPT_API.$HOMESERVER_DOMAIN\n"
@@ -41940,6 +41937,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_IVBOX_QWEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_IVBOX_COMFYUI_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MONICA_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_DOCLING_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KOKORO_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CHATTERBOX_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LANGFUSE_APP.$HOMESERVER_DOMAIN\n"
@@ -41953,6 +41951,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_OPENRAG_LANGFLOW.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_VOICEBOX_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENCODE_CODESERVER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_OPENCODE_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_EXCALIDRAW_AI.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SUITECRM_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN\n"
@@ -41972,6 +41971,7 @@ function getAutheliaBlock()
   retval="${retval}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} BEGIN\n"
   retval="${retval}        - $SUB_ADGUARD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ADMINER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_BESZEL_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALCOM_STUDIO.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN\n"
@@ -72701,6 +72701,7 @@ services:
     networks:
       - int-paperless-net
       - dock-aipriv-net
+      - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -84607,7 +84608,7 @@ EOFWZ
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_METABASE $MANAGETLS_METABASE "$is_integrate_hshq" $NETDEFAULT_METABASE "$inner_block"
-  insertSubAuthelia $SUB_METABASE.$HOMESERVER_DOMAIN bypass
+  insertSubAuthelia $SUB_METABASE.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll metabase "$FMLNAME_METABASE" $USERTYPE_METABASE "https://$SUB_METABASE.$HOMESERVER_DOMAIN" "metabase.png" "$(getHeimdallOrderFromSub $SUB_METABASE $USERTYPE_METABASE)"
     restartAllCaddyContainers
@@ -90219,7 +90220,7 @@ function installOpenProject()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_OPENPROJECT_APP $MANAGETLS_OPENPROJECT_APP "$is_integrate_hshq" $NETDEFAULT_OPENPROJECT_APP "$inner_block"
-  insertSubAuthelia $SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN bypass
+  insertSubAuthelia $SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll openproject "$FMLNAME_OPENPROJECT_APP" $USERTYPE_OPENPROJECT_APP "https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN" "openproject.png" "$(getHeimdallOrderFromSub $SUB_OPENPROJECT_APP $USERTYPE_OPENPROJECT_APP)"
     restartAllCaddyContainers
@@ -97081,7 +97082,7 @@ function installBeszel()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_BESZEL_APP $MANAGETLS_BESZEL_APP "$is_integrate_hshq" $NETDEFAULT_BESZEL_APP "$inner_block"
-  insertSubAuthelia $SUB_BESZEL_APP.$HOMESERVER_DOMAIN bypass
+  insertSubAuthelia $SUB_BESZEL_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll beszel "$FMLNAME_BESZEL_APP" $USERTYPE_BESZEL_APP "https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN" "beszel.png" "$(getHeimdallOrderFromSub $SUB_BESZEL_APP $USERTYPE_BESZEL_APP)"
     restartAllCaddyContainers
@@ -114085,21 +114086,6 @@ function installIVBox()
     return 1
   fi
   set -e
-  inner_block=""
-  inner_block=$inner_block">>https://$SUB_IVBOX_QWEN.$HOMESERVER_DOMAIN {\n"
-  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
-  inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://ivbox-app:8000 {\n"
-  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
-  inner_block=$inner_block">>>>>>}\n"
-  inner_block=$inner_block">>>>}\n"
-  inner_block=$inner_block">>>>respond 404\n"
-  inner_block=$inner_block">>}"
-  updateCaddyBlocks $SUB_IVBOX_QWEN $MANAGETLS_IVBOX_QWEN "$is_integrate_hshq" $NETDEFAULT_IVBOX_QWEN "$inner_block"
   insertSubAuthelia $SUB_IVBOX_QWEN.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   inner_block=""
   inner_block=$inner_block">>https://$SUB_IVBOX_COMFYUI_WEB.$HOMESERVER_DOMAIN {\n"
@@ -114160,9 +114146,7 @@ function installIVBox()
   updateCaddyBlocks $SUB_IVBOX_COMFYUI_API $MANAGETLS_IVBOX_COMFYUI_API "$is_integrate_hshq" $NETDEFAULT_IVBOX_COMFYUI_API "$inner_block"
   insertSubAuthelia $SUB_IVBOX_COMFYUI_API.$HOMESERVER_DOMAIN bypass
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    #insertEnableSvcAll ivbox "$FMLNAME_IVBOX_QWEN" $USERTYPE_IVBOX_QWEN "https://$SUB_IVBOX_QWEN.$HOMESERVER_DOMAIN" "qwen.png" "$(getHeimdallOrderFromSub $SUB_IVBOX_QWEN $USERTYPE_IVBOX_QWEN)"
     insertEnableSvcAll ivbox "$FMLNAME_IVBOX_COMFYUI_WEB" $USERTYPE_IVBOX_COMFYUI_WEB "https://$SUB_IVBOX_COMFYUI_WEB.$HOMESERVER_DOMAIN" "comfyui.png" "$(getHeimdallOrderFromSub $SUB_IVBOX_COMFYUI_WEB $USERTYPE_IVBOX_COMFYUI_WEB)"
-    #disableSvcHeimdall $USERTYPE_IVBOX_QWEN "https://$SUB_IVBOX_QWEN.$HOMESERVER_DOMAIN" true
     restartAllCaddyContainers
   fi
 }
@@ -117421,8 +117405,8 @@ print("MCP servers found:", len(mcp_servers))
 
 # 2. Create the restricted key.
 body = {
-    "key_alias": "fastcrw-llm",
-    "models": ["all-proxy-models"],
+    "key_alias": "llamacpp-llm",
+    "models": ["Chat","Fast","LongContext","Thinking","Nemo","Vision","Embed","Rerank","llamacpp/embedding","llamacpp/reranking","Decide"],
     "object_permission": {
         "mcp_servers": mcp_servers
     },
@@ -117438,15 +117422,8 @@ body = {
         "/mcp-rest/tools/call"
     ],
     "metadata": {
-        "service": "fastcrw"
+        "service": "llamacpp"
     }
-
-    # Optional limits. Uncomment any you want:
-    # "max_budget": 50,
-    # "budget_duration": "30d",
-    # "rpm_limit": 120,
-    # "tpm_limit": 200000,
-    # "duration": "90d"
 }
 
 status, created = request("POST", "/key/generate", MASTER, body)
@@ -119693,7 +119670,7 @@ function installOpenCode()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_OPENCODE_APP $MANAGETLS_OPENCODE_APP "$is_integrate_hshq" $NETDEFAULT_OPENCODE_APP "$inner_block"
-  insertSubAuthelia $SUB_OPENCODE_APP.$HOMESERVER_DOMAIN bypass
+  insertSubAuthelia $SUB_OPENCODE_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   inner_block=""
   inner_block=$inner_block">>https://$SUB_OPENCODE_CODESERVER.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -119735,6 +119712,10 @@ services:
       - int-opencode-net
       - dock-ext-net
       - dock-aipriv-net
+    deploy:
+      resources:
+        limits:
+          memory: 8G
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -126368,6 +126349,7 @@ function installScriptServer()
   inner_block=$inner_block">>https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
