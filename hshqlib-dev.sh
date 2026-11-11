@@ -117542,7 +117542,7 @@ function addMCPServerLiteLLM()
     jq -n \
       --arg key "$LITELLM_AUTH_KEY" \
       --argjson servers "$updated_mcp_servers" \
-      '{key: $key, object_permission: {mcp_servers: $servers}}'
+      '{key: $key, object_permission: {mcp_servers: $servers, mcp_tool_permissions: {}}}'
   )
   if [ $? -ne 0 ]; then
     echo "Could not build key update request"
