@@ -32330,7 +32330,7 @@ function loadPinnedDockerImages()
   IMG_RAGFLOW_SB_PYTHON=mirror.gcr.io/infiniflow/sandbox-base-python:latest
   IMG_TABBYML_APP=mirror.gcr.io/tabbyml/tabby:0.31.2
   IMG_DEEPWIKIOPEN_APP=ghcr.io/asyncfuncai/deepwiki-open:sha-d48f5bc
-  IMG_DOCLING_APP=hshq/docling-serve:v1.38.1.1
+  IMG_DOCLING_APP=hshq/docling-serve:v1.38.1.2
   IMG_DIFY_SSRF=mirror.gcr.io/ubuntu/squid:latest
   IMG_DIFY_API=mirror.gcr.io/langgenius/dify-api:1.11.2
   IMG_DIFY_PLUGIND=mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local
@@ -32701,7 +32701,7 @@ function getScriptStackVersion()
     deepwikiopen)
       echo "v1" ;;
     docling)
-      echo "v4" ;;
+      echo "v5" ;;
     dify)
       echo "v2" ;;
     mindsdb)
@@ -45393,6 +45393,9 @@ function buildOrPullImage()
       ;;
     "hshq/docling-serve:v1.38.1.1")
       buildImageDoclingV4
+      ;;
+    "hshq/docling-serve:v1.38.1.2")
+      buildImageDoclingV5
       ;;
     "hshq/ente-server:v1")
       buildImageEnteServerV1
@@ -105799,9 +105802,15 @@ function performUpdateDocling()
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=hshq/docling-serve:v1.38.1.1,mirror.gcr.io/valkey/valkey:alpine3.23
-      image_update_map[0]="hshq/docling-serve:v1.38.1.1,hshq/docling-serve:v1.38.1.1"
+      image_update_map[0]="hshq/docling-serve:v1.38.1.1,hshq/docling-serve:v1.38.1.2"
+      image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    5)
+      newVer=v5
+      curImageList=hshq/docling-serve:v1.38.1.2,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="hshq/docling-serve:v1.38.1.2,hshq/docling-serve:v1.38.1.2"
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
@@ -105848,6 +105857,11 @@ function buildImageDoclingV3()
 function buildImageDoclingV4()
 {
   buildImageDoclingHSHQ v1.38.1.1
+}
+
+function buildImageDoclingV5()
+{
+  buildImageDoclingHSHQ v1.38.1.2
 }
 
 function buildImageDoclingHSHQ()
@@ -119651,7 +119665,7 @@ function installOpenCode()
   set -e
   mkdir $HSHQ_STACKS_DIR/opencode
   mkdir $HSHQ_STACKS_DIR/opencode/config
-  mkdir $HSHQ_STACKS_DIR/opencode/repos
+  mkdir -p $HSHQ_STACKS_DIR/shared/repos
   mkdir $HSHQ_STACKS_DIR/opencode/share
   mkdir $HSHQ_STACKS_DIR/opencode/agents
   mkdir $HSHQ_STACKS_DIR/opencode/config/mise
@@ -119743,13 +119757,19 @@ services:
       resources:
         limits:
           memory: 8G
+    # Uncomment the docker.sock line below to grant your
+    # opencode agent access to the docker daemon. But do
+    # this with caution as it grants the agent access to
+    # pretty much everything, i.e. secrets, passwords, etc.
+    # Useful, but very dangerous too. Proceed with caution.
     volumes:
+      #- /var/run/docker.sock:/var/run/docker.sock
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/opencode/repos:/repos
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/repos:/repos
       - \${PORTAINER_HSHQ_STACKS_DIR}/opencode/share:/home/opencode/.local/share
       - \${PORTAINER_HSHQ_STACKS_DIR}/opencode/agents:/home/opencode/.agents
       - \${PORTAINER_HSHQ_STACKS_DIR}/opencode/config:/home/opencode/.config
@@ -119794,7 +119814,7 @@ EOFMT
   cat <<EOFMT > $HOME/opencode.env
 TZ=\${PORTAINER_TZ}
 PUID=\${PORTAINER_UID}
-PGID=\${PORTAINER_GID}
+PGID=$(getent group docker | cut -d: -f3)
 OPENCODE_SERVER_USERNAME=$OPENCODE_ADMIN_USERNAME
 OPENCODE_SERVER_PASSWORD=$OPENCODE_ADMIN_PASSWORD
 OPENCODE_PORT=4096
@@ -119979,6 +119999,26 @@ EOFMT
   "files.autoSave": "on"
 }
 EOFMT
+  cat <<EOFOC > $HSHQ_STACKS_DIR/opencode/config/opencode/AGENTS.md
+# Environment Constraints
+
+**You are running inside a Docker container with limited filesystem access.**
+
+## Filesystem Mounts
+
+The **only** directory mounted into the container is:
+
+- **Container path:** \`/repos\`
+- **Host path:** \`$HSHQ_STACKS_DIR/shared/repos\`
+
+All file I/O should be performed within \`/repos\`. Anything outside this directory is not persisted and does not exist on the host.
+
+## Important Implications
+
+- **Do not assume arbitrary host paths exist** — \`/home/bolt/hshq/data/stacks/shared/repos\` is the only host-side mount point available.
+- When mounting directories (e.g., in \`docker run -v\` commands), route them through \`/repos\` if they need to survive container restarts or be shared with the host.
+- Temporary files or data written outside \`/repos\` will be lost when the container stops.
+EOFOC
 }
 
 function performUpdateOpenCode()
