@@ -10477,6 +10477,11 @@ EOFDM
     -Server
     Cross-Origin-Opener-Policy "same-origin"
     Permissions-Policy "camera=(self), microphone=(self), geolocation=(self), payment=(), usb=()"
+    -Access-Control-Allow-Origin
+    -Access-Control-Allow-Credentials
+    -Access-Control-Allow-Methods
+    -Access-Control-Allow-Headers
+    -Access-Control-Expose-Headers
   }
 }
 
@@ -21435,6 +21440,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=247
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 250 ]; then
+    echo "Updating to Version 250..."
+    version250Update
+    HSHQ_VERSION=250
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -24867,6 +24878,11 @@ function version244Update()
 function version247Update()
 {
   setAuthKeyLiteLLM
+}
+
+function version250Update()
+{
+  outputCaddyHeaders
 }
 
 function getNextHSVPNRoutingTable()
@@ -32297,8 +32313,8 @@ function loadPinnedDockerImages()
   IMG_CRAWL4AI_APP=ghcr.io/homeserverhq/crawl4ai:v0.9.5
   IMG_CRAWL4AI_PROXY=ghcr.io/homeserverhq/crawl4ai-proxy:v0.1
   IMG_OLLAMA_SERVER=mirror.gcr.io/ollama/ollama:0.20.5
-  IMG_OPENWEBUI_APP=ghcr.io/homeserverhq/open-webui:v0.13.0
-  IMG_OPENWEBUI_OPENTERMINAL=ghcr.io/open-webui/open-terminal:0.17.4
+  IMG_OPENWEBUI_APP=ghcr.io/homeserverhq/open-webui:v0.13.3
+  IMG_OPENWEBUI_OPENTERMINAL=ghcr.io/open-webui/open-terminal:0.17.7
   IMG_OPENWEBUI_MCPO=ghcr.io/open-webui/mcpo:main
   IMG_OPENWEBUI_PIPELINES=ghcr.io/open-webui/pipelines:main
   IMG_OPENWEBUI_MCP=hshq/openwebui-mcp:v1
@@ -32671,7 +32687,7 @@ function getScriptStackVersion()
     ollama)
       echo "v2" ;;
     openwebui)
-      echo "v7" ;;
+      echo "v8" ;;
     khoj)
       echo "v1" ;;
     lobechat)
@@ -102140,7 +102156,7 @@ OPENWEBUI_URL=http://openwebui-app:8080
 MCP_TRANSPORT=http
 MCP_HTTP_PORT=8001
 OPENWEBUI_ALLOWED_HOSTS=*
-CORS_ALLOWED_ORIGINS=*
+CORS_ALLOW_ORIGIN=https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN
 ALLOW_IFRAME_EMBEDDING=true
 TRUST_PROXY=true
 PROXY_URL=https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN
@@ -102243,13 +102259,24 @@ function performUpdateOpenWebUI()
       return
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/open-webui:v0.13.0,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged,ghcr.io/open-webui/open-terminal:0.11.34,ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/pipelines:main,hshq/openwebui-mcp:v1
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
-      image_update_map[1]="ghcr.io/homeserverhq/open-webui:v0.13.0,ghcr.io/homeserverhq/open-webui:v0.13.0"
+      image_update_map[1]="ghcr.io/homeserverhq/open-webui:v0.13.0,ghcr.io/homeserverhq/open-webui:v0.13.3"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[3]="mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged,mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged"
-      image_update_map[4]="ghcr.io/open-webui/open-terminal:0.17.4,ghcr.io/open-webui/open-terminal:0.17.4"
+      image_update_map[4]="ghcr.io/open-webui/open-terminal:0.17.4,ghcr.io/open-webui/open-terminal:0.17.7"
+      image_update_map[5]="ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/mcpo:main"
+      image_update_map[6]="hshq/openwebui-mcp:v1,hshq/openwebui-mcp:v1"
+    ;;
+    8)
+      newVer=v8
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/open-webui:v0.13.3,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged,ghcr.io/open-webui/open-terminal:0.17.7,ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/pipelines:main,hshq/openwebui-mcp:v1
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="ghcr.io/homeserverhq/open-webui:v0.13.3,ghcr.io/homeserverhq/open-webui:v0.13.3"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[3]="mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged,mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged"
+      image_update_map[4]="ghcr.io/open-webui/open-terminal:0.17.7,ghcr.io/open-webui/open-terminal:0.17.7"
       image_update_map[5]="ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/mcpo:main"
       image_update_map[6]="hshq/openwebui-mcp:v1,hshq/openwebui-mcp:v1"
     ;;
@@ -123041,7 +123068,7 @@ BIND_ADDRESS=0.0.0.0
 DEBUG=false
 ENV=local
 LOG_LEVEL=INFO
-CORS_ALLOWED_ORIGINS=*
+CORS_ALLOWED_ORIGINS=https://$SUB_COGNEE_FRONTEND.$HOMESERVER_DOMAIN
 NEXT_PUBLIC_BACKEND_API_URL=http://cognee-app:8000
 NEXT_PUBLIC_LOCAL_API_URL=https://$SUB_COGNEE_FRONTEND.$HOMESERVER_DOMAIN
 NEXT_PUBLIC_IS_CLOUD_ENVIRONMENT=false
@@ -137717,6 +137744,11 @@ EOFCF
     -Server
     Cross-Origin-Opener-Policy "same-origin"
     Permissions-Policy "camera=(self), microphone=(self), geolocation=(self), payment=(), usb=()"
+    -Access-Control-Allow-Origin
+    -Access-Control-Allow-Credentials
+    -Access-Control-Allow-Methods
+    -Access-Control-Allow-Headers
+    -Access-Control-Expose-Headers
   }
 }
 
@@ -137744,13 +137776,13 @@ EOFCF
 ($CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED) {
   @trusted_origin header_regexp origin_match Origin ^https?://([^/]*\.)?$(echo "$HOMESERVER_DOMAIN" | sed 's/\./\\./g')(:[0-9]+)?\$
   @cors_preflight method OPTIONS
+  header Vary "Origin"
   route @cors_preflight {
     handle @trusted_origin {
       header Access-Control-Allow-Origin "{header.Origin}"
       header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
       header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
       header Access-Control-Max-Age "3600"
-      header Vary "Origin"
       respond "" 200
     }
     handle {
