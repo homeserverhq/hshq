@@ -31152,7 +31152,7 @@ function addPrimaryUserAutoKB()
     akbRes="$(docker exec autokb-web curl -sS -X POST \
       -H "Authorization: Bearer $AUTOKB_API_KEY" \
       -H "Content-Type: application/json" \
-      --data "{\"name\":\"${formal_name}-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+      --data "{\"name\":\"${formal_name}-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":false,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
       -w $'\n%{http_code}' \
       "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
     akbCode="${akbRes##*$'\n'}"
@@ -31201,7 +31201,7 @@ function addPrimaryUserAutoKB()
     akbRes="$(docker exec autokb-web curl -sS -X POST \
       -H "Authorization: Bearer $AUTOKB_API_KEY" \
       -H "Content-Type: application/json" \
-      --data "{\"name\":\"${formal_name}-PKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$ragflow_api_key\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+      --data "{\"name\":\"${formal_name}-PKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$ragflow_api_key\",\"target_extra_params\":{},\"include_path_in_filename\":false,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
       -w $'\n%{http_code}' \
       "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
     akbCode="${akbRes##*$'\n'}"
@@ -93975,7 +93975,7 @@ INVOICESHELF_BASE_URL=http://invoiceshelf-app:8080
 MCP_SERVER_PORT=80
 ALLOW_ALL_AGGREGATE=false
 IS_STATEFUL=false
-INVOICESHELF_PUBLIC_URL=$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN
+INVOICESHELF_PUBLIC_URL=https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN
 EOFMT
   cat <<EOFPC > $HSHQ_STACKS_DIR/invoiceshelf/dbimport/addreadonly.sql
 DO \$do\$
@@ -121259,7 +121259,7 @@ function performAutoKBInstallIntegrations()
     akbRes="$(docker exec autokb-web curl -sS -X POST \
       -H "Authorization: Bearer $AUTOKB_API_KEY" \
       -H "Content-Type: application/json" \
-      --data "{\"name\":\"HSHQSuperAdmin-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$PAPERLESS_SUB_ID\"]}" \
+      --data "{\"name\":\"HSHQSuperAdmin-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":false,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$PAPERLESS_SUB_ID\"]}" \
       -w $'\n%{http_code}' \
       "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
     akbCode="${akbRes##*$'\n'}"
@@ -121287,7 +121287,7 @@ function performAutoKBInstallIntegrations()
     akbRes="$(docker exec autokb-web curl -sS -X POST \
       -H "Authorization: Bearer $AUTOKB_API_KEY" \
       -H "Content-Type: application/json" \
-      --data "{\"name\":\"HSHQSuperAdmin-PKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$RAGFLOW_TEAM_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$PAPERLESS_SUB_ID\"]}" \
+      --data "{\"name\":\"HSHQSuperAdmin-PKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$RAGFLOW_TEAM_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":false,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$PAPERLESS_SUB_ID\"]}" \
       -w $'\n%{http_code}' \
       "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
     akbCode="${akbRes##*$'\n'}"
@@ -121369,7 +121369,7 @@ function addSharedPipelinesAutoKB()
     akbRes="$(docker exec autokb-web curl -sS -X POST \
       -H "Authorization: Bearer $AUTOKB_API_KEY" \
       -H "Content-Type: application/json" \
-      --data "{\"name\":\"Shared-SKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$IMAP_SHARED_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+      --data "{\"name\":\"Shared-SKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":false,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$IMAP_SHARED_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
       -w $'\n%{http_code}' \
       "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
     akbCode="${akbRes##*$'\n'}"
@@ -121400,7 +121400,7 @@ function addSharedPipelinesAutoKB()
     akbRes="$(docker exec autokb-web curl -sS -X POST \
       -H "Authorization: Bearer $AUTOKB_API_KEY" \
       -H "Content-Type: application/json" \
-      --data "{\"name\":\"Shared-SKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$RAGFLOW_TEAM_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PUBLIC\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$IMAP_SHARED_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+      --data "{\"name\":\"Shared-SKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$RAGFLOW_TEAM_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":false,\"access_level\":\"PUBLIC\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$IMAP_SHARED_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
       -w $'\n%{http_code}' \
       "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
     akbCode="${akbRes##*$'\n'}"
