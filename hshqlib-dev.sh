@@ -120023,7 +120023,7 @@ All file I/O should be performed within \`/repos\`. Anything outside this direct
 
 ## Important Implications
 
-- **Do not assume arbitrary host paths exist** — \`/home/bolt/hshq/data/stacks/shared/repos\` is the only host-side mount point available.
+- **Do not assume arbitrary host paths exist** — \`$HSHQ_STACKS_DIR/shared/repos\` is the only host-side mount point available.
 - When mounting directories (e.g., in \`docker run -v\` commands), route them through \`/repos\` if they need to survive container restarts or be shared with the host.
 - Temporary files or data written outside \`/repos\` will be lost when the container stops.
 EOFOC

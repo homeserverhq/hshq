@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=249
+HSHQ_LIB_SCRIPT_VERSION=250
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -10477,6 +10477,11 @@ EOFDM
     -Server
     Cross-Origin-Opener-Policy "same-origin"
     Permissions-Policy "camera=(self), microphone=(self), geolocation=(self), payment=(), usb=()"
+    -Access-Control-Allow-Origin
+    -Access-Control-Allow-Credentials
+    -Access-Control-Allow-Methods
+    -Access-Control-Allow-Headers
+    -Access-Control-Expose-Headers
   }
 }
 
@@ -21435,6 +21440,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=247
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 250 ]; then
+    echo "Updating to Version 250..."
+    version250Update
+    HSHQ_VERSION=250
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -24867,6 +24878,11 @@ function version244Update()
 function version247Update()
 {
   setAuthKeyLiteLLM
+}
+
+function version250Update()
+{
+  outputCaddyHeaders
 }
 
 function getNextHSVPNRoutingTable()
@@ -30083,7 +30099,7 @@ subjectKeyIdentifier=hash
 authorityKeyIdentifier=keyid:always,issuer
 keyUsage = critical, cRLSign, keyCertSign
 EOFCA
-  totDays=$(echo "($(if (( $(echo "$(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N) < 3074607481" | bc -l) )); then echo 3074607481; else echo $(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N); fi)-1559365200)/86400" | bc)
+  totDays=$(echo "($(if (( $(echo "$(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N) < 3074562000" | bc -l) )); then echo 3074562000; else echo $(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N); fi)-1559365200)/86400" | bc)
   # Certificate Authority Certificate
   # Regarding faketime, see https://support.apple.com/en-us/HT210176
   faketime '2019-06-01 16:38:01 GMT' openssl req -new -x509 -sha256 -nodes -days $totDays -key $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.key -out $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -config $HOME/ca.conf
@@ -31136,7 +31152,7 @@ function addPrimaryUserAutoKB()
     akbRes="$(docker exec autokb-web curl -sS -X POST \
       -H "Authorization: Bearer $AUTOKB_API_KEY" \
       -H "Content-Type: application/json" \
-      --data "{\"name\":\"${formal_name}-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+      --data "{\"name\":\"${formal_name}-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":false,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
       -w $'\n%{http_code}' \
       "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
     akbCode="${akbRes##*$'\n'}"
@@ -31185,7 +31201,7 @@ function addPrimaryUserAutoKB()
     akbRes="$(docker exec autokb-web curl -sS -X POST \
       -H "Authorization: Bearer $AUTOKB_API_KEY" \
       -H "Content-Type: application/json" \
-      --data "{\"name\":\"${formal_name}-PKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$ragflow_api_key\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+      --data "{\"name\":\"${formal_name}-PKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$ragflow_api_key\",\"target_extra_params\":{},\"include_path_in_filename\":false,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
       -w $'\n%{http_code}' \
       "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
     akbCode="${akbRes##*$'\n'}"
@@ -32297,8 +32313,8 @@ function loadPinnedDockerImages()
   IMG_CRAWL4AI_APP=ghcr.io/homeserverhq/crawl4ai:v0.9.5
   IMG_CRAWL4AI_PROXY=ghcr.io/homeserverhq/crawl4ai-proxy:v0.1
   IMG_OLLAMA_SERVER=mirror.gcr.io/ollama/ollama:0.20.5
-  IMG_OPENWEBUI_APP=ghcr.io/homeserverhq/open-webui:v0.13.0
-  IMG_OPENWEBUI_OPENTERMINAL=ghcr.io/open-webui/open-terminal:0.17.4
+  IMG_OPENWEBUI_APP=ghcr.io/homeserverhq/open-webui:v0.13.3
+  IMG_OPENWEBUI_OPENTERMINAL=ghcr.io/open-webui/open-terminal:0.17.7
   IMG_OPENWEBUI_MCPO=ghcr.io/open-webui/mcpo:main
   IMG_OPENWEBUI_PIPELINES=ghcr.io/open-webui/pipelines:main
   IMG_OPENWEBUI_MCP=hshq/openwebui-mcp:v1
@@ -32314,7 +32330,7 @@ function loadPinnedDockerImages()
   IMG_RAGFLOW_SB_PYTHON=mirror.gcr.io/infiniflow/sandbox-base-python:latest
   IMG_TABBYML_APP=mirror.gcr.io/tabbyml/tabby:0.31.2
   IMG_DEEPWIKIOPEN_APP=ghcr.io/asyncfuncai/deepwiki-open:sha-d48f5bc
-  IMG_DOCLING_APP=hshq/docling-serve:v1.38.1.1
+  IMG_DOCLING_APP=hshq/docling-serve:v1.38.1.2
   IMG_DIFY_SSRF=mirror.gcr.io/ubuntu/squid:latest
   IMG_DIFY_API=mirror.gcr.io/langgenius/dify-api:1.11.2
   IMG_DIFY_PLUGIND=mirror.gcr.io/langgenius/dify-plugin-daemon:0.5.2-local
@@ -32671,7 +32687,7 @@ function getScriptStackVersion()
     ollama)
       echo "v2" ;;
     openwebui)
-      echo "v7" ;;
+      echo "v8" ;;
     khoj)
       echo "v1" ;;
     lobechat)
@@ -32685,7 +32701,7 @@ function getScriptStackVersion()
     deepwikiopen)
       echo "v1" ;;
     docling)
-      echo "v4" ;;
+      echo "v5" ;;
     dify)
       echo "v2" ;;
     mindsdb)
@@ -41839,7 +41855,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_YAMTRACK.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ZULIP_APP.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_BESZEL_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_METABASE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENSIGN_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DOCUSEAL_APP.$HOMESERVER_DOMAIN\n"
@@ -41850,10 +41865,8 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_RAGFLOW_MCP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OLLAMA_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_OPENCODE_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_COMFYUI_API.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DEEPWIKI_OPEN_API.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_DOCLING_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SURFSENSE_BACKEND.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ENTE_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DOCSGPT_API.$HOMESERVER_DOMAIN\n"
@@ -41940,6 +41953,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_IVBOX_QWEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_IVBOX_COMFYUI_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MONICA_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_DOCLING_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KOKORO_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CHATTERBOX_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LANGFUSE_APP.$HOMESERVER_DOMAIN\n"
@@ -41953,6 +41967,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_OPENRAG_LANGFLOW.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_VOICEBOX_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENCODE_CODESERVER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_OPENCODE_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_EXCALIDRAW_AI.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SUITECRM_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HEDGEDOC_APP.$HOMESERVER_DOMAIN\n"
@@ -41972,6 +41987,7 @@ function getAutheliaBlock()
   retval="${retval}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} BEGIN\n"
   retval="${retval}        - $SUB_ADGUARD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ADMINER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_BESZEL_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALCOM_STUDIO.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN\n"
@@ -45377,6 +45393,9 @@ function buildOrPullImage()
       ;;
     "hshq/docling-serve:v1.38.1.1")
       buildImageDoclingV4
+      ;;
+    "hshq/docling-serve:v1.38.1.2")
+      buildImageDoclingV5
       ;;
     "hshq/ente-server:v1")
       buildImageEnteServerV1
@@ -72701,6 +72720,7 @@ services:
     networks:
       - int-paperless-net
       - dock-aipriv-net
+      - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -84607,7 +84627,7 @@ EOFWZ
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_METABASE $MANAGETLS_METABASE "$is_integrate_hshq" $NETDEFAULT_METABASE "$inner_block"
-  insertSubAuthelia $SUB_METABASE.$HOMESERVER_DOMAIN bypass
+  insertSubAuthelia $SUB_METABASE.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll metabase "$FMLNAME_METABASE" $USERTYPE_METABASE "https://$SUB_METABASE.$HOMESERVER_DOMAIN" "metabase.png" "$(getHeimdallOrderFromSub $SUB_METABASE $USERTYPE_METABASE)"
     restartAllCaddyContainers
@@ -90219,7 +90239,7 @@ function installOpenProject()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_OPENPROJECT_APP $MANAGETLS_OPENPROJECT_APP "$is_integrate_hshq" $NETDEFAULT_OPENPROJECT_APP "$inner_block"
-  insertSubAuthelia $SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN bypass
+  insertSubAuthelia $SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll openproject "$FMLNAME_OPENPROJECT_APP" $USERTYPE_OPENPROJECT_APP "https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN" "openproject.png" "$(getHeimdallOrderFromSub $SUB_OPENPROJECT_APP $USERTYPE_OPENPROJECT_APP)"
     restartAllCaddyContainers
@@ -93955,7 +93975,7 @@ INVOICESHELF_BASE_URL=http://invoiceshelf-app:8080
 MCP_SERVER_PORT=80
 ALLOW_ALL_AGGREGATE=false
 IS_STATEFUL=false
-INVOICESHELF_PUBLIC_URL=$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN
+INVOICESHELF_PUBLIC_URL=https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN
 EOFMT
   cat <<EOFPC > $HSHQ_STACKS_DIR/invoiceshelf/dbimport/addreadonly.sql
 DO \$do\$
@@ -97081,7 +97101,7 @@ function installBeszel()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_BESZEL_APP $MANAGETLS_BESZEL_APP "$is_integrate_hshq" $NETDEFAULT_BESZEL_APP "$inner_block"
-  insertSubAuthelia $SUB_BESZEL_APP.$HOMESERVER_DOMAIN bypass
+  insertSubAuthelia $SUB_BESZEL_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll beszel "$FMLNAME_BESZEL_APP" $USERTYPE_BESZEL_APP "https://$SUB_BESZEL_APP.$HOMESERVER_DOMAIN" "beszel.png" "$(getHeimdallOrderFromSub $SUB_BESZEL_APP $USERTYPE_BESZEL_APP)"
     restartAllCaddyContainers
@@ -102139,7 +102159,7 @@ OPENWEBUI_URL=http://openwebui-app:8080
 MCP_TRANSPORT=http
 MCP_HTTP_PORT=8001
 OPENWEBUI_ALLOWED_HOSTS=*
-CORS_ALLOWED_ORIGINS=*
+CORS_ALLOW_ORIGIN=https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN
 ALLOW_IFRAME_EMBEDDING=true
 TRUST_PROXY=true
 PROXY_URL=https://$SUB_OPENWEBUI_APP.$HOMESERVER_DOMAIN
@@ -102242,13 +102262,24 @@ function performUpdateOpenWebUI()
       return
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/open-webui:v0.13.0,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged,ghcr.io/open-webui/open-terminal:0.11.34,ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/pipelines:main,hshq/openwebui-mcp:v1
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
-      image_update_map[1]="ghcr.io/homeserverhq/open-webui:v0.13.0,ghcr.io/homeserverhq/open-webui:v0.13.0"
+      image_update_map[1]="ghcr.io/homeserverhq/open-webui:v0.13.0,ghcr.io/homeserverhq/open-webui:v0.13.3"
       image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
       image_update_map[3]="mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged,mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged"
-      image_update_map[4]="ghcr.io/open-webui/open-terminal:0.17.4,ghcr.io/open-webui/open-terminal:0.17.4"
+      image_update_map[4]="ghcr.io/open-webui/open-terminal:0.17.4,ghcr.io/open-webui/open-terminal:0.17.7"
+      image_update_map[5]="ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/mcpo:main"
+      image_update_map[6]="hshq/openwebui-mcp:v1,hshq/openwebui-mcp:v1"
+    ;;
+    8)
+      newVer=v8
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,ghcr.io/homeserverhq/open-webui:v0.13.3,mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged,ghcr.io/open-webui/open-terminal:0.17.7,ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/pipelines:main,hshq/openwebui-mcp:v1
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="ghcr.io/homeserverhq/open-webui:v0.13.3,ghcr.io/homeserverhq/open-webui:v0.13.3"
+      image_update_map[2]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+      image_update_map[3]="mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged,mirror.gcr.io/qdrant/qdrant:v1.20.0-unprivileged"
+      image_update_map[4]="ghcr.io/open-webui/open-terminal:0.17.7,ghcr.io/open-webui/open-terminal:0.17.7"
       image_update_map[5]="ghcr.io/open-webui/mcpo:main,ghcr.io/open-webui/mcpo:main"
       image_update_map[6]="hshq/openwebui-mcp:v1,hshq/openwebui-mcp:v1"
     ;;
@@ -105771,9 +105802,15 @@ function performUpdateDocling()
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=hshq/docling-serve:v1.38.1.1,mirror.gcr.io/valkey/valkey:alpine3.23
-      image_update_map[0]="hshq/docling-serve:v1.38.1.1,hshq/docling-serve:v1.38.1.1"
+      image_update_map[0]="hshq/docling-serve:v1.38.1.1,hshq/docling-serve:v1.38.1.2"
+      image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
+    ;;
+    5)
+      newVer=v5
+      curImageList=hshq/docling-serve:v1.38.1.2,mirror.gcr.io/valkey/valkey:alpine3.23
+      image_update_map[0]="hshq/docling-serve:v1.38.1.2,hshq/docling-serve:v1.38.1.2"
       image_update_map[1]="mirror.gcr.io/valkey/valkey:alpine3.23,mirror.gcr.io/valkey/valkey:alpine3.23"
     ;;
     *)
@@ -105820,6 +105857,11 @@ function buildImageDoclingV3()
 function buildImageDoclingV4()
 {
   buildImageDoclingHSHQ v1.38.1.1
+}
+
+function buildImageDoclingV5()
+{
+  buildImageDoclingHSHQ v1.38.1.2
 }
 
 function buildImageDoclingHSHQ()
@@ -114085,21 +114127,6 @@ function installIVBox()
     return 1
   fi
   set -e
-  inner_block=""
-  inner_block=$inner_block">>https://$SUB_IVBOX_QWEN.$HOMESERVER_DOMAIN {\n"
-  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
-  inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://ivbox-app:8000 {\n"
-  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
-  inner_block=$inner_block">>>>>>}\n"
-  inner_block=$inner_block">>>>}\n"
-  inner_block=$inner_block">>>>respond 404\n"
-  inner_block=$inner_block">>}"
-  updateCaddyBlocks $SUB_IVBOX_QWEN $MANAGETLS_IVBOX_QWEN "$is_integrate_hshq" $NETDEFAULT_IVBOX_QWEN "$inner_block"
   insertSubAuthelia $SUB_IVBOX_QWEN.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   inner_block=""
   inner_block=$inner_block">>https://$SUB_IVBOX_COMFYUI_WEB.$HOMESERVER_DOMAIN {\n"
@@ -114160,9 +114187,7 @@ function installIVBox()
   updateCaddyBlocks $SUB_IVBOX_COMFYUI_API $MANAGETLS_IVBOX_COMFYUI_API "$is_integrate_hshq" $NETDEFAULT_IVBOX_COMFYUI_API "$inner_block"
   insertSubAuthelia $SUB_IVBOX_COMFYUI_API.$HOMESERVER_DOMAIN bypass
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    #insertEnableSvcAll ivbox "$FMLNAME_IVBOX_QWEN" $USERTYPE_IVBOX_QWEN "https://$SUB_IVBOX_QWEN.$HOMESERVER_DOMAIN" "qwen.png" "$(getHeimdallOrderFromSub $SUB_IVBOX_QWEN $USERTYPE_IVBOX_QWEN)"
     insertEnableSvcAll ivbox "$FMLNAME_IVBOX_COMFYUI_WEB" $USERTYPE_IVBOX_COMFYUI_WEB "https://$SUB_IVBOX_COMFYUI_WEB.$HOMESERVER_DOMAIN" "comfyui.png" "$(getHeimdallOrderFromSub $SUB_IVBOX_COMFYUI_WEB $USERTYPE_IVBOX_COMFYUI_WEB)"
-    #disableSvcHeimdall $USERTYPE_IVBOX_QWEN "https://$SUB_IVBOX_QWEN.$HOMESERVER_DOMAIN" true
     restartAllCaddyContainers
   fi
 }
@@ -117421,8 +117446,8 @@ print("MCP servers found:", len(mcp_servers))
 
 # 2. Create the restricted key.
 body = {
-    "key_alias": "fastcrw-llm",
-    "models": ["all-proxy-models"],
+    "key_alias": "llamacpp-llm",
+    "models": ["Chat","Fast","LongContext","Thinking","Nemo","Vision","Embed","Rerank","llamacpp/embedding","llamacpp/reranking","Decide"],
     "object_permission": {
         "mcp_servers": mcp_servers
     },
@@ -117438,15 +117463,8 @@ body = {
         "/mcp-rest/tools/call"
     ],
     "metadata": {
-        "service": "fastcrw"
+        "service": "llamacpp"
     }
-
-    # Optional limits. Uncomment any you want:
-    # "max_budget": 50,
-    # "budget_duration": "30d",
-    # "rpm_limit": 120,
-    # "tpm_limit": 200000,
-    # "duration": "90d"
 }
 
 status, created = request("POST", "/key/generate", MASTER, body)
@@ -117565,7 +117583,7 @@ function addMCPServerLiteLLM()
     jq -n \
       --arg key "$LITELLM_AUTH_KEY" \
       --argjson servers "$updated_mcp_servers" \
-      '{key: $key, object_permission: {mcp_servers: $servers}}'
+      '{key: $key, object_permission: {mcp_servers: $servers, mcp_tool_permissions: {}}}'
   )
   if [ $? -ne 0 ]; then
     echo "Could not build key update request"
@@ -119647,7 +119665,7 @@ function installOpenCode()
   set -e
   mkdir $HSHQ_STACKS_DIR/opencode
   mkdir $HSHQ_STACKS_DIR/opencode/config
-  mkdir $HSHQ_STACKS_DIR/opencode/repos
+  mkdir -p $HSHQ_STACKS_DIR/shared/repos
   mkdir $HSHQ_STACKS_DIR/opencode/share
   mkdir $HSHQ_STACKS_DIR/opencode/agents
   mkdir $HSHQ_STACKS_DIR/opencode/config/mise
@@ -119693,7 +119711,7 @@ function installOpenCode()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_OPENCODE_APP $MANAGETLS_OPENCODE_APP "$is_integrate_hshq" $NETDEFAULT_OPENCODE_APP "$inner_block"
-  insertSubAuthelia $SUB_OPENCODE_APP.$HOMESERVER_DOMAIN bypass
+  insertSubAuthelia $SUB_OPENCODE_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
   inner_block=""
   inner_block=$inner_block">>https://$SUB_OPENCODE_CODESERVER.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -119735,13 +119753,23 @@ services:
       - int-opencode-net
       - dock-ext-net
       - dock-aipriv-net
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+    # Uncomment the docker.sock line below to grant your
+    # opencode agent access to the docker daemon. But do
+    # this with caution as it grants the agent access to
+    # pretty much everything, i.e. secrets, passwords, etc.
+    # Useful, but very dangerous too. Proceed with caution.
     volumes:
+      #- /var/run/docker.sock:/var/run/docker.sock
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/opencode/repos:/repos
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/repos:/repos
       - \${PORTAINER_HSHQ_STACKS_DIR}/opencode/share:/home/opencode/.local/share
       - \${PORTAINER_HSHQ_STACKS_DIR}/opencode/agents:/home/opencode/.agents
       - \${PORTAINER_HSHQ_STACKS_DIR}/opencode/config:/home/opencode/.config
@@ -119786,7 +119814,7 @@ EOFMT
   cat <<EOFMT > $HOME/opencode.env
 TZ=\${PORTAINER_TZ}
 PUID=\${PORTAINER_UID}
-PGID=\${PORTAINER_GID}
+PGID=$(getent group docker | cut -d: -f3)
 OPENCODE_SERVER_USERNAME=$OPENCODE_ADMIN_USERNAME
 OPENCODE_SERVER_PASSWORD=$OPENCODE_ADMIN_PASSWORD
 OPENCODE_PORT=4096
@@ -119794,6 +119822,7 @@ CODE_SERVER_PORT=8080
 CODE_SERVER_PASSWORD=$OPENCODE_CODESERVER_PASSWORD
 GITHUB_TOKEN=
 GH_TOKEN=
+LITELLM_AUTH_KEY=$LITELLM_AUTH_KEY
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/opencode/config/mise/config.toml
 # Mise tool configuration for opencode-docker
@@ -119917,42 +119946,49 @@ EOFMT
     }
   },
   "mcp": {
-    "context7": {
-      "type": "remote",
-      "url": "https://mcp.context7.com/mcp",
-      "headers": {
-        "CONTEXT7_API_KEY": "{env:CONTEXT7_API_KEY}"
+    "servers": {
+      "context7": {
+        "type": "remote",
+        "url": "https://mcp.context7.com/mcp",
+        "headers": {
+          "CONTEXT7_API_KEY": "{env:CONTEXT7_API_KEY}"
+        }
       },
-      "enabled": true
-    },
-    "playwright": {
-      "type": "remote",
-      "url": "http://opencode-playwright-mcp:8931/mcp",
-      "enabled": true
+      "playwright": {
+        "type": "remote",
+        "url": "http://opencode-playwright-mcp:8931/mcp"
+      }
     }
   },
-  "autoupdate": false,
-  "provider": {
-    "litellm": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "LiteLLM",
-      "options": {
+  "update": "disable",
+  "providers": {
+    "local-litellm": {
+      "package": "@opencode-ai/ai/providers/openai-compatible",
+      "name": "Local LiteLLM",
+      "env": ["LITELLM_AUTH_KEY"],
+      "settings": {
         "baseURL": "http://litellm-proxy:4000/v1",
-        "apiKey": "$LITELLM_AUTH_KEY"
+        "apiKey": "{env:LITELLM_AUTH_KEY}"
       },
       "models": {
         "longcontext": {
-          "name": "LongContext"
+          "modelID": "LongContext",
+          "name": "LongContext",
+          "capabilities": {
+            "tools": true
+          }
         },
         "fast": {
-          "name": "Fast"
+          "modelID": "Fast",
+          "name": "Fast",
+          "capabilities": {
+            "tools": false
+          }
         }
       }
     }
   },
-  "model": "longcontext",
-  "small_model": "fast",
-  "theme": "vesper"
+  "model": "local-litellm/longcontext"
 }
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/opencode/settings.json
@@ -119971,6 +120007,26 @@ EOFMT
   "files.autoSave": "on"
 }
 EOFMT
+  cat <<EOFOC > $HSHQ_STACKS_DIR/opencode/config/opencode/AGENTS.md
+# Environment Constraints
+
+**You are running inside a Docker container with limited filesystem access.**
+
+## Filesystem Mounts
+
+The **only** directory mounted into the container is:
+
+- **Container path:** \`/repos\`
+- **Host path:** \`$HSHQ_STACKS_DIR/shared/repos\`
+
+All file I/O should be performed within \`/repos\`. Anything outside this directory is not persisted and does not exist on the host.
+
+## Important Implications
+
+- **Do not assume arbitrary host paths exist** — \`$HSHQ_STACKS_DIR/shared/repos\` is the only host-side mount point available.
+- When mounting directories (e.g., in \`docker run -v\` commands), route them through \`/repos\` if they need to survive container restarts or be shared with the host.
+- Temporary files or data written outside \`/repos\` will be lost when the container stops.
+EOFOC
 }
 
 function performUpdateOpenCode()
@@ -121211,7 +121267,7 @@ function performAutoKBInstallIntegrations()
     akbRes="$(docker exec autokb-web curl -sS -X POST \
       -H "Authorization: Bearer $AUTOKB_API_KEY" \
       -H "Content-Type: application/json" \
-      --data "{\"name\":\"HSHQSuperAdmin-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$PAPERLESS_SUB_ID\"]}" \
+      --data "{\"name\":\"HSHQSuperAdmin-PKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":false,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$PAPERLESS_SUB_ID\"]}" \
       -w $'\n%{http_code}' \
       "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
     akbCode="${akbRes##*$'\n'}"
@@ -121239,7 +121295,7 @@ function performAutoKBInstallIntegrations()
     akbRes="$(docker exec autokb-web curl -sS -X POST \
       -H "Authorization: Bearer $AUTOKB_API_KEY" \
       -H "Content-Type: application/json" \
-      --data "{\"name\":\"HSHQSuperAdmin-PKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$RAGFLOW_TEAM_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$PAPERLESS_SUB_ID\"]}" \
+      --data "{\"name\":\"HSHQSuperAdmin-PKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$RAGFLOW_TEAM_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":false,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$PAPERLESS_SUB_ID\"]}" \
       -w $'\n%{http_code}' \
       "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
     akbCode="${akbRes##*$'\n'}"
@@ -121321,7 +121377,7 @@ function addSharedPipelinesAutoKB()
     akbRes="$(docker exec autokb-web curl -sS -X POST \
       -H "Authorization: Bearer $AUTOKB_API_KEY" \
       -H "Content-Type: application/json" \
-      --data "{\"name\":\"Shared-SKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$IMAP_SHARED_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+      --data "{\"name\":\"Shared-SKB\",\"api_url\":\"http://openwebui-app:8080\",\"api_key\":\"$OPENWEBUI_ADMIN_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":false,\"access_level\":\"PRIVATE\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$IMAP_SHARED_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
       -w $'\n%{http_code}' \
       "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
     akbCode="${akbRes##*$'\n'}"
@@ -121352,7 +121408,7 @@ function addSharedPipelinesAutoKB()
     akbRes="$(docker exec autokb-web curl -sS -X POST \
       -H "Authorization: Bearer $AUTOKB_API_KEY" \
       -H "Content-Type: application/json" \
-      --data "{\"name\":\"Shared-SKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$RAGFLOW_TEAM_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":true,\"access_level\":\"PUBLIC\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$IMAP_SHARED_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
+      --data "{\"name\":\"Shared-SKB\",\"api_url\":\"http://ragflow-app:9380\",\"api_key\":\"$RAGFLOW_TEAM_API_KEY\",\"target_extra_params\":{},\"include_path_in_filename\":false,\"access_level\":\"PUBLIC\",\"subscription_ids\":[\"$IMAP_PERSONAL_SUB_ID\",\"$IMAP_SHARED_SUB_ID\",\"$PAPERLESS_SUB_ID\"]}" \
       -w $'\n%{http_code}' \
       "http://autokb-web:80/api/sinks/$SINK_ID/targets")"
     akbCode="${akbRes##*$'\n'}"
@@ -123060,7 +123116,7 @@ BIND_ADDRESS=0.0.0.0
 DEBUG=false
 ENV=local
 LOG_LEVEL=INFO
-CORS_ALLOWED_ORIGINS=*
+CORS_ALLOWED_ORIGINS=https://$SUB_COGNEE_FRONTEND.$HOMESERVER_DOMAIN
 NEXT_PUBLIC_BACKEND_API_URL=http://cognee-app:8000
 NEXT_PUBLIC_LOCAL_API_URL=https://$SUB_COGNEE_FRONTEND.$HOMESERVER_DOMAIN
 NEXT_PUBLIC_IS_CLOUD_ENVIRONMENT=false
@@ -124407,6 +124463,9 @@ SecRule SERVER_NAME "@rx ^$SUB_NEXTCLOUD\." "id:9101100,phase:1,pass,nolog,t:non
 
 SecRule SERVER_NAME "@rx ^$SUB_NEXTCLOUD\." "id:9101101,phase:1,pass,nolog,ctl:ruleRemoveTargetById=932260;ARGS:requesttoken"
 
+SecRule SERVER_NAME "@rx ^$SUB_NEXTCLOUD\." "id:9102004,phase:1,pass,nolog,t:none,chain"
+    SecRule REQUEST_URI "@rx ^/apps/mail/api/avatars/url/" "ctl:ruleRemoveById=920440"
+
 SecRule SERVER_NAME "@rx ^$SUB_OPENWEBUI_APP\." "id:9101200,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
 
 SecRule SERVER_NAME "@rx ^$SUB_OPENNOTEBOOK_APP\." "id:9101300,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
@@ -124422,6 +124481,15 @@ SecRule SERVER_NAME "@rx ^$SUB_LITELLM_APP\." "id:9101700,phase:1,pass,nolog,ctl
 SecRule SERVER_NAME "@rx ^($SUB_WHITEBOARDRT_WEB|$SUB_WHITEBOARDRT_AGENT)\." "id:9101800,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
 
 SecRule SERVER_NAME "@rx ^($SUB_HALOSPEAK_API|$SUB_HALOSPEAK_APP)\." "id:9101900,phase:1,pass,nolog,ctl:ruleRemoveTargetById=930120;ARGS:/^json\.data\./"
+
+SecRule SERVER_NAME "@rx ^$SUB_RAGFLOW\." "id:9102001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=932260;ARGS:type"
+
+SecRule SERVER_NAME "@rx ^$SUB_RAGFLOW\." "id:9102002,phase:1,pass,nolog,ctl:ruleRemoveTargetById=941100;ARGS:/^json\.dsl\./"
+
+SecRule SERVER_NAME "@rx ^$SUB_SQLPAD\." "id:9102003,phase:1,pass,nolog,ctl:ruleRemoveTargetById=942100;ARGS:json.batchText,ctl:ruleRemoveTargetById=933120;ARGS:json.batchText"
+
+SecRule SERVER_NAME "@rx ^$SUB_MAILU\." "id:9102005,phase:1,pass,nolog,t:none,chain"
+    SecRule REQUEST_URI "@rx ^/admin/user/list/" "ctl:ruleRemoveById=920440"
 
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-behavior.yaml
@@ -124453,6 +124521,12 @@ whitelist:
       evt.Meta.http_status == '200' &&
       evt.Parsed.verb in ['GET', 'HEAD'] &&
       evt.Meta.http_path matches '(?i)^/(api|rest|graphql|gql|socket[.]io|notifications|_matrix|ocs|remote[.]php|public[.]php|[.]well-known)'
+    - >-
+      evt.Meta.service == 'http' &&
+      evt.Meta.http_status == '404' &&
+      evt.Meta.target_fqdn == '$SUB_GUACAMOLE.$HOMESERVER_DOMAIN' &&
+      evt.Parsed.verb in ['GET', 'HEAD'] &&
+      evt.Meta.http_path matches '^/guacamole/api/session/tunnels/'
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/notifications/email.yaml
 type: email
@@ -126368,6 +126442,7 @@ function installScriptServer()
   inner_block=$inner_block">>https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>import $CADDY_SNIPPET_INTERNAL_GUARD\n"
@@ -137735,6 +137810,11 @@ EOFCF
     -Server
     Cross-Origin-Opener-Policy "same-origin"
     Permissions-Policy "camera=(self), microphone=(self), geolocation=(self), payment=(), usb=()"
+    -Access-Control-Allow-Origin
+    -Access-Control-Allow-Credentials
+    -Access-Control-Allow-Methods
+    -Access-Control-Allow-Headers
+    -Access-Control-Expose-Headers
   }
 }
 
@@ -137762,13 +137842,13 @@ EOFCF
 ($CADDY_SNIPPET_SAFEHEADERCORSAUTOMATED) {
   @trusted_origin header_regexp origin_match Origin ^https?://([^/]*\.)?$(echo "$HOMESERVER_DOMAIN" | sed 's/\./\\./g')(:[0-9]+)?\$
   @cors_preflight method OPTIONS
+  header Vary "Origin"
   route @cors_preflight {
     handle @trusted_origin {
       header Access-Control-Allow-Origin "{header.Origin}"
       header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
       header Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
       header Access-Control-Max-Age "3600"
-      header Vary "Origin"
       respond "" 200
     }
     handle {
