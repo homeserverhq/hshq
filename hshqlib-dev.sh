@@ -119822,6 +119822,7 @@ CODE_SERVER_PORT=8080
 CODE_SERVER_PASSWORD=$OPENCODE_CODESERVER_PASSWORD
 GITHUB_TOKEN=
 GH_TOKEN=
+LITELLM_AUTH_KEY=$LITELLM_AUTH_KEY
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/opencode/config/mise/config.toml
 # Mise tool configuration for opencode-docker
@@ -119945,42 +119946,49 @@ EOFMT
     }
   },
   "mcp": {
-    "context7": {
-      "type": "remote",
-      "url": "https://mcp.context7.com/mcp",
-      "headers": {
-        "CONTEXT7_API_KEY": "{env:CONTEXT7_API_KEY}"
+    "servers": {
+      "context7": {
+        "type": "remote",
+        "url": "https://mcp.context7.com/mcp",
+        "headers": {
+          "CONTEXT7_API_KEY": "{env:CONTEXT7_API_KEY}"
+        }
       },
-      "enabled": true
-    },
-    "playwright": {
-      "type": "remote",
-      "url": "http://opencode-playwright-mcp:8931/mcp",
-      "enabled": true
+      "playwright": {
+        "type": "remote",
+        "url": "http://opencode-playwright-mcp:8931/mcp"
+      }
     }
   },
-  "autoupdate": false,
-  "provider": {
-    "litellm": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "LiteLLM",
-      "options": {
+  "update": "disable",
+  "providers": {
+    "local-litellm": {
+      "package": "@opencode-ai/ai/providers/openai-compatible",
+      "name": "Local LiteLLM",
+      "env": ["LITELLM_AUTH_KEY"],
+      "settings": {
         "baseURL": "http://litellm-proxy:4000/v1",
-        "apiKey": "$LITELLM_AUTH_KEY"
+        "apiKey": "{env:LITELLM_AUTH_KEY}"
       },
       "models": {
         "longcontext": {
-          "name": "LongContext"
+          "modelID": "LongContext",
+          "name": "LongContext",
+          "capabilities": {
+            "tools": true
+          }
         },
         "fast": {
-          "name": "Fast"
+          "modelID": "Fast",
+          "name": "Fast",
+          "capabilities": {
+            "tools": false
+          }
         }
       }
     }
   },
-  "model": "longcontext",
-  "small_model": "fast",
-  "theme": "vesper"
+  "model": "local-litellm/longcontext"
 }
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/opencode/settings.json
