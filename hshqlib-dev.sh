@@ -124463,6 +124463,9 @@ SecRule SERVER_NAME "@rx ^$SUB_NEXTCLOUD\." "id:9101100,phase:1,pass,nolog,t:non
 
 SecRule SERVER_NAME "@rx ^$SUB_NEXTCLOUD\." "id:9101101,phase:1,pass,nolog,ctl:ruleRemoveTargetById=932260;ARGS:requesttoken"
 
+SecRule SERVER_NAME "@rx ^$SUB_NEXTCLOUD\." "id:9102004,phase:1,pass,nolog,t:none,chain"
+    SecRule REQUEST_URI "@rx ^/apps/mail/api/avatars/url/" "ctl:ruleRemoveById=920440"
+
 SecRule SERVER_NAME "@rx ^$SUB_OPENWEBUI_APP\." "id:9101200,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
 
 SecRule SERVER_NAME "@rx ^$SUB_OPENNOTEBOOK_APP\." "id:9101300,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
@@ -124478,6 +124481,15 @@ SecRule SERVER_NAME "@rx ^$SUB_LITELLM_APP\." "id:9101700,phase:1,pass,nolog,ctl
 SecRule SERVER_NAME "@rx ^($SUB_WHITEBOARDRT_WEB|$SUB_WHITEBOARDRT_AGENT)\." "id:9101800,phase:1,pass,nolog,t:none,ctl:requestBodyAccess=Off"
 
 SecRule SERVER_NAME "@rx ^($SUB_HALOSPEAK_API|$SUB_HALOSPEAK_APP)\." "id:9101900,phase:1,pass,nolog,ctl:ruleRemoveTargetById=930120;ARGS:/^json\.data\./"
+
+SecRule SERVER_NAME "@rx ^$SUB_RAGFLOW\." "id:9102001,phase:1,pass,nolog,ctl:ruleRemoveTargetById=932260;ARGS:type"
+
+SecRule SERVER_NAME "@rx ^$SUB_RAGFLOW\." "id:9102002,phase:1,pass,nolog,ctl:ruleRemoveTargetById=941100;ARGS:/^json\.dsl\./"
+
+SecRule SERVER_NAME "@rx ^$SUB_SQLPAD\." "id:9102003,phase:1,pass,nolog,ctl:ruleRemoveTargetById=942100;ARGS:json.batchText,ctl:ruleRemoveTargetById=933120;ARGS:json.batchText"
+
+SecRule SERVER_NAME "@rx ^$SUB_MAILU\." "id:9102005,phase:1,pass,nolog,t:none,chain"
+    SecRule REQUEST_URI "@rx ^/admin/user/list/" "ctl:ruleRemoveById=920440"
 
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/hshq-behavior.yaml
@@ -124509,6 +124521,12 @@ whitelist:
       evt.Meta.http_status == '200' &&
       evt.Parsed.verb in ['GET', 'HEAD'] &&
       evt.Meta.http_path matches '(?i)^/(api|rest|graphql|gql|socket[.]io|notifications|_matrix|ocs|remote[.]php|public[.]php|[.]well-known)'
+    - >-
+      evt.Meta.service == 'http' &&
+      evt.Meta.http_status == '404' &&
+      evt.Meta.target_fqdn == '$SUB_GUACAMOLE.$HOMESERVER_DOMAIN' &&
+      evt.Parsed.verb in ['GET', 'HEAD'] &&
+      evt.Meta.http_path matches '^/guacamole/api/session/tunnels/'
 EOFMT
   cat <<EOFMT > $HSHQ_STACKS_DIR/crowdsec/notifications/email.yaml
 type: email
